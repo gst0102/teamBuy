@@ -3,6 +3,13 @@
     <view class="title">待认领导入</view>
     <view class="muted">本地阶段通过 mock 企业微信消息生成待认领草稿。</view>
     <button class="primary-btn" bindtap="handleMockImport">生成一条 mock 导入</button>
+    <button class="ghost-btn" bindtap="handleOpenLibrary" style="margin-top: 16rpx;">进入素材库</button>
+  </view>
+  <view class="panel" wx:if="{{notifications.length}}">
+    <view class="title" style="font-size:30rpx;">导入通知</view>
+    <block wx:for="{{notifications}}" wx:key="id">
+      <view class="muted">{{item.message}}</view>
+    </block>
   </view>
   <block wx:for="{{imports}}" wx:key="id">
     <view class="panel">
@@ -13,4 +20,3 @@
     </view>
   </block>
 </view>
-

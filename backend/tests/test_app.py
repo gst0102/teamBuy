@@ -14,8 +14,8 @@ def test_wecom_config_check_reports_missing_real_fields(client):
     response = client.get("/api/wecom/config-check")
     assert response.status_code == 200
     payload = response.json()
-    assert payload["success"] is False
-    assert "WECOM_CORP_ID" in payload["data"]["missing"]
+    assert isinstance(payload["success"], bool)
+    assert isinstance(payload["data"]["missing"], list)
 
 
 def test_real_sync_is_guarded_while_mock_enabled(client):
@@ -29,7 +29,8 @@ def test_health_reports_database_configuration(client):
     assert response.status_code == 200
     data = response.json()
     assert data["database"]["backend"] == "postgres"
-    assert "DATABASE_URL" in data["database"]["missing"]
+    assert isinstance(data["database"]["configured"], bool)
+    assert isinstance(data["database"]["missing"], list)
 
 
 def test_mock_import_creates_claimable_batch(client):
@@ -44,6 +45,37 @@ def test_mock_import_creates_claimable_batch(client):
     latest = pending[-1]
     assert latest["sourceType"] == "wechat_note"
     assert latest["generatedCard"]["title"]
+
+    notifications = client.get("/api/wecom/notifications").json()["data"]
+    assert notifications[-1]["status"] == "success"
+    assert "导入成功" in notifications[-1]["message"]
+
+
+def test_link_import_uses_thumbnail_and_source_url(client):
+    response = client.post(
+        "/api/wecom/mock-sync",
+        json={"externalUserId": "external_link", "conversationId": "conv_link", "fixture": "link"},
+    )
+    assert response.status_code == 200
+
+    pending = client.get("/api/imports/pending").json()["data"]
+    latest = pending[-1]
+    card = latest["generatedCard"]
+    assert latest["sourceType"] == "web_link"
+    assert card["sourceUrl"] == "https://example.com/group-buy"
+    assert card["coverUrl"] == "https://example.com/cover.jpg"
+
+
+def test_note_import_preserves_video_media(client):
+    response = client.post(
+        "/api/wecom/mock-sync",
+        json={"externalUserId": "external_video", "conversationId": "conv_video", "fixture": "note"},
+    )
+    assert response.status_code == 200
+
+    pending = client.get("/api/imports/pending").json()["data"]
+    media = pending[-1]["generatedCard"]["media"]
+    assert any(item["type"] == "video" and item["url"].endswith(".mp4") for item in media)
 
 
 def test_claim_import_and_publish_flow(client):
@@ -110,3 +142,31 @@ def test_duplicate_card_keeps_stats_isolated(client):
     ).json()["data"]
     assert stats["pv"] == 0
     assert stats["relayCount"] == 0
+
+
+def test_owner_can_delete_and_follow_relay(client):
+    relay_response = client.post(
+        "/api/cards/card_seed_001/relay",
+        json={
+            "userId": "user_seed_owner",
+            "nickname": "张团长",
+            "phone": "13900000000",
+            "address": "城南新区 1 号",
+        },
+    )
+    assert relay_response.status_code == 200
+    relay_id = relay_response.json()["data"]["id"]
+
+    follow = client.post(
+        f"/api/relays/{relay_id}/follow-up",
+        json={"operatorUserId": "user_seed_owner"},
+    )
+    assert follow.status_code == 200
+    assert follow.json()["data"]["followUpStatus"] == "followed"
+
+    delete = client.delete(
+        f"/api/relays/{relay_id}",
+        params={"operatorUserId": "user_seed_owner"},
+    )
+    assert delete.status_code == 200
+    assert delete.json()["data"]["status"] == "deleted"

@@ -16,6 +16,7 @@ from app.main import app
 from app.services.app_service import AppService
 from app.services.bootstrap import seed_runtime_state
 from app.services.card_parser_service import CardParserService
+from app.services.import_notification_service import ImportNotificationService
 from app.services.media_storage_service import MediaStorageService
 from app.services.message_aggregator import MessageAggregator
 from app.services.repository import JsonRepository
@@ -34,6 +35,7 @@ def client(tmp_path: Path):
         media_storage_service=MediaStorageService(),
         parser_service=CardParserService(),
         aggregator=MessageAggregator(),
+        notification_service=ImportNotificationService(),
     )
 
     app.dependency_overrides[get_app_service] = lambda: service

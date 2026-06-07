@@ -68,6 +68,8 @@ Page({
     } catch (error) {
       wx.showToast({ title: error.detail || "接龙失败", icon: "none" });
     }
+  },
+  handleGoManager() {
+    wx.navigateTo({ url: `/pages/manager/index?id=${this.data.cardId}` });
   }
 });
-

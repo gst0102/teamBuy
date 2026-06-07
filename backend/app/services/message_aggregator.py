@@ -9,8 +9,14 @@ WINDOW_SECONDS = 60
 
 
 def detect_source_type(messages: list[RawMessage]) -> str:
-    if any(item.msgType == "link" for item in messages):
-        return "web_link"
+    for item in messages:
+        if item.msgType == "link":
+            url = str(item.content.get("url", "")).lower()
+            if "mp.weixin.qq.com" in url:
+                return "mp_link"
+            if "servicewechat.com" in url or "miniprogram" in url:
+                return "miniapp_link"
+            return "web_link"
     if any(item.msgType in {"image", "video"} for item in messages):
         return "wechat_note"
     return "unknown"
@@ -74,4 +80,3 @@ class MessageAggregator:
                 )
             )
         return aggregated_batches
-

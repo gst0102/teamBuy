@@ -115,6 +115,12 @@ function triggerMockImport(payload) {
   });
 }
 
+function fetchImportNotifications() {
+  return request({
+    url: "/api/wecom/notifications"
+  });
+}
+
 module.exports = {
   mockLogin,
   fetchPendingImports,
@@ -130,6 +136,6 @@ module.exports = {
   fetchRelays,
   deleteRelay,
   followRelay,
-  triggerMockImport
+  triggerMockImport,
+  fetchImportNotifications
 };
-

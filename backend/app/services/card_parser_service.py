@@ -28,10 +28,13 @@ class CardParserService:
                 link_title = str(content.get("title", "")).strip()
                 link_desc = str(content.get("description", "")).strip()
                 source_url = str(content.get("url", "")).strip() or source_url
+                thumb_url = str(content.get("thumbUrl", "")).strip()
                 if link_title and title_candidate == batch.titleCandidate:
                     title_candidate = link_title
                 if link_desc:
                     text_blocks.append(link_desc)
+                if thumb_url:
+                    image_urls.append((thumb_url, None))
             elif message.msgType == "location":
                 location_text = str(content.get("label", "")).strip() or location_text
             elif message.msgType == "video" and message.localMediaUrl:
@@ -102,4 +105,3 @@ class CardParserService:
             createdAt=created_at,
             updatedAt=created_at,
         )
-

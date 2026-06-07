@@ -15,6 +15,7 @@ MOCK_FILES = {
     "view_events": "view-events.json",
     "relay_entries": "relays.json",
     "categories": "categories.json",
+    "import_notifications": "import-notifications.json",
 }
 
 
@@ -38,4 +39,3 @@ def seed_runtime_state(repo: JsonRepository, mock_dir: Path) -> None:
         file_path = mock_dir / filename
         payload[key] = json.loads(file_path.read_text(encoding="utf-8"))
     repo.save(AppState.model_validate(payload))
-

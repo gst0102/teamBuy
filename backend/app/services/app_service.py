@@ -1,18 +1,17 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from copy import deepcopy
-
 from fastapi import HTTPException, status
 
-from app.models.domain import AppState, Card, ImportBatch, RawMessage, RelayEntry, User, ViewEvent
+from app.models.domain import AppState, Card, RawMessage, RelayEntry, User, ViewEvent
 from app.schemas.auth import MockLoginRequest
 from app.schemas.cards import CardUpdateRequest, CreateRelayRequest, RecordViewRequest
 from app.services.card_parser_service import CardParserService
 from app.services.helpers import mask_nickname, new_id
+from app.services.import_notification_service import ImportNotificationService
 from app.services.media_storage_service import MediaStorageService
 from app.services.message_aggregator import MessageAggregator
-from app.services.repository import JsonRepository
+from app.services.repository import AppRepository
 from app.services.time_utils import date_key, now_iso
 from app.services.wecom_mock_service import WecomMockService
 
@@ -20,17 +19,19 @@ from app.services.wecom_mock_service import WecomMockService
 class AppService:
     def __init__(
         self,
-        repo: JsonRepository,
+        repo: AppRepository,
         wecom_mock_service: WecomMockService,
         media_storage_service: MediaStorageService,
         parser_service: CardParserService,
         aggregator: MessageAggregator,
+        notification_service: ImportNotificationService,
     ):
         self.repo = repo
         self.wecom_mock_service = wecom_mock_service
         self.media_storage_service = media_storage_service
         self.parser_service = parser_service
         self.aggregator = aggregator
+        self.notification_service = notification_service
 
     def _load(self) -> AppState:
         return self.repo.load()
@@ -85,7 +86,7 @@ class AppService:
             local_media_url = None
             media_id = item.get("mediaId")
             if media_id:
-                local_media_url = self.media_storage_service.download_and_store(media_id)
+                local_media_url = self.media_storage_service.download_and_store(media_id, item["msgType"])
             raw_message = RawMessage(
                 id=new_id("msg"),
                 externalUserId=item["externalUserId"],
@@ -112,15 +113,21 @@ class AppService:
             batch.status = "success" if card.title else "failed"
             batch.errorMessage = None if card.title else "未能解析标题"
             batch.updatedAt = now_iso()
+            notification = self.notification_service.build_notification(batch)
             state.import_batches.append(batch)
             state.raw_messages.extend(batch_messages)
             state.cards.append(card)
+            state.import_notifications.append(notification)
 
         self._save(state)
         return {
-            "message": f"《{new_batches[0].titleCandidate}》导入成功",
+            "message": state.import_notifications[-1].message,
             "importBatchIds": [item.id for item in new_batches],
         }
+
+    def list_import_notifications(self) -> list[dict]:
+        state = self._load()
+        return [item.model_dump() for item in state.import_notifications]
 
     def claim_import(self, import_id: str, user_id: str) -> dict:
         state = self._load()
@@ -391,4 +398,3 @@ class AppService:
                 [item for item in state.relay_entries if item.cardId == card_id and item.status == "active"]
             )
         return stats
-

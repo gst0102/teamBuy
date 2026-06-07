@@ -65,6 +65,11 @@ def mock_sync(payload: MockImportRequest, service: AppService = Depends(get_app_
     return ApiResponse(data=result, message="mock import completed")
 
 
+@router.get("/notifications", response_model=ApiResponse[list[dict]])
+def list_notifications(service: AppService = Depends(get_app_service)):
+    return ApiResponse(data=service.list_import_notifications())
+
+
 @router.get("/config-check", response_model=ApiResponse[dict])
 def config_check(client: WecomClient = Depends(get_wecom_client)):
     missing = settings.missing_wecom_fields()

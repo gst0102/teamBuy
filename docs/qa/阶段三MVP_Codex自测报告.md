@@ -5,6 +5,9 @@
 - FastAPI 后端骨架与 JSON 本地持久化
 - 企业微信本地 mock 导入、60 秒聚合、媒体转存占位、卡片草稿生成
 - 企业微信客服配置清单、`.env` 本地读取、回调签名校验/解密入口、真实 `sync_msg` 客户端骨架
+- PostgreSQL 过渡仓储、连接健康检查、本地 JSON 兜底
+- mock 导入成功/失败通知抽象和通知查询接口
+- 链接缩略图、来源 URL、视频 media mock 转存解析增强
 - 导入认领、卡片编辑、发布、一键复用
 - 浏览统计、匿名浏览隔离、实名接龙、团长删除/跟进
 - 原生微信小程序本地联调骨架页面
@@ -13,6 +16,7 @@
 
 - `backend/app/`：新增 API、领域模型、服务层、mock 聚合与测试
 - `backend/mock/`：新增微信笔记、链接、卡片、浏览、接龙 mock 数据
+- `backend/app/core/schema.sql`：PostgreSQL 过渡表结构
 - `docs/qa/企业微信客服配置清单.md`：整理真实接入前需要用户提供的配置
 - `miniprogram/`：新增登录、待认领、素材库、编辑、查看、管理页面及组件
 - `backend/.env.example`、`backend/Dockerfile`、`backend/README.md`、`miniprogram/README.md`
@@ -37,7 +41,7 @@ uvicorn app.main:app --reload
 
 ## 4. 已执行验证
 
-- `cd backend && pytest`
+- `cd backend && pytest`，当前 12 项通过
 - `cd backend && python -m compileall app`
 
 ## 5. 已通过测试项
@@ -46,7 +50,10 @@ uvicorn app.main:app --reload
 - TC-002 企业微信回调 POST 接收入口
 - TC-003 `sync_msg` 客户端调用保护
 - TC-004 微信笔记 60 秒聚合生成导入批次
+- TC-007 媒体转存 mock URL，图片和视频后缀区分
 - TC-009 卡片草稿生成
+- TC-010 链接消息生成来源链接、标题候选、缩略图封面
+- TC-013 导入成功通知 mock 记录
 - TC-015 待认领导入列表
 - TC-016 成功认领
 - TC-020 卡片发布后可查看
@@ -71,9 +78,9 @@ uvicorn app.main:app --reload
 
 - 未用真实企业微信账号完成回调、`sync_msg`、媒体下载端到端验收
 - 未接入真实微信登录 code 换 openid
-- 未接入对象存储与线上数据库
+- 未接入对象存储；PostgreSQL 已有过渡仓储，但尚未做细粒度关系表查询优化
 - 小程序页面尚未在微信开发者工具内完成人工截图式验收
-- 当前后端持久化为本地 JSON 文件，适合本地开发，不适合作为线上方案
+- 当前 PostgreSQL 仓储使用 JSONB payload 过渡结构，适合继续开发，后续可按查询热点拆细字段和索引
 - 误生成的空目录 `backend/backend/mock/` 仍在仓库中，但其中多余运行态文件已删除
 
 ## 8. 已知问题
@@ -87,4 +94,4 @@ uvicorn app.main:app --reload
 
 1. 接入真实企业微信回调与 `sync_msg`，优先完成 TC-002、TC-003、TC-007、TC-008、TC-013、TC-014
 2. 把小程序在微信开发者工具里跑一遍，补拨号、复制、接龙、管理的人工验收记录
-3. 视本地开发需要，增加真实 SQLite 持久层或为 JSON 仓储补并发保护
+3. 将 PostgreSQL 过渡仓储进一步拆成细粒度 CRUD 查询，优先处理导入批次、卡片、浏览、接龙四组热点表

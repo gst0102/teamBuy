@@ -3,6 +3,7 @@ const api = require("../../services/api");
 Page({
   data: {
     imports: [],
+    notifications: [],
     loading: false
   },
   onShow() {
@@ -12,7 +13,11 @@ Page({
     this.setData({ loading: true });
     try {
       const res = await api.fetchPendingImports();
-      this.setData({ imports: res.data || [] });
+      const noticeRes = await api.fetchImportNotifications();
+      this.setData({
+        imports: res.data || [],
+        notifications: noticeRes.data || []
+      });
     } catch (error) {
       wx.showToast({ title: "加载失败", icon: "none" });
     } finally {
@@ -41,6 +46,8 @@ Page({
     } catch (error) {
       wx.showToast({ title: "认领失败", icon: "none" });
     }
+  },
+  handleOpenLibrary() {
+    wx.navigateTo({ url: "/pages/library/index" });
   }
 });
-

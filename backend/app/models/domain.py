@@ -129,6 +129,19 @@ class Category(BaseModel):
     createdAt: str
 
 
+class ImportNotification(BaseModel):
+    id: str
+    importBatchId: str
+    externalUserId: str
+    conversationId: str
+    status: Literal["success", "failed"]
+    title: str
+    message: str
+    channel: Literal["mock", "wecom"]
+    sentAt: str
+    errorMessage: str | None = None
+
+
 class AppState(BaseModel):
     users: list[User] = Field(default_factory=list)
     import_batches: list[ImportBatch] = Field(default_factory=list)
@@ -137,4 +150,4 @@ class AppState(BaseModel):
     view_events: list[ViewEvent] = Field(default_factory=list)
     relay_entries: list[RelayEntry] = Field(default_factory=list)
     categories: list[Category] = Field(default_factory=list)
-
+    import_notifications: list[ImportNotification] = Field(default_factory=list)

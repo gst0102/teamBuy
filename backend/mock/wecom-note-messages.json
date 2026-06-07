@@ -27,6 +27,13 @@
     "content": {
       "label": "城南新区示范区"
     }
+  },
+  {
+    "msgType": "video",
+    "receivedAt": "2026-06-08T10:02:00+08:00",
+    "mediaId": "media_note_video",
+    "content": {
+      "caption": "样板间视频"
+    }
   }
 ]
-
