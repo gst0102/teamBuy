@@ -110,10 +110,7 @@ class AppService:
             batch.errorMessage = None if card.title else "未能解析标题"
             batch.updatedAt = now_iso()
             notification = self.notification_service.build_notification(batch)
-            self.repo.save_import_batch(batch)
-            self.repo.save_raw_messages(batch_messages)
-            self.repo.save_card(card)
-            self.repo.save_import_notification(notification)
+            self.repo.save_import_artifacts(batch, batch_messages, card, notification)
 
         return {
             "message": notification.message,

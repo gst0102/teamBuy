@@ -39,6 +39,15 @@ class AppRepository(Protocol):
     def save_raw_messages(self, messages: list[RawMessage]) -> None:
         ...
 
+    def save_import_artifacts(
+        self,
+        batch: ImportBatch,
+        raw_messages: list[RawMessage],
+        card: Card,
+        notification: ImportNotification,
+    ) -> None:
+        ...
+
     def get_card(self, card_id: str) -> Card | None:
         ...
 
@@ -120,6 +129,25 @@ class JsonRepository:
         message_ids = {item.id for item in messages}
         state.raw_messages = [item for item in state.raw_messages if item.id not in message_ids]
         state.raw_messages.extend(messages)
+        self.save(state)
+
+    def save_import_artifacts(
+        self,
+        batch: ImportBatch,
+        raw_messages: list[RawMessage],
+        card: Card,
+        notification: ImportNotification,
+    ) -> None:
+        state = self.load()
+        state.import_batches = [item for item in state.import_batches if item.id != batch.id]
+        state.import_batches.append(batch)
+        message_ids = {item.id for item in raw_messages}
+        state.raw_messages = [item for item in state.raw_messages if item.id not in message_ids]
+        state.raw_messages.extend(raw_messages)
+        state.cards = [item for item in state.cards if item.id != card.id]
+        state.cards.append(card)
+        state.import_notifications = [item for item in state.import_notifications if item.id != notification.id]
+        state.import_notifications.append(notification)
         self.save(state)
 
     def get_card(self, card_id: str) -> Card | None:
@@ -350,6 +378,21 @@ class PostgresRepository:
             with conn.transaction():
                 for message in messages:
                     self._upsert_payload(conn, "raw_messages", message.model_dump(mode="json"))
+
+    def save_import_artifacts(
+        self,
+        batch: ImportBatch,
+        raw_messages: list[RawMessage],
+        card: Card,
+        notification: ImportNotification,
+    ) -> None:
+        with psycopg.connect(self.database_url) as conn:
+            with conn.transaction():
+                self._upsert_payload(conn, "import_batches", batch.model_dump(mode="json"))
+                for message in raw_messages:
+                    self._upsert_payload(conn, "raw_messages", message.model_dump(mode="json"))
+                self._upsert_payload(conn, "cards", card.model_dump(mode="json"))
+                self._upsert_payload(conn, "import_notifications", notification.model_dump(mode="json"))
 
     def list_raw_messages_for_batch(self, import_batch_id: str) -> list[dict]:
         return self._list_payloads(

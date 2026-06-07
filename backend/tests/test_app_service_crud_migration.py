@@ -27,3 +27,11 @@ def test_hot_paths_do_not_call_full_state_load_or_save():
         source = inspect.getsource(getattr(AppService, method_name))
         assert "self._load()" not in source, method_name
         assert "self._save(" not in source, method_name
+
+
+def test_import_flow_uses_single_import_artifact_transaction():
+    source = inspect.getsource(AppService.trigger_mock_import)
+    assert "save_import_artifacts" in source
+    assert "save_raw_messages" not in source
+    assert "save_import_batch" not in source
+    assert "save_import_notification" not in source
