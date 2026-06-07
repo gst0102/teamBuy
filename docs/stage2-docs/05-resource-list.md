@@ -42,6 +42,8 @@
 | 接收事件 - 配置回调服务器 | https://developer.work.weixin.qq.com/document/path/90968 | 配置回调 URL |
 | 接收消息和事件 | https://developer.work.weixin.qq.com/document/path/94670 | 回调、sync_msg、消息类型 |
 | 获取临时素材 | https://developer.work.weixin.qq.com/document/path/94674 | media_id 下载 |
+| 企业微信小程序相关接口 | https://developer.work.weixin.qq.com/document/path/92455 | P2 预研小程序端企业微信能力，如企业会话、发送消息、客服侧边栏发卡片边界 |
+| 企业微信智能机器人/消息能力 | https://developer.work.weixin.qq.com/document/path/101463 | P2 预研替代消息通道；不作为 v0.1 微信客服导入主链路 |
 
 ## 4. 资源标准
 
