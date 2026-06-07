@@ -3,6 +3,7 @@ uvicorn[standard]==0.34.2
 pydantic==2.11.5
 python-dotenv==1.1.0
 pycryptodome==3.23.0
+psycopg[binary]==3.2.9
 tzdata==2025.2
 pytest==8.3.5
 httpx==0.28.1

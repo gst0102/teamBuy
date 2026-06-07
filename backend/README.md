@@ -26,10 +26,19 @@ uvicorn app.main:app --reload
 
 企业微信客服真实配置请填写 `backend/.env`，配置项说明见 `docs/qa/企业微信客服配置清单.md`。
 
+数据库使用 PostgreSQL。请在 `backend/.env` 填写：
+
+```text
+DATABASE_BACKEND=postgres
+DATABASE_URL=postgresql+psycopg://teambuy:your_password@127.0.0.1:5432/teambuy
+```
+
 检查配置：
 
 ```bash
 curl http://127.0.0.1:8000/api/wecom/config-check
+curl http://127.0.0.1:8000/health
+curl http://127.0.0.1:8000/health/db
 ```
 
 真实拉取消息前，需要把 `WECOM_USE_MOCK=false`。

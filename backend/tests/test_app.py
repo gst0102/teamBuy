@@ -24,6 +24,14 @@ def test_real_sync_is_guarded_while_mock_enabled(client):
     assert "WECOM_USE_MOCK=true" in response.json()["detail"]
 
 
+def test_health_reports_database_configuration(client):
+    response = client.get("/health")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["database"]["backend"] == "postgres"
+    assert "DATABASE_URL" in data["database"]["missing"]
+
+
 def test_mock_import_creates_claimable_batch(client):
     response = client.post(
         "/api/wecom/mock-sync",

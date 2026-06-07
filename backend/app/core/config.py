@@ -30,6 +30,8 @@ class Settings:
     app_host: str = env_value("APP_HOST", "127.0.0.1")
     app_port: int = env_int("APP_PORT", 8000)
     public_base_url: str = env_value("PUBLIC_BASE_URL", "")
+    database_backend: str = env_value("DATABASE_BACKEND", "postgres")
+    database_url: str = env_value("DATABASE_URL", "")
     wecom_callback_token: str = env_value("WECOM_CALLBACK_TOKEN", "teamBuy-dev-token")
     wecom_corp_id: str = env_value("WECOM_CORP_ID", "")
     wecom_secret: str = env_value("WECOM_SECRET", "")
@@ -41,6 +43,11 @@ class Settings:
     wecom_use_mock: bool = env_value("WECOM_USE_MOCK", "true").lower() in {"1", "true", "yes"}
     storage_mode: str = env_value("STORAGE_MODE", "mock")
     data_file: Path = ROOT_DIR / env_value("DATA_FILE", "backend/mock/runtime-state.json")
+
+    def missing_database_fields(self) -> list[str]:
+        if self.database_backend == "postgres" and not self.database_url:
+            return ["DATABASE_URL"]
+        return []
 
     def missing_wecom_fields(self) -> list[str]:
         required = {
