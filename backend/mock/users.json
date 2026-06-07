@@ -1,0 +1,12 @@
+[
+  {
+    "id": "user_seed_owner",
+    "openid": "openid_seed_owner",
+    "nickname": "张团长",
+    "avatarUrl": "https://example.com/avatar-owner.png",
+    "phone": "13900000000",
+    "createdAt": "2026-06-08T09:00:00+08:00",
+    "updatedAt": "2026-06-08T09:00:00+08:00"
+  }
+]
+

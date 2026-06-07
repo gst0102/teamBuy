@@ -1,0 +1,10 @@
+<view class="page-shell">
+  <view class="panel">
+    <view class="title">teamBuy 本地联调登录</view>
+    <view class="muted">阶段三先使用 mock 登录，后续再替换为微信 code 登录。</view>
+    <view class="field-label" style="margin-top: 24rpx;">昵称</view>
+    <input class="field-input" value="{{nickname}}" bindinput="handleNicknameChange" />
+    <button class="primary-btn" bindtap="handleMockLogin">进入素材库</button>
+  </view>
+</view>
+

@@ -1,0 +1,16 @@
+<view class="page-shell" wx:if="{{card}}">
+  <view class="panel">
+    <view class="title">团长管理</view>
+    <view class="muted">登录浏览 {{stats.loggedInViewers.length || 0}} 人</view>
+    <view class="muted">总 PV {{stats.pv || 0}}，匿名 PV {{stats.anonymousPv || 0}}</view>
+    <button class="ghost-btn" bindtap="handleDuplicate">一键复用整张卡片</button>
+  </view>
+  <view class="panel">
+    <view class="title" style="font-size:30rpx;">已登录浏览用户</view>
+    <block wx:for="{{stats.loggedInViewers}}" wx:key="userId">
+      <view class="muted">{{item.nickname}} - {{item.viewedAt}}</view>
+    </block>
+  </view>
+  <relay-list relays="{{stats.relayEntries || []}}" isOwner="{{true}}" bind:delete="handleDelete" bind:follow="handleFollow" />
+</view>
+

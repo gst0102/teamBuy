@@ -1,0 +1,24 @@
+<view class="page-shell" wx:if="{{card}}">
+  <view class="panel">
+    <view class="title">编辑卡片</view>
+    <view class="field-label">标题</view>
+    <input class="field-input" data-field="title" value="{{card.title}}" bindinput="handleFieldChange" />
+    <view class="field-label">项目名</view>
+    <input class="field-input" data-field="projectName" value="{{card.projectName}}" bindinput="handleFieldChange" />
+    <view class="field-label">位置</view>
+    <input class="field-input" data-field="locationText" value="{{card.locationText}}" bindinput="handleFieldChange" />
+    <view class="field-label">联系电话</view>
+    <input class="field-input" data-field="phone" value="{{card.phone}}" bindinput="handleFieldChange" />
+    <view class="field-label">接龙说明</view>
+    <textarea class="field-input" data-field="relayNotice" value="{{card.relayNotice}}" bindinput="handleFieldChange"></textarea>
+    <view class="field-label">详情</view>
+    <textarea class="field-input" style="height: 220rpx;" data-field="detailText" value="{{card.detailText}}" bindinput="handleFieldChange"></textarea>
+    <view style="display:flex; align-items:center; justify-content:space-between; margin: 20rpx 0;">
+      <text>接龙手机号必填</text>
+      <switch checked="{{card.relayConfig.requirePhone}}" bindchange="handleToggleRelayPhone" />
+    </view>
+    <button class="primary-btn" bindtap="handleSave">保存草稿</button>
+    <button class="ghost-btn" bindtap="handlePublish" style="margin-top: 16rpx;">发布并预览</button>
+  </view>
+</view>
+

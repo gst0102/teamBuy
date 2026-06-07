@@ -1,0 +1,13 @@
+<block wx:for="{{relays}}" wx:key="id">
+  <view class="panel">
+    <view class="title" style="font-size: 30rpx;">{{item.nickname}}</view>
+    <view class="muted">状态：{{item.followUpStatus}}</view>
+    <view wx:if="{{item.phone}}" class="muted">电话：{{item.phone}}</view>
+    <view wx:if="{{item.address}}" class="muted">地址：{{item.address}}</view>
+    <view wx:if="{{isOwner}}" style="display:flex; gap: 16rpx; margin-top: 18rpx;">
+      <button data-id="{{item.id}}" class="ghost-btn" size="mini" bindtap="handleFollow">标记已跟进</button>
+      <button data-id="{{item.id}}" class="ghost-btn" size="mini" bindtap="handleDelete">删除无效</button>
+    </view>
+  </view>
+</block>
+

@@ -1,0 +1,17 @@
+[
+  {
+    "id": "cat_seed_sale",
+    "ownerUserId": "user_seed_owner",
+    "name": "房产活动",
+    "sortOrder": 1,
+    "createdAt": "2026-06-08T09:00:00+08:00"
+  },
+  {
+    "id": "cat_seed_group",
+    "ownerUserId": "user_seed_owner",
+    "name": "团购素材",
+    "sortOrder": 2,
+    "createdAt": "2026-06-08T09:00:00+08:00"
+  }
+]
+

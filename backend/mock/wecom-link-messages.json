@@ -1,0 +1,21 @@
+[
+  {
+    "msgType": "link",
+    "receivedAt": "2026-06-08T11:10:00+08:00",
+    "content": {
+      "title": "夏日团购秒杀清单",
+      "description": "今天 20 点开团，支持到店自提。",
+      "url": "https://example.com/group-buy",
+      "thumbUrl": "https://example.com/cover.jpg"
+    }
+  },
+  {
+    "msgType": "image",
+    "receivedAt": "2026-06-08T11:10:25+08:00",
+    "mediaId": "media_link_cover",
+    "content": {
+      "caption": "团购封面"
+    }
+  }
+]
+

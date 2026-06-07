@@ -1,0 +1,118 @@
+{
+  "users": [
+    {
+      "id": "user_seed_owner",
+      "openid": "openid_seed_owner",
+      "unionid": null,
+      "nickname": "张团长",
+      "avatarUrl": "https://example.com/avatar-owner.png",
+      "phone": "13900000000",
+      "createdAt": "2026-06-08T09:00:00+08:00",
+      "updatedAt": "2026-06-08T09:00:00+08:00"
+    }
+  ],
+  "import_batches": [],
+  "raw_messages": [],
+  "cards": [
+    {
+      "id": "card_seed_001",
+      "ownerUserId": "user_seed_owner",
+      "importBatchId": null,
+      "sourceCardId": null,
+      "status": "published",
+      "title": "示例素材卡片",
+      "coverUrl": "https://example.com/default-cover.jpg",
+      "detailText": "这是一个用于本地开发的示例卡片。",
+      "projectName": "团队素材示例",
+      "locationText": "线上演示区",
+      "phone": "13900000000",
+      "relayNotice": "感兴趣请实名接龙。",
+      "sourceUrl": "https://example.com/demo",
+      "enabledFields": [
+        "projectName",
+        "locationText",
+        "phone",
+        "relayNotice",
+        "sourceUrl"
+      ],
+      "categoryIds": [
+        "cat_seed_sale"
+      ],
+      "media": [
+        {
+          "id": "card_media_seed_001",
+          "cardId": "card_seed_001",
+          "type": "image",
+          "url": "https://example.com/default-cover.jpg",
+          "sortOrder": 1,
+          "sourceMediaId": null,
+          "createdAt": "2026-06-08T09:00:00+08:00"
+        }
+      ],
+      "relayConfig": {
+        "enabled": true,
+        "requirePhone": true,
+        "requireAddress": false
+      },
+      "publishedAt": "2026-06-08T09:00:00+08:00",
+      "createdAt": "2026-06-08T09:00:00+08:00",
+      "updatedAt": "2026-06-08T09:00:00+08:00"
+    }
+  ],
+  "view_events": [
+    {
+      "id": "view_seed_001",
+      "cardId": "card_seed_001",
+      "viewerUserId": "user_seed_owner",
+      "viewType": "logged_in",
+      "anonymousId": null,
+      "nickname": "张团长",
+      "avatarUrl": "https://example.com/avatar-owner.png",
+      "viewedAt": "2026-06-08T09:10:00+08:00",
+      "dateKey": "2026-06-08"
+    },
+    {
+      "id": "view_seed_002",
+      "cardId": "card_seed_001",
+      "viewerUserId": null,
+      "viewType": "anonymous",
+      "anonymousId": "anon_seed_001",
+      "nickname": null,
+      "avatarUrl": null,
+      "viewedAt": "2026-06-08T09:11:00+08:00",
+      "dateKey": "2026-06-08"
+    }
+  ],
+  "relay_entries": [
+    {
+      "id": "relay_seed_001",
+      "cardId": "card_seed_001",
+      "userId": "user_seed_owner",
+      "nickname": "张团长",
+      "avatarUrl": "https://example.com/avatar-owner.png",
+      "maskedNickname": "张团**",
+      "phone": "13900000000",
+      "address": "城南新区 1 号",
+      "status": "active",
+      "followUpStatus": "pending",
+      "createdAt": "2026-06-08T09:20:00+08:00",
+      "updatedAt": "2026-06-08T09:20:00+08:00"
+    }
+  ],
+  "categories": [
+    {
+      "id": "cat_seed_sale",
+      "ownerUserId": "user_seed_owner",
+      "name": "房产活动",
+      "sortOrder": 1,
+      "createdAt": "2026-06-08T09:00:00+08:00"
+    },
+    {
+      "id": "cat_seed_group",
+      "ownerUserId": "user_seed_owner",
+      "name": "团购素材",
+      "sortOrder": 2,
+      "createdAt": "2026-06-08T09:00:00+08:00"
+    }
+  ]
+}

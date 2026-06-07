@@ -1,0 +1,20 @@
+{
+  "pages": [
+    "pages/login/index",
+    "pages/imports/index",
+    "pages/library/index",
+    "pages/card-edit/index",
+    "pages/card-view/index",
+    "pages/manager/index"
+  ],
+  "window": {
+    "navigationBarTitleText": "teamBuy",
+    "navigationBarBackgroundColor": "#f7f4ea",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#f7f4ea",
+    "backgroundTextStyle": "light"
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json"
+}
+

@@ -1,0 +1,8 @@
+<view class="panel">
+  <view class="field-label">{{label}}</view>
+  <view style="display:flex; justify-content:space-between; align-items:center;">
+    <text>{{value || "未填写"}}</text>
+    <button class="ghost-btn" size="mini" bindtap="handleCopy">复制</button>
+  </view>
+</view>
+

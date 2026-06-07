@@ -1,0 +1,16 @@
+<view class="page-shell">
+  <view class="panel">
+    <view class="title">待认领导入</view>
+    <view class="muted">本地阶段通过 mock 企业微信消息生成待认领草稿。</view>
+    <button class="primary-btn" bindtap="handleMockImport">生成一条 mock 导入</button>
+  </view>
+  <block wx:for="{{imports}}" wx:key="id">
+    <view class="panel">
+      <view class="title" style="font-size:30rpx;">{{item.titleCandidate}}</view>
+      <view class="muted">状态：{{item.status}}</view>
+      <view class="muted">来源：{{item.sourceType}}</view>
+      <button class="ghost-btn" data-id="{{item.id}}" bindtap="handleClaim">认领并编辑</button>
+    </view>
+  </block>
+</view>
+

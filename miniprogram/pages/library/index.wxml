@@ -1,0 +1,9 @@
+<view class="page-shell">
+  <view class="panel">
+    <view class="title">素材库</view>
+    <input class="field-input" placeholder="按标题搜索素材" bindinput="handleKeywordChange" />
+    <button class="ghost-btn" bindtap="handleSearch">搜索</button>
+  </view>
+  <card-preview wx:for="{{cards}}" wx:key="id" card="{{item}}" bind:open="handleOpen" bind:manage="handleManage" />
+</view>
+

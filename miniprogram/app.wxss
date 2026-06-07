@@ -1,0 +1,66 @@
+page {
+  background: #f7f4ea;
+  color: #2f2b24;
+  font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+.page-shell {
+  padding: 24rpx;
+}
+
+.panel {
+  background: #fffdf7;
+  border-radius: 24rpx;
+  padding: 24rpx;
+  box-shadow: 0 12rpx 32rpx rgba(73, 56, 18, 0.08);
+  margin-bottom: 24rpx;
+}
+
+.title {
+  font-size: 36rpx;
+  font-weight: 700;
+  margin-bottom: 16rpx;
+}
+
+.muted {
+  color: #7c6f5f;
+  font-size: 26rpx;
+}
+
+.primary-btn {
+  background: #b97032;
+  color: #fff;
+  border-radius: 999rpx;
+}
+
+.ghost-btn {
+  background: #f3e5d4;
+  color: #704019;
+  border-radius: 999rpx;
+}
+
+.tag {
+  display: inline-block;
+  padding: 8rpx 18rpx;
+  border-radius: 999rpx;
+  background: #f1e0ca;
+  color: #7e4a1f;
+  font-size: 22rpx;
+  margin-right: 12rpx;
+  margin-bottom: 12rpx;
+}
+
+.field-label {
+  color: #6a5e50;
+  font-size: 24rpx;
+  margin-bottom: 10rpx;
+}
+
+.field-input {
+  background: #fff;
+  border: 2rpx solid #eadcc6;
+  border-radius: 20rpx;
+  padding: 18rpx 20rpx;
+  margin-bottom: 18rpx;
+}
+

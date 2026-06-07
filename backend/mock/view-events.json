@@ -1,0 +1,25 @@
+[
+  {
+    "id": "view_seed_001",
+    "cardId": "card_seed_001",
+    "viewerUserId": "user_seed_owner",
+    "viewType": "logged_in",
+    "anonymousId": null,
+    "nickname": "张团长",
+    "avatarUrl": "https://example.com/avatar-owner.png",
+    "viewedAt": "2026-06-08T09:10:00+08:00",
+    "dateKey": "2026-06-08"
+  },
+  {
+    "id": "view_seed_002",
+    "cardId": "card_seed_001",
+    "viewerUserId": null,
+    "viewType": "anonymous",
+    "anonymousId": "anon_seed_001",
+    "nickname": null,
+    "avatarUrl": null,
+    "viewedAt": "2026-06-08T09:11:00+08:00",
+    "dateKey": "2026-06-08"
+  }
+]
+

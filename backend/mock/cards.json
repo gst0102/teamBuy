@@ -1,0 +1,39 @@
+[
+  {
+    "id": "card_seed_001",
+    "ownerUserId": "user_seed_owner",
+    "importBatchId": null,
+    "sourceCardId": null,
+    "status": "published",
+    "title": "示例素材卡片",
+    "coverUrl": "https://example.com/default-cover.jpg",
+    "detailText": "这是一个用于本地开发的示例卡片。",
+    "projectName": "团队素材示例",
+    "locationText": "线上演示区",
+    "phone": "13900000000",
+    "relayNotice": "感兴趣请实名接龙。",
+    "sourceUrl": "https://example.com/demo",
+    "enabledFields": ["projectName", "locationText", "phone", "relayNotice", "sourceUrl"],
+    "categoryIds": ["cat_seed_sale"],
+    "media": [
+      {
+        "id": "card_media_seed_001",
+        "cardId": "card_seed_001",
+        "type": "image",
+        "url": "https://example.com/default-cover.jpg",
+        "sortOrder": 1,
+        "sourceMediaId": null,
+        "createdAt": "2026-06-08T09:00:00+08:00"
+      }
+    ],
+    "relayConfig": {
+      "enabled": true,
+      "requirePhone": true,
+      "requireAddress": false
+    },
+    "publishedAt": "2026-06-08T09:00:00+08:00",
+    "createdAt": "2026-06-08T09:00:00+08:00",
+    "updatedAt": "2026-06-08T09:00:00+08:00"
+  }
+]
+

@@ -1,0 +1,26 @@
+<view class="page-shell" wx:if="{{card}}">
+  <view class="panel">
+    <view class="title">{{card.title}}</view>
+    <view class="muted">{{card.detailText}}</view>
+    <view style="margin-top: 16rpx;">
+      <text class="tag">{{card.projectName}}</text>
+      <text class="tag">{{card.locationText}}</text>
+    </view>
+    <button class="primary-btn" bindtap="handleCall" wx:if="{{card.phone}}">电话直拨</button>
+  </view>
+  <field-copy-row label="项目名" value="{{card.projectName}}" />
+  <field-copy-row label="位置" value="{{card.locationText}}" />
+  <field-copy-row label="来源链接" value="{{card.sourceUrl}}" />
+  <view class="panel">
+    <view class="title" style="font-size:30rpx;">浏览与接龙</view>
+    <view class="muted">PV {{stats.pv || 0}} / UV {{stats.uv || 0}} / 匿名 {{stats.anonymousPv || 0}}</view>
+  </view>
+  <view class="panel">
+    <view class="title" style="font-size:30rpx;">实名接龙</view>
+    <input class="field-input" placeholder="手机号（按配置选填）" bindinput="handlePhoneChange" />
+    <input class="field-input" placeholder="地址（按配置选填）" bindinput="handleAddressChange" />
+    <button class="primary-btn" bindtap="handleRelaySubmit">提交接龙</button>
+  </view>
+  <relay-list relays="{{stats.relayEntries || []}}" isOwner="{{false}}" />
+</view>
+

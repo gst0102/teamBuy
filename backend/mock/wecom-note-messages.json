@@ -1,0 +1,32 @@
+[
+  {
+    "msgType": "text",
+    "receivedAt": "2026-06-08T10:01:00+08:00",
+    "content": {
+      "text": "城南花园周末看房专场，本周六开放样板间，联系电话 13800000000。"
+    }
+  },
+  {
+    "msgType": "image",
+    "receivedAt": "2026-06-08T10:01:20+08:00",
+    "mediaId": "media_note_cover",
+    "content": {
+      "caption": "项目封面"
+    }
+  },
+  {
+    "msgType": "text",
+    "receivedAt": "2026-06-08T10:01:45+08:00",
+    "content": {
+      "text": "支持预约到访，地铁口现房，团购优惠本周有效。"
+    }
+  },
+  {
+    "msgType": "location",
+    "receivedAt": "2026-06-08T10:01:55+08:00",
+    "content": {
+      "label": "城南新区示范区"
+    }
+  }
+]
+

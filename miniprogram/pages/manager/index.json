@@ -1,0 +1,7 @@
+{
+  "navigationBarTitleText": "团长管理",
+  "usingComponents": {
+    "relay-list": "/components/relay-list/index"
+  }
+}
+

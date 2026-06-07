@@ -1,0 +1,17 @@
+[
+  {
+    "id": "relay_seed_001",
+    "cardId": "card_seed_001",
+    "userId": "user_seed_owner",
+    "nickname": "张团长",
+    "avatarUrl": "https://example.com/avatar-owner.png",
+    "maskedNickname": "张团**",
+    "phone": "13900000000",
+    "address": "城南新区 1 号",
+    "status": "active",
+    "followUpStatus": "pending",
+    "createdAt": "2026-06-08T09:20:00+08:00",
+    "updatedAt": "2026-06-08T09:20:00+08:00"
+  }
+]
+

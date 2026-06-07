@@ -1,0 +1,15 @@
+<view class="panel">
+  <view class="title">{{card.title}}</view>
+  <view class="muted">{{card.projectName || "未设置项目名"}}</view>
+  <view style="margin: 18rpx 0;">
+    <text class="tag">{{card.status}}</text>
+    <text class="tag">PV {{card.stats ? card.stats.pv : 0}}</text>
+    <text class="tag">接龙 {{card.stats ? card.stats.relayCount : 0}}</text>
+  </view>
+  <view class="muted">{{card.detailText}}</view>
+  <view style="display:flex; gap: 16rpx; margin-top: 18rpx;">
+    <button class="primary-btn" size="mini" bindtap="handleOpen">查看/编辑</button>
+    <button class="ghost-btn" size="mini" bindtap="handleManage">管理</button>
+  </view>
+</view>
+

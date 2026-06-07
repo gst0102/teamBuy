@@ -1,0 +1,7 @@
+{
+  "navigationBarTitleText": "素材库",
+  "usingComponents": {
+    "card-preview": "/components/card-preview/index"
+  }
+}
+
