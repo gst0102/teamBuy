@@ -42,7 +42,7 @@ curl http://127.0.0.1:8000/health
 curl http://127.0.0.1:8000/health/db
 ```
 
-当前 PostgreSQL 仓储采用“一实体一表 + JSONB payload”的过渡结构，表结构见 `app/core/schema.sql`。如果 `DATABASE_URL` 暂时不可用，后端会回退到本地 JSON mock 仓储，方便企业微信认证前继续开发。
+当前 PostgreSQL 仓储采用“一实体一表 + 核心字段列 + JSONB payload”的过渡结构，表结构见 `app/core/schema.sql`。热点字段已拆列并加索引：导入批次、原始消息、卡片、浏览记录、接龙记录。仓储层也提供了按 owner/status/card/batch 查询的读取方法，后续业务层可以逐步迁过去。如果 `DATABASE_URL` 暂时不可用，后端会回退到本地 JSON mock 仓储，方便企业微信认证前继续开发。
 
 查看 mock 导入通知：
 

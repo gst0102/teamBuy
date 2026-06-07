@@ -5,7 +5,7 @@
 - FastAPI 后端骨架与 JSON 本地持久化
 - 企业微信本地 mock 导入、60 秒聚合、媒体转存占位、卡片草稿生成
 - 企业微信客服配置清单、`.env` 本地读取、回调签名校验/解密入口、真实 `sync_msg` 客户端骨架
-- PostgreSQL 过渡仓储、连接健康检查、本地 JSON 兜底
+- PostgreSQL 过渡仓储、核心字段拆列、热点索引、连接健康检查、本地 JSON 兜底
 - mock 导入成功/失败通知抽象和通知查询接口
 - 链接缩略图、来源 URL、视频 media mock 转存解析增强
 - 导入认领、卡片编辑、发布、一键复用
@@ -16,7 +16,7 @@
 
 - `backend/app/`：新增 API、领域模型、服务层、mock 聚合与测试
 - `backend/mock/`：新增微信笔记、链接、卡片、浏览、接龙 mock 数据
-- `backend/app/core/schema.sql`：PostgreSQL 过渡表结构
+- `backend/app/core/schema.sql`：PostgreSQL 过渡表结构、字段化列和热点索引
 - `docs/qa/企业微信客服配置清单.md`：整理真实接入前需要用户提供的配置
 - `miniprogram/`：新增登录、待认领、素材库、编辑、查看、管理页面及组件
 - `backend/.env.example`、`backend/Dockerfile`、`backend/README.md`、`miniprogram/README.md`
