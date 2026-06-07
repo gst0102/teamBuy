@@ -46,6 +46,8 @@ curl http://127.0.0.1:8000/health/db
 
 真实 `sync_msg` 重试和重复 cursor 场景通过 `raw_messages.wecom_msg_id` 做幂等去重。`wecom_msg_id` 在 PostgreSQL 中有唯一约束；导入前也会先过滤已存在的企业微信消息，避免重复生成卡片草稿。
 
+真实 `sync_msg` 返回数据先进入 `app/services/wecom_message_normalizer.py` 标准化层，统一映射为内部消息结构，再进入聚合、解析、事务写入主链路。后续拿到企业微信真实样例时，优先修 normalizer，不要直接改业务主链路。
+
 查看 mock 导入通知：
 
 ```bash
