@@ -78,13 +78,21 @@ class AppService:
 
     def trigger_mock_import(self, external_user_id: str, conversation_id: str, fixture: str) -> dict:
         raw_messages: list[RawMessage] = []
-        for item in self.wecom_mock_service.sync_messages(external_user_id, conversation_id, fixture):
+        synced_messages = self.wecom_mock_service.sync_messages(external_user_id, conversation_id, fixture)
+        incoming_wecom_msg_ids = {item["wecomMsgId"] for item in synced_messages if item.get("wecomMsgId")}
+        existing_wecom_msg_ids = self.repo.existing_wecom_msg_ids(incoming_wecom_msg_ids)
+        for item in synced_messages:
+            if item.get("wecomMsgId") in existing_wecom_msg_ids:
+                continue
             local_media_url = None
             media_id = item.get("mediaId")
             if media_id:
                 local_media_url = self.media_storage_service.download_and_store(media_id, item["msgType"])
             raw_message = RawMessage(
                 id=new_id("msg"),
+                wecomMsgId=item.get("wecomMsgId"),
+                wecomToken=item.get("wecomToken"),
+                openKfid=item.get("openKfid"),
                 externalUserId=item["externalUserId"],
                 conversationId=item["conversationId"],
                 msgType=item["msgType"],
@@ -95,6 +103,12 @@ class AppService:
                 createdAt=now_iso(),
             )
             raw_messages.append(raw_message)
+        if not raw_messages:
+            return {
+                "message": "没有新的企业微信客服消息需要导入",
+                "importBatchIds": [],
+                "deduplicatedCount": len(existing_wecom_msg_ids),
+            }
 
         new_batches = self.aggregator.aggregate(raw_messages)
         if not new_batches:
@@ -115,6 +129,7 @@ class AppService:
         return {
             "message": notification.message,
             "importBatchIds": [item.id for item in new_batches],
+            "deduplicatedCount": len(existing_wecom_msg_ids),
         }
 
     def list_import_notifications(self) -> list[dict]:

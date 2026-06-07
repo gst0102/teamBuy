@@ -23,6 +23,9 @@ def test_json_repository_saves_import_artifacts_together(tmp_path):
     raw_message = RawMessage(
         id="msg_tx_001",
         importBatchId="import_tx_001",
+        wecomMsgId="wecom_tx_msg_001",
+        wecomToken="mock_cursor_tx",
+        openKfid="wk_mock_tx",
         externalUserId="external_tx",
         conversationId="conv_tx",
         msgType="text",
@@ -61,5 +64,6 @@ def test_json_repository_saves_import_artifacts_together(tmp_path):
 
     assert state.import_batches[0].id == "import_tx_001"
     assert state.raw_messages[0].importBatchId == "import_tx_001"
+    assert repo.existing_wecom_msg_ids({"wecom_tx_msg_001", "missing_msg"}) == {"wecom_tx_msg_001"}
     assert state.cards[0].importBatchId == "import_tx_001"
     assert state.import_notifications[0].importBatchId == "import_tx_001"

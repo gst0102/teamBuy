@@ -39,6 +39,9 @@ class AppRepository(Protocol):
     def save_raw_messages(self, messages: list[RawMessage]) -> None:
         ...
 
+    def existing_wecom_msg_ids(self, wecom_msg_ids: set[str]) -> set[str]:
+        ...
+
     def save_import_artifacts(
         self,
         batch: ImportBatch,
@@ -130,6 +133,15 @@ class JsonRepository:
         state.raw_messages = [item for item in state.raw_messages if item.id not in message_ids]
         state.raw_messages.extend(messages)
         self.save(state)
+
+    def existing_wecom_msg_ids(self, wecom_msg_ids: set[str]) -> set[str]:
+        if not wecom_msg_ids:
+            return set()
+        return {
+            item.wecomMsgId
+            for item in self.load().raw_messages
+            if item.wecomMsgId and item.wecomMsgId in wecom_msg_ids
+        }
 
     def save_import_artifacts(
         self,
@@ -236,6 +248,9 @@ class PostgresRepository:
         ],
         "raw_messages": [
             ("import_batch_id", "text", "importBatchId"),
+            ("wecom_msg_id", "text", "wecomMsgId"),
+            ("wecom_token", "text", "wecomToken"),
+            ("open_kfid", "text", "openKfid"),
             ("external_user_id", "text", "externalUserId"),
             ("conversation_id", "text", "conversationId"),
             ("msg_type", "text", "msgType"),
@@ -285,6 +300,8 @@ class PostgresRepository:
             ("idx_import_batches_claimed_by", "claimed_by_user_id"),
         ],
         "raw_messages": [
+            ("idx_raw_messages_wecom_msg_id", "wecom_msg_id"),
+            ("idx_raw_messages_open_kfid_token", "open_kfid, wecom_token"),
             ("idx_raw_messages_batch", "import_batch_id"),
             ("idx_raw_messages_conversation_time", "external_user_id, conversation_id, received_at"),
             ("idx_raw_messages_type", "msg_type"),
@@ -378,6 +395,16 @@ class PostgresRepository:
             with conn.transaction():
                 for message in messages:
                     self._upsert_payload(conn, "raw_messages", message.model_dump(mode="json"))
+
+    def existing_wecom_msg_ids(self, wecom_msg_ids: set[str]) -> set[str]:
+        if not wecom_msg_ids:
+            return set()
+        with psycopg.connect(self.database_url, row_factory=dict_row) as conn:
+            rows = conn.execute(
+                "select wecom_msg_id from raw_messages where wecom_msg_id = any(%s)",
+                (list(wecom_msg_ids),),
+            ).fetchall()
+        return {row["wecom_msg_id"] for row in rows if row["wecom_msg_id"]}
 
     def save_import_artifacts(
         self,
@@ -498,6 +525,13 @@ class PostgresRepository:
                         conn.execute(f"alter table {table_name} add column if not exists {column_name} {column_type}")
                     for index_name, expression in self.INDEXES.get(table_name, []):
                         conn.execute(f"create index if not exists {index_name} on {table_name} ({expression})")
+                conn.execute(
+                    """
+                    create unique index if not exists uq_raw_messages_wecom_msg_id
+                    on raw_messages (wecom_msg_id)
+                    where wecom_msg_id is not null
+                    """
+                )
 
     def _upsert_payload(self, conn, table_name: str, payload: dict) -> None:
         field_columns = self.FIELD_COLUMNS.get(table_name, [])

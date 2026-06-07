@@ -45,6 +45,9 @@ class ImportBatch(BaseModel):
 class RawMessage(BaseModel):
     id: str
     importBatchId: str | None = None
+    wecomMsgId: str | None = None
+    wecomToken: str | None = None
+    openKfid: str | None = None
     externalUserId: str
     conversationId: str
     msgType: MessageType

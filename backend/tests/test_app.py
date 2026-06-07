@@ -51,6 +51,24 @@ def test_mock_import_creates_claimable_batch(client):
     assert "导入成功" in notifications[-1]["message"]
 
 
+def test_mock_import_is_idempotent_for_repeated_wecom_messages(client):
+    first = client.post(
+        "/api/wecom/mock-sync",
+        json={"externalUserId": "external_repeat", "conversationId": "conv_repeat", "fixture": "note"},
+    )
+    second = client.post(
+        "/api/wecom/mock-sync",
+        json={"externalUserId": "external_repeat", "conversationId": "conv_repeat", "fixture": "note"},
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    second_payload = second.json()["data"]
+    assert second_payload["importBatchIds"] == []
+    assert second_payload["deduplicatedCount"] == 5
+    assert second_payload["message"] == "没有新的企业微信客服消息需要导入"
+
+
 def test_link_import_uses_thumbnail_and_source_url(client):
     response = client.post(
         "/api/wecom/mock-sync",

@@ -1,5 +1,8 @@
 [
   {
+    "wecomMsgId": "wecom_link_msg_001",
+    "wecomToken": "mock_cursor_link_001",
+    "openKfid": "wk_mock_001",
     "msgType": "link",
     "receivedAt": "2026-06-08T11:10:00+08:00",
     "content": {
@@ -10,6 +13,9 @@
     }
   },
   {
+    "wecomMsgId": "wecom_link_msg_002",
+    "wecomToken": "mock_cursor_link_001",
+    "openKfid": "wk_mock_001",
     "msgType": "image",
     "receivedAt": "2026-06-08T11:10:25+08:00",
     "mediaId": "media_link_cover",
@@ -18,4 +24,3 @@
     }
   }
 ]
-

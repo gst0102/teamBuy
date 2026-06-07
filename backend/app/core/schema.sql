@@ -25,6 +25,9 @@ create table if not exists raw_messages (
     id text primary key,
     payload jsonb not null,
     import_batch_id text,
+    wecom_msg_id text,
+    wecom_token text,
+    open_kfid text,
     external_user_id text,
     conversation_id text,
     msg_type text,
@@ -96,8 +99,11 @@ create index if not exists idx_import_batches_status on import_batches (status);
 create index if not exists idx_import_batches_conversation on import_batches (external_user_id, conversation_id, started_at);
 create index if not exists idx_import_batches_claimed_by on import_batches (claimed_by_user_id);
 create index if not exists idx_raw_messages_batch on raw_messages (import_batch_id);
+create index if not exists idx_raw_messages_wecom_msg_id on raw_messages (wecom_msg_id);
+create index if not exists idx_raw_messages_open_kfid_token on raw_messages (open_kfid, wecom_token);
 create index if not exists idx_raw_messages_conversation_time on raw_messages (external_user_id, conversation_id, received_at);
 create index if not exists idx_raw_messages_type on raw_messages (msg_type);
+create unique index if not exists uq_raw_messages_wecom_msg_id on raw_messages (wecom_msg_id) where wecom_msg_id is not null;
 create index if not exists idx_cards_owner_status on cards (owner_user_id, status, updated_at);
 create index if not exists idx_cards_import_batch on cards (import_batch_id);
 create index if not exists idx_cards_source_card on cards (source_card_id);

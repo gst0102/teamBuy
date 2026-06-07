@@ -1,5 +1,8 @@
 [
   {
+    "wecomMsgId": "wecom_note_msg_001",
+    "wecomToken": "mock_cursor_note_001",
+    "openKfid": "wk_mock_001",
     "msgType": "text",
     "receivedAt": "2026-06-08T10:01:00+08:00",
     "content": {
@@ -7,6 +10,9 @@
     }
   },
   {
+    "wecomMsgId": "wecom_note_msg_002",
+    "wecomToken": "mock_cursor_note_001",
+    "openKfid": "wk_mock_001",
     "msgType": "image",
     "receivedAt": "2026-06-08T10:01:20+08:00",
     "mediaId": "media_note_cover",
@@ -15,6 +21,9 @@
     }
   },
   {
+    "wecomMsgId": "wecom_note_msg_003",
+    "wecomToken": "mock_cursor_note_001",
+    "openKfid": "wk_mock_001",
     "msgType": "text",
     "receivedAt": "2026-06-08T10:01:45+08:00",
     "content": {
@@ -22,6 +31,9 @@
     }
   },
   {
+    "wecomMsgId": "wecom_note_msg_004",
+    "wecomToken": "mock_cursor_note_001",
+    "openKfid": "wk_mock_001",
     "msgType": "location",
     "receivedAt": "2026-06-08T10:01:55+08:00",
     "content": {
@@ -29,6 +41,9 @@
     }
   },
   {
+    "wecomMsgId": "wecom_note_msg_005",
+    "wecomToken": "mock_cursor_note_001",
+    "openKfid": "wk_mock_001",
     "msgType": "video",
     "receivedAt": "2026-06-08T10:02:00+08:00",
     "mediaId": "media_note_video",
