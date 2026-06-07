@@ -6,6 +6,7 @@
 - 企业微信本地 mock 导入、60 秒聚合、媒体转存占位、卡片草稿生成
 - 企业微信客服配置清单、`.env` 本地读取、回调签名校验/解密入口、真实 `sync_msg` 客户端骨架
 - PostgreSQL 过渡仓储、核心字段拆列、热点索引、连接健康检查、本地 JSON 兜底
+- `AppService` 热路径迁移到按模块 CRUD：导入、卡片、浏览、接龙不再全量读写 `AppState`
 - mock 导入成功/失败通知抽象和通知查询接口
 - 链接缩略图、来源 URL、视频 media mock 转存解析增强
 - 导入认领、卡片编辑、发布、一键复用
@@ -41,7 +42,7 @@ uvicorn app.main:app --reload
 
 ## 4. 已执行验证
 
-- `cd backend && pytest`，当前 12 项通过
+- `cd backend && pytest`，当前 18 项通过
 - `cd backend && python -m compileall app`
 
 ## 5. 已通过测试项
@@ -62,6 +63,7 @@ uvicorn app.main:app --reload
 - TC-027 手机号必填校验
 - TC-036 一键复用生成新卡片
 - TC-037 新旧卡片统计隔离
+- 仓储迁移防回退测试：导入、卡片、浏览、接龙热路径不调用全量 `_load()` / `_save()`
 
 ## 6. 已实现但未自动化覆盖完成的项
 

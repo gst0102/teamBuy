@@ -8,7 +8,7 @@ import psycopg
 from psycopg.rows import dict_row
 
 from app.core.database import normalize_database_url
-from app.models.domain import AppState
+from app.models.domain import AppState, Card, Category, ImportBatch, ImportNotification, RawMessage, RelayEntry, User, ViewEvent
 
 
 class AppRepository(Protocol):
@@ -16,6 +16,60 @@ class AppRepository(Protocol):
         ...
 
     def save(self, state: AppState) -> None:
+        ...
+
+    def get_user(self, user_id: str) -> User | None:
+        ...
+
+    def get_user_by_openid(self, openid: str) -> User | None:
+        ...
+
+    def save_user(self, user: User) -> None:
+        ...
+
+    def list_import_batches(self, statuses: set[str] | None = None) -> list[ImportBatch]:
+        ...
+
+    def get_import_batch(self, import_id: str) -> ImportBatch | None:
+        ...
+
+    def save_import_batch(self, batch: ImportBatch) -> None:
+        ...
+
+    def save_raw_messages(self, messages: list[RawMessage]) -> None:
+        ...
+
+    def get_card(self, card_id: str) -> Card | None:
+        ...
+
+    def list_cards(self, owner_user_id: str | None = None, keyword: str | None = None, category_id: str | None = None) -> list[Card]:
+        ...
+
+    def save_card(self, card: Card) -> None:
+        ...
+
+    def add_view_event(self, event: ViewEvent) -> None:
+        ...
+
+    def list_view_events_for_card(self, card_id: str) -> list[ViewEvent]:
+        ...
+
+    def add_relay_entry(self, relay: RelayEntry) -> None:
+        ...
+
+    def get_relay_entry(self, relay_id: str) -> RelayEntry | None:
+        ...
+
+    def save_relay_entry(self, relay: RelayEntry) -> None:
+        ...
+
+    def list_relay_entries_for_card(self, card_id: str, relay_status: str | None = "active") -> list[RelayEntry]:
+        ...
+
+    def save_import_notification(self, notification: ImportNotification) -> None:
+        ...
+
+    def list_import_notifications(self) -> list[ImportNotification]:
         ...
 
 
@@ -35,6 +89,94 @@ class JsonRepository:
             state.model_dump_json(indent=2),
             encoding="utf-8",
         )
+
+    def get_user(self, user_id: str) -> User | None:
+        return next((item for item in self.load().users if item.id == user_id), None)
+
+    def get_user_by_openid(self, openid: str) -> User | None:
+        return next((item for item in self.load().users if item.openid == openid), None)
+
+    def save_user(self, user: User) -> None:
+        state = self.load()
+        state.users = [item for item in state.users if item.id != user.id]
+        state.users.append(user)
+        self.save(state)
+
+    def list_import_batches(self, statuses: set[str] | None = None) -> list[ImportBatch]:
+        batches = self.load().import_batches
+        return [item for item in batches if statuses is None or item.status in statuses]
+
+    def get_import_batch(self, import_id: str) -> ImportBatch | None:
+        return next((item for item in self.load().import_batches if item.id == import_id), None)
+
+    def save_import_batch(self, batch: ImportBatch) -> None:
+        state = self.load()
+        state.import_batches = [item for item in state.import_batches if item.id != batch.id]
+        state.import_batches.append(batch)
+        self.save(state)
+
+    def save_raw_messages(self, messages: list[RawMessage]) -> None:
+        state = self.load()
+        message_ids = {item.id for item in messages}
+        state.raw_messages = [item for item in state.raw_messages if item.id not in message_ids]
+        state.raw_messages.extend(messages)
+        self.save(state)
+
+    def get_card(self, card_id: str) -> Card | None:
+        return next((item for item in self.load().cards if item.id == card_id), None)
+
+    def list_cards(self, owner_user_id: str | None = None, keyword: str | None = None, category_id: str | None = None) -> list[Card]:
+        cards = self.load().cards
+        if owner_user_id:
+            cards = [item for item in cards if item.ownerUserId == owner_user_id]
+        if keyword:
+            cards = [item for item in cards if keyword.lower() in item.title.lower()]
+        if category_id:
+            cards = [item for item in cards if category_id in item.categoryIds]
+        return cards
+
+    def save_card(self, card: Card) -> None:
+        state = self.load()
+        state.cards = [item for item in state.cards if item.id != card.id]
+        state.cards.append(card)
+        self.save(state)
+
+    def add_view_event(self, event: ViewEvent) -> None:
+        state = self.load()
+        state.view_events.append(event)
+        self.save(state)
+
+    def list_view_events_for_card(self, card_id: str) -> list[ViewEvent]:
+        return [item for item in self.load().view_events if item.cardId == card_id]
+
+    def add_relay_entry(self, relay: RelayEntry) -> None:
+        state = self.load()
+        state.relay_entries.append(relay)
+        self.save(state)
+
+    def get_relay_entry(self, relay_id: str) -> RelayEntry | None:
+        return next((item for item in self.load().relay_entries if item.id == relay_id), None)
+
+    def save_relay_entry(self, relay: RelayEntry) -> None:
+        state = self.load()
+        state.relay_entries = [item for item in state.relay_entries if item.id != relay.id]
+        state.relay_entries.append(relay)
+        self.save(state)
+
+    def list_relay_entries_for_card(self, card_id: str, relay_status: str | None = "active") -> list[RelayEntry]:
+        relays = [item for item in self.load().relay_entries if item.cardId == card_id]
+        if relay_status:
+            relays = [item for item in relays if item.status == relay_status]
+        return relays
+
+    def save_import_notification(self, notification: ImportNotification) -> None:
+        state = self.load()
+        state.import_notifications = [item for item in state.import_notifications if item.id != notification.id]
+        state.import_notifications.append(notification)
+        self.save(state)
+
+    def list_import_notifications(self) -> list[ImportNotification]:
+        return self.load().import_notifications
 
 
 class PostgresRepository:
@@ -173,6 +315,42 @@ class PostgresRepository:
             "started_at desc, id desc",
         )
 
+    def get_user(self, user_id: str) -> User | None:
+        payload = self.get_payload_by_id("users", user_id)
+        return User.model_validate(payload) if payload else None
+
+    def get_user_by_openid(self, openid: str) -> User | None:
+        rows = self._list_payloads("users", "openid = %s", (openid,), "created_at desc, id desc")
+        return User.model_validate(rows[0]) if rows else None
+
+    def save_user(self, user: User) -> None:
+        self._save_model("users", user)
+
+    def list_import_batches(self, statuses: set[str] | None = None) -> list[ImportBatch]:
+        if statuses:
+            rows = self._list_payloads(
+                "import_batches",
+                "status = any(%s)",
+                (list(statuses),),
+                "started_at desc, id desc",
+            )
+        else:
+            rows = self._list_payloads("import_batches", "true", (), "started_at desc, id desc")
+        return [ImportBatch.model_validate(row) for row in rows]
+
+    def get_import_batch(self, import_id: str) -> ImportBatch | None:
+        payload = self.get_payload_by_id("import_batches", import_id)
+        return ImportBatch.model_validate(payload) if payload else None
+
+    def save_import_batch(self, batch: ImportBatch) -> None:
+        self._save_model("import_batches", batch)
+
+    def save_raw_messages(self, messages: list[RawMessage]) -> None:
+        with psycopg.connect(self.database_url) as conn:
+            with conn.transaction():
+                for message in messages:
+                    self._upsert_payload(conn, "raw_messages", message.model_dump(mode="json"))
+
     def list_raw_messages_for_batch(self, import_batch_id: str) -> list[dict]:
         return self._list_payloads(
             "raw_messages",
@@ -180,6 +358,10 @@ class PostgresRepository:
             (import_batch_id,),
             "received_at asc, id asc",
         )
+
+    def get_card(self, card_id: str) -> Card | None:
+        payload = self.get_payload_by_id("cards", card_id)
+        return Card.model_validate(payload) if payload else None
 
     def list_cards_by_owner(self, owner_user_id: str, card_status: str | None = None) -> list[dict]:
         if card_status:
@@ -196,21 +378,61 @@ class PostgresRepository:
             "updated_at desc, id desc",
         )
 
+    def list_cards(self, owner_user_id: str | None = None, keyword: str | None = None, category_id: str | None = None) -> list[Card]:
+        where_parts = ["true"]
+        params: list[str] = []
+        if owner_user_id:
+            where_parts.append("owner_user_id = %s")
+            params.append(owner_user_id)
+        if keyword:
+            where_parts.append("title ilike %s")
+            params.append(f"%{keyword}%")
+        if category_id:
+            where_parts.append("payload->'categoryIds' ? %s")
+            params.append(category_id)
+        rows = self._list_payloads("cards", " and ".join(where_parts), tuple(params), "updated_at desc, id desc")
+        return [Card.model_validate(row) for row in rows]
+
+    def save_card(self, card: Card) -> None:
+        self._save_model("cards", card)
+
     def list_view_events_for_card(self, card_id: str) -> list[dict]:
-        return self._list_payloads(
+        rows = self._list_payloads(
             "view_events",
             "card_id = %s",
             (card_id,),
             "viewed_at desc, id desc",
         )
+        return [ViewEvent.model_validate(row) for row in rows]
+
+    def add_view_event(self, event: ViewEvent) -> None:
+        self._save_model("view_events", event)
 
     def list_relay_entries_for_card(self, card_id: str, relay_status: str = "active") -> list[dict]:
-        return self._list_payloads(
+        rows = self._list_payloads(
             "relay_entries",
             "card_id = %s and status = %s",
             (card_id, relay_status),
             "created_at desc, id desc",
         )
+        return [RelayEntry.model_validate(row) for row in rows]
+
+    def add_relay_entry(self, relay: RelayEntry) -> None:
+        self._save_model("relay_entries", relay)
+
+    def get_relay_entry(self, relay_id: str) -> RelayEntry | None:
+        payload = self.get_payload_by_id("relay_entries", relay_id)
+        return RelayEntry.model_validate(payload) if payload else None
+
+    def save_relay_entry(self, relay: RelayEntry) -> None:
+        self._save_model("relay_entries", relay)
+
+    def save_import_notification(self, notification: ImportNotification) -> None:
+        self._save_model("import_notifications", notification)
+
+    def list_import_notifications(self) -> list[ImportNotification]:
+        rows = self._list_payloads("import_notifications", "true", (), "sent_at desc, id desc")
+        return [ImportNotification.model_validate(row) for row in rows]
 
     def init_schema(self) -> None:
         with psycopg.connect(self.database_url) as conn:
@@ -256,6 +478,12 @@ class PostgresRepository:
             """,
             values,
         )
+
+    def _save_model(self, table_name: str, item) -> None:
+        self._ensure_known_table(table_name)
+        with psycopg.connect(self.database_url) as conn:
+            with conn.transaction():
+                self._upsert_payload(conn, table_name, item.model_dump(mode="json"))
 
     def _list_payloads(self, table_name: str, where_sql: str, params: tuple, order_sql: str) -> list[dict]:
         self._ensure_known_table(table_name)

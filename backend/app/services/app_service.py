@@ -40,30 +40,28 @@ class AppService:
         self.repo.save(state)
 
     def list_pending_imports(self) -> list[dict]:
-        state = self._load()
-        pending = [item for item in state.import_batches if item.status in {"pending", "success"}]
-        cards = {item.id: item for item in state.cards}
+        pending = self.repo.list_import_batches(statuses={"pending", "success"})
         result = []
         for batch in pending:
+            card = self.repo.get_card(batch.generatedCardId) if batch.generatedCardId else None
             result.append(
                 {
                     **batch.model_dump(),
-                    "generatedCard": cards.get(batch.generatedCardId).model_dump() if batch.generatedCardId and cards.get(batch.generatedCardId) else None,
+                    "generatedCard": card.model_dump() if card else None,
                 }
             )
         return result
 
     def mock_login(self, payload: MockLoginRequest) -> User:
-        state = self._load()
         now = now_iso()
         openid = payload.openid or f"openid_{payload.nickname}"
-        existing = next((item for item in state.users if item.openid == openid), None)
+        existing = self.repo.get_user_by_openid(openid)
         if existing:
             existing.nickname = payload.nickname
             existing.avatarUrl = payload.avatarUrl
             existing.phone = payload.phone
             existing.updatedAt = now
-            self._save(state)
+            self.repo.save_user(existing)
             return existing
 
         user = User(
@@ -75,12 +73,10 @@ class AppService:
             createdAt=now,
             updatedAt=now,
         )
-        state.users.append(user)
-        self._save(state)
+        self.repo.save_user(user)
         return user
 
     def trigger_mock_import(self, external_user_id: str, conversation_id: str, fixture: str) -> dict:
-        state = self._load()
         raw_messages: list[RawMessage] = []
         for item in self.wecom_mock_service.sync_messages(external_user_id, conversation_id, fixture):
             local_media_url = None
@@ -114,32 +110,29 @@ class AppService:
             batch.errorMessage = None if card.title else "未能解析标题"
             batch.updatedAt = now_iso()
             notification = self.notification_service.build_notification(batch)
-            state.import_batches.append(batch)
-            state.raw_messages.extend(batch_messages)
-            state.cards.append(card)
-            state.import_notifications.append(notification)
+            self.repo.save_import_batch(batch)
+            self.repo.save_raw_messages(batch_messages)
+            self.repo.save_card(card)
+            self.repo.save_import_notification(notification)
 
-        self._save(state)
         return {
-            "message": state.import_notifications[-1].message,
+            "message": notification.message,
             "importBatchIds": [item.id for item in new_batches],
         }
 
     def list_import_notifications(self) -> list[dict]:
-        state = self._load()
-        return [item.model_dump() for item in state.import_notifications]
+        return [item.model_dump() for item in self.repo.list_import_notifications()]
 
     def claim_import(self, import_id: str, user_id: str) -> dict:
-        state = self._load()
-        batch = next((item for item in state.import_batches if item.id == import_id), None)
+        batch = self.repo.get_import_batch(import_id)
         if not batch:
             raise HTTPException(status_code=404, detail="导入批次不存在")
-        user = next((item for item in state.users if item.id == user_id), None)
+        user = self.repo.get_user(user_id)
         if not user:
             raise HTTPException(status_code=404, detail="用户不存在")
         if batch.generatedCardId is None:
             raise HTTPException(status_code=400, detail="该导入没有可认领卡片")
-        card = next((item for item in state.cards if item.id == batch.generatedCardId), None)
+        card = self.repo.get_card(batch.generatedCardId)
         if not card:
             raise HTTPException(status_code=404, detail="草稿卡片不存在")
 
@@ -149,38 +142,28 @@ class AppService:
         batch.updatedAt = now
         card.ownerUserId = user_id
         card.updatedAt = now
-        self._save(state)
+        self.repo.save_import_batch(batch)
+        self.repo.save_card(card)
         return {"importBatch": batch, "card": card}
 
     def list_cards(self, owner_user_id: str | None = None, keyword: str | None = None, category_id: str | None = None) -> list[dict]:
-        state = self._load()
-        cards = state.cards
-        if owner_user_id:
-            cards = [item for item in cards if item.ownerUserId == owner_user_id]
-        if keyword:
-            cards = [item for item in cards if keyword.lower() in item.title.lower()]
-        if category_id:
-            cards = [item for item in cards if category_id in item.categoryIds]
-
-        stats = self._build_stats_map(state)
+        cards = self.repo.list_cards(owner_user_id=owner_user_id, keyword=keyword, category_id=category_id)
         return [
             {
                 **item.model_dump(),
-                "stats": stats[item.id],
+                "stats": self._build_card_stats(item.id),
             }
             for item in cards
         ]
 
     def get_card(self, card_id: str) -> Card:
-        state = self._load()
-        card = next((item for item in state.cards if item.id == card_id), None)
+        card = self.repo.get_card(card_id)
         if not card:
             raise HTTPException(status_code=404, detail="卡片不存在")
         return card
 
     def update_card(self, card_id: str, payload: CardUpdateRequest) -> Card:
-        state = self._load()
-        card = next((item for item in state.cards if item.id == card_id), None)
+        card = self.repo.get_card(card_id)
         if not card:
             raise HTTPException(status_code=404, detail="卡片不存在")
         if card.ownerUserId != payload.ownerUserId:
@@ -194,12 +177,11 @@ class AppService:
             else:
                 setattr(card, key, value)
         card.updatedAt = now
-        self._save(state)
+        self.repo.save_card(card)
         return card
 
     def publish_card(self, card_id: str, user_id: str) -> Card:
-        state = self._load()
-        card = next((item for item in state.cards if item.id == card_id), None)
+        card = self.repo.get_card(card_id)
         if not card:
             raise HTTPException(status_code=404, detail="卡片不存在")
         if card.ownerUserId != user_id:
@@ -208,12 +190,11 @@ class AppService:
         card.status = "published"
         card.publishedAt = now
         card.updatedAt = now
-        self._save(state)
+        self.repo.save_card(card)
         return card
 
     def duplicate_card(self, card_id: str, user_id: str) -> Card:
-        state = self._load()
-        source = next((item for item in state.cards if item.id == card_id), None)
+        source = self.repo.get_card(card_id)
         if not source:
             raise HTTPException(status_code=404, detail="原卡片不存在")
         if source.ownerUserId != user_id:
@@ -235,13 +216,11 @@ class AppService:
             item.createdAt = now
             remapped_media.append(item)
         copy_card.media = remapped_media
-        state.cards.append(copy_card)
-        self._save(state)
+        self.repo.save_card(copy_card)
         return copy_card
 
     def record_view(self, card_id: str, payload: RecordViewRequest) -> ViewEvent:
-        state = self._load()
-        card = next((item for item in state.cards if item.id == card_id), None)
+        card = self.repo.get_card(card_id)
         if not card:
             raise HTTPException(status_code=404, detail="卡片不存在")
 
@@ -257,18 +236,16 @@ class AppService:
             viewedAt=now,
             dateKey=date_key(now),
         )
-        state.view_events.append(event)
-        self._save(state)
+        self.repo.add_view_event(event)
         return event
 
     def get_card_stats(self, card_id: str, requester_user_id: str | None = None) -> dict:
-        state = self._load()
-        card = next((item for item in state.cards if item.id == card_id), None)
+        card = self.repo.get_card(card_id)
         if not card:
             raise HTTPException(status_code=404, detail="卡片不存在")
 
-        stats = self._build_stats_map(state)[card_id]
-        relay_entries = [item for item in state.relay_entries if item.cardId == card_id and item.status == "active"]
+        stats = self._build_card_stats(card_id)
+        relay_entries = self.repo.list_relay_entries_for_card(card_id, relay_status="active")
         is_owner = requester_user_id == card.ownerUserId
         relay_payload = []
         for item in relay_entries:
@@ -284,8 +261,7 @@ class AppService:
         }
 
     def create_relay(self, card_id: str, payload: CreateRelayRequest) -> RelayEntry:
-        state = self._load()
-        card = next((item for item in state.cards if item.id == card_id), None)
+        card = self.repo.get_card(card_id)
         if not card:
             raise HTTPException(status_code=404, detail="卡片不存在")
         if not payload.userId:
@@ -310,20 +286,16 @@ class AppService:
             createdAt=now,
             updatedAt=now,
         )
-        state.relay_entries.append(relay)
-        self._save(state)
+        self.repo.add_relay_entry(relay)
         return relay
 
     def list_relays(self, card_id: str, requester_user_id: str) -> list[dict]:
-        state = self._load()
-        card = next((item for item in state.cards if item.id == card_id), None)
+        card = self.repo.get_card(card_id)
         if not card:
             raise HTTPException(status_code=404, detail="卡片不存在")
         is_owner = requester_user_id == card.ownerUserId
         rows = []
-        for item in state.relay_entries:
-            if item.cardId != card_id or item.status != "active":
-                continue
+        for item in self.repo.list_relay_entries_for_card(card_id, relay_status="active"):
             payload = item.model_dump()
             if not is_owner:
                 payload["nickname"] = item.maskedNickname
@@ -333,30 +305,33 @@ class AppService:
         return rows
 
     def delete_relay(self, relay_id: str, operator_user_id: str) -> RelayEntry:
-        state = self._load()
-        relay = next((item for item in state.relay_entries if item.id == relay_id), None)
+        relay = self.repo.get_relay_entry(relay_id)
         if not relay:
             raise HTTPException(status_code=404, detail="接龙记录不存在")
-        card = next((item for item in state.cards if item.id == relay.cardId), None)
+        card = self.repo.get_card(relay.cardId)
         if not card or card.ownerUserId != operator_user_id:
             raise HTTPException(status_code=403, detail="仅团长可删除接龙")
         relay.status = "deleted"
         relay.updatedAt = now_iso()
-        self._save(state)
+        self.repo.save_relay_entry(relay)
         return relay
 
     def mark_followed(self, relay_id: str, operator_user_id: str) -> RelayEntry:
-        state = self._load()
-        relay = next((item for item in state.relay_entries if item.id == relay_id), None)
+        relay = self.repo.get_relay_entry(relay_id)
         if not relay:
             raise HTTPException(status_code=404, detail="接龙记录不存在")
-        card = next((item for item in state.cards if item.id == relay.cardId), None)
+        card = self.repo.get_card(relay.cardId)
         if not card or card.ownerUserId != operator_user_id:
             raise HTTPException(status_code=403, detail="仅团长可标记跟进")
         relay.followUpStatus = "followed"
         relay.updatedAt = now_iso()
-        self._save(state)
+        self.repo.save_relay_entry(relay)
         return relay
+
+    def _build_card_stats(self, card_id: str) -> dict:
+        events = self.repo.list_view_events_for_card(card_id)
+        relays = self.repo.list_relay_entries_for_card(card_id, relay_status="active")
+        return self._build_stats_from_events(card_id, events, relays)
 
     def _build_stats_map(self, state: AppState) -> dict[str, dict]:
         stats = defaultdict(
@@ -398,3 +373,35 @@ class AppService:
                 [item for item in state.relay_entries if item.cardId == card_id and item.status == "active"]
             )
         return stats
+
+    def _build_stats_from_events(self, card_id: str, events: list[ViewEvent], relays: list[RelayEntry]) -> dict:
+        row = {
+            "pv": 0,
+            "uv": 0,
+            "anonymousPv": 0,
+            "anonymousUv": 0,
+            "loggedInViewers": [],
+            "relayCount": len(relays),
+        }
+        unique_logged = set()
+        unique_anonymous = set()
+        for event in events:
+            row["pv"] += 1
+            if event.viewType == "logged_in":
+                key = event.viewerUserId or event.id
+                if key not in unique_logged:
+                    unique_logged.add(key)
+                    row["loggedInViewers"].append(
+                        {
+                            "userId": event.viewerUserId,
+                            "nickname": event.nickname,
+                            "avatarUrl": event.avatarUrl,
+                            "viewedAt": event.viewedAt,
+                        }
+                    )
+            else:
+                row["anonymousPv"] += 1
+                unique_anonymous.add(event.anonymousId or event.id)
+        row["uv"] = len(unique_logged) + len(unique_anonymous)
+        row["anonymousUv"] = len(unique_anonymous)
+        return row
