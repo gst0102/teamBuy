@@ -14,6 +14,14 @@
 
 大模型：规则优先，大模型兜底。供应商待确认。
 
+Docker 构建：阶段三生成 `backend/Dockerfile` 时，Python 依赖安装优先使用清华源：
+
+```text
+https://pypi.tuna.tsinghua.edu.cn/simple
+```
+
+本地和镜像构建应支持通过 `PIP_INDEX_URL` 覆盖默认源。
+
 ## 2. 前端约束
 
 - 使用原生小程序页面和组件。
@@ -31,6 +39,7 @@
 - 媒体文件收到后必须尽快转存。
 - 原始消息必须保存，便于失败重试和排查。
 - 卡片复用必须生成新卡片，不得覆盖原卡片数据。
+- Dockerfile 中安装 Python 依赖时必须支持 `PIP_INDEX_URL`，默认使用清华源加速。
 
 ## 4. 状态管理
 
