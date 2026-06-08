@@ -6,6 +6,8 @@ Page({
     submitting: false,
     type: "资料",
     typeOptions: ["房源", "团购", "视频", "文档", "资料"],
+    categories: [],
+    selectedCategoryIds: [],
     form: {
       title: "",
       projectName: "",
@@ -22,6 +24,21 @@ Page({
   onShow() {
     if (!getCurrentUser()) {
       wx.reLaunch({ url: "/pages/login/index" });
+      return;
+    }
+    this.loadCategories();
+  },
+  async loadCategories() {
+    const currentUser = getCurrentUser();
+    try {
+      const res = await api.fetchCategories(currentUser.id);
+      const categories = (res.data || []).map((item) => ({
+        ...item,
+        selected: this.data.selectedCategoryIds.includes(item.id)
+      }));
+      this.setData({ categories });
+    } catch (error) {
+      wx.showToast({ title: "标签加载失败", icon: "none" });
     }
   },
   handleTypeChange(event) {
@@ -34,6 +51,22 @@ Page({
   handleSwitchChange(event) {
     const field = event.currentTarget.dataset.field;
     this.setData({ [`form.${field}`]: event.detail.value });
+  },
+  handleCategoryToggle(event) {
+    const id = event.currentTarget.dataset.id;
+    const selected = this.data.selectedCategoryIds.includes(id)
+      ? this.data.selectedCategoryIds.filter((item) => item !== id)
+      : [...this.data.selectedCategoryIds, id];
+    this.setData({
+      selectedCategoryIds: selected,
+      categories: this.data.categories.map((item) => ({
+        ...item,
+        selected: selected.includes(item.id)
+      }))
+    });
+  },
+  handleGoTagManage() {
+    wx.navigateTo({ url: "/pages/tag-manage/index" });
   },
   buildDetailText() {
     const form = this.data.form;
@@ -63,6 +96,7 @@ Page({
         locationText: form.locationText.trim() || null,
         phone: form.phone.trim() || null,
         sourceUrl: form.sourceUrl.trim() || null,
+        categoryIds: this.data.categories.filter((item) => item.selected).map((item) => item.id),
         relayNotice: form.relayNotice.trim() || "请留下你的称呼和联系方式，方便后续跟进。",
         relayConfig: {
           enabled: true,

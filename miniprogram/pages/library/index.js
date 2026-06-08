@@ -9,6 +9,7 @@ Page({
     categoryFilters: [],
     tagFilters: [],
     cards: [],
+    categories: [],
     displayCards: [],
     stats: {
       total: 0,
@@ -31,8 +32,16 @@ Page({
   async loadCards() {
     const currentUser = getCurrentUser();
     try {
-      const res = await api.fetchCards({ ownerUserId: currentUser ? currentUser.id : "" });
-      const cards = (res.data || []).map(enrichCard);
+      const [res, categoryRes] = await Promise.all([
+        api.fetchCards({ ownerUserId: currentUser ? currentUser.id : "" }),
+        api.fetchCategories(currentUser ? currentUser.id : "")
+      ]);
+      const categories = categoryRes.data || [];
+      const categoriesById = categories.reduce((result, item) => {
+        result[item.id] = item.name;
+        return result;
+      }, {});
+      const cards = (res.data || []).map((card) => enrichCard(card, categoriesById));
       const categoryFilters = this.buildCountFilters(cards, (card) => card.categoryName);
       const tagFilters = this.buildCountFilters(
         cards.flatMap((card) => card.tagNames.map((tag) => ({ tag }))),
@@ -44,7 +53,7 @@ Page({
         tags: new Set(cards.map((card) => card.categoryName)).size,
         today: cards.reduce((sum, card) => sum + card.stats.pv, 0)
       };
-      this.setData({ cards, categoryFilters, tagFilters, stats });
+      this.setData({ cards, categories, categoryFilters, tagFilters, stats });
       this.applyFilter();
     } catch (error) {
       wx.showToast({ title: "加载素材失败", icon: "none" });
@@ -108,7 +117,7 @@ Page({
     wx.navigateTo({ url: "/pages/resource-create/index" });
   },
   handleTagPlaceholder() {
-    wx.showToast({ title: "点击下方标签即可筛选资源", icon: "none" });
+    wx.navigateTo({ url: "/pages/tag-manage/index" });
   },
   handleCopySummary(event) {
     const card = this.data.cards.find((item) => item.id === event.currentTarget.dataset.id);

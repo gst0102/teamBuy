@@ -74,6 +74,18 @@ class AppRepository(Protocol):
     def save_card(self, card: Card) -> None:
         ...
 
+    def list_categories(self, owner_user_id: str | None = None) -> list[Category]:
+        ...
+
+    def get_category(self, category_id: str) -> Category | None:
+        ...
+
+    def save_category(self, category: Category) -> None:
+        ...
+
+    def delete_category(self, category_id: str) -> None:
+        ...
+
     def add_view_event(self, event: ViewEvent) -> None:
         ...
 
@@ -252,6 +264,26 @@ class JsonRepository:
         state = self.load()
         state.cards = [item for item in state.cards if item.id != card.id]
         state.cards.append(card)
+        self.save(state)
+
+    def list_categories(self, owner_user_id: str | None = None) -> list[Category]:
+        categories = self.load().categories
+        if owner_user_id:
+            categories = [item for item in categories if item.ownerUserId == owner_user_id]
+        return sorted(categories, key=lambda item: (item.sortOrder, item.createdAt, item.id))
+
+    def get_category(self, category_id: str) -> Category | None:
+        return next((item for item in self.load().categories if item.id == category_id), None)
+
+    def save_category(self, category: Category) -> None:
+        state = self.load()
+        state.categories = [item for item in state.categories if item.id != category.id]
+        state.categories.append(category)
+        self.save(state)
+
+    def delete_category(self, category_id: str) -> None:
+        state = self.load()
+        state.categories = [item for item in state.categories if item.id != category_id]
         self.save(state)
 
     def add_view_event(self, event: ViewEvent) -> None:
@@ -736,6 +768,24 @@ class PostgresRepository:
 
     def save_card(self, card: Card) -> None:
         self._save_model("cards", card)
+
+    def list_categories(self, owner_user_id: str | None = None) -> list[Category]:
+        if owner_user_id:
+            rows = self._list_payloads("categories", "owner_user_id = %s", (owner_user_id,), "created_at asc, id asc")
+        else:
+            rows = self._list_payloads("categories", "true", (), "created_at asc, id asc")
+        return [Category.model_validate(row) for row in rows]
+
+    def get_category(self, category_id: str) -> Category | None:
+        payload = self.get_payload_by_id("categories", category_id)
+        return Category.model_validate(payload) if payload else None
+
+    def save_category(self, category: Category) -> None:
+        self._save_model("categories", category)
+
+    def delete_category(self, category_id: str) -> None:
+        with psycopg.connect(self.database_url) as conn:
+            conn.execute("delete from categories where id = %s", (category_id,))
 
     def list_view_events_for_card(self, card_id: str) -> list[dict]:
         rows = self._list_payloads(

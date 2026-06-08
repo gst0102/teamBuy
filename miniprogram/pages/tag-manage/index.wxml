@@ -1,0 +1,36 @@
+<view class="page-shell">
+  <view class="brand-bar">悦享互动宝</view>
+
+  <view class="tag-hero">
+    <view>
+      <view class="hero-title">标签管理</view>
+      <view class="hero-subtitle">管理资源分类标签，标签会用于资源库筛选和手动添加资源。</view>
+    </view>
+    <view class="tag-visual">签</view>
+  </view>
+
+  <view class="panel">
+    <view class="section-title">新增标签</view>
+    <view class="tag-input-row">
+      <input class="field-input tag-input" value="{{name}}" placeholder="例如：学区房 / 水果团购 / 合同模板" bindinput="handleNameChange" />
+      <button class="primary-btn add-btn" bindtap="handleCreate">添加</button>
+    </view>
+  </view>
+
+  <view class="panel">
+    <view class="section-head">
+      <view class="section-title">我的标签</view>
+      <view class="section-link">{{categories.length}} 个</view>
+    </view>
+    <block wx:for="{{categories}}" wx:key="id">
+      <view class="tag-row-item">
+        <view>
+          <view class="tag-name">{{item.name}}</view>
+          <view class="muted">用于资源库分类筛选</view>
+        </view>
+        <button class="mini-danger" data-id="{{item.id}}" bindtap="handleDelete">删除</button>
+      </view>
+    </block>
+    <view class="empty-state" wx:if="{{!categories.length && !loading}}">暂无标签，先添加一个常用分类吧。</view>
+  </view>
+</view>

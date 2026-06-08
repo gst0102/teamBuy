@@ -16,6 +16,19 @@
   </view>
 
   <view class="panel">
+    <view class="section-head">
+      <view class="section-title">分类标签</view>
+      <view class="section-link" bindtap="handleGoTagManage">管理标签 ></view>
+    </view>
+    <view class="tag-pick-row" wx:if="{{categories.length}}">
+      <block wx:for="{{categories}}" wx:key="id">
+        <view class="tag {{item.selected ? 'active' : ''}}" data-id="{{item.id}}" bindtap="handleCategoryToggle">{{item.name}}</view>
+      </block>
+    </view>
+    <view class="empty-state compact" wx:else>暂无自定义标签，可先去标签管理添加。</view>
+  </view>
+
+  <view class="panel">
     <view class="section-title">基础信息</view>
     <view class="field-label">资源标题</view>
     <input class="field-input" data-field="title" value="{{form.title}}" placeholder="例如：滨江花园 3房2厅 / 今日水果团购" bindinput="handleFieldChange" />

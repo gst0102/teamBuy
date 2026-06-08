@@ -7,6 +7,7 @@
     "pages/profile/index",
     "pages/login/index",
     "pages/resource-create/index",
+    "pages/tag-manage/index",
     "pages/card-edit/index",
     "pages/card-view/index",
     "pages/manager/index"

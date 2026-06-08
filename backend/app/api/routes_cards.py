@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Query
 
 from app.api.dependencies import get_app_service
+from app.schemas.categories import CategoryCreateRequest
 from app.schemas.cards import (
     CardCreateRequest,
     CardUpdateRequest,
@@ -27,6 +28,21 @@ def list_cards(
     service: AppService = Depends(get_app_service),
 ):
     return ApiResponse(data=service.list_cards(owner_user_id=ownerUserId, keyword=keyword, category_id=categoryId))
+
+
+@router.get("/categories", response_model=ApiResponse[list[dict]])
+def list_categories(ownerUserId: str | None = Query(default=None), service: AppService = Depends(get_app_service)):
+    return ApiResponse(data=service.list_categories(owner_user_id=ownerUserId))
+
+
+@router.post("/categories", response_model=ApiResponse[dict])
+def create_category(payload: CategoryCreateRequest, service: AppService = Depends(get_app_service)):
+    return ApiResponse(data=service.create_category(payload).model_dump())
+
+
+@router.delete("/categories/{category_id}", response_model=ApiResponse[dict])
+def delete_category(category_id: str, ownerUserId: str = Query(...), service: AppService = Depends(get_app_service)):
+    return ApiResponse(data=service.delete_category(category_id, ownerUserId))
 
 
 @router.post("/cards", response_model=ApiResponse[dict])

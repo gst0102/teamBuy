@@ -44,8 +44,9 @@ function inferCategory(card = {}) {
   return "资料";
 }
 
-function inferTags(card = {}) {
-  const tags = [inferCategory(card)];
+function inferTags(card = {}, categoriesById = {}) {
+  const categoryNames = (card.categoryIds || []).map((id) => categoriesById[id]).filter(Boolean);
+  const tags = categoryNames.length ? categoryNames : [inferCategory(card)];
   if (card.projectName) tags.push(card.projectName);
   if (card.importBatchId) tags.push("客服接收");
   if (!card.importBatchId) tags.push("手动添加");
@@ -55,13 +56,14 @@ function inferTags(card = {}) {
   return [...new Set(tags.filter(Boolean))];
 }
 
-function enrichCard(card = {}) {
+function enrichCard(card = {}, categoriesById = {}) {
   const normalized = withStats(card);
-  const categoryName = inferCategory(normalized);
+  const categoryNames = (normalized.categoryIds || []).map((id) => categoriesById[id]).filter(Boolean);
+  const categoryName = categoryNames[0] || inferCategory(normalized);
   return {
     ...normalized,
     categoryName,
-    tagNames: inferTags(normalized)
+    tagNames: inferTags(normalized, categoriesById)
   };
 }
 

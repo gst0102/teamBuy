@@ -39,6 +39,28 @@ function fetchCard(cardId) {
   });
 }
 
+function fetchCategories(ownerUserId) {
+  const suffix = ownerUserId ? `?ownerUserId=${ownerUserId}` : "";
+  return request({
+    url: `/api/categories${suffix}`
+  });
+}
+
+function createCategory(payload) {
+  return request({
+    url: "/api/categories",
+    method: "POST",
+    data: payload
+  });
+}
+
+function deleteCategory(categoryId, ownerUserId) {
+  return request({
+    url: `/api/categories/${categoryId}?ownerUserId=${ownerUserId}`,
+    method: "DELETE"
+  });
+}
+
 function createCard(payload) {
   return request({
     url: "/api/cards",
@@ -135,6 +157,9 @@ module.exports = {
   claimImport,
   fetchCards,
   fetchCard,
+  fetchCategories,
+  createCategory,
+  deleteCategory,
   createCard,
   updateCard,
   publishCard,

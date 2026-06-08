@@ -547,6 +547,45 @@ def test_manual_create_card_flow(client):
     assert any(item["id"] == card["id"] for item in cards)
 
 
+def test_category_management_and_filtering(client):
+    login = client.post("/api/auth/mock-login", json={"nickname": "标签用户"}).json()["data"]
+    created = client.post(
+        "/api/categories",
+        json={"ownerUserId": login["id"], "name": "学区房"},
+    )
+    assert created.status_code == 200
+    category = created.json()["data"]
+
+    card_response = client.post(
+        "/api/cards",
+        json={
+            "ownerUserId": login["id"],
+            "title": "带标签资源",
+            "detailText": "标签筛选测试",
+            "categoryIds": [category["id"]],
+        },
+    )
+    assert card_response.status_code == 200
+
+    filtered = client.get(
+        "/api/cards",
+        params={"ownerUserId": login["id"], "categoryId": category["id"]},
+    ).json()["data"]
+    assert len(filtered) == 1
+    assert filtered[0]["title"] == "带标签资源"
+
+    delete = client.delete(
+        f"/api/categories/{category['id']}",
+        params={"ownerUserId": login["id"]},
+    )
+    assert delete.status_code == 200
+
+    categories = client.get("/api/categories", params={"ownerUserId": login["id"]}).json()["data"]
+    assert categories == []
+    card = client.get(f"/api/cards/{card_response.json()['data']['id']}").json()["data"]
+    assert card["categoryIds"] == []
+
+
 def test_anonymous_and_logged_in_view_stats_are_isolated(client):
     login = client.post("/api/auth/mock-login", json={"nickname": "浏览用户"}).json()["data"]
     card_id = "card_seed_001"

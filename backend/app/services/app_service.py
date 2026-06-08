@@ -5,8 +5,9 @@ from datetime import timedelta
 from uuid import uuid4
 from fastapi import HTTPException, status
 
-from app.models.domain import AppState, Card, MediaRetryJob, RawMessage, RelayConfig, RelayEntry, SyncCursor, User, ViewEvent
+from app.models.domain import AppState, Card, Category, MediaRetryJob, RawMessage, RelayConfig, RelayEntry, SyncCursor, User, ViewEvent
 from app.schemas.auth import MockLoginRequest
+from app.schemas.categories import CategoryCreateRequest
 from app.schemas.cards import CardCreateRequest, CardUpdateRequest, CreateRelayRequest, RecordViewRequest
 from app.services.card_parser_service import CardParserService
 from app.services.helpers import mask_nickname, new_id
@@ -305,6 +306,44 @@ class AppService:
             }
             for item in cards
         ]
+
+    def list_categories(self, owner_user_id: str | None = None) -> list[dict]:
+        return [item.model_dump() for item in self.repo.list_categories(owner_user_id)]
+
+    def create_category(self, payload: CategoryCreateRequest) -> Category:
+        user = self.repo.get_user(payload.ownerUserId)
+        if not user:
+            raise HTTPException(status_code=404, detail="用户不存在")
+        name = payload.name.strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="标签名称不能为空")
+        existing = self.repo.list_categories(payload.ownerUserId)
+        if any(item.name == name for item in existing):
+            raise HTTPException(status_code=400, detail="标签已存在")
+        now = now_iso()
+        category = Category(
+            id=new_id("cat"),
+            ownerUserId=payload.ownerUserId,
+            name=name,
+            sortOrder=len(existing) + 1,
+            createdAt=now,
+        )
+        self.repo.save_category(category)
+        return category
+
+    def delete_category(self, category_id: str, owner_user_id: str) -> dict:
+        category = self.repo.get_category(category_id)
+        if not category:
+            raise HTTPException(status_code=404, detail="标签不存在")
+        if category.ownerUserId != owner_user_id:
+            raise HTTPException(status_code=403, detail="仅标签拥有者可删除")
+        for card in self.repo.list_cards(owner_user_id=owner_user_id):
+            if category_id in card.categoryIds:
+                card.categoryIds = [item for item in card.categoryIds if item != category_id]
+                card.updatedAt = now_iso()
+                self.repo.save_card(card)
+        self.repo.delete_category(category_id)
+        return {"deletedCategoryId": category_id}
 
     def get_card(self, card_id: str) -> Card:
         card = self.repo.get_card(card_id)
