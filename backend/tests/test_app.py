@@ -26,12 +26,18 @@ class FakeSyncTaskQueue:
     def __init__(self):
         self.enqueued = []
 
-    def enqueue(self, name, task_factory):
-        self.enqueued.append((name, task_factory))
+    def register(self, name, handler):
+        self.handler = (name, handler)
+
+    def enqueue(self, name, payload=None, max_attempts=3):
+        self.enqueued.append((name, payload, max_attempts))
         return FakeSyncTask()
 
     def list_recent(self):
         return [FakeSyncTask()]
+
+    def list_logs(self, task_id=None):
+        return []
 
 
 def test_wecom_callback_get_verify(client):
@@ -92,6 +98,7 @@ def test_wecom_callback_post_triggers_real_sync_when_mock_disabled(client, monke
     payload = response.json()["data"]
     assert fake_client.sync_called == 0
     assert fake_queue.enqueued[0][0] == "wecom-callback-real-sync"
+    assert fake_queue.enqueued[0][1] == {"maxPages": 10}
     assert payload["callback"]["Event"] == "kf_msg_or_event"
     assert payload["syncTask"]["status"] == "queued"
 
@@ -104,6 +111,16 @@ def test_wecom_sync_tasks_lists_background_queue(client):
 
     assert response.status_code == 200
     assert response.json()["data"][0]["id"] == "sync_task_test"
+
+
+def test_wecom_sync_task_logs_lists_background_queue_logs(client):
+    fake_queue = FakeSyncTaskQueue()
+    client.app.dependency_overrides[get_sync_task_queue] = lambda: fake_queue
+
+    response = client.get("/api/wecom/sync-tasks/logs")
+
+    assert response.status_code == 200
+    assert response.json()["data"] == []
 
 
 def test_wecom_config_check_reports_missing_real_fields(client):

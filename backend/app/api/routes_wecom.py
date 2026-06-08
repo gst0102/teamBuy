@@ -7,7 +7,7 @@ from app.core.config import settings
 from app.schemas.common import ApiResponse
 from app.schemas.imports import MockImportRequest
 from app.services.app_service import AppService
-from app.services.sync_task_queue import InMemorySyncTaskQueue
+from app.services.sync_task_queue import SyncTaskQueue
 from app.services.wecom_client import WecomClient, WecomClientError
 from app.services.wecom_crypto import WecomCryptoError, decrypt_aes_message, verify_signature
 from app.services.wecom_event_service import parse_callback_body
@@ -15,6 +15,24 @@ from app.services.wecom_mock_service import WecomMockService
 
 
 router = APIRouter(prefix="/api/wecom", tags=["wecom"])
+
+
+def _register_real_sync_task(sync_task_queue: SyncTaskQueue) -> None:
+    async def run(payload: dict):
+        return await _run_real_sync(
+            max_pages=int(payload.get("maxPages", 10)),
+            service=get_app_service(),
+            client=get_wecom_client(),
+            mock_service=get_wecom_mock_service(),
+        )
+
+    sync_task_queue.register("wecom-callback-real-sync", run)
+
+
+async def recover_persisted_sync_tasks() -> None:
+    sync_task_queue = get_sync_task_queue()
+    _register_real_sync_task(sync_task_queue)
+    sync_task_queue.start_pending()
 
 
 def _sync_response_has_more(value) -> bool:
@@ -109,7 +127,7 @@ async def receive_callback(
     service: AppService = Depends(get_app_service),
     client: WecomClient = Depends(get_wecom_client),
     mock_service: WecomMockService = Depends(get_wecom_mock_service),
-    sync_task_queue: InMemorySyncTaskQueue = Depends(get_sync_task_queue),
+    sync_task_queue: SyncTaskQueue = Depends(get_sync_task_queue),
 ):
     raw_body = await request.body()
     try:
@@ -132,15 +150,8 @@ async def receive_callback(
         result = service.trigger_mock_import(external_user_id, conversation_id, fixture)
         return ApiResponse(message="callback mock import completed", data={"callback": payload, "syncResult": result})
 
-    task = sync_task_queue.enqueue(
-        "wecom-callback-real-sync",
-        lambda: _run_real_sync(
-            max_pages=10,
-            service=service,
-            client=client,
-            mock_service=mock_service,
-        ),
-    )
+    _register_real_sync_task(sync_task_queue)
+    task = sync_task_queue.enqueue("wecom-callback-real-sync", payload={"maxPages": 10})
     return ApiResponse(
         message="callback real sync queued",
         data={"callback": payload, "syncTask": task.model_dump()},
@@ -159,8 +170,16 @@ def list_notifications(service: AppService = Depends(get_app_service)):
 
 
 @router.get("/sync-tasks", response_model=ApiResponse[list[dict]])
-def list_sync_tasks(sync_task_queue: InMemorySyncTaskQueue = Depends(get_sync_task_queue)):
+def list_sync_tasks(sync_task_queue: SyncTaskQueue = Depends(get_sync_task_queue)):
     return ApiResponse(data=[item.model_dump() for item in sync_task_queue.list_recent()])
+
+
+@router.get("/sync-tasks/logs", response_model=ApiResponse[list[dict]])
+def list_sync_task_logs(
+    task_id: str | None = Query(default=None, alias="taskId"),
+    sync_task_queue: SyncTaskQueue = Depends(get_sync_task_queue),
+):
+    return ApiResponse(data=[item.model_dump() for item in sync_task_queue.list_logs(task_id)])
 
 
 @router.get("/media-retries", response_model=ApiResponse[list[dict]])

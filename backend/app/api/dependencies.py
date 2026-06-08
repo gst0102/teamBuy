@@ -8,7 +8,7 @@ from app.services.import_notification_service import ImportNotificationService
 from app.services.media_storage_service import MediaStorageService
 from app.services.message_aggregator import MessageAggregator
 from app.services.repository import build_repository
-from app.services.sync_task_queue import InMemorySyncTaskQueue
+from app.services.sync_task_queue import SyncTaskQueue
 from app.services.wecom_client import WecomClient
 from app.services.wecom_message_normalizer import WecomMessageNormalizer
 from app.services.wecom_mock_service import WecomMockService
@@ -38,7 +38,10 @@ _service = AppService(
     normalizer=WecomMessageNormalizer(),
 )
 _wecom_client = WecomClient(settings)
-_sync_task_queue = InMemorySyncTaskQueue()
+_sync_task_queue = SyncTaskQueue(
+    _repo,
+    lock_timeout_seconds=settings.wecom_sync_lock_timeout_seconds,
+)
 
 
 def get_app_service() -> AppService:
@@ -53,5 +56,5 @@ def get_wecom_mock_service() -> WecomMockService:
     return _wecom_mock_service
 
 
-def get_sync_task_queue() -> InMemorySyncTaskQueue:
+def get_sync_task_queue() -> SyncTaskQueue:
     return _sync_task_queue

@@ -14,6 +14,7 @@ MessageType = Literal["text", "image", "link", "location", "video", "file", "unk
 SourceType = Literal["wechat_note", "miniapp_link", "mp_link", "web_link", "unknown"]
 SyncStatus = Literal["idle", "running", "success", "failed"]
 MediaRetryStatus = Literal["pending", "success", "failed"]
+SyncTaskStatus = Literal["queued", "running", "success", "failed", "retrying", "skipped"]
 
 
 class User(BaseModel):
@@ -177,6 +178,31 @@ class MediaRetryJob(BaseModel):
     updatedAt: str
 
 
+class SyncTask(BaseModel):
+    id: str
+    name: str
+    status: SyncTaskStatus
+    payload: dict = Field(default_factory=dict)
+    result: dict | None = None
+    errorMessage: str | None = None
+    attempts: int = 0
+    maxAttempts: int = 3
+    nextRunAt: str | None = None
+    lockedBy: str | None = None
+    lockedAt: str | None = None
+    createdAt: str
+    updatedAt: str
+
+
+class SyncTaskLog(BaseModel):
+    id: str
+    taskId: str
+    event: str
+    message: str
+    payload: dict = Field(default_factory=dict)
+    createdAt: str
+
+
 class AppState(BaseModel):
     users: list[User] = Field(default_factory=list)
     import_batches: list[ImportBatch] = Field(default_factory=list)
@@ -188,3 +214,5 @@ class AppState(BaseModel):
     import_notifications: list[ImportNotification] = Field(default_factory=list)
     sync_cursors: list[SyncCursor] = Field(default_factory=list)
     media_retry_jobs: list[MediaRetryJob] = Field(default_factory=list)
+    sync_tasks: list[SyncTask] = Field(default_factory=list)
+    sync_task_logs: list[SyncTaskLog] = Field(default_factory=list)

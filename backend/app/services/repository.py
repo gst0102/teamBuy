@@ -18,6 +18,8 @@ from app.models.domain import (
     RawMessage,
     RelayEntry,
     SyncCursor,
+    SyncTask,
+    SyncTaskLog,
     User,
     ViewEvent,
 )
@@ -135,6 +137,24 @@ class AppRepository(Protocol):
         ...
 
     def list_media_retry_jobs(self, statuses: set[str] | None = None) -> list[MediaRetryJob]:
+        ...
+
+    def save_sync_task(self, task: SyncTask) -> None:
+        ...
+
+    def list_sync_tasks(self, statuses: set[str] | None = None, limit: int = 50) -> list[SyncTask]:
+        ...
+
+    def claim_sync_task(self, task_id: str, worker_id: str, now: str, stale_before: str) -> SyncTask | None:
+        ...
+
+    def update_sync_task(self, task: SyncTask) -> None:
+        ...
+
+    def add_sync_task_log(self, log: SyncTaskLog) -> None:
+        ...
+
+    def list_sync_task_logs(self, task_id: str | None = None, limit: int = 100) -> list[SyncTaskLog]:
         ...
 
 
@@ -374,6 +394,49 @@ class JsonRepository:
         jobs = self.load().media_retry_jobs
         return [item for item in jobs if statuses is None or item.status in statuses]
 
+    def save_sync_task(self, task: SyncTask) -> None:
+        state = self.load()
+        state.sync_tasks = [item for item in state.sync_tasks if item.id != task.id]
+        state.sync_tasks.append(task)
+        self.save(state)
+
+    def list_sync_tasks(self, statuses: set[str] | None = None, limit: int = 50) -> list[SyncTask]:
+        tasks = [item for item in self.load().sync_tasks if statuses is None or item.status in statuses]
+        return sorted(tasks, key=lambda item: item.createdAt, reverse=True)[:limit]
+
+    def claim_sync_task(self, task_id: str, worker_id: str, now: str, stale_before: str) -> SyncTask | None:
+        state = self.load()
+        task = next((item for item in state.sync_tasks if item.id == task_id), None)
+        if not task:
+            return None
+        is_claimable = task.status in {"queued", "retrying"} or (
+            task.status == "running" and task.lockedAt and task.lockedAt <= stale_before
+        )
+        if not is_claimable:
+            return None
+        task.status = "running"
+        task.lockedBy = worker_id
+        task.lockedAt = now
+        task.updatedAt = now
+        state.sync_tasks = [item for item in state.sync_tasks if item.id != task.id]
+        state.sync_tasks.append(task)
+        self.save(state)
+        return task
+
+    def update_sync_task(self, task: SyncTask) -> None:
+        self.save_sync_task(task)
+
+    def add_sync_task_log(self, log: SyncTaskLog) -> None:
+        state = self.load()
+        state.sync_task_logs.append(log)
+        self.save(state)
+
+    def list_sync_task_logs(self, task_id: str | None = None, limit: int = 100) -> list[SyncTaskLog]:
+        logs = self.load().sync_task_logs
+        if task_id:
+            logs = [item for item in logs if item.taskId == task_id]
+        return sorted(logs, key=lambda item: item.createdAt, reverse=True)[:limit]
+
 
 class PostgresRepository:
     TABLES = {
@@ -387,6 +450,8 @@ class PostgresRepository:
         "import_notifications": "import_notifications",
         "sync_cursors": "sync_cursors",
         "media_retry_jobs": "media_retry_jobs",
+        "sync_tasks": "sync_tasks",
+        "sync_task_logs": "sync_task_logs",
     }
     FIELD_COLUMNS = {
         "users": [
@@ -469,6 +534,19 @@ class PostgresRepository:
             ("attempts", "integer", "attempts"),
             ("last_attempt_at", "timestamptz", "lastAttemptAt"),
         ],
+        "sync_tasks": [
+            ("name", "text", "name"),
+            ("status", "text", "status"),
+            ("attempts", "integer", "attempts"),
+            ("max_attempts", "integer", "maxAttempts"),
+            ("next_run_at", "timestamptz", "nextRunAt"),
+            ("locked_by", "text", "lockedBy"),
+            ("locked_at", "timestamptz", "lockedAt"),
+        ],
+        "sync_task_logs": [
+            ("task_id", "text", "taskId"),
+            ("event", "text", "event"),
+        ],
     }
     INDEXES = {
         "import_batches": [
@@ -506,6 +584,14 @@ class PostgresRepository:
         "media_retry_jobs": [
             ("idx_media_retry_jobs_status", "status, updated_at"),
             ("idx_media_retry_jobs_media_id", "media_id"),
+        ],
+        "sync_tasks": [
+            ("idx_sync_tasks_ready", "status, next_run_at, created_at"),
+            ("idx_sync_tasks_name_status", "name, status, updated_at"),
+            ("idx_sync_tasks_locked", "locked_by, locked_at"),
+        ],
+        "sync_task_logs": [
+            ("idx_sync_task_logs_task_time", "task_id, created_at"),
         ],
     }
 
@@ -877,6 +963,76 @@ class PostgresRepository:
         else:
             rows = self._list_payloads("media_retry_jobs", "true", (), "updated_at desc, id desc")
         return [MediaRetryJob.model_validate(row) for row in rows]
+
+    def save_sync_task(self, task: SyncTask) -> None:
+        self._save_model("sync_tasks", task)
+
+    def list_sync_tasks(self, statuses: set[str] | None = None, limit: int = 50) -> list[SyncTask]:
+        if statuses:
+            rows = self._list_payloads(
+                "sync_tasks",
+                "status = any(%s)",
+                (list(statuses),),
+                "created_at desc, id desc limit %s" % int(limit),
+            )
+        else:
+            rows = self._list_payloads("sync_tasks", "true", (), "created_at desc, id desc limit %s" % int(limit))
+        return [SyncTask.model_validate(row) for row in rows]
+
+    def claim_sync_task(self, task_id: str, worker_id: str, now: str, stale_before: str) -> SyncTask | None:
+        with psycopg.connect(self.database_url, row_factory=dict_row) as conn:
+            row = conn.execute(
+                """
+                update sync_tasks set
+                    payload = jsonb_set(
+                        jsonb_set(
+                            jsonb_set(
+                                jsonb_set(payload, '{status}', '"running"'::jsonb),
+                                '{lockedBy}', to_jsonb(%(worker_id)s::text)
+                            ),
+                            '{lockedAt}', to_jsonb(%(locked_at)s::text)
+                        ),
+                        '{updatedAt}', to_jsonb(%(updated_at)s::text)
+                    ),
+                    status = 'running',
+                    locked_by = %(worker_id)s,
+                    locked_at = %(locked_at)s::timestamptz,
+                    updated_at = %(updated_at)s::timestamptz
+                where id = %(task_id)s
+                  and (
+                    status in ('queued', 'retrying')
+                    or (status = 'running' and locked_at is not null and locked_at <= %(stale_before)s::timestamptz)
+                  )
+                  and (next_run_at is null or next_run_at <= %(updated_at)s::timestamptz)
+                returning payload
+                """,
+                {
+                    "task_id": task_id,
+                    "worker_id": worker_id,
+                    "locked_at": now,
+                    "updated_at": now,
+                    "stale_before": stale_before,
+                },
+            ).fetchone()
+        return SyncTask.model_validate(row["payload"]) if row else None
+
+    def update_sync_task(self, task: SyncTask) -> None:
+        self._save_model("sync_tasks", task)
+
+    def add_sync_task_log(self, log: SyncTaskLog) -> None:
+        self._save_model("sync_task_logs", log)
+
+    def list_sync_task_logs(self, task_id: str | None = None, limit: int = 100) -> list[SyncTaskLog]:
+        if task_id:
+            rows = self._list_payloads(
+                "sync_task_logs",
+                "task_id = %s",
+                (task_id,),
+                "created_at desc, id desc limit %s" % int(limit),
+            )
+        else:
+            rows = self._list_payloads("sync_task_logs", "true", (), "created_at desc, id desc limit %s" % int(limit))
+        return [SyncTaskLog.model_validate(row) for row in rows]
 
     def init_schema(self) -> None:
         with psycopg.connect(self.database_url) as conn:

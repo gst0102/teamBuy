@@ -1,0 +1,41 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-teambuy}
+      POSTGRES_USER: ${POSTGRES_USER:-teambuy}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-teambuy_dev_password}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-teambuy} -d ${POSTGRES_DB:-teambuy}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}
+    env_file:
+      - ./backend/.env
+    environment:
+      APP_HOST: 0.0.0.0
+      DATABASE_BACKEND: postgres
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-teambuy}:${POSTGRES_PASSWORD:-teambuy_dev_password}@postgres:5432/${POSTGRES_DB:-teambuy}
+      MEDIA_STORAGE_DIR: /app/mock/media
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    volumes:
+      - backend_media:/app/mock/media
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  backend_media:

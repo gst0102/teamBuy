@@ -124,6 +124,29 @@ create table if not exists media_retry_jobs (
     updated_at timestamptz not null default now()
 );
 
+create table if not exists sync_tasks (
+    id text primary key,
+    payload jsonb not null,
+    name text,
+    status text,
+    attempts integer,
+    max_attempts integer,
+    next_run_at timestamptz,
+    locked_by text,
+    locked_at timestamptz,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+create table if not exists sync_task_logs (
+    id text primary key,
+    payload jsonb not null,
+    task_id text,
+    event text,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
 create index if not exists idx_import_batches_status on import_batches (status);
 create index if not exists idx_import_batches_conversation on import_batches (external_user_id, conversation_id, started_at);
 create index if not exists idx_import_batches_claimed_by on import_batches (claimed_by_user_id);
@@ -148,3 +171,7 @@ create index if not exists idx_sync_cursors_last_synced on sync_cursors (last_sy
 create unique index if not exists uq_sync_cursors_open_kfid on sync_cursors (open_kfid);
 create index if not exists idx_media_retry_jobs_status on media_retry_jobs (status, updated_at);
 create index if not exists idx_media_retry_jobs_media_id on media_retry_jobs (media_id);
+create index if not exists idx_sync_tasks_ready on sync_tasks (status, next_run_at, created_at);
+create index if not exists idx_sync_tasks_name_status on sync_tasks (name, status, updated_at);
+create index if not exists idx_sync_tasks_locked on sync_tasks (locked_by, locked_at);
+create index if not exists idx_sync_task_logs_task_time on sync_task_logs (task_id, created_at);

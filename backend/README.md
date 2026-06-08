@@ -49,6 +49,7 @@ curl http://127.0.0.1:8000/health/db
 真实 `sync_msg` 返回数据先进入 `app/services/wecom_message_normalizer.py` 标准化层，统一映射为内部消息结构，再进入聚合、解析、事务写入主链路。后续拿到企业微信真实样例时，优先修 normalizer，不要直接改业务主链路。
 `POST /api/wecom/real-sync` 已接入完整主链路：`WECOM_USE_MOCK=true` 时读取 `backend/mock/mock-real-sync-response.json`，认证通过并切到 `WECOM_USE_MOCK=false` 后只把数据源替换为真实 `sync_msg` 客户端，后续仍复用同一套 normalizer、幂等过滤和事务写入逻辑。
 `POST /api/wecom/callback` keeps mock fixture import while `WECOM_USE_MOCK=true`; when `WECOM_USE_MOCK=false`, a callback queues a background real-sync task and returns quickly. The background task uses the same cursor, lock, media transfer, and compensation pipeline as manual real-sync.
+Callback-triggered real-sync tasks are persisted in PostgreSQL tables `sync_tasks` and `sync_task_logs`. API startup recovers queued, retrying, and stale running tasks, and PostgreSQL conditional updates prevent multiple Docker containers from claiming the same task.
 `WECOM_SYNC_CURSOR` is only a first-run fallback. After the first real pull, the latest cursor is persisted in `sync_cursors`; normally leave the env value empty.
 `sync_cursor` 会在每页成功导入后持久化 `next_cursor`、`has_more`、来源和最近 payload；真实模式会按 `has_more` 循环拉取分页，服务重启或重试时从仓储里的最新 cursor 继续。
 `real-sync` also uses a persisted per-`open_kfid` task lock. A second manual trigger while `syncStatus=running` returns a running status instead of starting another cursor-advancing sync.
@@ -72,6 +73,17 @@ curl http://127.0.0.1:8000/api/wecom/notifications
 cd backend
 pytest
 ```
+
+## Docker Compose
+
+From the project root:
+
+```bash
+docker compose up -d --build
+docker compose logs -f backend
+```
+
+The compose stack starts `postgres` and `backend`. Keep real secrets in `backend/.env`; Compose overrides `DATABASE_URL` so the backend container connects to the `postgres` service instead of `127.0.0.1`.
 
 ## 关键文件
 

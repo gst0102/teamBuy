@@ -19,6 +19,7 @@
 - 对象存储适配层：`MediaStorageService` 已拆分为 `mock/local/cos/s3` 后端，COS/S3 走 S3-compatible `put_object` 上传并返回 CDN URL
 - 媒体转存失败补偿队列：真实媒体下载/上传失败会写入 `media_retry_jobs`，管理员可重试，成功后下次 `real-sync` 复用已转存 URL
 - 企业微信回调后台同步：`WECOM_USE_MOCK=false` 时 POST callback 会快速入队后台 real-sync 任务，后台任务进入锁、游标、媒体转存和补偿队列
+- real-sync 持久化任务队列：callback 触发的后台任务写入 `sync_tasks` / `sync_task_logs`，启动时恢复 queued/retrying/stale running 任务，并通过 PostgreSQL 条件领取避免多容器重复消费
 - mock 导入成功/失败通知抽象和通知查询接口
 - 链接缩略图、来源 URL、视频 media mock 转存解析增强
 - 导入认领、卡片编辑、发布、一键复用
@@ -54,7 +55,7 @@ uvicorn app.main:app --reload
 
 ## 4. 已执行验证
 
-- `cd backend && pytest`，当前 44 项通过
+- `cd backend && pytest`，当前 48 项通过
 - `cd backend && python -m compileall app`
 
 ## 5. 已通过测试项

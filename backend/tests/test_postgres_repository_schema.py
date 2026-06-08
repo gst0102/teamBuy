@@ -18,6 +18,8 @@ def test_postgres_repository_maps_core_query_columns():
     assert {"open_kfid", "cursor_value", "has_more", "last_synced_at"} <= field_map["sync_cursors"]
     assert {"sync_status", "lock_token", "locked_at", "last_error"} <= field_map["sync_cursors"]
     assert {"media_id", "media_type", "status", "attempts"} <= field_map["media_retry_jobs"]
+    assert {"name", "status", "attempts", "next_run_at", "locked_by", "locked_at"} <= field_map["sync_tasks"]
+    assert {"task_id", "event"} <= field_map["sync_task_logs"]
 
 
 def test_postgres_repository_defines_hot_path_indexes():
@@ -35,6 +37,9 @@ def test_postgres_repository_defines_hot_path_indexes():
     assert "idx_relay_entries_card_status" in indexes["relay_entries"]
     assert "idx_sync_cursors_open_kfid" in indexes["sync_cursors"]
     assert "idx_media_retry_jobs_status" in indexes["media_retry_jobs"]
+    assert "idx_sync_tasks_ready" in indexes["sync_tasks"]
+    assert "idx_sync_tasks_locked" in indexes["sync_tasks"]
+    assert "idx_sync_task_logs_task_time" in indexes["sync_task_logs"]
 
 
 def test_postgres_repository_rejects_unknown_table_name_without_connecting():

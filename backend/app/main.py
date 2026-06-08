@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -7,12 +9,18 @@ from fastapi.staticfiles import StaticFiles
 from app.api.routes_auth import router as auth_router
 from app.api.routes_cards import router as cards_router
 from app.api.routes_imports import router as imports_router
-from app.api.routes_wecom import router as wecom_router
+from app.api.routes_wecom import recover_persisted_sync_tasks, router as wecom_router
 from app.core.config import settings
 from app.core.database import DatabaseConfigError, check_postgres_connection, validate_database_settings
 
 
-app = FastAPI(title="teamBuy MVP API", version="0.1.0")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await recover_persisted_sync_tasks()
+    yield
+
+
+app = FastAPI(title="teamBuy MVP API", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
