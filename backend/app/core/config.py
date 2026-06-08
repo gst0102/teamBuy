@@ -39,6 +39,7 @@ class Settings:
     wecom_open_kfid: str = env_value("WECOM_OPEN_KFID", "")
     wecom_sync_cursor: str = env_value("WECOM_SYNC_CURSOR", "")
     wecom_sync_limit: int = env_int("WECOM_SYNC_LIMIT", 100)
+    wecom_sync_lock_timeout_seconds: int = env_int("WECOM_SYNC_LOCK_TIMEOUT_SECONDS", 600)
     wecom_api_base_url: str = env_value("WECOM_API_BASE_URL", "https://qyapi.weixin.qq.com")
     wecom_use_mock: bool = env_value("WECOM_USE_MOCK", "true").lower() in {"1", "true", "yes"}
     storage_mode: str = env_value("STORAGE_MODE", "mock")

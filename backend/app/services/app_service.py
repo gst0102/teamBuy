@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from datetime import timedelta
 from uuid import uuid4
 from fastapi import HTTPException, status
 
@@ -13,7 +14,7 @@ from app.services.import_notification_service import ImportNotificationService
 from app.services.media_storage_service import MediaStorageService
 from app.services.message_aggregator import MessageAggregator
 from app.services.repository import AppRepository
-from app.services.time_utils import date_key, now_iso
+from app.services.time_utils import SHANGHAI, date_key, now_iso, parse_iso
 from app.services.wecom_message_normalizer import WecomMessageNormalizer
 from app.services.wecom_mock_service import WecomMockService
 
@@ -149,12 +150,15 @@ class AppService:
     def get_sync_cursor(self, open_kfid: str) -> SyncCursor | None:
         return self.repo.get_sync_cursor(open_kfid)
 
-    def acquire_sync_lock(self, open_kfid: str, source: str) -> SyncCursor | None:
+    def acquire_sync_lock(self, open_kfid: str, source: str, timeout_seconds: int) -> SyncCursor | None:
+        now = now_iso()
+        stale_before = (parse_iso(now).astimezone(SHANGHAI) - timedelta(seconds=timeout_seconds)).isoformat()
         return self.repo.acquire_sync_lock(
             open_kfid=open_kfid,
             source=source,
             lock_token=uuid4().hex,
-            now=now_iso(),
+            now=now,
+            stale_before=stale_before,
         )
 
     def release_sync_lock(
@@ -171,6 +175,9 @@ class AppService:
             error_message=error_message,
             now=now_iso(),
         )
+
+    def force_release_sync_lock(self, open_kfid: str, reason: str) -> SyncCursor | None:
+        return self.repo.force_release_sync_lock(open_kfid=open_kfid, reason=reason, now=now_iso())
 
     def advance_sync_cursor(
         self,

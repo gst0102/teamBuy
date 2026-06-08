@@ -101,7 +101,14 @@ class AppRepository(Protocol):
     def save_sync_cursor(self, cursor: SyncCursor) -> None:
         ...
 
-    def acquire_sync_lock(self, open_kfid: str, source: str, lock_token: str, now: str) -> SyncCursor | None:
+    def acquire_sync_lock(
+        self,
+        open_kfid: str,
+        source: str,
+        lock_token: str,
+        now: str,
+        stale_before: str,
+    ) -> SyncCursor | None:
         ...
 
     def release_sync_lock(
@@ -112,6 +119,9 @@ class AppRepository(Protocol):
         error_message: str | None,
         now: str,
     ) -> SyncCursor | None:
+        ...
+
+    def force_release_sync_lock(self, open_kfid: str, reason: str, now: str) -> SyncCursor | None:
         ...
 
 
@@ -257,10 +267,23 @@ class JsonRepository:
         state.sync_cursors.append(cursor)
         self.save(state)
 
-    def acquire_sync_lock(self, open_kfid: str, source: str, lock_token: str, now: str) -> SyncCursor | None:
+    def acquire_sync_lock(
+        self,
+        open_kfid: str,
+        source: str,
+        lock_token: str,
+        now: str,
+        stale_before: str,
+    ) -> SyncCursor | None:
         state = self.load()
         existing = next((item for item in state.sync_cursors if item.openKfid == open_kfid), None)
-        if existing and existing.syncStatus == "running":
+        is_fresh_running = (
+            existing
+            and existing.syncStatus == "running"
+            and existing.lockedAt
+            and existing.lockedAt > stale_before
+        )
+        if is_fresh_running:
             return None
         cursor = SyncCursor(
             id=existing.id if existing else f"sync_cursor_{open_kfid}",
@@ -298,6 +321,21 @@ class JsonRepository:
         existing.lockToken = None
         existing.lockedAt = None
         existing.lastError = error_message
+        existing.updatedAt = now
+        state.sync_cursors = [item for item in state.sync_cursors if item.id != existing.id]
+        state.sync_cursors.append(existing)
+        self.save(state)
+        return existing
+
+    def force_release_sync_lock(self, open_kfid: str, reason: str, now: str) -> SyncCursor | None:
+        state = self.load()
+        existing = next((item for item in state.sync_cursors if item.openKfid == open_kfid), None)
+        if not existing:
+            return None
+        existing.syncStatus = "failed"
+        existing.lockToken = None
+        existing.lockedAt = None
+        existing.lastError = reason
         existing.updatedAt = now
         state.sync_cursors = [item for item in state.sync_cursors if item.id != existing.id]
         state.sync_cursors.append(existing)
@@ -613,7 +651,14 @@ class PostgresRepository:
     def save_sync_cursor(self, cursor: SyncCursor) -> None:
         self._save_model("sync_cursors", cursor)
 
-    def acquire_sync_lock(self, open_kfid: str, source: str, lock_token: str, now: str) -> SyncCursor | None:
+    def acquire_sync_lock(
+        self,
+        open_kfid: str,
+        source: str,
+        lock_token: str,
+        now: str,
+        stale_before: str,
+    ) -> SyncCursor | None:
         payload = {
             "id": f"sync_cursor_{open_kfid}",
             "openKfid": open_kfid,
@@ -662,6 +707,8 @@ class PostgresRepository:
                     locked_at = %(locked_at)s::timestamptz,
                     last_error = null
                 where sync_cursors.sync_status is distinct from 'running'
+                   or sync_cursors.locked_at is null
+                   or sync_cursors.locked_at <= %(stale_before)s::timestamptz
                 returning payload
                 """,
                 {
@@ -674,6 +721,7 @@ class PostgresRepository:
                     "last_synced_at": now,
                     "lock_token": lock_token,
                     "locked_at": now,
+                    "stale_before": stale_before,
                 },
             ).fetchone()
         return SyncCursor.model_validate(row["payload"]) if row else None
@@ -720,6 +768,40 @@ class PostgresRepository:
                 },
             ).fetchone()
         return SyncCursor.model_validate(row["payload"]) if row else self.get_sync_cursor(open_kfid)
+
+    def force_release_sync_lock(self, open_kfid: str, reason: str, now: str) -> SyncCursor | None:
+        with psycopg.connect(self.database_url, row_factory=dict_row) as conn:
+            row = conn.execute(
+                """
+                update sync_cursors set
+                    payload = jsonb_set(
+                        jsonb_set(
+                            jsonb_set(
+                                jsonb_set(
+                                    jsonb_set(payload, '{syncStatus}', '"failed"'::jsonb),
+                                    '{lockToken}', 'null'::jsonb
+                                ),
+                                '{lockedAt}', 'null'::jsonb
+                            ),
+                            '{lastError}', to_jsonb(%(reason)s::text)
+                        ),
+                        '{updatedAt}', to_jsonb(%(updated_at)s::text)
+                    ),
+                    updated_at = %(updated_at)s::timestamptz,
+                    sync_status = 'failed',
+                    lock_token = null,
+                    locked_at = null,
+                    last_error = %(reason)s
+                where open_kfid = %(open_kfid)s
+                returning payload
+                """,
+                {
+                    "open_kfid": open_kfid,
+                    "reason": reason,
+                    "updated_at": now,
+                },
+            ).fetchone()
+        return SyncCursor.model_validate(row["payload"]) if row else None
 
     def init_schema(self) -> None:
         with psycopg.connect(self.database_url) as conn:

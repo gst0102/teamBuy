@@ -101,7 +101,7 @@ async def import_real_sync(
 ):
     open_kfid = settings.wecom_open_kfid or "default"
     source = "mock-real-sync-response" if settings.wecom_use_mock else "wecom-sync-msg"
-    sync_lock = service.acquire_sync_lock(open_kfid, source)
+    sync_lock = service.acquire_sync_lock(open_kfid, source, settings.wecom_sync_lock_timeout_seconds)
     if sync_lock is None:
         running = service.get_sync_cursor(open_kfid)
         return ApiResponse(
@@ -111,6 +111,7 @@ async def import_real_sync(
                 "openKfid": open_kfid,
                 "syncStatus": "running",
                 "lockedAt": running.lockedAt if running else None,
+                "lockTimeoutSeconds": settings.wecom_sync_lock_timeout_seconds,
             },
         )
 
@@ -178,5 +179,30 @@ async def import_real_sync(
                 "deduplicatedCount": deduplicated_count,
             },
             "pageResults": page_results,
+        },
+    )
+
+
+@router.post("/real-sync/unlock", response_model=ApiResponse[dict])
+def unlock_real_sync(
+    open_kfid: str | None = Query(default=None),
+    reason: str = Query(default="manual force release"),
+    service: AppService = Depends(get_app_service),
+):
+    target_open_kfid = open_kfid or settings.wecom_open_kfid or "default"
+    cursor = service.force_release_sync_lock(target_open_kfid, reason)
+    if not cursor:
+        return ApiResponse(
+            success=False,
+            message="sync lock not found",
+            data={"openKfid": target_open_kfid},
+        )
+    return ApiResponse(
+        message="sync lock released",
+        data={
+            "openKfid": cursor.openKfid,
+            "syncStatus": cursor.syncStatus,
+            "lastError": cursor.lastError,
+            "lockedAt": cursor.lockedAt,
         },
     )

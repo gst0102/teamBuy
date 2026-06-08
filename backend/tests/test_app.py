@@ -102,7 +102,7 @@ def test_real_sync_paginates_and_persists_cursor(client, monkeypatch):
 
 def test_real_sync_returns_running_status_when_lock_exists(client):
     service = client.app.dependency_overrides[get_app_service]()
-    locked = service.acquire_sync_lock("default", "mock-real-sync-response")
+    locked = service.acquire_sync_lock("default", "mock-real-sync-response", 600)
     assert locked is not None
 
     response = client.post("/api/wecom/real-sync")
@@ -112,6 +112,34 @@ def test_real_sync_returns_running_status_when_lock_exists(client):
     assert payload["success"] is False
     assert payload["data"]["syncStatus"] == "running"
     assert payload["data"]["lockedAt"] == locked.lockedAt
+
+
+def test_real_sync_unlock_releases_running_lock(client):
+    service = client.app.dependency_overrides[get_app_service]()
+    locked = service.acquire_sync_lock("default", "mock-real-sync-response", 600)
+    assert locked is not None
+
+    response = client.post("/api/wecom/real-sync/unlock", params={"reason": "admin unlock"})
+
+    assert response.status_code == 200
+    payload = response.json()["data"]
+    assert payload["syncStatus"] == "failed"
+    assert payload["lastError"] == "admin unlock"
+    assert payload["lockedAt"] is None
+
+
+def test_real_sync_takes_over_expired_lock(client, monkeypatch):
+    service = client.app.dependency_overrides[get_app_service]()
+    locked = service.acquire_sync_lock("default", "mock-real-sync-response", 600)
+    assert locked is not None
+    monkeypatch.setattr(settings, "wecom_sync_lock_timeout_seconds", 0)
+
+    response = client.post("/api/wecom/real-sync")
+
+    assert response.status_code == 200
+    payload = response.json()["data"]
+    assert payload["syncStatus"] == "success"
+    assert payload["pagesSynced"] == 1
 
 
 def test_health_reports_database_configuration(client):

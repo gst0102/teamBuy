@@ -99,12 +99,14 @@ def test_json_repository_sync_lock_blocks_duplicate_runs(tmp_path):
         source="wecom-sync-msg",
         lock_token="lock_1",
         now="2026-06-08T10:00:00+08:00",
+        stale_before="2026-06-08T09:50:00+08:00",
     )
     second = repo.acquire_sync_lock(
         open_kfid="wk_lock",
         source="wecom-sync-msg",
         lock_token="lock_2",
         now="2026-06-08T10:00:01+08:00",
+        stale_before="2026-06-08T09:50:01+08:00",
     )
 
     assert first is not None
@@ -124,6 +126,7 @@ def test_json_repository_sync_lock_blocks_duplicate_runs(tmp_path):
         source="wecom-sync-msg",
         lock_token="lock_3",
         now="2026-06-08T10:00:03+08:00",
+        stale_before="2026-06-08T09:50:03+08:00",
     )
 
     assert released is not None
@@ -131,3 +134,50 @@ def test_json_repository_sync_lock_blocks_duplicate_runs(tmp_path):
     assert released.lockToken is None
     assert third is not None
     assert third.lockToken == "lock_3"
+
+
+def test_json_repository_sync_lock_can_take_over_stale_run(tmp_path):
+    repo = JsonRepository(tmp_path / "state.json")
+
+    first = repo.acquire_sync_lock(
+        open_kfid="wk_stale",
+        source="wecom-sync-msg",
+        lock_token="old_lock",
+        now="2026-06-08T10:00:00+08:00",
+        stale_before="2026-06-08T09:50:00+08:00",
+    )
+    takeover = repo.acquire_sync_lock(
+        open_kfid="wk_stale",
+        source="wecom-sync-msg",
+        lock_token="new_lock",
+        now="2026-06-08T10:11:00+08:00",
+        stale_before="2026-06-08T10:01:00+08:00",
+    )
+
+    assert first is not None
+    assert takeover is not None
+    assert takeover.lockToken == "new_lock"
+    assert takeover.lockedAt == "2026-06-08T10:11:00+08:00"
+
+
+def test_json_repository_force_releases_sync_lock(tmp_path):
+    repo = JsonRepository(tmp_path / "state.json")
+    repo.acquire_sync_lock(
+        open_kfid="wk_force",
+        source="wecom-sync-msg",
+        lock_token="force_lock",
+        now="2026-06-08T10:00:00+08:00",
+        stale_before="2026-06-08T09:50:00+08:00",
+    )
+
+    released = repo.force_release_sync_lock(
+        open_kfid="wk_force",
+        reason="manual unlock",
+        now="2026-06-08T10:05:00+08:00",
+    )
+
+    assert released is not None
+    assert released.syncStatus == "failed"
+    assert released.lockToken is None
+    assert released.lockedAt is None
+    assert released.lastError == "manual unlock"
