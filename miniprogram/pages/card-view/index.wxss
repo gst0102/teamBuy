@@ -1,1 +1,10 @@
+.detail-actions {
+  display: flex;
+  gap: 14rpx;
+  margin-top: 16rpx;
+}
 
+.detail-actions button {
+  flex: 1;
+  font-size: 24rpx;
+}

@@ -29,17 +29,15 @@
   </view>
 
   <view class="chip-row">
-    <block wx:for="{{filters}}" wx:key="*this">
-      <view class="chip {{activeFilter === item ? 'active' : ''}}" data-filter="{{item}}" bindtap="handleFilter">{{item}}</view>
+    <block wx:for="{{categoryFilters}}" wx:key="name">
+      <view class="chip {{activeCategory === item.name ? 'active' : ''}}" data-filter="{{item.name}}" bindtap="handleFilter">{{item.name}} {{item.count}}</view>
     </block>
   </view>
 
   <view class="tag-row">
-    <text class="tag green">学区房 ×</text>
-    <text class="tag orange">水果团购 ×</text>
-    <text class="tag purple">合同模板 ×</text>
-    <text class="tag pink">精选视频 ×</text>
-    <text class="tag add">+</text>
+    <block wx:for="{{tagFilters}}" wx:key="name">
+      <text class="tag {{activeTag === item.name ? 'active' : ''}}" data-tag="{{item.name}}" bindtap="handleTagFilter">{{item.name}} {{item.count}}</text>
+    </block>
   </view>
 
   <view class="panel">
@@ -74,12 +72,16 @@
         <view wx:else class="resource-cover placeholder" data-id="{{item.id}}" bindtap="handleView">{{item.categoryName}}</view>
         <view class="resource-title">{{item.title}}</view>
         <view style="margin-top: 12rpx;">
-          <text class="tag">{{item.categoryName}}</text>
+          <block wx:for="{{item.tagNames}}" wx:key="*this">
+            <text class="tag mini">{{item}}</text>
+          </block>
         </view>
         <view class="resource-source">来源：{{item.importBatchId ? '客服接收' : '手动添加'}}</view>
         <view class="resource-meta">浏览 {{item.stats.pv}} ｜ 访客 {{item.stats.uv}}</view>
         <view class="card-actions">
-          <text data-id="{{item.id}}" bindtap="handleManage">访问记录 ↗</text>
+          <text data-id="{{item.id}}" bindtap="handleView">详情</text>
+          <text data-id="{{item.id}}" bindtap="handleManage">访问</text>
+          <text data-id="{{item.id}}" bindtap="handleCopySummary">复制</text>
           <text data-id="{{item.id}}" bindtap="handleOpen">编辑</text>
         </view>
       </view>

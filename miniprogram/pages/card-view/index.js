@@ -43,6 +43,28 @@ Page({
       phoneNumber: this.data.card.phone
     });
   },
+  handleCopyInfo() {
+    const card = this.data.card;
+    wx.setClipboardData({
+      data: [
+        card.title,
+        card.projectName,
+        card.locationText,
+        card.phone ? `电话：${card.phone}` : "",
+        card.sourceUrl ? `链接：${card.sourceUrl}` : ""
+      ].filter(Boolean).join("\n")
+    });
+  },
+  handleCopySource() {
+    if (!this.data.card.sourceUrl) {
+      wx.showToast({ title: "暂无来源链接", icon: "none" });
+      return;
+    }
+    wx.setClipboardData({ data: this.data.card.sourceUrl });
+  },
+  handleSharePlaceholder() {
+    wx.showToast({ title: "可通过小程序右上角分享", icon: "none" });
+  },
   handlePhoneChange(event) {
     this.setData({ phone: event.detail.value });
   },
@@ -71,5 +93,11 @@ Page({
   },
   handleGoManager() {
     wx.navigateTo({ url: `/pages/manager/index?id=${this.data.cardId}` });
+  },
+  onShareAppMessage() {
+    return {
+      title: this.data.card ? this.data.card.title : "悦享互动宝资源",
+      path: `/pages/card-view/index?id=${this.data.cardId}`
+    };
   }
 });

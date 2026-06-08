@@ -44,8 +44,29 @@ function inferCategory(card = {}) {
   return "资料";
 }
 
+function inferTags(card = {}) {
+  const tags = [inferCategory(card)];
+  if (card.projectName) tags.push(card.projectName);
+  if (card.importBatchId) tags.push("客服接收");
+  if (!card.importBatchId) tags.push("手动添加");
+  if (card.sourceUrl) tags.push("带链接");
+  if (card.phone) tags.push("可拨号");
+  if (card.relayConfig && card.relayConfig.enabled !== false) tags.push("可接龙");
+  return [...new Set(tags.filter(Boolean))];
+}
+
+function enrichCard(card = {}) {
+  const normalized = withStats(card);
+  const categoryName = inferCategory(normalized);
+  return {
+    ...normalized,
+    categoryName,
+    tagNames: inferTags(normalized)
+  };
+}
+
 function buildDashboard(cards = []) {
-  const normalized = cards.map(withStats);
+  const normalized = cards.map(enrichCard);
   const totalPv = normalized.reduce((sum, card) => sum + card.stats.pv, 0);
   const totalUv = normalized.reduce((sum, card) => sum + card.stats.uv, 0);
   const totalRelay = normalized.reduce((sum, card) => sum + card.stats.relayCount, 0);
@@ -76,7 +97,7 @@ function buildDashboard(cards = []) {
 }
 
 function buildVisitGroups(cards = []) {
-  return cards.map(withStats).map((card) => {
+  return cards.map(enrichCard).map((card) => {
     const viewers = card.stats.loggedInViewers.slice(0, 3).map((viewer, index) => ({
       ...viewer,
       timeText: formatTime(viewer.viewedAt),
@@ -85,7 +106,6 @@ function buildVisitGroups(cards = []) {
     const highIntent = card.stats.pv >= 3 || card.stats.relayCount > 0 || card.stats.loggedInViewers.length >= 2;
     return {
       ...card,
-      categoryName: inferCategory(card),
       viewers,
       highIntent,
       collectHint: card.stats.relayCount,
@@ -99,6 +119,8 @@ module.exports = {
   buildVisitGroups,
   formatTime,
   getCurrentUser,
+  enrichCard,
+  inferTags,
   inferCategory,
   withStats
 };

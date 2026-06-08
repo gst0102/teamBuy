@@ -102,31 +102,20 @@
   margin: 18rpx 0 24rpx;
 }
 
-.tag.green {
-  background: #dcfae6;
-  color: #079455;
+.tag.active {
+  background: #1677ff;
+  color: #fff;
 }
 
-.tag.orange {
-  background: #fff1df;
-  color: #f97316;
+.tag.mini {
+  margin-bottom: 8rpx;
+  padding: 6rpx 12rpx;
+  font-size: 20rpx;
 }
 
-.tag.purple {
-  background: #eee8ff;
-  color: #6d45f5;
-}
-
-.tag.pink {
-  background: #ffe4ee;
-  color: #e83e75;
-}
-
-.tag.add {
-  background: #e9f3ff;
+.tag.mini.active {
+  background: #edf5ff;
   color: #1677ff;
-  font-size: 30rpx;
-  padding: 4rpx 22rpx;
 }
 
 .resource-cover.placeholder {
@@ -146,8 +135,9 @@
 .card-actions {
   display: flex;
   justify-content: space-between;
+  gap: 10rpx;
   margin-top: 18rpx;
   color: #1677ff;
-  font-size: 23rpx;
+  font-size: 22rpx;
   font-weight: 700;
 }
