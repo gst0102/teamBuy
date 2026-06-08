@@ -30,6 +30,7 @@ class Settings:
     app_host: str = env_value("APP_HOST", "127.0.0.1")
     app_port: int = env_int("APP_PORT", 8000)
     public_base_url: str = env_value("PUBLIC_BASE_URL", "")
+    admin_token: str = env_value("WECOM_ADMIN_TOKEN", "")
     database_backend: str = env_value("DATABASE_BACKEND", "postgres")
     database_url: str = env_value("DATABASE_URL", "")
     wecom_callback_token: str = env_value("WECOM_CALLBACK_TOKEN", "teamBuy-dev-token")

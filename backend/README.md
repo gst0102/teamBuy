@@ -51,6 +51,7 @@ curl http://127.0.0.1:8000/health/db
 `sync_cursor` 会在每页成功导入后持久化 `next_cursor`、`has_more`、来源和最近 payload；真实模式会按 `has_more` 循环拉取分页，服务重启或重试时从仓储里的最新 cursor 继续。
 `real-sync` also uses a persisted per-`open_kfid` task lock. A second manual trigger while `syncStatus=running` returns a running status instead of starting another cursor-advancing sync.
 Stale locks are recoverable: `WECOM_SYNC_LOCK_TIMEOUT_SECONDS` defaults to 600 seconds, and `POST /api/wecom/real-sync/unlock` can force-release a stuck lock for manual recovery.
+The unlock endpoint is protected by `WECOM_ADMIN_TOKEN`; pass it through `X-Admin-Token` or the `adminToken` query parameter.
 
 查看 mock 导入通知：
 

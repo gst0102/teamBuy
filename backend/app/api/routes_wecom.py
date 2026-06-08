@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 
 from app.api.dependencies import get_app_service, get_wecom_client, get_wecom_mock_service
 from app.core.config import settings
@@ -20,6 +20,13 @@ def _sync_response_has_more(value) -> bool:
     if isinstance(value, str):
         return value.strip().lower() in {"1", "true", "yes"}
     return bool(value)
+
+
+def _verify_admin_token(provided_token: str | None) -> None:
+    if not settings.admin_token:
+        raise HTTPException(status_code=403, detail="WECOM_ADMIN_TOKEN is not configured")
+    if provided_token != settings.admin_token:
+        raise HTTPException(status_code=403, detail="admin token verification failed")
 
 
 @router.get("/callback")
@@ -187,8 +194,11 @@ async def import_real_sync(
 def unlock_real_sync(
     open_kfid: str | None = Query(default=None),
     reason: str = Query(default="manual force release"),
+    admin_token: str | None = Query(default=None, alias="adminToken"),
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
     service: AppService = Depends(get_app_service),
 ):
+    _verify_admin_token(x_admin_token or admin_token)
     target_open_kfid = open_kfid or settings.wecom_open_kfid or "default"
     cursor = service.force_release_sync_lock(target_open_kfid, reason)
     if not cursor:

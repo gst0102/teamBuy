@@ -14,6 +14,7 @@
 - `sync_cursor` 持久化与推进：每页成功导入后记录 `next_cursor`、`has_more`、来源和最近 payload，并支持真实 `sync_msg` 按页循环拉取
 - `real-sync` 手动触发锁：同一 `open_kfid` 的同步任务运行中会返回 running 状态，避免重复触发并发推进 cursor
 - `real-sync` 锁超时/卡死恢复：超过 `WECOM_SYNC_LOCK_TIMEOUT_SECONDS` 的 running 锁可自动接管，并支持手动 unlock 接口释放
+- `real-sync/unlock` 管理令牌：强制释放同步锁必须通过 `WECOM_ADMIN_TOKEN` 校验，避免普通用户误释放
 - mock 导入成功/失败通知抽象和通知查询接口
 - 链接缩略图、来源 URL、视频 media mock 转存解析增强
 - 导入认领、卡片编辑、发布、一键复用
@@ -49,7 +50,7 @@ uvicorn app.main:app --reload
 
 ## 4. 已执行验证
 
-- `cd backend && pytest`，当前 34 项通过
+- `cd backend && pytest`，当前 35 项通过
 - `cd backend && python -m compileall app`
 
 ## 5. 已通过测试项

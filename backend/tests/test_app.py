@@ -114,18 +114,35 @@ def test_real_sync_returns_running_status_when_lock_exists(client):
     assert payload["data"]["lockedAt"] == locked.lockedAt
 
 
-def test_real_sync_unlock_releases_running_lock(client):
+def test_real_sync_unlock_releases_running_lock(client, monkeypatch):
     service = client.app.dependency_overrides[get_app_service]()
     locked = service.acquire_sync_lock("default", "mock-real-sync-response", 600)
     assert locked is not None
+    monkeypatch.setattr(settings, "admin_token", "test-admin-token")
 
-    response = client.post("/api/wecom/real-sync/unlock", params={"reason": "admin unlock"})
+    response = client.post(
+        "/api/wecom/real-sync/unlock",
+        params={"reason": "admin unlock"},
+        headers={"X-Admin-Token": "test-admin-token"},
+    )
 
     assert response.status_code == 200
     payload = response.json()["data"]
     assert payload["syncStatus"] == "failed"
     assert payload["lastError"] == "admin unlock"
     assert payload["lockedAt"] is None
+
+
+def test_real_sync_unlock_rejects_missing_admin_token(client, monkeypatch):
+    service = client.app.dependency_overrides[get_app_service]()
+    locked = service.acquire_sync_lock("default", "mock-real-sync-response", 600)
+    assert locked is not None
+    monkeypatch.setattr(settings, "admin_token", "test-admin-token")
+
+    response = client.post("/api/wecom/real-sync/unlock", params={"reason": "admin unlock"})
+
+    assert response.status_code == 403
+    assert service.get_sync_cursor("default").syncStatus == "running"
 
 
 def test_real_sync_takes_over_expired_lock(client, monkeypatch):
