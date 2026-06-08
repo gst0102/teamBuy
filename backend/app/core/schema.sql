@@ -111,6 +111,19 @@ create table if not exists sync_cursors (
     updated_at timestamptz not null default now()
 );
 
+create table if not exists media_retry_jobs (
+    id text primary key,
+    payload jsonb not null,
+    media_id text,
+    media_type text,
+    open_kfid text,
+    status text,
+    attempts integer,
+    last_attempt_at timestamptz,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
 create index if not exists idx_import_batches_status on import_batches (status);
 create index if not exists idx_import_batches_conversation on import_batches (external_user_id, conversation_id, started_at);
 create index if not exists idx_import_batches_claimed_by on import_batches (claimed_by_user_id);
@@ -133,3 +146,5 @@ create index if not exists idx_relay_entries_user on relay_entries (user_id);
 create index if not exists idx_sync_cursors_open_kfid on sync_cursors (open_kfid);
 create index if not exists idx_sync_cursors_last_synced on sync_cursors (last_synced_at);
 create unique index if not exists uq_sync_cursors_open_kfid on sync_cursors (open_kfid);
+create index if not exists idx_media_retry_jobs_status on media_retry_jobs (status, updated_at);
+create index if not exists idx_media_retry_jobs_media_id on media_retry_jobs (media_id);

@@ -5,7 +5,7 @@ from datetime import timedelta
 from uuid import uuid4
 from fastapi import HTTPException, status
 
-from app.models.domain import AppState, Card, RawMessage, RelayEntry, SyncCursor, User, ViewEvent
+from app.models.domain import AppState, Card, MediaRetryJob, RawMessage, RelayEntry, SyncCursor, User, ViewEvent
 from app.schemas.auth import MockLoginRequest
 from app.schemas.cards import CardUpdateRequest, CreateRelayRequest, RecordViewRequest
 from app.services.card_parser_service import CardParserService
@@ -188,6 +188,62 @@ class AppService:
 
     def force_release_sync_lock(self, open_kfid: str, reason: str) -> SyncCursor | None:
         return self.repo.force_release_sync_lock(open_kfid=open_kfid, reason=reason, now=now_iso())
+
+    def get_successful_media_url(self, media_id: str) -> str | None:
+        return self.repo.get_successful_media_url(media_id)
+
+    def save_media_retry_failure(
+        self,
+        media_id: str,
+        media_type: str,
+        open_kfid: str | None,
+        error_message: str,
+    ) -> MediaRetryJob:
+        now = now_iso()
+        existing = self.repo.get_media_retry_job(media_id)
+        job = MediaRetryJob(
+            id=existing.id if existing else f"media_retry_{media_id}",
+            mediaId=media_id,
+            mediaType=media_type,
+            openKfid=open_kfid,
+            status="failed",
+            attempts=(existing.attempts if existing else 0) + 1,
+            localMediaUrl=existing.localMediaUrl if existing else None,
+            errorMessage=error_message,
+            lastAttemptAt=now,
+            createdAt=existing.createdAt if existing else now,
+            updatedAt=now,
+        )
+        self.repo.save_media_retry_job(job)
+        return job
+
+    def save_media_retry_success(
+        self,
+        media_id: str,
+        media_type: str,
+        open_kfid: str | None,
+        local_media_url: str,
+    ) -> MediaRetryJob:
+        now = now_iso()
+        existing = self.repo.get_media_retry_job(media_id)
+        job = MediaRetryJob(
+            id=existing.id if existing else f"media_retry_{media_id}",
+            mediaId=media_id,
+            mediaType=media_type,
+            openKfid=open_kfid,
+            status="success",
+            attempts=(existing.attempts if existing else 0) + 1,
+            localMediaUrl=local_media_url,
+            errorMessage=None,
+            lastAttemptAt=now,
+            createdAt=existing.createdAt if existing else now,
+            updatedAt=now,
+        )
+        self.repo.save_media_retry_job(job)
+        return job
+
+    def list_media_retry_jobs(self, statuses: set[str] | None = None) -> list[dict]:
+        return [item.model_dump() for item in self.repo.list_media_retry_jobs(statuses)]
 
     def advance_sync_cursor(
         self,

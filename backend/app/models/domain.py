@@ -13,6 +13,7 @@ FollowUpStatus = Literal["pending", "followed"]
 MessageType = Literal["text", "image", "link", "location", "video", "file", "unknown"]
 SourceType = Literal["wechat_note", "miniapp_link", "mp_link", "web_link", "unknown"]
 SyncStatus = Literal["idle", "running", "success", "failed"]
+MediaRetryStatus = Literal["pending", "success", "failed"]
 
 
 class User(BaseModel):
@@ -162,6 +163,20 @@ class SyncCursor(BaseModel):
     updatedAt: str
 
 
+class MediaRetryJob(BaseModel):
+    id: str
+    mediaId: str
+    mediaType: MessageType
+    openKfid: str | None = None
+    status: MediaRetryStatus
+    attempts: int = 0
+    localMediaUrl: str | None = None
+    errorMessage: str | None = None
+    lastAttemptAt: str | None = None
+    createdAt: str
+    updatedAt: str
+
+
 class AppState(BaseModel):
     users: list[User] = Field(default_factory=list)
     import_batches: list[ImportBatch] = Field(default_factory=list)
@@ -172,3 +187,4 @@ class AppState(BaseModel):
     categories: list[Category] = Field(default_factory=list)
     import_notifications: list[ImportNotification] = Field(default_factory=list)
     sync_cursors: list[SyncCursor] = Field(default_factory=list)
+    media_retry_jobs: list[MediaRetryJob] = Field(default_factory=list)

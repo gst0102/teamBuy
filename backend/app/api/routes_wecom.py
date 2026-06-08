@@ -40,6 +40,10 @@ async def _download_sync_media(
         msg_type = message.get("msgType")
         if not media_id or msg_type not in {"image", "video"} or media_id in media_urls:
             continue
+        existing_url = service.get_successful_media_url(media_id)
+        if existing_url:
+            media_urls[media_id] = existing_url
+            continue
         try:
             downloaded = await client.download_media(media_id)
             media_urls[media_id] = service.media_storage_service.store_bytes(
@@ -50,8 +54,31 @@ async def _download_sync_media(
                 filename=downloaded.filename,
             )
         except WecomClientError as exc:
+            service.save_media_retry_failure(
+                media_id=media_id,
+                media_type=msg_type,
+                open_kfid=message.get("openKfid"),
+                error_message=str(exc),
+            )
             raise HTTPException(status_code=502, detail=str(exc)) from exc
     return media_urls
+
+
+async def _retry_media_job(job: dict, client: WecomClient, service: AppService):
+    downloaded = await client.download_media(job["mediaId"])
+    local_url = service.media_storage_service.store_bytes(
+        media_id=job["mediaId"],
+        media_type=job["mediaType"],
+        content=downloaded.content,
+        content_type=downloaded.content_type,
+        filename=downloaded.filename,
+    )
+    return service.save_media_retry_success(
+        media_id=job["mediaId"],
+        media_type=job["mediaType"],
+        open_kfid=job.get("openKfid"),
+        local_media_url=local_url,
+    )
 
 
 @router.get("/callback")
@@ -107,6 +134,41 @@ def mock_sync(payload: MockImportRequest, service: AppService = Depends(get_app_
 @router.get("/notifications", response_model=ApiResponse[list[dict]])
 def list_notifications(service: AppService = Depends(get_app_service)):
     return ApiResponse(data=service.list_import_notifications())
+
+
+@router.get("/media-retries", response_model=ApiResponse[list[dict]])
+def list_media_retries(status: str | None = Query(default=None), service: AppService = Depends(get_app_service)):
+    statuses = {status} if status else None
+    return ApiResponse(data=service.list_media_retry_jobs(statuses))
+
+
+@router.post("/media-retries/retry", response_model=ApiResponse[dict])
+async def retry_media_retries(
+    media_id: str | None = Query(default=None),
+    status: str = Query(default="failed"),
+    admin_token: str | None = Query(default=None, alias="adminToken"),
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+    client: WecomClient = Depends(get_wecom_client),
+):
+    _verify_admin_token(x_admin_token or admin_token)
+    jobs = service.list_media_retry_jobs({status})
+    if media_id:
+        jobs = [item for item in jobs if item["mediaId"] == media_id]
+    retried = []
+    failed = []
+    for job in jobs:
+        try:
+            retried.append((await _retry_media_job(job, client, service)).model_dump())
+        except WecomClientError as exc:
+            failed_job = service.save_media_retry_failure(
+                media_id=job["mediaId"],
+                media_type=job["mediaType"],
+                open_kfid=job.get("openKfid"),
+                error_message=str(exc),
+            )
+            failed.append(failed_job.model_dump())
+    return ApiResponse(data={"retried": retried, "failed": failed})
 
 
 @router.get("/config-check", response_model=ApiResponse[dict])

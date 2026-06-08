@@ -170,6 +170,96 @@ def test_real_sync_downloads_and_stores_image_video_media(client, monkeypatch, t
     assert len(list(media_dir.iterdir())) == 2
 
 
+def test_real_sync_records_media_retry_job_on_download_failure(client, monkeypatch):
+    class FailingWecomClient:
+        async def sync_msg(self, cursor=None, token=None, limit=None):
+            return {
+                "errcode": 0,
+                "errmsg": "ok",
+                "next_cursor": "cursor_media_failed",
+                "has_more": 0,
+                "msg_list": [
+                    {
+                        "msgid": "media_failed_image",
+                        "open_kfid": "wk_media_failed",
+                        "external_userid": "external_media_failed",
+                        "send_time": 1780848000,
+                        "msgtype": "image",
+                        "image": {"media_id": "media_failed_001", "filename": "cover.png"},
+                    }
+                ],
+            }
+
+        async def download_media(self, media_id):
+            from app.services.wecom_client import WecomClientError
+
+            raise WecomClientError("temporary media download failed")
+
+    monkeypatch.setattr(settings, "wecom_use_mock", False)
+    monkeypatch.setattr(settings, "wecom_open_kfid", "wk_media_failed")
+    client.app.dependency_overrides[get_wecom_client] = lambda: FailingWecomClient()
+
+    response = client.post("/api/wecom/real-sync")
+
+    assert response.status_code == 502
+    retries = client.get("/api/wecom/media-retries").json()["data"]
+    assert retries[-1]["mediaId"] == "media_failed_001"
+    assert retries[-1]["status"] == "failed"
+    assert retries[-1]["attempts"] == 1
+
+
+def test_media_retry_success_is_reused_by_next_real_sync(client, monkeypatch, tmp_path):
+    class RetryWecomClient:
+        def __init__(self):
+            self.download_calls = 0
+
+        async def sync_msg(self, cursor=None, token=None, limit=None):
+            return {
+                "errcode": 0,
+                "errmsg": "ok",
+                "next_cursor": "cursor_retry_done",
+                "has_more": 0,
+                "msg_list": [
+                    {
+                        "msgid": "media_retry_msg",
+                        "open_kfid": "wk_retry",
+                        "external_userid": "external_retry",
+                        "send_time": 1780848000,
+                        "msgtype": "image",
+                        "image": {"media_id": "media_retry_001", "filename": "cover.png"},
+                    }
+                ],
+            }
+
+        async def download_media(self, media_id):
+            self.download_calls += 1
+            return DownloadedMedia(b"image-bytes", "image/png", "cover.png")
+
+    service = client.app.dependency_overrides[get_app_service]()
+    service.save_media_retry_failure("media_retry_001", "image", "wk_retry", "temporary failure")
+    media_dir = tmp_path / "media"
+    service.media_storage_service = MediaStorageService("local", media_dir, "/media")
+    fake_client = RetryWecomClient()
+    monkeypatch.setattr(settings, "admin_token", "test-admin-token")
+    monkeypatch.setattr(settings, "wecom_use_mock", False)
+    monkeypatch.setattr(settings, "wecom_open_kfid", "wk_retry")
+    client.app.dependency_overrides[get_wecom_client] = lambda: fake_client
+
+    retry_response = client.post(
+        "/api/wecom/media-retries/retry",
+        params={"media_id": "media_retry_001"},
+        headers={"X-Admin-Token": "test-admin-token"},
+    )
+    sync_response = client.post("/api/wecom/real-sync")
+
+    assert retry_response.status_code == 200
+    assert retry_response.json()["data"]["retried"][0]["status"] == "success"
+    assert sync_response.status_code == 200
+    assert fake_client.download_calls == 1
+    pending = client.get("/api/imports/pending").json()["data"]
+    assert pending[-1]["generatedCard"]["coverUrl"].startswith("/media/")
+
+
 def test_real_sync_returns_running_status_when_lock_exists(client):
     service = client.app.dependency_overrides[get_app_service]()
     locked = service.acquire_sync_lock("default", "mock-real-sync-response", 600)

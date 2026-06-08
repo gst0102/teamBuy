@@ -17,6 +17,7 @@ def test_postgres_repository_maps_core_query_columns():
     assert {"card_id", "user_id", "status", "follow_up_status"} <= field_map["relay_entries"]
     assert {"open_kfid", "cursor_value", "has_more", "last_synced_at"} <= field_map["sync_cursors"]
     assert {"sync_status", "lock_token", "locked_at", "last_error"} <= field_map["sync_cursors"]
+    assert {"media_id", "media_type", "status", "attempts"} <= field_map["media_retry_jobs"]
 
 
 def test_postgres_repository_defines_hot_path_indexes():
@@ -33,6 +34,7 @@ def test_postgres_repository_defines_hot_path_indexes():
     assert "idx_view_events_card_date" in indexes["view_events"]
     assert "idx_relay_entries_card_status" in indexes["relay_entries"]
     assert "idx_sync_cursors_open_kfid" in indexes["sync_cursors"]
+    assert "idx_media_retry_jobs_status" in indexes["media_retry_jobs"]
 
 
 def test_postgres_repository_rejects_unknown_table_name_without_connecting():

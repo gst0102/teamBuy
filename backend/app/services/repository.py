@@ -14,6 +14,7 @@ from app.models.domain import (
     Category,
     ImportBatch,
     ImportNotification,
+    MediaRetryJob,
     RawMessage,
     RelayEntry,
     SyncCursor,
@@ -122,6 +123,18 @@ class AppRepository(Protocol):
         ...
 
     def force_release_sync_lock(self, open_kfid: str, reason: str, now: str) -> SyncCursor | None:
+        ...
+
+    def save_media_retry_job(self, job: MediaRetryJob) -> None:
+        ...
+
+    def get_media_retry_job(self, media_id: str) -> MediaRetryJob | None:
+        ...
+
+    def get_successful_media_url(self, media_id: str) -> str | None:
+        ...
+
+    def list_media_retry_jobs(self, statuses: set[str] | None = None) -> list[MediaRetryJob]:
         ...
 
 
@@ -342,6 +355,25 @@ class JsonRepository:
         self.save(state)
         return existing
 
+    def save_media_retry_job(self, job: MediaRetryJob) -> None:
+        state = self.load()
+        state.media_retry_jobs = [item for item in state.media_retry_jobs if item.id != job.id]
+        state.media_retry_jobs.append(job)
+        self.save(state)
+
+    def get_media_retry_job(self, media_id: str) -> MediaRetryJob | None:
+        return next((item for item in self.load().media_retry_jobs if item.mediaId == media_id), None)
+
+    def get_successful_media_url(self, media_id: str) -> str | None:
+        job = self.get_media_retry_job(media_id)
+        if job and job.status == "success":
+            return job.localMediaUrl
+        return None
+
+    def list_media_retry_jobs(self, statuses: set[str] | None = None) -> list[MediaRetryJob]:
+        jobs = self.load().media_retry_jobs
+        return [item for item in jobs if statuses is None or item.status in statuses]
+
 
 class PostgresRepository:
     TABLES = {
@@ -354,6 +386,7 @@ class PostgresRepository:
         "categories": "categories",
         "import_notifications": "import_notifications",
         "sync_cursors": "sync_cursors",
+        "media_retry_jobs": "media_retry_jobs",
     }
     FIELD_COLUMNS = {
         "users": [
@@ -428,6 +461,14 @@ class PostgresRepository:
             ("locked_at", "timestamptz", "lockedAt"),
             ("last_error", "text", "lastError"),
         ],
+        "media_retry_jobs": [
+            ("media_id", "text", "mediaId"),
+            ("media_type", "text", "mediaType"),
+            ("open_kfid", "text", "openKfid"),
+            ("status", "text", "status"),
+            ("attempts", "integer", "attempts"),
+            ("last_attempt_at", "timestamptz", "lastAttemptAt"),
+        ],
     }
     INDEXES = {
         "import_batches": [
@@ -461,6 +502,10 @@ class PostgresRepository:
         "sync_cursors": [
             ("idx_sync_cursors_open_kfid", "open_kfid"),
             ("idx_sync_cursors_last_synced", "last_synced_at"),
+        ],
+        "media_retry_jobs": [
+            ("idx_media_retry_jobs_status", "status, updated_at"),
+            ("idx_media_retry_jobs_media_id", "media_id"),
         ],
     }
 
@@ -802,6 +847,36 @@ class PostgresRepository:
                 },
             ).fetchone()
         return SyncCursor.model_validate(row["payload"]) if row else None
+
+    def save_media_retry_job(self, job: MediaRetryJob) -> None:
+        self._save_model("media_retry_jobs", job)
+
+    def get_media_retry_job(self, media_id: str) -> MediaRetryJob | None:
+        rows = self._list_payloads("media_retry_jobs", "media_id = %s", (media_id,), "updated_at desc, id desc")
+        return MediaRetryJob.model_validate(rows[0]) if rows else None
+
+    def get_successful_media_url(self, media_id: str) -> str | None:
+        rows = self._list_payloads(
+            "media_retry_jobs",
+            "media_id = %s and status = 'success'",
+            (media_id,),
+            "updated_at desc, id desc",
+        )
+        if not rows:
+            return None
+        return MediaRetryJob.model_validate(rows[0]).localMediaUrl
+
+    def list_media_retry_jobs(self, statuses: set[str] | None = None) -> list[MediaRetryJob]:
+        if statuses:
+            rows = self._list_payloads(
+                "media_retry_jobs",
+                "status = any(%s)",
+                (list(statuses),),
+                "updated_at desc, id desc",
+            )
+        else:
+            rows = self._list_payloads("media_retry_jobs", "true", (), "updated_at desc, id desc")
+        return [MediaRetryJob.model_validate(row) for row in rows]
 
     def init_schema(self) -> None:
         with psycopg.connect(self.database_url) as conn:

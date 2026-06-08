@@ -54,6 +54,7 @@ Stale locks are recoverable: `WECOM_SYNC_LOCK_TIMEOUT_SECONDS` defaults to 600 s
 The unlock endpoint is protected by `WECOM_ADMIN_TOKEN`; pass it through `X-Admin-Token` or the `adminToken` query parameter.
 For real image/video messages, `real-sync` downloads WeCom `media_id` assets before import and stores them through `MediaStorageService`. Local development can use `STORAGE_MODE=local`, `MEDIA_STORAGE_DIR=backend/mock/media`, and `MEDIA_PUBLIC_URL_PREFIX=/media`; future COS support can replace only the storage adapter.
 `MediaStorageService` now supports `mock`, `local`, `cos`, and `s3` modes. COS/S3 use the S3-compatible `put_object` adapter with `OBJECT_STORAGE_ENDPOINT`, `OBJECT_STORAGE_BUCKET`, credentials, and `OBJECT_STORAGE_PUBLIC_BASE_URL`.
+If media download or upload fails during real sync, the API records a `media_retry_jobs` compensation task. Admins can inspect `GET /api/wecom/media-retries` and retry with `POST /api/wecom/media-retries/retry`; successful retries are reused by the next `real-sync`.
 
 查看 mock 导入通知：
 
