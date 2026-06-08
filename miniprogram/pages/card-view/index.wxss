@@ -1,10 +1,96 @@
-.detail-actions {
+.share-hero {
+  position: relative;
+  height: 470rpx;
+  border-radius: 36rpx;
+  overflow: hidden;
+  margin-bottom: 24rpx;
+  box-shadow: 0 24rpx 54rpx rgba(31, 88, 168, 0.14);
+}
+
+.share-cover {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, #dcebff, #ffffff);
+}
+
+.share-cover.placeholder {
   display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #1677ff;
+  font-size: 40rpx;
+  font-weight: 900;
+}
+
+.share-overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 90rpx 30rpx 30rpx;
+  color: #fff;
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0), rgba(15, 23, 42, 0.82));
+}
+
+.share-brand {
+  display: inline-flex;
+  padding: 8rpx 18rpx;
+  border-radius: 999rpx;
+  background: rgba(255, 255, 255, 0.2);
+  font-size: 22rpx;
+  margin-bottom: 16rpx;
+}
+
+.share-title {
+  font-size: 44rpx;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.share-meta {
+  margin-top: 14rpx;
+  font-size: 26rpx;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.detail-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14rpx;
-  margin-top: 16rpx;
 }
 
 .detail-actions button {
-  flex: 1;
   font-size: 24rpx;
+}
+
+.detail-stats {
+  margin-top: 26rpx;
+}
+
+.stat-icon.blue {
+  background: linear-gradient(135deg, #368cff, #0066ff);
+}
+
+.stat-icon.green {
+  background: linear-gradient(135deg, #44d58a, #12b76a);
+}
+
+.stat-icon.orange {
+  background: linear-gradient(135deg, #ffb24a, #ff7a1a);
+}
+
+.detail-text {
+  margin-top: 18rpx;
+  color: #344054;
+  font-size: 28rpx;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+.field-grid {
+  margin-top: 20rpx;
+}
+
+.source-btn {
+  margin-top: 16rpx;
 }

@@ -1,16 +1,74 @@
 <view class="page-shell" wx:if="{{card}}">
-  <view class="panel">
-    <view class="title">团长管理</view>
-    <view class="muted">登录浏览 {{stats.loggedInViewers.length || 0}} 人</view>
-    <view class="muted">总 PV {{stats.pv || 0}}，匿名 PV {{stats.anonymousPv || 0}}</view>
-    <button class="ghost-btn" bindtap="handleDuplicate">一键复用整张卡片</button>
-  </view>
-  <view class="panel">
-    <view class="title" style="font-size:30rpx;">已登录浏览用户</view>
-    <block wx:for="{{stats.loggedInViewers}}" wx:key="userId">
-      <view class="muted">{{item.nickname}} - {{item.viewedAt}}</view>
-    </block>
-  </view>
-  <relay-list relays="{{stats.relayEntries || []}}" isOwner="{{true}}" bind:delete="handleDelete" bind:follow="handleFollow" />
-</view>
+  <view class="brand-bar">悦享互动宝</view>
 
+  <view class="manager-hero">
+    <view>
+      <view class="hero-title">访问详情</view>
+      <view class="hero-subtitle">查看访客、接龙名单和跟进状态。</view>
+    </view>
+    <view class="manager-visual">线索</view>
+  </view>
+
+  <view class="panel">
+    <view class="manager-card-head">
+      <view>
+        <view class="section-title">{{card.title}}</view>
+        <view class="muted">{{card.projectName || '未设置项目名'}} ｜ {{card.status}}</view>
+      </view>
+      <button class="mini-btn" bindtap="handleOpenCard">查看</button>
+    </view>
+    <view class="stat-grid manager-stats">
+      <view class="stat-item">
+        <view class="stat-icon blue">PV</view>
+        <text class="stat-value">{{stats.pv || 0}}</text>
+        <text class="stat-label">总访问</text>
+      </view>
+      <view class="stat-item">
+        <view class="stat-icon green">UV</view>
+        <text class="stat-value">{{stats.uv || 0}}</text>
+        <text class="stat-label">访客</text>
+      </view>
+      <view class="stat-item">
+        <view class="stat-icon orange">匿</view>
+        <text class="stat-value">{{summary.anonymousPv}}</text>
+        <text class="stat-label">匿名PV</text>
+      </view>
+      <view class="stat-item">
+        <view class="stat-icon purple">接</view>
+        <text class="stat-value">{{summary.relayCount}}</text>
+        <text class="stat-label">接龙</text>
+      </view>
+    </view>
+    <view class="manager-actions">
+      <button class="ghost-btn" bindtap="handleEditCard">编辑资源</button>
+      <button class="ghost-btn" bindtap="handleDuplicate">一键复用</button>
+    </view>
+  </view>
+
+  <view class="panel">
+    <view class="section-head">
+      <view class="section-title">已登录访客</view>
+      <view class="section-link">{{summary.loggedViewers}} 人</view>
+    </view>
+    <block wx:for="{{viewers}}" wx:key="userId">
+      <view class="viewer-row">
+        <image class="avatar" src="{{item.avatarUrl}}" mode="aspectFill"></image>
+        <view class="viewer-main">
+          <view class="viewer-name">{{item.nickname}}</view>
+          <view class="muted">查看了资源详情</view>
+        </view>
+        <view class="viewer-time">{{item.viewedText}}</view>
+      </view>
+    </block>
+    <view class="empty-state compact" wx:if="{{!viewers.length}}">暂无登录访客，匿名访问只计入总量。</view>
+  </view>
+
+  <view class="panel">
+    <view class="section-head">
+      <view class="section-title">接龙名单</view>
+      <view class="section-link">{{summary.pendingFollow}} 个待跟进</view>
+    </view>
+    <relay-list relays="{{relays}}" isOwner="{{true}}" bind:delete="handleDelete" bind:follow="handleFollow" />
+    <view class="empty-state compact" wx:if="{{!relays.length}}">暂无接龙线索。</view>
+  </view>
+</view>

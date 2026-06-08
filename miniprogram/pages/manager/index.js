@@ -1,10 +1,19 @@
 const api = require("../../services/api");
+const { formatTime, statusText } = require("../../utils/dashboard");
 
 Page({
   data: {
     cardId: "",
     card: null,
-    stats: null
+    stats: null,
+    viewers: [],
+    relays: [],
+    summary: {
+      loggedViewers: 0,
+      anonymousPv: 0,
+      relayCount: 0,
+      pendingFollow: 0
+    }
   },
   onLoad(query) {
     this.setData({ cardId: query.id });
@@ -18,9 +27,26 @@ Page({
       api.fetchCard(this.data.cardId),
       api.fetchStats(this.data.cardId, currentUser.id)
     ]);
+    const relays = (statsRes.data.relayEntries || []).map((item) => ({
+      ...item,
+      followUpText: statusText(item.followUpStatus),
+      createdText: formatTime(item.createdAt)
+    }));
+    const viewers = (statsRes.data.loggedInViewers || []).map((item) => ({
+      ...item,
+      viewedText: formatTime(item.viewedAt)
+    }));
     this.setData({
       card: cardRes.data,
-      stats: statsRes.data
+      stats: statsRes.data,
+      viewers,
+      relays,
+      summary: {
+        loggedViewers: viewers.length,
+        anonymousPv: statsRes.data.anonymousPv || 0,
+        relayCount: statsRes.data.relayCount || relays.length,
+        pendingFollow: relays.filter((item) => item.followUpStatus !== "followed").length
+      }
     });
   },
   async handleDelete(event) {
@@ -39,6 +65,11 @@ Page({
     const currentUser = getApp().globalData.currentUser;
     const res = await api.duplicateCard(this.data.cardId, currentUser.id);
     wx.navigateTo({ url: `/pages/card-edit/index?id=${res.data.id}` });
+  },
+  handleOpenCard() {
+    wx.navigateTo({ url: `/pages/card-view/index?id=${this.data.cardId}` });
+  },
+  handleEditCard() {
+    wx.navigateTo({ url: `/pages/card-edit/index?id=${this.data.cardId}` });
   }
 });
-

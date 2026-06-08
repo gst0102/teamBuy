@@ -1,1 +1,100 @@
+.manager-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 30rpx 0 24rpx;
+}
 
+.manager-visual {
+  width: 176rpx;
+  height: 176rpx;
+  border-radius: 48rpx;
+  background: linear-gradient(135deg, #dcebff, #ffffff);
+  color: #1677ff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 36rpx;
+  font-weight: 900;
+  box-shadow: 0 18rpx 46rpx rgba(31, 88, 168, 0.12);
+}
+
+.manager-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20rpx;
+}
+
+.mini-btn {
+  width: 120rpx;
+  height: 58rpx;
+  line-height: 58rpx;
+  border-radius: 999rpx;
+  background: #edf5ff;
+  color: #1677ff;
+  font-size: 24rpx;
+}
+
+.manager-stats {
+  margin-top: 26rpx;
+}
+
+.stat-icon.blue {
+  background: linear-gradient(135deg, #368cff, #0066ff);
+}
+
+.stat-icon.green {
+  background: linear-gradient(135deg, #44d58a, #12b76a);
+}
+
+.stat-icon.orange {
+  background: linear-gradient(135deg, #ffb24a, #ff7a1a);
+}
+
+.stat-icon.purple {
+  background: linear-gradient(135deg, #8b7cff, #6845f5);
+}
+
+.manager-actions {
+  display: flex;
+  gap: 16rpx;
+  margin-top: 24rpx;
+}
+
+.manager-actions button {
+  flex: 1;
+}
+
+.viewer-row {
+  display: flex;
+  align-items: center;
+  padding: 20rpx 0;
+  border-bottom: 1rpx solid #edf2f8;
+}
+
+.viewer-row:last-child {
+  border-bottom: none;
+}
+
+.avatar {
+  width: 70rpx;
+  height: 70rpx;
+  border-radius: 50%;
+  background: #edf5ff;
+}
+
+.viewer-main {
+  flex: 1;
+  margin-left: 18rpx;
+}
+
+.viewer-name {
+  font-size: 28rpx;
+  font-weight: 900;
+}
+
+.viewer-time {
+  color: #8a96a8;
+  font-size: 24rpx;
+}

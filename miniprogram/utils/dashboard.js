@@ -35,6 +35,15 @@ function formatTime(value) {
   return `${date.getMonth() + 1}-${date.getDate()}`;
 }
 
+function statusText(value) {
+  if (value === "followed") return "已跟进";
+  if (value === "pending") return "待跟进";
+  if (value === "deleted") return "已删除";
+  if (value === "published") return "已发布";
+  if (value === "draft") return "草稿";
+  return value || "未知";
+}
+
 function inferCategory(card = {}) {
   const text = `${card.title || ""} ${card.projectName || ""} ${card.detailText || ""}`.toLowerCase();
   if (text.includes("房") || text.includes("小区") || text.includes("花园")) return "房源";
@@ -120,6 +129,7 @@ module.exports = {
   buildDashboard,
   buildVisitGroups,
   formatTime,
+  statusText,
   getCurrentUser,
   enrichCard,
   inferTags,

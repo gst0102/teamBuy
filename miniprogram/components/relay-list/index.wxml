@@ -1,13 +1,20 @@
 <block wx:for="{{relays}}" wx:key="id">
-  <view class="panel">
-    <view class="title" style="font-size: 30rpx;">{{item.nickname}}</view>
-    <view class="muted">状态：{{item.followUpStatus}}</view>
-    <view wx:if="{{item.phone}}" class="muted">电话：{{item.phone}}</view>
-    <view wx:if="{{item.address}}" class="muted">地址：{{item.address}}</view>
-    <view wx:if="{{isOwner}}" style="display:flex; gap: 16rpx; margin-top: 18rpx;">
+  <view class="relay-card">
+    <view class="relay-head">
+      <image class="relay-avatar" src="{{item.avatarUrl}}" mode="aspectFill"></image>
+      <view class="relay-main">
+        <view class="relay-name">{{item.nickname}}</view>
+        <view class="muted">{{item.createdText || item.createdAt}}</view>
+      </view>
+      <view class="relay-status {{item.followUpStatus}}">{{item.followUpText || item.followUpStatus}}</view>
+    </view>
+    <view class="relay-fields">
+      <view wx:if="{{item.phone}}" class="relay-field">电话：{{item.phone}}</view>
+      <view wx:if="{{item.address}}" class="relay-field">地址：{{item.address}}</view>
+    </view>
+    <view wx:if="{{isOwner}}" class="relay-actions">
       <button data-id="{{item.id}}" class="ghost-btn" size="mini" bindtap="handleFollow">标记已跟进</button>
       <button data-id="{{item.id}}" class="ghost-btn" size="mini" bindtap="handleDelete">删除无效</button>
     </view>
   </view>
 </block>
-
