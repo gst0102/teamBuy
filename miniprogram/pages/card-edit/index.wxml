@@ -1,24 +1,92 @@
 <view class="page-shell" wx:if="{{card}}">
+  <view class="brand-bar">悦享互动宝</view>
+
+  <view class="edit-hero">
+    <view>
+      <view class="hero-title">资源编辑页</view>
+      <view class="hero-subtitle">调整资源内容、分类标签和接龙字段，发布后即可分享给用户访问。</view>
+    </view>
+    <view class="edit-visual">编</view>
+  </view>
+
+  <view class="preview-card">
+    <image wx:if="{{card.coverUrl}}" class="preview-cover" src="{{card.coverUrl}}" mode="aspectFill"></image>
+    <view wx:else class="preview-cover placeholder">资源</view>
+    <view class="preview-main">
+      <view class="preview-title">{{card.title || '未命名资源'}}</view>
+      <view class="muted">{{card.projectName || '未设置项目名'}} ｜ {{card.status}}</view>
+      <view class="preview-tags">
+        <block wx:for="{{categories}}" wx:key="id">
+          <text wx:if="{{item.selected}}" class="tag active">{{item.name}}</text>
+        </block>
+      </view>
+    </view>
+  </view>
+
   <view class="panel">
-    <view class="title">编辑卡片</view>
-    <view class="field-label">标题</view>
-    <input class="field-input" data-field="title" value="{{card.title}}" bindinput="handleFieldChange" />
-    <view class="field-label">项目名</view>
-    <input class="field-input" data-field="projectName" value="{{card.projectName}}" bindinput="handleFieldChange" />
-    <view class="field-label">位置</view>
-    <input class="field-input" data-field="locationText" value="{{card.locationText}}" bindinput="handleFieldChange" />
+    <view class="section-head">
+      <view class="section-title">分类标签</view>
+      <view class="section-link" bindtap="handleGoTagManage">管理标签 ></view>
+    </view>
+    <view class="tag-pick-row" wx:if="{{categories.length}}">
+      <block wx:for="{{categories}}" wx:key="id">
+        <view class="tag {{item.selected ? 'active' : ''}}" data-id="{{item.id}}" bindtap="handleCategoryToggle">{{item.name}}</view>
+      </block>
+    </view>
+    <view class="empty-state compact" wx:else>暂无标签，可先去标签管理添加。</view>
+  </view>
+
+  <view class="panel">
+    <view class="section-title">基础信息</view>
+    <view class="field-label">资源标题</view>
+    <input class="field-input" data-field="title" value="{{card.title}}" placeholder="填写资源标题" bindinput="handleFieldChange" />
+
+    <view class="field-label">项目名 / 分类说明</view>
+    <input class="field-input" data-field="projectName" value="{{card.projectName}}" placeholder="例如：滨江花园 / 社区团购" bindinput="handleFieldChange" />
+
+    <view class="field-label">封面图片链接</view>
+    <input class="field-input" data-field="coverUrl" value="{{card.coverUrl}}" placeholder="粘贴封面图片 URL" bindinput="handleFieldChange" />
+
+    <view class="field-label">详情描述</view>
+    <textarea class="field-input textarea-large" data-field="detailText" value="{{card.detailText}}" placeholder="写清楚卖点、亮点、领取方式或活动说明" bindinput="handleFieldChange"></textarea>
+  </view>
+
+  <view class="panel">
+    <view class="section-title">联系与来源</view>
+    <view class="field-label">位置 / 地址</view>
+    <input class="field-input" data-field="locationText" value="{{card.locationText}}" placeholder="例如：上海浦东新区" bindinput="handleFieldChange" />
+
     <view class="field-label">联系电话</view>
-    <input class="field-input" data-field="phone" value="{{card.phone}}" bindinput="handleFieldChange" />
+    <input class="field-input" data-field="phone" value="{{card.phone}}" type="number" placeholder="用于资源页一键拨号" bindinput="handleFieldChange" />
+
+    <view class="field-label">来源链接</view>
+    <input class="field-input" data-field="sourceUrl" value="{{card.sourceUrl}}" placeholder="可填写公众号、小程序或网页链接" bindinput="handleFieldChange" />
+  </view>
+
+  <view class="panel">
+    <view class="section-title">接龙设置</view>
     <view class="field-label">接龙说明</view>
-    <textarea class="field-input" data-field="relayNotice" value="{{card.relayNotice}}" bindinput="handleFieldChange"></textarea>
-    <view class="field-label">详情</view>
-    <textarea class="field-input" style="height: 220rpx;" data-field="detailText" value="{{card.detailText}}" bindinput="handleFieldChange"></textarea>
-    <view style="display:flex; align-items:center; justify-content:space-between; margin: 20rpx 0;">
-      <text>接龙手机号必填</text>
+    <textarea class="field-input" data-field="relayNotice" value="{{card.relayNotice}}" placeholder="例如：感兴趣请接龙，团长会尽快联系你" bindinput="handleFieldChange"></textarea>
+
+    <view class="switch-row">
+      <view>
+        <view class="switch-title">手机号必填</view>
+        <view class="muted">适合需要电话跟进的资源</view>
+      </view>
       <switch checked="{{card.relayConfig.requirePhone}}" bindchange="handleToggleRelayPhone" />
     </view>
-    <button class="primary-btn" bindtap="handleSave">保存草稿</button>
-    <button class="ghost-btn" bindtap="handlePublish" style="margin-top: 16rpx;">发布并预览</button>
+
+    <view class="switch-row">
+      <view>
+        <view class="switch-title">地址必填</view>
+        <view class="muted">适合团购配送或资料寄送</view>
+      </view>
+      <switch checked="{{card.relayConfig.requireAddress}}" bindchange="handleToggleRelayAddress" />
+    </view>
+  </view>
+
+  <view class="submit-bar">
+    <button class="ghost-btn action-btn" loading="{{saving}}" bindtap="handleSave">保存草稿</button>
+    <button class="primary-btn action-btn" loading="{{publishing}}" bindtap="handlePublish">发布并预览</button>
   </view>
 </view>
-
