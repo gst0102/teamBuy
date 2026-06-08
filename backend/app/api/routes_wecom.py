@@ -103,7 +103,12 @@ def verify_callback(
 
 
 @router.post("/callback", response_model=ApiResponse[dict])
-async def receive_callback(request: Request, service: AppService = Depends(get_app_service)):
+async def receive_callback(
+    request: Request,
+    service: AppService = Depends(get_app_service),
+    client: WecomClient = Depends(get_wecom_client),
+    mock_service: WecomMockService = Depends(get_wecom_mock_service),
+):
     raw_body = await request.body()
     try:
         payload = parse_callback_body(
@@ -118,11 +123,24 @@ async def receive_callback(request: Request, service: AppService = Depends(get_a
         )
     except (ValueError, WecomCryptoError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    fixture = payload.get("fixture", "note")
-    external_user_id = payload.get("externalUserId") or payload.get("ExternalUserID") or "external_demo"
-    conversation_id = payload.get("conversationId") or payload.get("Token") or "conv_demo"
-    result = service.trigger_mock_import(external_user_id, conversation_id, fixture)
-    return ApiResponse(message="callback received", data=result)
+    if settings.wecom_use_mock:
+        fixture = payload.get("fixture", "note")
+        external_user_id = payload.get("externalUserId") or payload.get("ExternalUserID") or "external_demo"
+        conversation_id = payload.get("conversationId") or payload.get("Token") or "conv_demo"
+        result = service.trigger_mock_import(external_user_id, conversation_id, fixture)
+        return ApiResponse(message="callback mock import completed", data={"callback": payload, "syncResult": result})
+
+    result = await _run_real_sync(
+        max_pages=10,
+        service=service,
+        client=client,
+        mock_service=mock_service,
+    )
+    return ApiResponse(
+        success=result.get("syncStatus") != "running",
+        message="callback real sync triggered",
+        data={"callback": payload, "syncResult": result},
+    )
 
 
 @router.post("/mock-sync", response_model=ApiResponse[dict])
@@ -193,21 +211,31 @@ async def import_real_sync(
     client: WecomClient = Depends(get_wecom_client),
     mock_service: WecomMockService = Depends(get_wecom_mock_service),
 ):
+    result = await _run_real_sync(max_pages, service, client, mock_service)
+    return ApiResponse(
+        success=result.get("syncStatus") != "running",
+        message="sync_msg task already running" if result.get("syncStatus") == "running" else "real sync_msg imported",
+        data=result,
+    )
+
+
+async def _run_real_sync(
+    max_pages: int,
+    service: AppService,
+    client: WecomClient,
+    mock_service: WecomMockService,
+) -> dict:
     open_kfid = settings.wecom_open_kfid or "default"
     source = "mock-real-sync-response" if settings.wecom_use_mock else "wecom-sync-msg"
     sync_lock = service.acquire_sync_lock(open_kfid, source, settings.wecom_sync_lock_timeout_seconds)
     if sync_lock is None:
         running = service.get_sync_cursor(open_kfid)
-        return ApiResponse(
-            success=False,
-            message="sync_msg task already running",
-            data={
-                "openKfid": open_kfid,
-                "syncStatus": "running",
-                "lockedAt": running.lockedAt if running else None,
-                "lockTimeoutSeconds": settings.wecom_sync_lock_timeout_seconds,
-            },
-        )
+        return {
+            "openKfid": open_kfid,
+            "syncStatus": "running",
+            "lockedAt": running.lockedAt if running else None,
+            "lockTimeoutSeconds": settings.wecom_sync_lock_timeout_seconds,
+        }
 
     cursor = sync_lock.cursor or settings.wecom_sync_cursor or None
     page_results = []
@@ -263,22 +291,19 @@ async def import_real_sync(
         raise
     service.release_sync_lock(open_kfid, sync_lock.lockToken or "", "success")
 
-    return ApiResponse(
-        message="real sync_msg imported",
-        data={
-            "source": source,
-            "openKfid": open_kfid,
-            "syncStatus": "success",
-            "pagesSynced": len(page_results),
-            "nextCursor": last_cursor,
-            "hasMore": last_has_more,
-            "importResult": {
-                "importBatchIds": imported_batch_ids,
-                "deduplicatedCount": deduplicated_count,
-            },
-            "pageResults": page_results,
+    return {
+        "source": source,
+        "openKfid": open_kfid,
+        "syncStatus": "success",
+        "pagesSynced": len(page_results),
+        "nextCursor": last_cursor,
+        "hasMore": last_has_more,
+        "importResult": {
+            "importBatchIds": imported_batch_ids,
+            "deduplicatedCount": deduplicated_count,
         },
-    )
+        "pageResults": page_results,
+    }
 
 
 @router.post("/real-sync/unlock", response_model=ApiResponse[dict])

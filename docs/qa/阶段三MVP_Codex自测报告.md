@@ -18,6 +18,7 @@
 - 真实媒体下载/转存抽象：真实 `sync_msg` 的 image/video `media_id` 会先下载并通过 `MediaStorageService` 转为本地 `/media/...` URL 再入库生成卡片
 - 对象存储适配层：`MediaStorageService` 已拆分为 `mock/local/cos/s3` 后端，COS/S3 走 S3-compatible `put_object` 上传并返回 CDN URL
 - 媒体转存失败补偿队列：真实媒体下载/上传失败会写入 `media_retry_jobs`，管理员可重试，成功后下次 `real-sync` 复用已转存 URL
+- 企业微信回调自动同步：`WECOM_USE_MOCK=false` 时 POST callback 会触发 real-sync 主链路，进入锁、游标、媒体转存和补偿队列
 - mock 导入成功/失败通知抽象和通知查询接口
 - 链接缩略图、来源 URL、视频 media mock 转存解析增强
 - 导入认领、卡片编辑、发布、一键复用
@@ -53,7 +54,7 @@ uvicorn app.main:app --reload
 
 ## 4. 已执行验证
 
-- `cd backend && pytest`，当前 41 项通过
+- `cd backend && pytest`，当前 43 项通过
 - `cd backend && python -m compileall app`
 
 ## 5. 已通过测试项

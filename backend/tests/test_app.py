@@ -15,6 +15,57 @@ def test_wecom_callback_get_verify(client):
     assert response.json() == "hello-teamBuy"
 
 
+def test_wecom_callback_post_keeps_mock_fixture_import(client):
+    response = client.post(
+        "/api/wecom/callback",
+        json={"fixture": "link", "externalUserId": "external_callback", "conversationId": "conv_callback"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()["data"]
+    assert payload["callback"]["fixture"] == "link"
+    assert len(payload["syncResult"]["importBatchIds"]) == 1
+
+
+def test_wecom_callback_post_triggers_real_sync_when_mock_disabled(client, monkeypatch):
+    class CallbackWecomClient:
+        def __init__(self):
+            self.sync_called = 0
+
+        async def sync_msg(self, cursor=None, token=None, limit=None):
+            self.sync_called += 1
+            return {
+                "errcode": 0,
+                "errmsg": "ok",
+                "next_cursor": "callback_cursor_done",
+                "has_more": 0,
+                "msg_list": [
+                    {
+                        "msgid": "callback_real_msg_001",
+                        "open_kfid": "wk_callback",
+                        "external_userid": "external_callback_real",
+                        "send_time": 1780848000,
+                        "msgtype": "text",
+                        "text": {"content": "callback real sync item"},
+                    }
+                ],
+            }
+
+    fake_client = CallbackWecomClient()
+    monkeypatch.setattr(settings, "wecom_use_mock", False)
+    monkeypatch.setattr(settings, "wecom_open_kfid", "wk_callback")
+    client.app.dependency_overrides[get_wecom_client] = lambda: fake_client
+
+    response = client.post("/api/wecom/callback", json={"Event": "kf_msg_or_event"})
+
+    assert response.status_code == 200
+    payload = response.json()["data"]
+    assert fake_client.sync_called == 1
+    assert payload["callback"]["Event"] == "kf_msg_or_event"
+    assert payload["syncResult"]["syncStatus"] == "success"
+    assert len(payload["syncResult"]["importResult"]["importBatchIds"]) == 1
+
+
 def test_wecom_config_check_reports_missing_real_fields(client):
     response = client.get("/api/wecom/config-check")
     assert response.status_code == 200
