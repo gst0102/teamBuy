@@ -9,6 +9,8 @@ def test_hot_paths_do_not_call_full_state_load_or_save():
     method_names = [
         "list_pending_imports",
         "trigger_mock_import",
+        "trigger_sync_response_import",
+        "import_synced_messages",
         "claim_import",
         "list_cards",
         "get_card",
@@ -30,7 +32,7 @@ def test_hot_paths_do_not_call_full_state_load_or_save():
 
 
 def test_import_flow_uses_single_import_artifact_transaction():
-    source = inspect.getsource(AppService.trigger_mock_import)
+    source = inspect.getsource(AppService.import_synced_messages)
     assert "save_import_artifacts" in source
     assert "save_raw_messages" not in source
     assert "save_import_batch" not in source

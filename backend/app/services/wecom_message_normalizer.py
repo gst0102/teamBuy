@@ -7,6 +7,23 @@ from app.services.time_utils import SHANGHAI
 
 
 class WecomMessageNormalizer:
+    def normalize_sync_response(
+        self,
+        payload: dict[str, Any],
+        fallback_open_kfid: str | None = None,
+    ) -> list[dict]:
+        messages = payload.get("msg_list") or payload.get("msgList") or payload.get("messages") or []
+        token = payload.get("next_cursor") or payload.get("cursor") or payload.get("token")
+        normalized: list[dict] = []
+        for message in messages:
+            enriched = {
+                "token": token,
+                "open_kfid": fallback_open_kfid,
+                **message,
+            }
+            normalized.append(self.normalize_message(enriched))
+        return normalized
+
     def normalize_messages(
         self,
         messages: list[dict[str, Any]],

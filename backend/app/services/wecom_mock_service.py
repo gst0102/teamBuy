@@ -18,6 +18,9 @@ class WecomMockService:
         }.get(fixture_name, "wecom-note-messages.json")
         return json.loads((self.mock_dir / filename).read_text(encoding="utf-8"))
 
+    def load_real_sync_response(self) -> dict:
+        return json.loads((self.mock_dir / "mock-real-sync-response.json").read_text(encoding="utf-8"))
+
     def sync_messages(self, external_user_id: str, conversation_id: str, fixture_name: str) -> list[dict]:
         messages = self.load_fixture(fixture_name)
         return self.normalizer.normalize_messages(messages, external_user_id, conversation_id)

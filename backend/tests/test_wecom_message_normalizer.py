@@ -100,3 +100,27 @@ def test_normalizer_preserves_existing_mock_shape():
     assert message["msgType"] == "link"
     assert message["content"]["title"] == "标题"
     assert message["conversationId"] == "conv_mock"
+
+
+def test_normalizer_maps_sync_response_message_list():
+    normalizer = WecomMessageNormalizer()
+    messages = normalizer.normalize_sync_response(
+        {
+            "next_cursor": "cursor_next",
+            "msg_list": [
+                {
+                    "msgid": "msg_real_001",
+                    "open_kfid": "wk_real",
+                    "external_userid": "external_real",
+                    "send_time": 1780848000,
+                    "msgtype": "text",
+                    "text": {"content": "鐪熷疄杩斿洖鏂囨湰"},
+                }
+            ],
+        }
+    )
+
+    assert messages[0]["wecomMsgId"] == "msg_real_001"
+    assert messages[0]["wecomToken"] == "cursor_next"
+    assert messages[0]["openKfid"] == "wk_real"
+    assert messages[0]["externalUserId"] == "external_real"

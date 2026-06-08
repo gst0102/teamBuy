@@ -1,0 +1,55 @@
+{
+  "errcode": 0,
+  "errmsg": "ok",
+  "next_cursor": "mock_real_cursor_002",
+  "has_more": 0,
+  "msg_list": [
+    {
+      "msgid": "real_mock_msg_001",
+      "open_kfid": "wk_mock_real_001",
+      "external_userid": "external_mock_real_001",
+      "send_time": 1780848000,
+      "msgtype": "text",
+      "text": {
+        "content": "Real sync mock text: North showroom is open, phone 13700000000."
+      }
+    },
+    {
+      "msgid": "real_mock_msg_002",
+      "open_kfid": "wk_mock_real_001",
+      "external_userid": "external_mock_real_001",
+      "send_time": 1780848010,
+      "msgtype": "image",
+      "image": {
+        "media_id": "real_mock_media_image_001",
+        "filename": "cover.jpg"
+      }
+    },
+    {
+      "msgid": "real_mock_msg_003",
+      "open_kfid": "wk_mock_real_001",
+      "external_userid": "external_mock_real_001",
+      "send_time": 1780848020,
+      "msgtype": "link",
+      "link": {
+        "title": "North showroom booking link",
+        "desc": "Weekend visit booking with phone consultation.",
+        "url": "https://example.com/real-sync-demo",
+        "picurl": "https://example.com/real-sync-cover.jpg"
+      }
+    },
+    {
+      "msgid": "real_mock_msg_004",
+      "open_kfid": "wk_mock_real_001",
+      "external_userid": "external_mock_real_001",
+      "send_time": 1780848030,
+      "msgtype": "location",
+      "location": {
+        "name": "North showroom center",
+        "address": "North district showroom center",
+        "latitude": 31.1,
+        "longitude": 121.2
+      }
+    }
+  ]
+}

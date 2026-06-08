@@ -13,6 +13,7 @@ from app.services.media_storage_service import MediaStorageService
 from app.services.message_aggregator import MessageAggregator
 from app.services.repository import AppRepository
 from app.services.time_utils import date_key, now_iso
+from app.services.wecom_message_normalizer import WecomMessageNormalizer
 from app.services.wecom_mock_service import WecomMockService
 
 
@@ -25,6 +26,7 @@ class AppService:
         parser_service: CardParserService,
         aggregator: MessageAggregator,
         notification_service: ImportNotificationService,
+        normalizer: WecomMessageNormalizer,
     ):
         self.repo = repo
         self.wecom_mock_service = wecom_mock_service
@@ -32,6 +34,7 @@ class AppService:
         self.parser_service = parser_service
         self.aggregator = aggregator
         self.notification_service = notification_service
+        self.normalizer = normalizer
 
     def _load(self) -> AppState:
         return self.repo.load()
@@ -77,8 +80,15 @@ class AppService:
         return user
 
     def trigger_mock_import(self, external_user_id: str, conversation_id: str, fixture: str) -> dict:
-        raw_messages: list[RawMessage] = []
         synced_messages = self.wecom_mock_service.sync_messages(external_user_id, conversation_id, fixture)
+        return self.import_synced_messages(synced_messages)
+
+    def trigger_sync_response_import(self, sync_response: dict, fallback_open_kfid: str | None = None) -> dict:
+        synced_messages = self.normalizer.normalize_sync_response(sync_response, fallback_open_kfid=fallback_open_kfid)
+        return self.import_synced_messages(synced_messages)
+
+    def import_synced_messages(self, synced_messages: list[dict]) -> dict:
+        raw_messages: list[RawMessage] = []
         incoming_wecom_msg_ids = {item["wecomMsgId"] for item in synced_messages if item.get("wecomMsgId")}
         existing_wecom_msg_ids = self.repo.existing_wecom_msg_ids(incoming_wecom_msg_ids)
         for item in synced_messages:

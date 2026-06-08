@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
-from app.api.dependencies import get_app_service, get_wecom_client
+from app.api.dependencies import get_app_service, get_wecom_client, get_wecom_mock_service
 from app.core.config import settings
 from app.schemas.common import ApiResponse
 from app.schemas.imports import MockImportRequest
@@ -10,6 +10,7 @@ from app.services.app_service import AppService
 from app.services.wecom_client import WecomClient, WecomClientError
 from app.services.wecom_crypto import WecomCryptoError, decrypt_aes_message, verify_signature
 from app.services.wecom_event_service import parse_callback_body
+from app.services.wecom_mock_service import WecomMockService
 
 
 router = APIRouter(prefix="/api/wecom", tags=["wecom"])
@@ -86,11 +87,30 @@ def config_check(client: WecomClient = Depends(get_wecom_client)):
 
 
 @router.post("/real-sync", response_model=ApiResponse[dict])
-async def real_sync(client: WecomClient = Depends(get_wecom_client)):
+async def import_real_sync(
+    service: AppService = Depends(get_app_service),
+    client: WecomClient = Depends(get_wecom_client),
+    mock_service: WecomMockService = Depends(get_wecom_mock_service),
+):
     if settings.wecom_use_mock:
-        raise HTTPException(status_code=400, detail="WECOM_USE_MOCK=true，当前不会调用真实 sync_msg")
-    try:
-        data = await client.sync_msg(cursor=settings.wecom_sync_cursor or None)
-    except WecomClientError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-    return ApiResponse(message="real sync_msg completed", data=data)
+        sync_response = mock_service.load_real_sync_response()
+        source = "mock-real-sync-response"
+    else:
+        try:
+            sync_response = await client.sync_msg(cursor=settings.wecom_sync_cursor or None)
+        except WecomClientError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        source = "wecom-sync-msg"
+
+    result = service.trigger_sync_response_import(
+        sync_response,
+        fallback_open_kfid=settings.wecom_open_kfid or None,
+    )
+    return ApiResponse(
+        message="real sync_msg imported",
+        data={
+            "source": source,
+            "syncResponse": sync_response,
+            "importResult": result,
+        },
+    )

@@ -18,10 +18,24 @@ def test_wecom_config_check_reports_missing_real_fields(client):
     assert isinstance(payload["data"]["missing"], list)
 
 
-def test_real_sync_is_guarded_while_mock_enabled(client):
+def test_real_sync_uses_mock_real_response_while_mock_enabled(client):
     response = client.post("/api/wecom/real-sync")
-    assert response.status_code == 400
-    assert "WECOM_USE_MOCK=true" in response.json()["detail"]
+    assert response.status_code == 200
+    payload = response.json()["data"]
+    assert payload["source"] == "mock-real-sync-response"
+    assert payload["syncResponse"]["errcode"] == 0
+    assert len(payload["importResult"]["importBatchIds"]) >= 1
+
+
+def test_real_sync_mock_response_is_idempotent(client):
+    first = client.post("/api/wecom/real-sync")
+    second = client.post("/api/wecom/real-sync")
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    second_payload = second.json()["data"]["importResult"]
+    assert second_payload["importBatchIds"] == []
+    assert second_payload["deduplicatedCount"] == 4
 
 
 def test_health_reports_database_configuration(client):

@@ -8,19 +8,22 @@ from app.services.import_notification_service import ImportNotificationService
 from app.services.media_storage_service import MediaStorageService
 from app.services.message_aggregator import MessageAggregator
 from app.services.repository import build_repository
-from app.services.wecom_mock_service import WecomMockService
 from app.services.wecom_client import WecomClient
+from app.services.wecom_message_normalizer import WecomMessageNormalizer
+from app.services.wecom_mock_service import WecomMockService
 
 
 _repo = build_repository(settings.database_backend, settings.database_url, settings.data_file)
 seed_runtime_state(_repo, BACKEND_DIR / "mock")
+_wecom_mock_service = WecomMockService(BACKEND_DIR / "mock")
 _service = AppService(
     repo=_repo,
-    wecom_mock_service=WecomMockService(BACKEND_DIR / "mock"),
+    wecom_mock_service=_wecom_mock_service,
     media_storage_service=MediaStorageService(),
     parser_service=CardParserService(),
     aggregator=MessageAggregator(),
     notification_service=ImportNotificationService(),
+    normalizer=WecomMessageNormalizer(),
 )
 _wecom_client = WecomClient(settings)
 
@@ -31,3 +34,7 @@ def get_app_service() -> AppService:
 
 def get_wecom_client() -> WecomClient:
     return _wecom_client
+
+
+def get_wecom_mock_service() -> WecomMockService:
+    return _wecom_mock_service
