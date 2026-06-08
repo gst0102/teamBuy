@@ -48,6 +48,9 @@ Page({
     }
   },
   handleOpenLibrary() {
-    wx.navigateTo({ url: "/pages/library/index" });
+    wx.switchTab({ url: "/pages/library/index" });
+  },
+  handleOpenVisits() {
+    wx.switchTab({ url: "/pages/visits/index" });
   }
 });

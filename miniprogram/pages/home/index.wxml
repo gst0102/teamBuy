@@ -1,0 +1,120 @@
+<view class="page-shell">
+  <view class="brand-bar">悦享互动宝</view>
+
+  <view class="home-hero">
+    <view class="hero-copy">
+      <view class="hero-title">微信内容<text class="hero-highlight">资源助手</text></view>
+      <view class="hero-subtitle">发给企业微信客服，自动整理成你的资源库。</view>
+      <view class="feature-row">
+        <text class="feature-pill">自动整理</text>
+        <text class="feature-pill">生成页面</text>
+        <text class="feature-pill">追踪访问</text>
+        <text class="feature-pill">访问提醒</text>
+      </view>
+      <button class="primary-btn hero-btn" bindtap="handleGoImports">立即发给客服</button>
+      <view class="hero-note">支持图片 / 视频 / 文字 / 文件 / 链接等</view>
+    </view>
+    <view class="hero-visual">
+      <view class="phone-card">
+        <view class="phone-line long"></view>
+        <view class="phone-line"></view>
+        <view class="phone-tile blue"></view>
+        <view class="phone-tile green"></view>
+      </view>
+      <view class="float-badge wx">微</view>
+      <view class="float-badge link">链</view>
+      <view class="float-badge file">文</view>
+    </view>
+  </view>
+
+  <view class="panel">
+    <view class="stat-grid">
+      <view class="stat-item">
+        <view class="stat-icon blue">资</view>
+        <text class="stat-value">{{totalResources}}</text>
+        <text class="stat-label">我的资源</text>
+      </view>
+      <view class="stat-item">
+        <view class="stat-icon green">访</view>
+        <text class="stat-value">{{totalUv}}</text>
+        <text class="stat-label">访问人数</text>
+      </view>
+      <view class="stat-item">
+        <view class="stat-icon orange">热</view>
+        <text class="stat-value">{{totalPv}}</text>
+        <text class="stat-label">访问总量</text>
+      </view>
+      <view class="stat-item">
+        <view class="stat-icon purple">接</view>
+        <text class="stat-value">{{totalRelay}}</text>
+        <text class="stat-label">接龙线索</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="panel shortcut-panel">
+    <view class="shortcut-item" bindtap="handleGoImports">
+      <view class="shortcut-icon blue">房</view>
+      <view class="shortcut-title">房源发布</view>
+      <view class="shortcut-desc">一键生成房源页</view>
+    </view>
+    <view class="shortcut-item" bindtap="handleGoImports">
+      <view class="shortcut-icon orange">团</view>
+      <view class="shortcut-title">团购发布</view>
+      <view class="shortcut-desc">创建团购接龙</view>
+    </view>
+    <view class="shortcut-item" bindtap="handleGoVisits">
+      <view class="shortcut-icon green">访</view>
+      <view class="shortcut-title">谁看过我</view>
+      <view class="shortcut-desc">查看访问线索</view>
+    </view>
+    <view class="shortcut-item" bindtap="handleGoLibrary">
+      <view class="shortcut-icon purple">库</view>
+      <view class="shortcut-title">我的资源库</view>
+      <view class="shortcut-desc">管理全部资源</view>
+    </view>
+  </view>
+
+  <view class="panel">
+    <view class="section-head">
+      <view class="section-title">谁看过我</view>
+      <view class="section-link" bindtap="handleGoVisits">查看全部 ></view>
+    </view>
+    <view class="visitor-row" wx:if="{{viewers.length}}">
+      <block wx:for="{{viewers}}" wx:key="userId">
+        <view class="visitor-card">
+          <image class="avatar" src="{{item.avatarUrl}}" mode="aspectFill"></image>
+          <view class="visitor-name">{{item.nickname}}</view>
+          <view class="visitor-desc">{{item.timeText}}</view>
+        </view>
+      </block>
+    </view>
+    <view class="empty-state" wx:else>还没有登录访客，匿名访问只会计入总量。</view>
+  </view>
+
+  <view class="panel">
+    <view class="section-head">
+      <view class="section-title">今日热门资源</view>
+      <view class="section-link" bindtap="handleGoLibrary">查看全部 ></view>
+    </view>
+    <scroll-view scroll-x class="hot-scroll" wx:if="{{hotResources.length}}">
+      <block wx:for="{{hotResources}}" wx:key="id">
+        <view class="hot-card" data-id="{{item.id}}" bindtap="handleOpenResource">
+          <image wx:if="{{item.coverUrl}}" class="hot-cover" src="{{item.coverUrl}}" mode="aspectFill"></image>
+          <view wx:else class="hot-cover placeholder">资源</view>
+          <view class="hot-title">{{item.title}}</view>
+          <view class="resource-meta">访问 {{item.stats.pv}} · 接龙 {{item.stats.relayCount}}</view>
+        </view>
+      </block>
+    </scroll-view>
+    <view class="empty-state" wx:else>暂无热门资源，先发给客服生成一张卡片吧。</view>
+  </view>
+
+  <view class="invite-banner" bindtap="handleInvitePlaceholder">
+    <view>
+      <view class="invite-title">邀请好友使用，双方得会员天数</view>
+      <view class="invite-desc">多邀多得，免费解锁更多功能</view>
+    </view>
+    <view class="invite-btn">即将开放</view>
+  </view>
+</view>

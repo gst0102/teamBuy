@@ -1,9 +1,90 @@
 <view class="page-shell">
-  <view class="panel">
-    <view class="title">素材库</view>
-    <input class="field-input" placeholder="按标题搜索素材" bindinput="handleKeywordChange" />
-    <button class="ghost-btn" bindtap="handleSearch">搜索</button>
+  <view class="brand-bar">悦享互动宝</view>
+  <view class="library-hero">
+    <view>
+      <view class="hero-title">我的资源库</view>
+      <view class="hero-subtitle">支持手动添加 / 企微客服自动归档</view>
+    </view>
+    <view class="library-visual">库</view>
   </view>
-  <card-preview wx:for="{{cards}}" wx:key="id" card="{{item}}" bind:open="handleOpen" bind:manage="handleManage" />
-</view>
 
+  <view class="search-box">
+    <input class="search-input" placeholder="搜索标题 / 标签 / 来源" bindinput="handleKeywordChange" confirm-type="search" bindconfirm="handleSearch" />
+    <button class="search-btn" bindtap="handleSearch">搜索</button>
+  </view>
+
+  <view class="quick-actions">
+    <view class="quick-action" bindtap="handleManualAdd">
+      <view class="quick-icon blue">+</view>
+      <view>手动添加</view>
+    </view>
+    <view class="quick-action" bindtap="handleGoImports">
+      <view class="quick-icon green">微</view>
+      <view>发给客服</view>
+    </view>
+    <view class="quick-action" bindtap="handleTagPlaceholder">
+      <view class="quick-icon orange">签</view>
+      <view>管理标签</view>
+    </view>
+  </view>
+
+  <view class="chip-row">
+    <block wx:for="{{filters}}" wx:key="*this">
+      <view class="chip {{activeFilter === item ? 'active' : ''}}" data-filter="{{item}}" bindtap="handleFilter">{{item}}</view>
+    </block>
+  </view>
+
+  <view class="tag-row">
+    <text class="tag green">学区房 ×</text>
+    <text class="tag orange">水果团购 ×</text>
+    <text class="tag purple">合同模板 ×</text>
+    <text class="tag pink">精选视频 ×</text>
+    <text class="tag add">+</text>
+  </view>
+
+  <view class="panel">
+    <view class="stat-grid">
+      <view class="stat-item">
+        <view class="stat-icon blue">资</view>
+        <text class="stat-value">{{stats.total}}</text>
+        <text class="stat-label">资源总数</text>
+      </view>
+      <view class="stat-item">
+        <view class="stat-icon green">增</view>
+        <text class="stat-value">{{displayCards.length}}</text>
+        <text class="stat-label">当前筛选</text>
+      </view>
+      <view class="stat-item">
+        <view class="stat-icon purple">签</view>
+        <text class="stat-value">{{stats.tags}}</text>
+        <text class="stat-label">分类数量</text>
+      </view>
+      <view class="stat-item">
+        <view class="stat-icon orange">热</view>
+        <text class="stat-value">{{stats.today}}</text>
+        <text class="stat-label">访问总量</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="card-grid" wx:if="{{displayCards.length}}">
+    <block wx:for="{{displayCards}}" wx:key="id">
+      <view class="resource-card">
+        <image wx:if="{{item.coverUrl}}" class="resource-cover" src="{{item.coverUrl}}" mode="aspectFill" data-id="{{item.id}}" bindtap="handleView"></image>
+        <view wx:else class="resource-cover placeholder" data-id="{{item.id}}" bindtap="handleView">{{item.categoryName}}</view>
+        <view class="resource-title">{{item.title}}</view>
+        <view style="margin-top: 12rpx;">
+          <text class="tag">{{item.categoryName}}</text>
+        </view>
+        <view class="resource-source">来源：{{item.importBatchId ? '客服接收' : '手动添加'}}</view>
+        <view class="resource-meta">浏览 {{item.stats.pv}} ｜ 访客 {{item.stats.uv}}</view>
+        <view class="card-actions">
+          <text data-id="{{item.id}}" bindtap="handleManage">访问记录 ↗</text>
+          <text data-id="{{item.id}}" bindtap="handleOpen">编辑</text>
+        </view>
+      </view>
+    </block>
+  </view>
+
+  <view class="empty-state" wx:else>暂无资源。可以先发给客服，自动生成资源卡片。</view>
+</view>

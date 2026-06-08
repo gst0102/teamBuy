@@ -1,1 +1,153 @@
+.library-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 30rpx 0 24rpx;
+}
 
+.library-visual {
+  width: 180rpx;
+  height: 180rpx;
+  border-radius: 48rpx;
+  background: linear-gradient(135deg, #dcebff, #ffffff);
+  color: #1677ff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 44rpx;
+  font-weight: 900;
+  box-shadow: 0 18rpx 46rpx rgba(31, 88, 168, 0.12);
+}
+
+.search-box {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+  padding: 12rpx 12rpx 12rpx 24rpx;
+  background: rgba(255, 255, 255, 0.94);
+  border-radius: 999rpx;
+  margin-bottom: 24rpx;
+  box-shadow: 0 14rpx 36rpx rgba(31, 88, 168, 0.08);
+}
+
+.search-input {
+  flex: 1;
+  font-size: 28rpx;
+}
+
+.search-btn {
+  width: 128rpx;
+  height: 64rpx;
+  line-height: 64rpx;
+  border-radius: 999rpx;
+  color: #fff;
+  background: #1677ff;
+  font-size: 24rpx;
+}
+
+.quick-actions {
+  display: flex;
+  gap: 18rpx;
+  margin-bottom: 24rpx;
+}
+
+.quick-action {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12rpx;
+  padding: 24rpx 12rpx;
+  border-radius: 26rpx;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 14rpx 36rpx rgba(31, 88, 168, 0.08);
+  font-size: 26rpx;
+  font-weight: 800;
+}
+
+.quick-icon {
+  width: 54rpx;
+  height: 54rpx;
+  border-radius: 18rpx;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 900;
+}
+
+.quick-icon.blue,
+.stat-icon.blue {
+  background: linear-gradient(135deg, #368cff, #0066ff);
+}
+
+.quick-icon.green,
+.stat-icon.green {
+  background: linear-gradient(135deg, #44d58a, #12b76a);
+}
+
+.quick-icon.orange,
+.stat-icon.orange {
+  background: linear-gradient(135deg, #ffb24a, #ff7a1a);
+}
+
+.stat-icon.purple {
+  background: linear-gradient(135deg, #8b7cff, #6845f5);
+}
+
+.tag-row {
+  display: flex;
+  gap: 14rpx;
+  flex-wrap: wrap;
+  margin: 18rpx 0 24rpx;
+}
+
+.tag.green {
+  background: #dcfae6;
+  color: #079455;
+}
+
+.tag.orange {
+  background: #fff1df;
+  color: #f97316;
+}
+
+.tag.purple {
+  background: #eee8ff;
+  color: #6d45f5;
+}
+
+.tag.pink {
+  background: #ffe4ee;
+  color: #e83e75;
+}
+
+.tag.add {
+  background: #e9f3ff;
+  color: #1677ff;
+  font-size: 30rpx;
+  padding: 4rpx 22rpx;
+}
+
+.resource-cover.placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #1677ff;
+  font-weight: 900;
+}
+
+.resource-source {
+  margin-top: 14rpx;
+  color: #526070;
+  font-size: 22rpx;
+}
+
+.card-actions {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 18rpx;
+  color: #1677ff;
+  font-size: 23rpx;
+  font-weight: 700;
+}

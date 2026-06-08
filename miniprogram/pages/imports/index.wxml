@@ -1,22 +1,58 @@
 <view class="page-shell">
-  <view class="panel">
-    <view class="title">待认领导入</view>
-    <view class="muted">本地阶段通过 mock 企业微信消息生成待认领草稿。</view>
-    <button class="primary-btn" bindtap="handleMockImport">生成一条 mock 导入</button>
-    <button class="ghost-btn" bindtap="handleOpenLibrary" style="margin-top: 16rpx;">进入素材库</button>
+  <view class="brand-bar">悦享互动宝</view>
+  <view class="imports-hero">
+    <view>
+      <view class="hero-title">发给客服</view>
+      <view class="hero-subtitle">把图片、视频、文字、文件、链接发给企业微信客服，系统自动整理成资源卡片。</view>
+    </view>
+    <view class="imports-visual">企微</view>
   </view>
+
+  <view class="panel">
+    <view class="section-head">
+      <view class="section-title">自动归档入口</view>
+      <view class="section-link">v0.1 联调版</view>
+    </view>
+    <view class="step-row">
+      <view class="step-item">
+        <view class="step-dot">1</view>
+        <view>发给企业微信客服</view>
+      </view>
+      <view class="step-item">
+        <view class="step-dot">2</view>
+        <view>自动生成资源草稿</view>
+      </view>
+      <view class="step-item">
+        <view class="step-dot">3</view>
+        <view>认领编辑并分享</view>
+      </view>
+    </view>
+    <button class="primary-btn" bindtap="handleMockImport">生成一条 mock 导入</button>
+    <button class="ghost-btn" bindtap="handleOpenLibrary" style="margin-top: 16rpx;">进入我的资源库</button>
+  </view>
+
   <view class="panel" wx:if="{{notifications.length}}">
-    <view class="title" style="font-size:30rpx;">导入通知</view>
+    <view class="section-title">自动归档结果</view>
     <block wx:for="{{notifications}}" wx:key="id">
-      <view class="muted">{{item.message}}</view>
+      <view class="notice-row">
+        <view class="notice-dot {{item.status}}"></view>
+        <view class="muted">{{item.message}}</view>
+      </view>
     </block>
   </view>
+
+  <view class="section-head">
+    <view class="section-title">待认领导入</view>
+    <view class="section-link" bindtap="handleOpenVisits">查看访问 ></view>
+  </view>
   <block wx:for="{{imports}}" wx:key="id">
-    <view class="panel">
-      <view class="title" style="font-size:30rpx;">{{item.titleCandidate}}</view>
-      <view class="muted">状态：{{item.status}}</view>
-      <view class="muted">来源：{{item.sourceType}}</view>
+    <view class="import-card">
+      <view class="import-main">
+        <view class="import-title">{{item.titleCandidate}}</view>
+        <view class="muted">状态：{{item.status}} ｜ 来源：{{item.sourceType}}</view>
+      </view>
       <button class="ghost-btn" data-id="{{item.id}}" bindtap="handleClaim">认领并编辑</button>
     </view>
   </block>
+  <view class="empty-state" wx:if="{{!imports.length && !loading}}">暂无待认领内容。真实企微打通后，客户发来的内容会出现在这里。</view>
 </view>

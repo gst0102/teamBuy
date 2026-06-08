@@ -8,7 +8,7 @@ Page({
   onLoad() {
     const app = getApp();
     if (app.globalData.currentUser) {
-      wx.redirectTo({ url: "/pages/library/index" });
+      wx.switchTab({ url: "/pages/home/index" });
     }
   },
   handleNicknameChange(event) {
@@ -23,7 +23,7 @@ Page({
       const app = getApp();
       app.globalData.currentUser = res.data;
       wx.setStorageSync("currentUser", res.data);
-      wx.navigateTo({ url: "/pages/imports/index" });
+      wx.switchTab({ url: "/pages/home/index" });
     } catch (error) {
       wx.showToast({ title: "登录失败", icon: "none" });
     }

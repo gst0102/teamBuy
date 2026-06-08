@@ -1,0 +1,70 @@
+<view class="page-shell">
+  <view class="brand-bar">悦享互动宝</view>
+
+  <view class="profile-card" wx:if="{{user}}">
+    <image class="profile-avatar" src="{{user.avatarUrl}}" mode="aspectFill"></image>
+    <view class="profile-main">
+      <view class="profile-name">{{user.nickname}}</view>
+      <view class="profile-sub">微信内容资源助手</view>
+    </view>
+    <button class="edit-btn" bindtap="handleSettingsPlaceholder">编辑资料</button>
+  </view>
+
+  <view class="member-card" bindtap="handleMemberPlaceholder">
+    <view>
+      <view class="member-title">Pro 会员</view>
+      <view class="member-desc">更多资源容量、访问记录和自动整理权益</view>
+    </view>
+    <view class="member-btn">即将开放</view>
+  </view>
+
+  <view class="panel">
+    <view class="stat-grid">
+      <view class="stat-item">
+        <view class="stat-icon blue">资</view>
+        <text class="stat-value">{{totalResources}}</text>
+        <text class="stat-label">我的资源</text>
+      </view>
+      <view class="stat-item">
+        <view class="stat-icon green">访</view>
+        <text class="stat-value">{{totalPv}}</text>
+        <text class="stat-label">访问总量</text>
+      </view>
+      <view class="stat-item">
+        <view class="stat-icon orange">线</view>
+        <text class="stat-value">{{totalRelay}}</text>
+        <text class="stat-label">接龙线索</text>
+      </view>
+      <view class="stat-item">
+        <view class="stat-icon purple">奖</view>
+        <text class="stat-value">--</text>
+        <text class="stat-label">邀请权益</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="panel menu-panel">
+    <view class="menu-item" bindtap="handleGoLibrary">
+      <text>我的资源库</text>
+      <text class="menu-arrow">></text>
+    </view>
+    <view class="menu-item" bindtap="handleGoVisits">
+      <text>访问记录</text>
+      <text class="menu-arrow">></text>
+    </view>
+    <view class="menu-item" bindtap="handleMemberPlaceholder">
+      <text>会员中心</text>
+      <text class="menu-arrow">即将开放</text>
+    </view>
+    <view class="menu-item" bindtap="handleMemberPlaceholder">
+      <text>邀请好友</text>
+      <text class="menu-arrow">即将开放</text>
+    </view>
+    <view class="menu-item" bindtap="handleSettingsPlaceholder">
+      <text>设置中心</text>
+      <text class="menu-arrow">></text>
+    </view>
+  </view>
+
+  <button class="ghost-btn logout-btn" bindtap="handleLogout">退出登录</button>
+</view>

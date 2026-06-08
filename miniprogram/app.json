@@ -1,20 +1,60 @@
 {
   "pages": [
-    "pages/login/index",
-    "pages/imports/index",
+    "pages/home/index",
     "pages/library/index",
+    "pages/imports/index",
+    "pages/visits/index",
+    "pages/profile/index",
+    "pages/login/index",
     "pages/card-edit/index",
     "pages/card-view/index",
     "pages/manager/index"
   ],
   "window": {
-    "navigationBarTitleText": "teamBuy",
-    "navigationBarBackgroundColor": "#f7f4ea",
+    "navigationBarTitleText": "悦享互动宝",
+    "navigationBarBackgroundColor": "#eef6ff",
     "navigationBarTextStyle": "black",
-    "backgroundColor": "#f7f4ea",
+    "backgroundColor": "#eef6ff",
     "backgroundTextStyle": "light"
+  },
+  "tabBar": {
+    "color": "#9aa4b2",
+    "selectedColor": "#1677ff",
+    "backgroundColor": "#ffffff",
+    "borderStyle": "white",
+    "list": [
+      {
+        "pagePath": "pages/home/index",
+        "text": "首页",
+        "iconPath": "static/tab/shouye-a.png",
+        "selectedIconPath": "static/tab/shouye-b.png"
+      },
+      {
+        "pagePath": "pages/library/index",
+        "text": "资源库",
+        "iconPath": "static/tab/ziyuan-a.png",
+        "selectedIconPath": "static/tab/ziyuan-b.png"
+      },
+      {
+        "pagePath": "pages/imports/index",
+        "text": "发给客服",
+        "iconPath": "static/tab/tianjiakefu.png",
+        "selectedIconPath": "static/tab/tianjiakefu.png"
+      },
+      {
+        "pagePath": "pages/visits/index",
+        "text": "访问记录",
+        "iconPath": "static/tab/jilu-a.png",
+        "selectedIconPath": "static/tab/jilu-b.png"
+      },
+      {
+        "pagePath": "pages/profile/index",
+        "text": "我的",
+        "iconPath": "static/tab/wode-a.png",
+        "selectedIconPath": "static/tab/wode-b.png"
+      }
+    ]
   },
   "style": "v2",
   "sitemapLocation": "sitemap.json"
 }
-

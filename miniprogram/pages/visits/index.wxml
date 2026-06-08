@@ -1,0 +1,82 @@
+<view class="page-shell">
+  <view class="brand-bar">悦享互动宝</view>
+  <view class="visits-hero">
+    <view>
+      <view class="hero-title">访问记录</view>
+      <view class="hero-subtitle">查看每个资源卡片的访客与互动行为</view>
+    </view>
+    <view class="visits-visual">线索</view>
+  </view>
+
+  <view class="range-tabs">
+    <block wx:for="{{ranges}}" wx:key="key">
+      <view class="range-tab {{activeRange === item.key ? 'active' : ''}}" data-key="{{item.key}}" bindtap="handleRangeChange">{{item.label}}</view>
+    </block>
+  </view>
+
+  <view class="panel">
+    <view class="stat-grid">
+      <view class="stat-item">
+        <view class="stat-icon blue">客</view>
+        <text class="stat-value">{{summary.totalUv}}</text>
+        <text class="stat-label">访客</text>
+      </view>
+      <view class="stat-item">
+        <view class="stat-icon green">访</view>
+        <text class="stat-value">{{summary.totalPv}}</text>
+        <text class="stat-label">总访问</text>
+      </view>
+      <view class="stat-item">
+        <view class="stat-icon orange">重</view>
+        <text class="stat-value">{{summary.repeatVisits}}</text>
+        <text class="stat-label">重复访问</text>
+      </view>
+      <view class="stat-item">
+        <view class="stat-icon purple">意</view>
+        <text class="stat-value">{{summary.highIntent}}</text>
+        <text class="stat-label">高意向</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="chip-row visits-filter">
+    <block wx:for="{{visitFilters}}" wx:key="key">
+      <text class="chip {{activeVisitFilter === item.key ? 'active' : ''}}" data-key="{{item.key}}" bindtap="handleVisitFilterChange">{{item.label}}</text>
+    </block>
+  </view>
+
+  <block wx:for="{{groups}}" wx:key="id">
+    <view class="visit-group">
+      <view class="visit-resource">
+        <image wx:if="{{item.coverUrl}}" class="visit-cover" src="{{item.coverUrl}}" mode="aspectFill"></image>
+        <view wx:else class="visit-cover placeholder">{{item.categoryName}}</view>
+        <view class="visit-info" bindtap="handleOpenCard" data-id="{{item.id}}">
+          <view class="visit-title">{{item.title}}</view>
+          <view class="muted">访问 {{item.stats.pv}} ｜ 访客 {{item.stats.uv}}</view>
+        </view>
+        <button class="mini-btn" data-id="{{item.id}}" bindtap="handleOpenManager">查看详情</button>
+      </view>
+      <block wx:for="{{item.viewers}}" wx:key="userId">
+        <view class="visit-row">
+          <image class="avatar small" src="{{item.avatarUrl}}" mode="aspectFill"></image>
+          <view class="visit-row-main">
+            <view class="visit-name">{{item.nickname}}</view>
+            <view class="muted">{{item.actionLabel}}</view>
+          </view>
+          <view class="visit-time">{{item.timeText}}</view>
+        </view>
+      </block>
+      <view class="empty-state compact" wx:if="{{!item.viewers.length}}">暂无登录访客，匿名访问只计入总量。</view>
+    </view>
+  </block>
+
+  <view class="empty-state" wx:if="{{!groups.length}}">暂无匹配的访问记录，先发布或分享一个资源吧。</view>
+
+  <view class="intent-banner" wx:if="{{summary.highIntent}}">
+    <view>
+      <view class="intent-title">高意向提醒</view>
+      <view class="intent-desc">{{summary.highIntent}} 个资源出现重复访问或接龙线索，建议及时跟进。</view>
+    </view>
+    <view class="intent-btn">去跟进</view>
+  </view>
+</view>

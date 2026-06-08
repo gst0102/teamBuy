@@ -1,0 +1,51 @@
+const api = require("../../services/api");
+const { buildDashboard, getCurrentUser } = require("../../utils/dashboard");
+
+Page({
+  data: {
+    user: null,
+    totalResources: 0,
+    totalPv: 0,
+    totalRelay: 0
+  },
+  onShow() {
+    const currentUser = getCurrentUser();
+    if (!currentUser) {
+      wx.reLaunch({ url: "/pages/login/index" });
+      return;
+    }
+    this.setData({ user: currentUser });
+    this.loadProfileStats();
+  },
+  async loadProfileStats() {
+    const currentUser = getCurrentUser();
+    try {
+      const res = await api.fetchCards({ ownerUserId: currentUser.id });
+      const dashboard = buildDashboard(res.data || []);
+      this.setData({
+        totalResources: dashboard.totalResources,
+        totalPv: dashboard.totalPv,
+        totalRelay: dashboard.totalRelay
+      });
+    } catch (error) {
+      wx.showToast({ title: "我的数据加载失败", icon: "none" });
+    }
+  },
+  handleGoLibrary() {
+    wx.switchTab({ url: "/pages/library/index" });
+  },
+  handleGoVisits() {
+    wx.switchTab({ url: "/pages/visits/index" });
+  },
+  handleMemberPlaceholder() {
+    wx.showToast({ title: "会员权益将在 v0.2 开放", icon: "none" });
+  },
+  handleSettingsPlaceholder() {
+    wx.showToast({ title: "设置中心后续开放", icon: "none" });
+  },
+  handleLogout() {
+    wx.removeStorageSync("currentUser");
+    getApp().globalData.currentUser = null;
+    wx.reLaunch({ url: "/pages/login/index" });
+  }
+});

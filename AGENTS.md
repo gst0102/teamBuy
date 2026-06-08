@@ -4,6 +4,50 @@
 
 所有架构设计、功能开发、测试验收、Bug 修复、上线检查，默认都应遵循本文件规则。
 
+## 0. 项目知识库与 Codex 启动必读
+
+聊天记录是临时记忆，仓库文档才是长期记忆。每个新 Codex 会话开始前，必须优先读取以下文件，再决定是否开发：
+
+```text
+AGENTS.md
+docs/project-memory.md
+docs/decisions.md
+docs/pitfalls.md
+docs/dev-log.md
+docs/handoff-latest.md
+```
+
+启动后先执行：
+
+```text
+git status --short --branch
+git diff --stat
+```
+
+在输出接手理解前，不要直接改代码。接手理解至少包含：
+
+- 项目目标
+- 当前代码状态
+- 已确认的重要决策
+- 当前风险
+- 下一步建议执行顺序
+
+每次阶段性结束或上下文变长时，必须更新：
+
+```text
+docs/dev-log.md
+docs/decisions.md
+docs/pitfalls.md
+docs/handoff-latest.md
+```
+
+固定提示词模板保存在：
+
+```text
+docs/prompts/codex-start.md
+docs/prompts/codex-handoff.md
+```
+
 ## 1. 禁止操作
 
 禁止批量删除文件或目录。
@@ -104,6 +148,8 @@ docs/qa/功能名称_复测与回归报告.md
 用户负责最终业务判断和上线确认。
 
 AI 可以辅助测试和验收，但最终上线必须由用户人工确认。
+
+页面图地址为："d:\Desktop\myprojects\teamBuy\docs\png"
 
 ## 3. 标准开发 / 测试 / 验收工作流
 
