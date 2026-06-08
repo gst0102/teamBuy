@@ -44,6 +44,8 @@ class Settings:
     wecom_api_base_url: str = env_value("WECOM_API_BASE_URL", "https://qyapi.weixin.qq.com")
     wecom_use_mock: bool = env_value("WECOM_USE_MOCK", "true").lower() in {"1", "true", "yes"}
     storage_mode: str = env_value("STORAGE_MODE", "mock")
+    media_storage_dir: Path = ROOT_DIR / env_value("MEDIA_STORAGE_DIR", "backend/mock/media")
+    media_public_url_prefix: str = env_value("MEDIA_PUBLIC_URL_PREFIX", "/media")
     data_file: Path = ROOT_DIR / env_value("DATA_FILE", "backend/mock/runtime-state.json")
 
     def missing_database_fields(self) -> list[str]:

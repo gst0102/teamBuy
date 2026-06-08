@@ -19,7 +19,11 @@ _wecom_mock_service = WecomMockService(BACKEND_DIR / "mock")
 _service = AppService(
     repo=_repo,
     wecom_mock_service=_wecom_mock_service,
-    media_storage_service=MediaStorageService(),
+    media_storage_service=MediaStorageService(
+        storage_mode=settings.storage_mode,
+        storage_dir=settings.media_storage_dir,
+        public_url_prefix=settings.media_public_url_prefix,
+    ),
     parser_service=CardParserService(),
     aggregator=MessageAggregator(),
     notification_service=ImportNotificationService(),

@@ -11,6 +11,13 @@ class WecomClientError(RuntimeError):
     pass
 
 
+class DownloadedMedia:
+    def __init__(self, content: bytes, content_type: str | None = None, filename: str | None = None):
+        self.content = content
+        self.content_type = content_type
+        self.filename = filename
+
+
 class WecomClient:
     def __init__(self, settings: Settings):
         self.settings = settings
@@ -62,3 +69,28 @@ class WecomClient:
             raise WecomClientError(f"sync_msg 失败: {data}")
         return data
 
+    async def download_media(self, media_id: str) -> DownloadedMedia:
+        access_token = await self.get_access_token()
+        async with httpx.AsyncClient(base_url=self.settings.wecom_api_base_url, timeout=30) as client:
+            response = await client.get(
+                "/cgi-bin/media/get",
+                params={"access_token": access_token, "media_id": media_id},
+            )
+        content_type = response.headers.get("content-type", "")
+        if "application/json" in content_type:
+            data = response.json()
+            if data.get("errcode") != 0:
+                raise WecomClientError(f"download media failed: {data}")
+        response.raise_for_status()
+        return DownloadedMedia(
+            content=response.content,
+            content_type=content_type,
+            filename=self._filename_from_disposition(response.headers.get("content-disposition", "")),
+        )
+
+    def _filename_from_disposition(self, disposition: str) -> str | None:
+        marker = "filename="
+        if marker not in disposition:
+            return None
+        value = disposition.split(marker, 1)[-1].strip().strip('"')
+        return value or None

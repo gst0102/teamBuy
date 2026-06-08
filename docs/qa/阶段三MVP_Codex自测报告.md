@@ -15,6 +15,7 @@
 - `real-sync` 手动触发锁：同一 `open_kfid` 的同步任务运行中会返回 running 状态，避免重复触发并发推进 cursor
 - `real-sync` 锁超时/卡死恢复：超过 `WECOM_SYNC_LOCK_TIMEOUT_SECONDS` 的 running 锁可自动接管，并支持手动 unlock 接口释放
 - `real-sync/unlock` 管理令牌：强制释放同步锁必须通过 `WECOM_ADMIN_TOKEN` 校验，避免普通用户误释放
+- 真实媒体下载/转存抽象：真实 `sync_msg` 的 image/video `media_id` 会先下载并通过 `MediaStorageService` 转为本地 `/media/...` URL 再入库生成卡片
 - mock 导入成功/失败通知抽象和通知查询接口
 - 链接缩略图、来源 URL、视频 media mock 转存解析增强
 - 导入认领、卡片编辑、发布、一键复用
@@ -50,7 +51,7 @@ uvicorn app.main:app --reload
 
 ## 4. 已执行验证
 
-- `cd backend && pytest`，当前 35 项通过
+- `cd backend && pytest`，当前 36 项通过
 - `cd backend && python -m compileall app`
 
 ## 5. 已通过测试项
@@ -80,7 +81,7 @@ uvicorn app.main:app --reload
 
 - TC-002 回调 POST 接收：已实现 JSON/mock 与 XML 加密消息解析入口，真实字段需账号实测
 - TC-003 `sync_msg` 拉取：已实现真实客户端骨架，当前未用真实凭证执行
-- TC-007/TC-008 媒体转存：当前为本地 mock URL，占位逻辑已通，未接真实下载
+- TC-007/TC-008 媒体转存：已实现真实下载接口抽象和本地 `/media` 转存；仍需企业微信真实账号端到端验收
 - TC-018 卡片编辑保存：已实现页面与接口，未补页面自动化
 - TC-021 电话拨号：页面已接入，需小程序环境人工确认
 - TC-022 字段复制：组件已接入，需小程序环境人工确认

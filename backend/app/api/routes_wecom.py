@@ -29,6 +29,31 @@ def _verify_admin_token(provided_token: str | None) -> None:
         raise HTTPException(status_code=403, detail="admin token verification failed")
 
 
+async def _download_sync_media(
+    messages: list[dict],
+    client: WecomClient,
+    service: AppService,
+) -> dict[str, str]:
+    media_urls: dict[str, str] = {}
+    for message in messages:
+        media_id = message.get("mediaId")
+        msg_type = message.get("msgType")
+        if not media_id or msg_type not in {"image", "video"} or media_id in media_urls:
+            continue
+        try:
+            downloaded = await client.download_media(media_id)
+            media_urls[media_id] = service.media_storage_service.store_bytes(
+                media_id=media_id,
+                media_type=msg_type,
+                content=downloaded.content,
+                content_type=downloaded.content_type,
+                filename=downloaded.filename,
+            )
+        except WecomClientError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return media_urls
+
+
 @router.get("/callback")
 def verify_callback(
     msg_signature: str | None = Query(default=None),
@@ -138,10 +163,14 @@ async def import_real_sync(
                 except WecomClientError as exc:
                     raise HTTPException(status_code=502, detail=str(exc)) from exc
 
-            result = service.trigger_sync_response_import(
+            synced_messages = service.normalize_sync_response(
                 sync_response,
                 fallback_open_kfid=settings.wecom_open_kfid or None,
             )
+            media_url_by_id = {}
+            if not settings.wecom_use_mock:
+                media_url_by_id = await _download_sync_media(synced_messages, client, service)
+            result = service.import_synced_messages(synced_messages, media_url_by_id=media_url_by_id)
             next_cursor = sync_response.get("next_cursor") or sync_response.get("cursor") or sync_response.get("token")
             has_more = _sync_response_has_more(sync_response.get("has_more"))
             sync_cursor = service.advance_sync_cursor(

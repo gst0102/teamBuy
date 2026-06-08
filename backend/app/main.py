@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.api.routes_auth import router as auth_router
 from app.api.routes_cards import router as cards_router
@@ -25,6 +26,13 @@ app.include_router(auth_router)
 app.include_router(imports_router)
 app.include_router(cards_router)
 app.include_router(wecom_router)
+
+settings.media_storage_dir.mkdir(parents=True, exist_ok=True)
+app.mount(
+    settings.media_public_url_prefix,
+    StaticFiles(directory=settings.media_storage_dir),
+    name="media",
+)
 
 
 @app.get("/health")

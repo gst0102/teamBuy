@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from app.api.dependencies import get_app_service, get_wecom_client
 from app.core.config import settings
+from app.services.media_storage_service import MediaStorageService
+from app.services.wecom_client import DownloadedMedia
 
 
 def test_wecom_callback_get_verify(client):
@@ -98,6 +100,74 @@ def test_real_sync_paginates_and_persists_cursor(client, monkeypatch):
     assert payload["nextCursor"] == "cursor_done"
     assert payload["hasMore"] is False
     assert len(payload["importResult"]["importBatchIds"]) == 2
+
+
+def test_real_sync_downloads_and_stores_image_video_media(client, monkeypatch, tmp_path):
+    class FakeWecomClient:
+        def __init__(self):
+            self.downloaded_media_ids = []
+
+        async def sync_msg(self, cursor=None, token=None, limit=None):
+            return {
+                "errcode": 0,
+                "errmsg": "ok",
+                "next_cursor": "cursor_media_done",
+                "has_more": 0,
+                "msg_list": [
+                    {
+                        "msgid": "media_msg_text",
+                        "open_kfid": "wk_media",
+                        "external_userid": "external_media",
+                        "send_time": 1780848000,
+                        "msgtype": "text",
+                        "text": {"content": "media item with phone 13700000000"},
+                    },
+                    {
+                        "msgid": "media_msg_image",
+                        "open_kfid": "wk_media",
+                        "external_userid": "external_media",
+                        "send_time": 1780848001,
+                        "msgtype": "image",
+                        "image": {"media_id": "media_image_001", "filename": "cover.png"},
+                    },
+                    {
+                        "msgid": "media_msg_video",
+                        "open_kfid": "wk_media",
+                        "external_userid": "external_media",
+                        "send_time": 1780848002,
+                        "msgtype": "video",
+                        "video": {"media_id": "media_video_001", "filename": "room.mp4"},
+                    },
+                ],
+            }
+
+        async def download_media(self, media_id):
+            self.downloaded_media_ids.append(media_id)
+            if media_id == "media_image_001":
+                return DownloadedMedia(b"image-bytes", "image/png", "cover.png")
+            return DownloadedMedia(b"video-bytes", "video/mp4", "room.mp4")
+
+    service = client.app.dependency_overrides[get_app_service]()
+    media_dir = tmp_path / "media"
+    service.media_storage_service = MediaStorageService(
+        storage_mode="local",
+        storage_dir=media_dir,
+        public_url_prefix="/media",
+    )
+    fake_client = FakeWecomClient()
+    monkeypatch.setattr(settings, "wecom_use_mock", False)
+    monkeypatch.setattr(settings, "wecom_open_kfid", "wk_media")
+    client.app.dependency_overrides[get_wecom_client] = lambda: fake_client
+
+    response = client.post("/api/wecom/real-sync")
+
+    assert response.status_code == 200
+    assert set(fake_client.downloaded_media_ids) == {"media_image_001", "media_video_001"}
+    pending = client.get("/api/imports/pending").json()["data"]
+    card = pending[-1]["generatedCard"]
+    assert card["coverUrl"].startswith("/media/")
+    assert any(item["type"] == "video" and item["url"].startswith("/media/") for item in card["media"])
+    assert len(list(media_dir.iterdir())) == 2
 
 
 def test_real_sync_returns_running_status_when_lock_exists(client):
