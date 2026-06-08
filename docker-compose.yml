@@ -19,6 +19,7 @@ services:
     build:
       context: ./backend
       args:
+        # Default to Tsinghua PyPI mirror for faster dependency install in China.
         PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}
     env_file:
       - ./backend/.env
