@@ -89,3 +89,45 @@ def test_json_repository_persists_sync_cursor(tmp_path):
     assert loaded is not None
     assert loaded.cursor == "cursor_next"
     assert loaded.hasMore is True
+
+
+def test_json_repository_sync_lock_blocks_duplicate_runs(tmp_path):
+    repo = JsonRepository(tmp_path / "state.json")
+
+    first = repo.acquire_sync_lock(
+        open_kfid="wk_lock",
+        source="wecom-sync-msg",
+        lock_token="lock_1",
+        now="2026-06-08T10:00:00+08:00",
+    )
+    second = repo.acquire_sync_lock(
+        open_kfid="wk_lock",
+        source="wecom-sync-msg",
+        lock_token="lock_2",
+        now="2026-06-08T10:00:01+08:00",
+    )
+
+    assert first is not None
+    assert first.syncStatus == "running"
+    assert first.lockToken == "lock_1"
+    assert second is None
+
+    released = repo.release_sync_lock(
+        open_kfid="wk_lock",
+        lock_token="lock_1",
+        status="success",
+        error_message=None,
+        now="2026-06-08T10:00:02+08:00",
+    )
+    third = repo.acquire_sync_lock(
+        open_kfid="wk_lock",
+        source="wecom-sync-msg",
+        lock_token="lock_3",
+        now="2026-06-08T10:00:03+08:00",
+    )
+
+    assert released is not None
+    assert released.syncStatus == "success"
+    assert released.lockToken is None
+    assert third is not None
+    assert third.lockToken == "lock_3"

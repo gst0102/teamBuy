@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from uuid import uuid4
 from fastapi import HTTPException, status
 
 from app.models.domain import AppState, Card, RawMessage, RelayEntry, SyncCursor, User, ViewEvent
@@ -148,6 +149,29 @@ class AppService:
     def get_sync_cursor(self, open_kfid: str) -> SyncCursor | None:
         return self.repo.get_sync_cursor(open_kfid)
 
+    def acquire_sync_lock(self, open_kfid: str, source: str) -> SyncCursor | None:
+        return self.repo.acquire_sync_lock(
+            open_kfid=open_kfid,
+            source=source,
+            lock_token=uuid4().hex,
+            now=now_iso(),
+        )
+
+    def release_sync_lock(
+        self,
+        open_kfid: str,
+        lock_token: str,
+        status: str,
+        error_message: str | None = None,
+    ) -> SyncCursor | None:
+        return self.repo.release_sync_lock(
+            open_kfid=open_kfid,
+            lock_token=lock_token,
+            status=status,
+            error_message=error_message,
+            now=now_iso(),
+        )
+
     def advance_sync_cursor(
         self,
         open_kfid: str,
@@ -166,6 +190,10 @@ class AppService:
             lastSource=source,
             lastPayload=payload,
             lastSyncedAt=now,
+            syncStatus=existing.syncStatus if existing else "idle",
+            lockToken=existing.lockToken if existing else None,
+            lockedAt=existing.lockedAt if existing else None,
+            lastError=existing.lastError if existing else None,
             createdAt=existing.createdAt if existing else now,
             updatedAt=now,
         )

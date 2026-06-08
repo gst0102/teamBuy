@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.api.dependencies import get_wecom_client
+from app.api.dependencies import get_app_service, get_wecom_client
 from app.core.config import settings
 
 
@@ -98,6 +98,20 @@ def test_real_sync_paginates_and_persists_cursor(client, monkeypatch):
     assert payload["nextCursor"] == "cursor_done"
     assert payload["hasMore"] is False
     assert len(payload["importResult"]["importBatchIds"]) == 2
+
+
+def test_real_sync_returns_running_status_when_lock_exists(client):
+    service = client.app.dependency_overrides[get_app_service]()
+    locked = service.acquire_sync_lock("default", "mock-real-sync-response")
+    assert locked is not None
+
+    response = client.post("/api/wecom/real-sync")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["success"] is False
+    assert payload["data"]["syncStatus"] == "running"
+    assert payload["data"]["lockedAt"] == locked.lockedAt
 
 
 def test_health_reports_database_configuration(client):

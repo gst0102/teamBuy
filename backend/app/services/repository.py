@@ -101,6 +101,19 @@ class AppRepository(Protocol):
     def save_sync_cursor(self, cursor: SyncCursor) -> None:
         ...
 
+    def acquire_sync_lock(self, open_kfid: str, source: str, lock_token: str, now: str) -> SyncCursor | None:
+        ...
+
+    def release_sync_lock(
+        self,
+        open_kfid: str,
+        lock_token: str,
+        status: str,
+        error_message: str | None,
+        now: str,
+    ) -> SyncCursor | None:
+        ...
+
 
 class JsonRepository:
     def __init__(self, data_file: Path):
@@ -244,6 +257,53 @@ class JsonRepository:
         state.sync_cursors.append(cursor)
         self.save(state)
 
+    def acquire_sync_lock(self, open_kfid: str, source: str, lock_token: str, now: str) -> SyncCursor | None:
+        state = self.load()
+        existing = next((item for item in state.sync_cursors if item.openKfid == open_kfid), None)
+        if existing and existing.syncStatus == "running":
+            return None
+        cursor = SyncCursor(
+            id=existing.id if existing else f"sync_cursor_{open_kfid}",
+            openKfid=open_kfid,
+            cursor=existing.cursor if existing else None,
+            hasMore=existing.hasMore if existing else False,
+            lastSource=source,
+            lastPayload=existing.lastPayload if existing else {},
+            lastSyncedAt=existing.lastSyncedAt if existing else now,
+            syncStatus="running",
+            lockToken=lock_token,
+            lockedAt=now,
+            lastError=None,
+            createdAt=existing.createdAt if existing else now,
+            updatedAt=now,
+        )
+        state.sync_cursors = [item for item in state.sync_cursors if item.id != cursor.id]
+        state.sync_cursors.append(cursor)
+        self.save(state)
+        return cursor
+
+    def release_sync_lock(
+        self,
+        open_kfid: str,
+        lock_token: str,
+        status: str,
+        error_message: str | None,
+        now: str,
+    ) -> SyncCursor | None:
+        state = self.load()
+        existing = next((item for item in state.sync_cursors if item.openKfid == open_kfid), None)
+        if not existing or existing.lockToken != lock_token:
+            return existing
+        existing.syncStatus = status
+        existing.lockToken = None
+        existing.lockedAt = None
+        existing.lastError = error_message
+        existing.updatedAt = now
+        state.sync_cursors = [item for item in state.sync_cursors if item.id != existing.id]
+        state.sync_cursors.append(existing)
+        self.save(state)
+        return existing
+
 
 class PostgresRepository:
     TABLES = {
@@ -325,6 +385,10 @@ class PostgresRepository:
             ("has_more", "boolean", "hasMore"),
             ("last_source", "text", "lastSource"),
             ("last_synced_at", "timestamptz", "lastSyncedAt"),
+            ("sync_status", "text", "syncStatus"),
+            ("lock_token", "text", "lockToken"),
+            ("locked_at", "timestamptz", "lockedAt"),
+            ("last_error", "text", "lastError"),
         ],
     }
     INDEXES = {
@@ -548,6 +612,114 @@ class PostgresRepository:
 
     def save_sync_cursor(self, cursor: SyncCursor) -> None:
         self._save_model("sync_cursors", cursor)
+
+    def acquire_sync_lock(self, open_kfid: str, source: str, lock_token: str, now: str) -> SyncCursor | None:
+        payload = {
+            "id": f"sync_cursor_{open_kfid}",
+            "openKfid": open_kfid,
+            "cursor": None,
+            "hasMore": False,
+            "lastSource": source,
+            "lastPayload": {},
+            "lastSyncedAt": now,
+            "syncStatus": "running",
+            "lockToken": lock_token,
+            "lockedAt": now,
+            "lastError": None,
+            "createdAt": now,
+            "updatedAt": now,
+        }
+        with psycopg.connect(self.database_url, row_factory=dict_row) as conn:
+            row = conn.execute(
+                """
+                insert into sync_cursors (
+                    id, payload, created_at, updated_at, open_kfid, cursor_value, has_more,
+                    last_source, last_synced_at, sync_status, lock_token, locked_at, last_error
+                )
+                values (
+                    %(id)s, %(payload)s::jsonb, %(created_at)s::timestamptz, %(updated_at)s::timestamptz,
+                    %(open_kfid)s, null, false, %(last_source)s, %(last_synced_at)s::timestamptz,
+                    'running', %(lock_token)s, %(locked_at)s::timestamptz, null
+                )
+                on conflict (open_kfid) do update set
+                    payload = jsonb_set(
+                        jsonb_set(
+                            jsonb_set(
+                                jsonb_set(
+                                    jsonb_set(sync_cursors.payload, '{syncStatus}', '"running"'::jsonb),
+                                    '{lockToken}', to_jsonb(%(lock_token)s::text)
+                                ),
+                                '{lockedAt}', to_jsonb(%(locked_at)s::text)
+                            ),
+                            '{lastError}', 'null'::jsonb
+                        ),
+                        '{updatedAt}', to_jsonb(%(updated_at)s::text)
+                    ),
+                    updated_at = %(updated_at)s::timestamptz,
+                    last_source = %(last_source)s,
+                    sync_status = 'running',
+                    lock_token = %(lock_token)s,
+                    locked_at = %(locked_at)s::timestamptz,
+                    last_error = null
+                where sync_cursors.sync_status is distinct from 'running'
+                returning payload
+                """,
+                {
+                    "id": payload["id"],
+                    "payload": json.dumps(payload, ensure_ascii=False),
+                    "created_at": now,
+                    "updated_at": now,
+                    "open_kfid": open_kfid,
+                    "last_source": source,
+                    "last_synced_at": now,
+                    "lock_token": lock_token,
+                    "locked_at": now,
+                },
+            ).fetchone()
+        return SyncCursor.model_validate(row["payload"]) if row else None
+
+    def release_sync_lock(
+        self,
+        open_kfid: str,
+        lock_token: str,
+        status: str,
+        error_message: str | None,
+        now: str,
+    ) -> SyncCursor | None:
+        with psycopg.connect(self.database_url, row_factory=dict_row) as conn:
+            row = conn.execute(
+                """
+                update sync_cursors set
+                    payload = jsonb_set(
+                        jsonb_set(
+                            jsonb_set(
+                                jsonb_set(
+                                    jsonb_set(payload, '{syncStatus}', to_jsonb(%(status)s::text)),
+                                    '{lockToken}', 'null'::jsonb
+                                ),
+                                '{lockedAt}', 'null'::jsonb
+                            ),
+                            '{lastError}', coalesce(to_jsonb(%(error_message)s::text), 'null'::jsonb)
+                        ),
+                        '{updatedAt}', to_jsonb(%(updated_at)s::text)
+                    ),
+                    updated_at = %(updated_at)s::timestamptz,
+                    sync_status = %(status)s,
+                    lock_token = null,
+                    locked_at = null,
+                    last_error = %(error_message)s
+                where open_kfid = %(open_kfid)s and lock_token = %(lock_token)s
+                returning payload
+                """,
+                {
+                    "open_kfid": open_kfid,
+                    "lock_token": lock_token,
+                    "status": status,
+                    "error_message": error_message,
+                    "updated_at": now,
+                },
+            ).fetchone()
+        return SyncCursor.model_validate(row["payload"]) if row else self.get_sync_cursor(open_kfid)
 
     def init_schema(self) -> None:
         with psycopg.connect(self.database_url) as conn:

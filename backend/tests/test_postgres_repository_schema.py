@@ -16,6 +16,7 @@ def test_postgres_repository_maps_core_query_columns():
     assert {"card_id", "viewer_user_id", "anonymous_id", "date_key"} <= field_map["view_events"]
     assert {"card_id", "user_id", "status", "follow_up_status"} <= field_map["relay_entries"]
     assert {"open_kfid", "cursor_value", "has_more", "last_synced_at"} <= field_map["sync_cursors"]
+    assert {"sync_status", "lock_token", "locked_at", "last_error"} <= field_map["sync_cursors"]
 
 
 def test_postgres_repository_defines_hot_path_indexes():

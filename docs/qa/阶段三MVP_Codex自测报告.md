@@ -12,6 +12,7 @@
 - `sync_msg` 标准化适配层：将真实 text/image/link/video/location 消息映射到内部统一消息结构
 - `real-sync` 完整入口：mock 真实响应或真实 `sync_msg` 响应都会进入 normalizer -> 幂等过滤 -> 事务写入导入产物主链路
 - `sync_cursor` 持久化与推进：每页成功导入后记录 `next_cursor`、`has_more`、来源和最近 payload，并支持真实 `sync_msg` 按页循环拉取
+- `real-sync` 手动触发锁：同一 `open_kfid` 的同步任务运行中会返回 running 状态，避免重复触发并发推进 cursor
 - mock 导入成功/失败通知抽象和通知查询接口
 - 链接缩略图、来源 URL、视频 media mock 转存解析增强
 - 导入认领、卡片编辑、发布、一键复用
@@ -47,7 +48,7 @@ uvicorn app.main:app --reload
 
 ## 4. 已执行验证
 
-- `cd backend && pytest`，当前 28 项通过
+- `cd backend && pytest`，当前 30 项通过
 - `cd backend && python -m compileall app`
 
 ## 5. 已通过测试项

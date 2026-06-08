@@ -12,6 +12,7 @@ RelayStatus = Literal["active", "deleted"]
 FollowUpStatus = Literal["pending", "followed"]
 MessageType = Literal["text", "image", "link", "location", "video", "file", "unknown"]
 SourceType = Literal["wechat_note", "miniapp_link", "mp_link", "web_link", "unknown"]
+SyncStatus = Literal["idle", "running", "success", "failed"]
 
 
 class User(BaseModel):
@@ -153,6 +154,10 @@ class SyncCursor(BaseModel):
     lastSource: str
     lastPayload: dict = Field(default_factory=dict)
     lastSyncedAt: str
+    syncStatus: SyncStatus = "idle"
+    lockToken: str | None = None
+    lockedAt: str | None = None
+    lastError: str | None = None
     createdAt: str
     updatedAt: str
 

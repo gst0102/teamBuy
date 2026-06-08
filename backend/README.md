@@ -49,6 +49,7 @@ curl http://127.0.0.1:8000/health/db
 真实 `sync_msg` 返回数据先进入 `app/services/wecom_message_normalizer.py` 标准化层，统一映射为内部消息结构，再进入聚合、解析、事务写入主链路。后续拿到企业微信真实样例时，优先修 normalizer，不要直接改业务主链路。
 `POST /api/wecom/real-sync` 已接入完整主链路：`WECOM_USE_MOCK=true` 时读取 `backend/mock/mock-real-sync-response.json`，认证通过并切到 `WECOM_USE_MOCK=false` 后只把数据源替换为真实 `sync_msg` 客户端，后续仍复用同一套 normalizer、幂等过滤和事务写入逻辑。
 `sync_cursor` 会在每页成功导入后持久化 `next_cursor`、`has_more`、来源和最近 payload；真实模式会按 `has_more` 循环拉取分页，服务重启或重试时从仓储里的最新 cursor 继续。
+`real-sync` also uses a persisted per-`open_kfid` task lock. A second manual trigger while `syncStatus=running` returns a running status instead of starting another cursor-advancing sync.
 
 查看 mock 导入通知：
 

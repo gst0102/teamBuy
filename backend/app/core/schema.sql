@@ -103,6 +103,10 @@ create table if not exists sync_cursors (
     has_more boolean,
     last_source text,
     last_synced_at timestamptz,
+    sync_status text,
+    lock_token text,
+    locked_at timestamptz,
+    last_error text,
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now()
 );
