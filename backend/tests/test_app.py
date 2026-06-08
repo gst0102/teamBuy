@@ -522,6 +522,31 @@ def test_claim_import_and_publish_flow(client):
     assert publish.json()["data"]["status"] == "published"
 
 
+def test_manual_create_card_flow(client):
+    login = client.post("/api/auth/mock-login", json={"nickname": "手动发布者"}).json()["data"]
+    response = client.post(
+        "/api/cards",
+        json={
+            "ownerUserId": login["id"],
+            "title": "手动添加资源",
+            "detailText": "这是一条手动添加的资源详情",
+            "projectName": "悦享测试",
+            "locationText": "上海",
+            "phone": "13900000000",
+            "relayConfig": {"enabled": True, "requirePhone": True, "requireAddress": False},
+        },
+    )
+
+    assert response.status_code == 200
+    card = response.json()["data"]
+    assert card["ownerUserId"] == login["id"]
+    assert card["status"] == "draft"
+    assert card["title"] == "手动添加资源"
+
+    cards = client.get("/api/cards", params={"ownerUserId": login["id"]}).json()["data"]
+    assert any(item["id"] == card["id"] for item in cards)
+
+
 def test_anonymous_and_logged_in_view_stats_are_isolated(client):
     login = client.post("/api/auth/mock-login", json={"nickname": "浏览用户"}).json()["data"]
     card_id = "card_seed_001"

@@ -6,6 +6,7 @@
     "pages/visits/index",
     "pages/profile/index",
     "pages/login/index",
+    "pages/resource-create/index",
     "pages/card-edit/index",
     "pages/card-view/index",
     "pages/manager/index"

@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, Query
 
 from app.api.dependencies import get_app_service
 from app.schemas.cards import (
+    CardCreateRequest,
     CardUpdateRequest,
     CreateRelayRequest,
     DuplicateCardRequest,
@@ -26,6 +27,11 @@ def list_cards(
     service: AppService = Depends(get_app_service),
 ):
     return ApiResponse(data=service.list_cards(owner_user_id=ownerUserId, keyword=keyword, category_id=categoryId))
+
+
+@router.post("/cards", response_model=ApiResponse[dict])
+def create_card(payload: CardCreateRequest, service: AppService = Depends(get_app_service)):
+    return ApiResponse(data=service.create_card(payload).model_dump())
 
 
 @router.get("/cards/{card_id}", response_model=ApiResponse[dict])
@@ -76,4 +82,3 @@ def delete_relay(relay_id: str, operatorUserId: str = Query(...), service: AppSe
 @router.post("/relays/{relay_id}/follow-up", response_model=ApiResponse[dict])
 def mark_followed(relay_id: str, payload: FollowUpRelayRequest, service: AppService = Depends(get_app_service)):
     return ApiResponse(data=service.mark_followed(relay_id, payload.operatorUserId).model_dump())
-

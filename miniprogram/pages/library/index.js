@@ -77,7 +77,7 @@ Page({
     wx.switchTab({ url: "/pages/imports/index" });
   },
   handleManualAdd() {
-    wx.showToast({ title: "请先通过客服导入后编辑", icon: "none" });
+    wx.navigateTo({ url: "/pages/resource-create/index" });
   },
   handleTagPlaceholder() {
     wx.showToast({ title: "标签管理将在后续开放", icon: "none" });

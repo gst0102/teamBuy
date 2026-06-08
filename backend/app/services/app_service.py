@@ -5,9 +5,9 @@ from datetime import timedelta
 from uuid import uuid4
 from fastapi import HTTPException, status
 
-from app.models.domain import AppState, Card, MediaRetryJob, RawMessage, RelayEntry, SyncCursor, User, ViewEvent
+from app.models.domain import AppState, Card, MediaRetryJob, RawMessage, RelayConfig, RelayEntry, SyncCursor, User, ViewEvent
 from app.schemas.auth import MockLoginRequest
-from app.schemas.cards import CardUpdateRequest, CreateRelayRequest, RecordViewRequest
+from app.schemas.cards import CardCreateRequest, CardUpdateRequest, CreateRelayRequest, RecordViewRequest
 from app.services.card_parser_service import CardParserService
 from app.services.helpers import mask_nickname, new_id
 from app.services.import_notification_service import ImportNotificationService
@@ -310,6 +310,35 @@ class AppService:
         card = self.repo.get_card(card_id)
         if not card:
             raise HTTPException(status_code=404, detail="卡片不存在")
+        return card
+
+    def create_card(self, payload: CardCreateRequest) -> Card:
+        user = self.repo.get_user(payload.ownerUserId)
+        if not user:
+            raise HTTPException(status_code=404, detail="用户不存在")
+        if not payload.title.strip():
+            raise HTTPException(status_code=400, detail="标题不能为空")
+
+        now = now_iso()
+        card = Card(
+            id=new_id("card"),
+            ownerUserId=payload.ownerUserId,
+            status="draft",
+            title=payload.title.strip(),
+            coverUrl=payload.coverUrl,
+            detailText=payload.detailText.strip() or payload.title.strip(),
+            projectName=payload.projectName,
+            locationText=payload.locationText,
+            phone=payload.phone,
+            relayNotice=payload.relayNotice,
+            sourceUrl=payload.sourceUrl,
+            enabledFields=payload.enabledFields,
+            categoryIds=payload.categoryIds,
+            relayConfig=RelayConfig(**payload.relayConfig.model_dump()),
+            createdAt=now,
+            updatedAt=now,
+        )
+        self.repo.save_card(card)
         return card
 
     def update_card(self, card_id: str, payload: CardUpdateRequest) -> Card:

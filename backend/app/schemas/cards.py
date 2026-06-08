@@ -24,6 +24,21 @@ class CardUpdateRequest(BaseModel):
     relayConfig: RelayConfigPayload = Field(default_factory=RelayConfigPayload)
 
 
+class CardCreateRequest(BaseModel):
+    ownerUserId: str
+    title: str
+    coverUrl: str | None = None
+    detailText: str = ""
+    projectName: str | None = None
+    locationText: str | None = None
+    phone: str | None = None
+    relayNotice: str | None = None
+    sourceUrl: str | None = None
+    enabledFields: list[str] = Field(default_factory=list)
+    categoryIds: list[str] = Field(default_factory=list)
+    relayConfig: RelayConfigPayload = Field(default_factory=RelayConfigPayload)
+
+
 class PublishCardRequest(BaseModel):
     userId: str
 
@@ -49,4 +64,3 @@ class CreateRelayRequest(BaseModel):
 
 class FollowUpRelayRequest(BaseModel):
     operatorUserId: str
-

@@ -1,0 +1,70 @@
+<view class="page-shell">
+  <view class="brand-bar">悦享互动宝</view>
+
+  <view class="create-hero">
+    <view>
+      <view class="hero-title">手动添加资源</view>
+      <view class="hero-subtitle">企业微信真实导入未打通前，也可以先手动沉淀资源卡片。</view>
+    </view>
+    <view class="create-visual">+</view>
+  </view>
+
+  <view class="chip-row type-row">
+    <block wx:for="{{typeOptions}}" wx:key="*this">
+      <view class="chip {{type === item ? 'active' : ''}}" data-type="{{item}}" bindtap="handleTypeChange">{{item}}</view>
+    </block>
+  </view>
+
+  <view class="panel">
+    <view class="section-title">基础信息</view>
+    <view class="field-label">资源标题</view>
+    <input class="field-input" data-field="title" value="{{form.title}}" placeholder="例如：滨江花园 3房2厅 / 今日水果团购" bindinput="handleFieldChange" />
+
+    <view class="field-label">项目名 / 分类说明</view>
+    <input class="field-input" data-field="projectName" value="{{form.projectName}}" placeholder="例如：滨江花园 / 社区团购 / 资料包" bindinput="handleFieldChange" />
+
+    <view class="field-label">封面图片链接</view>
+    <input class="field-input" data-field="coverUrl" value="{{form.coverUrl}}" placeholder="可先粘贴图片 URL，后续再接入上传" bindinput="handleFieldChange" />
+
+    <view class="field-label">详情描述</view>
+    <textarea class="field-input textarea" data-field="detailText" value="{{form.detailText}}" placeholder="写清楚卖点、亮点、领取方式或活动说明" bindinput="handleFieldChange"></textarea>
+  </view>
+
+  <view class="panel">
+    <view class="section-title">联系与来源</view>
+    <view class="field-label">位置 / 地址</view>
+    <input class="field-input" data-field="locationText" value="{{form.locationText}}" placeholder="例如：上海浦东新区" bindinput="handleFieldChange" />
+
+    <view class="field-label">联系电话</view>
+    <input class="field-input" data-field="phone" value="{{form.phone}}" type="number" placeholder="用于资源页一键拨号" bindinput="handleFieldChange" />
+
+    <view class="field-label">原始链接</view>
+    <input class="field-input" data-field="sourceUrl" value="{{form.sourceUrl}}" placeholder="可填写公众号、小程序或网页链接" bindinput="handleFieldChange" />
+  </view>
+
+  <view class="panel">
+    <view class="section-title">接龙设置</view>
+    <view class="field-label">接龙说明</view>
+    <textarea class="field-input" data-field="relayNotice" value="{{form.relayNotice}}" placeholder="例如：感兴趣请接龙，团长会尽快联系你" bindinput="handleFieldChange"></textarea>
+
+    <view class="switch-row">
+      <view>
+        <view class="switch-title">手机号必填</view>
+        <view class="muted">适合需要电话跟进的资源</view>
+      </view>
+      <switch checked="{{form.requirePhone}}" data-field="requirePhone" bindchange="handleSwitchChange" />
+    </view>
+
+    <view class="switch-row">
+      <view>
+        <view class="switch-title">地址必填</view>
+        <view class="muted">适合团购配送或资料寄送</view>
+      </view>
+      <switch checked="{{form.requireAddress}}" data-field="requireAddress" bindchange="handleSwitchChange" />
+    </view>
+  </view>
+
+  <view class="submit-bar">
+    <button class="primary-btn" loading="{{submitting}}" bindtap="handleSubmit">生成资源草稿</button>
+  </view>
+</view>

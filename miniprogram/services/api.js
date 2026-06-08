@@ -39,6 +39,14 @@ function fetchCard(cardId) {
   });
 }
 
+function createCard(payload) {
+  return request({
+    url: "/api/cards",
+    method: "POST",
+    data: payload
+  });
+}
+
 function updateCard(cardId, payload) {
   return request({
     url: `/api/cards/${cardId}`,
@@ -127,6 +135,7 @@ module.exports = {
   claimImport,
   fetchCards,
   fetchCard,
+  createCard,
   updateCard,
   publishCard,
   duplicateCard,
