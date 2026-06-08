@@ -46,6 +46,13 @@ class Settings:
     storage_mode: str = env_value("STORAGE_MODE", "mock")
     media_storage_dir: Path = ROOT_DIR / env_value("MEDIA_STORAGE_DIR", "backend/mock/media")
     media_public_url_prefix: str = env_value("MEDIA_PUBLIC_URL_PREFIX", "/media")
+    object_storage_endpoint: str = env_value("OBJECT_STORAGE_ENDPOINT", "")
+    object_storage_region: str = env_value("OBJECT_STORAGE_REGION", "")
+    object_storage_bucket: str = env_value("OBJECT_STORAGE_BUCKET", "")
+    object_storage_access_key_id: str = env_value("OBJECT_STORAGE_ACCESS_KEY_ID", "")
+    object_storage_secret_access_key: str = env_value("OBJECT_STORAGE_SECRET_ACCESS_KEY", "")
+    object_storage_public_base_url: str = env_value("OBJECT_STORAGE_PUBLIC_BASE_URL", "")
+    object_storage_key_prefix: str = env_value("OBJECT_STORAGE_KEY_PREFIX", "wecom-media")
     data_file: Path = ROOT_DIR / env_value("DATA_FILE", "backend/mock/runtime-state.json")
 
     def missing_database_fields(self) -> list[str]:

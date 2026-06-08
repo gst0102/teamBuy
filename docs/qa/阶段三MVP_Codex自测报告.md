@@ -16,6 +16,7 @@
 - `real-sync` 锁超时/卡死恢复：超过 `WECOM_SYNC_LOCK_TIMEOUT_SECONDS` 的 running 锁可自动接管，并支持手动 unlock 接口释放
 - `real-sync/unlock` 管理令牌：强制释放同步锁必须通过 `WECOM_ADMIN_TOKEN` 校验，避免普通用户误释放
 - 真实媒体下载/转存抽象：真实 `sync_msg` 的 image/video `media_id` 会先下载并通过 `MediaStorageService` 转为本地 `/media/...` URL 再入库生成卡片
+- 对象存储适配层：`MediaStorageService` 已拆分为 `mock/local/cos/s3` 后端，COS/S3 走 S3-compatible `put_object` 上传并返回 CDN URL
 - mock 导入成功/失败通知抽象和通知查询接口
 - 链接缩略图、来源 URL、视频 media mock 转存解析增强
 - 导入认领、卡片编辑、发布、一键复用
@@ -51,7 +52,7 @@ uvicorn app.main:app --reload
 
 ## 4. 已执行验证
 
-- `cd backend && pytest`，当前 36 项通过
+- `cd backend && pytest`，当前 39 项通过
 - `cd backend && python -m compileall app`
 
 ## 5. 已通过测试项
