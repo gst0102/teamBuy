@@ -11,6 +11,8 @@ def test_hot_paths_do_not_call_full_state_load_or_save():
         "trigger_mock_import",
         "trigger_sync_response_import",
         "import_synced_messages",
+        "get_sync_cursor",
+        "advance_sync_cursor",
         "claim_import",
         "list_cards",
         "get_card",

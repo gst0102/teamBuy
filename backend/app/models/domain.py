@@ -145,6 +145,18 @@ class ImportNotification(BaseModel):
     errorMessage: str | None = None
 
 
+class SyncCursor(BaseModel):
+    id: str
+    openKfid: str
+    cursor: str | None = None
+    hasMore: bool = False
+    lastSource: str
+    lastPayload: dict = Field(default_factory=dict)
+    lastSyncedAt: str
+    createdAt: str
+    updatedAt: str
+
+
 class AppState(BaseModel):
     users: list[User] = Field(default_factory=list)
     import_batches: list[ImportBatch] = Field(default_factory=list)
@@ -154,3 +166,4 @@ class AppState(BaseModel):
     relay_entries: list[RelayEntry] = Field(default_factory=list)
     categories: list[Category] = Field(default_factory=list)
     import_notifications: list[ImportNotification] = Field(default_factory=list)
+    sync_cursors: list[SyncCursor] = Field(default_factory=list)

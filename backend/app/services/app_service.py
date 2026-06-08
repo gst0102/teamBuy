@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from fastapi import HTTPException, status
 
-from app.models.domain import AppState, Card, RawMessage, RelayEntry, User, ViewEvent
+from app.models.domain import AppState, Card, RawMessage, RelayEntry, SyncCursor, User, ViewEvent
 from app.schemas.auth import MockLoginRequest
 from app.schemas.cards import CardUpdateRequest, CreateRelayRequest, RecordViewRequest
 from app.services.card_parser_service import CardParserService
@@ -144,6 +144,33 @@ class AppService:
 
     def list_import_notifications(self) -> list[dict]:
         return [item.model_dump() for item in self.repo.list_import_notifications()]
+
+    def get_sync_cursor(self, open_kfid: str) -> SyncCursor | None:
+        return self.repo.get_sync_cursor(open_kfid)
+
+    def advance_sync_cursor(
+        self,
+        open_kfid: str,
+        cursor: str | None,
+        has_more: bool,
+        source: str,
+        payload: dict,
+    ) -> SyncCursor:
+        now = now_iso()
+        existing = self.repo.get_sync_cursor(open_kfid)
+        sync_cursor = SyncCursor(
+            id=existing.id if existing else f"sync_cursor_{open_kfid}",
+            openKfid=open_kfid,
+            cursor=cursor,
+            hasMore=has_more,
+            lastSource=source,
+            lastPayload=payload,
+            lastSyncedAt=now,
+            createdAt=existing.createdAt if existing else now,
+            updatedAt=now,
+        )
+        self.repo.save_sync_cursor(sync_cursor)
+        return sync_cursor
 
     def claim_import(self, import_id: str, user_id: str) -> dict:
         batch = self.repo.get_import_batch(import_id)

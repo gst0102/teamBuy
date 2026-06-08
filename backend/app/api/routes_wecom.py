@@ -16,6 +16,12 @@ from app.services.wecom_mock_service import WecomMockService
 router = APIRouter(prefix="/api/wecom", tags=["wecom"])
 
 
+def _sync_response_has_more(value) -> bool:
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes"}
+    return bool(value)
+
+
 @router.get("/callback")
 def verify_callback(
     msg_signature: str | None = Query(default=None),
@@ -88,29 +94,72 @@ def config_check(client: WecomClient = Depends(get_wecom_client)):
 
 @router.post("/real-sync", response_model=ApiResponse[dict])
 async def import_real_sync(
+    max_pages: int = Query(default=10, ge=1, le=50),
     service: AppService = Depends(get_app_service),
     client: WecomClient = Depends(get_wecom_client),
     mock_service: WecomMockService = Depends(get_wecom_mock_service),
 ):
-    if settings.wecom_use_mock:
-        sync_response = mock_service.load_real_sync_response()
-        source = "mock-real-sync-response"
-    else:
-        try:
-            sync_response = await client.sync_msg(cursor=settings.wecom_sync_cursor or None)
-        except WecomClientError as exc:
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
-        source = "wecom-sync-msg"
+    open_kfid = settings.wecom_open_kfid or "default"
+    cursor_state = service.get_sync_cursor(open_kfid)
+    cursor = cursor_state.cursor if cursor_state else settings.wecom_sync_cursor or None
+    page_results = []
+    imported_batch_ids: list[str] = []
+    deduplicated_count = 0
+    last_cursor = cursor
+    last_has_more = False
+    source = "mock-real-sync-response" if settings.wecom_use_mock else "wecom-sync-msg"
 
-    result = service.trigger_sync_response_import(
-        sync_response,
-        fallback_open_kfid=settings.wecom_open_kfid or None,
-    )
+    for page in range(1, max_pages + 1):
+        if settings.wecom_use_mock:
+            sync_response = mock_service.load_real_sync_response()
+        else:
+            try:
+                sync_response = await client.sync_msg(cursor=cursor)
+            except WecomClientError as exc:
+                raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+        result = service.trigger_sync_response_import(
+            sync_response,
+            fallback_open_kfid=settings.wecom_open_kfid or None,
+        )
+        next_cursor = sync_response.get("next_cursor") or sync_response.get("cursor") or sync_response.get("token")
+        has_more = _sync_response_has_more(sync_response.get("has_more"))
+        sync_cursor = service.advance_sync_cursor(
+            open_kfid=open_kfid,
+            cursor=next_cursor,
+            has_more=has_more,
+            source=source,
+            payload=sync_response,
+        )
+        page_results.append(
+            {
+                "page": page,
+                "cursor": cursor,
+                "nextCursor": next_cursor,
+                "hasMore": has_more,
+                "importResult": result,
+            }
+        )
+        imported_batch_ids.extend(result["importBatchIds"])
+        deduplicated_count += result["deduplicatedCount"]
+        cursor = next_cursor
+        last_cursor = sync_cursor.cursor
+        last_has_more = sync_cursor.hasMore
+        if settings.wecom_use_mock or not has_more or not next_cursor:
+            break
+
     return ApiResponse(
         message="real sync_msg imported",
         data={
             "source": source,
-            "syncResponse": sync_response,
-            "importResult": result,
+            "openKfid": open_kfid,
+            "pagesSynced": len(page_results),
+            "nextCursor": last_cursor,
+            "hasMore": last_has_more,
+            "importResult": {
+                "importBatchIds": imported_batch_ids,
+                "deduplicatedCount": deduplicated_count,
+            },
+            "pageResults": page_results,
         },
     )

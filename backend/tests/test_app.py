@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from app.api.dependencies import get_wecom_client
+from app.core.config import settings
+
 
 def test_wecom_callback_get_verify(client):
     response = client.get(
@@ -23,7 +26,9 @@ def test_real_sync_uses_mock_real_response_while_mock_enabled(client):
     assert response.status_code == 200
     payload = response.json()["data"]
     assert payload["source"] == "mock-real-sync-response"
-    assert payload["syncResponse"]["errcode"] == 0
+    assert payload["pagesSynced"] == 1
+    assert payload["nextCursor"] == "mock_real_cursor_002"
+    assert payload["hasMore"] is False
     assert len(payload["importResult"]["importBatchIds"]) >= 1
 
 
@@ -36,6 +41,63 @@ def test_real_sync_mock_response_is_idempotent(client):
     second_payload = second.json()["data"]["importResult"]
     assert second_payload["importBatchIds"] == []
     assert second_payload["deduplicatedCount"] == 4
+
+
+def test_real_sync_paginates_and_persists_cursor(client, monkeypatch):
+    class FakeWecomClient:
+        def __init__(self):
+            self.cursors = []
+
+        async def sync_msg(self, cursor=None, token=None, limit=None):
+            self.cursors.append(cursor)
+            if cursor is None:
+                return {
+                    "errcode": 0,
+                    "errmsg": "ok",
+                    "next_cursor": "cursor_page_2",
+                    "has_more": 1,
+                    "msg_list": [
+                        {
+                            "msgid": "paged_msg_001",
+                            "open_kfid": "wk_page",
+                            "external_userid": "external_page",
+                            "send_time": 1780848000,
+                            "msgtype": "text",
+                            "text": {"content": "first page item"},
+                        }
+                    ],
+                }
+            return {
+                "errcode": 0,
+                "errmsg": "ok",
+                "next_cursor": "cursor_done",
+                "has_more": 0,
+                "msg_list": [
+                    {
+                        "msgid": "paged_msg_002",
+                        "open_kfid": "wk_page",
+                        "external_userid": "external_page",
+                        "send_time": 1780848010,
+                        "msgtype": "link",
+                        "link": {"title": "second page item", "url": "https://example.com/page-2"},
+                    }
+                ],
+            }
+
+    fake_client = FakeWecomClient()
+    monkeypatch.setattr(settings, "wecom_use_mock", False)
+    monkeypatch.setattr(settings, "wecom_open_kfid", "wk_page")
+    client.app.dependency_overrides[get_wecom_client] = lambda: fake_client
+
+    response = client.post("/api/wecom/real-sync")
+
+    assert response.status_code == 200
+    payload = response.json()["data"]
+    assert fake_client.cursors == [None, "cursor_page_2"]
+    assert payload["pagesSynced"] == 2
+    assert payload["nextCursor"] == "cursor_done"
+    assert payload["hasMore"] is False
+    assert len(payload["importResult"]["importBatchIds"]) == 2
 
 
 def test_health_reports_database_configuration(client):

@@ -8,7 +8,18 @@ import psycopg
 from psycopg.rows import dict_row
 
 from app.core.database import normalize_database_url
-from app.models.domain import AppState, Card, Category, ImportBatch, ImportNotification, RawMessage, RelayEntry, User, ViewEvent
+from app.models.domain import (
+    AppState,
+    Card,
+    Category,
+    ImportBatch,
+    ImportNotification,
+    RawMessage,
+    RelayEntry,
+    SyncCursor,
+    User,
+    ViewEvent,
+)
 
 
 class AppRepository(Protocol):
@@ -82,6 +93,12 @@ class AppRepository(Protocol):
         ...
 
     def list_import_notifications(self) -> list[ImportNotification]:
+        ...
+
+    def get_sync_cursor(self, open_kfid: str) -> SyncCursor | None:
+        ...
+
+    def save_sync_cursor(self, cursor: SyncCursor) -> None:
         ...
 
 
@@ -218,6 +235,15 @@ class JsonRepository:
     def list_import_notifications(self) -> list[ImportNotification]:
         return self.load().import_notifications
 
+    def get_sync_cursor(self, open_kfid: str) -> SyncCursor | None:
+        return next((item for item in self.load().sync_cursors if item.openKfid == open_kfid), None)
+
+    def save_sync_cursor(self, cursor: SyncCursor) -> None:
+        state = self.load()
+        state.sync_cursors = [item for item in state.sync_cursors if item.id != cursor.id]
+        state.sync_cursors.append(cursor)
+        self.save(state)
+
 
 class PostgresRepository:
     TABLES = {
@@ -229,6 +255,7 @@ class PostgresRepository:
         "relay_entries": "relay_entries",
         "categories": "categories",
         "import_notifications": "import_notifications",
+        "sync_cursors": "sync_cursors",
     }
     FIELD_COLUMNS = {
         "users": [
@@ -292,6 +319,13 @@ class PostgresRepository:
             ("channel", "text", "channel"),
             ("sent_at", "timestamptz", "sentAt"),
         ],
+        "sync_cursors": [
+            ("open_kfid", "text", "openKfid"),
+            ("cursor_value", "text", "cursor"),
+            ("has_more", "boolean", "hasMore"),
+            ("last_source", "text", "lastSource"),
+            ("last_synced_at", "timestamptz", "lastSyncedAt"),
+        ],
     }
     INDEXES = {
         "import_batches": [
@@ -321,6 +355,10 @@ class PostgresRepository:
             ("idx_relay_entries_card_status", "card_id, status, created_at"),
             ("idx_relay_entries_card_follow_up", "card_id, follow_up_status"),
             ("idx_relay_entries_user", "user_id"),
+        ],
+        "sync_cursors": [
+            ("idx_sync_cursors_open_kfid", "open_kfid"),
+            ("idx_sync_cursors_last_synced", "last_synced_at"),
         ],
     }
 
@@ -504,6 +542,13 @@ class PostgresRepository:
         rows = self._list_payloads("import_notifications", "true", (), "sent_at desc, id desc")
         return [ImportNotification.model_validate(row) for row in rows]
 
+    def get_sync_cursor(self, open_kfid: str) -> SyncCursor | None:
+        rows = self._list_payloads("sync_cursors", "open_kfid = %s", (open_kfid,), "last_synced_at desc, id desc")
+        return SyncCursor.model_validate(rows[0]) if rows else None
+
+    def save_sync_cursor(self, cursor: SyncCursor) -> None:
+        self._save_model("sync_cursors", cursor)
+
     def init_schema(self) -> None:
         with psycopg.connect(self.database_url) as conn:
             with conn.transaction():
@@ -530,6 +575,12 @@ class PostgresRepository:
                     create unique index if not exists uq_raw_messages_wecom_msg_id
                     on raw_messages (wecom_msg_id)
                     where wecom_msg_id is not null
+                    """
+                )
+                conn.execute(
+                    """
+                    create unique index if not exists uq_sync_cursors_open_kfid
+                    on sync_cursors (open_kfid)
                     """
                 )
 

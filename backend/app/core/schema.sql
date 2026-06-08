@@ -95,6 +95,18 @@ create table if not exists import_notifications (
     updated_at timestamptz not null default now()
 );
 
+create table if not exists sync_cursors (
+    id text primary key,
+    payload jsonb not null,
+    open_kfid text,
+    cursor_value text,
+    has_more boolean,
+    last_source text,
+    last_synced_at timestamptz,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
 create index if not exists idx_import_batches_status on import_batches (status);
 create index if not exists idx_import_batches_conversation on import_batches (external_user_id, conversation_id, started_at);
 create index if not exists idx_import_batches_claimed_by on import_batches (claimed_by_user_id);
@@ -114,3 +126,6 @@ create index if not exists idx_view_events_anonymous on view_events (card_id, an
 create index if not exists idx_relay_entries_card_status on relay_entries (card_id, status, created_at);
 create index if not exists idx_relay_entries_card_follow_up on relay_entries (card_id, follow_up_status);
 create index if not exists idx_relay_entries_user on relay_entries (user_id);
+create index if not exists idx_sync_cursors_open_kfid on sync_cursors (open_kfid);
+create index if not exists idx_sync_cursors_last_synced on sync_cursors (last_synced_at);
+create unique index if not exists uq_sync_cursors_open_kfid on sync_cursors (open_kfid);

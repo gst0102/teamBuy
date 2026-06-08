@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.models.domain import Card, ImportBatch, ImportNotification, RawMessage, RelayConfig
+from app.models.domain import Card, ImportBatch, ImportNotification, RawMessage, RelayConfig, SyncCursor
 from app.services.repository import JsonRepository
 
 
@@ -67,3 +67,25 @@ def test_json_repository_saves_import_artifacts_together(tmp_path):
     assert repo.existing_wecom_msg_ids({"wecom_tx_msg_001", "missing_msg"}) == {"wecom_tx_msg_001"}
     assert state.cards[0].importBatchId == "import_tx_001"
     assert state.import_notifications[0].importBatchId == "import_tx_001"
+
+
+def test_json_repository_persists_sync_cursor(tmp_path):
+    repo = JsonRepository(tmp_path / "state.json")
+    cursor = SyncCursor(
+        id="sync_cursor_wk_test",
+        openKfid="wk_test",
+        cursor="cursor_next",
+        hasMore=True,
+        lastSource="wecom-sync-msg",
+        lastPayload={"next_cursor": "cursor_next", "has_more": 1},
+        lastSyncedAt="2026-06-08T10:00:00+08:00",
+        createdAt="2026-06-08T10:00:00+08:00",
+        updatedAt="2026-06-08T10:00:00+08:00",
+    )
+
+    repo.save_sync_cursor(cursor)
+
+    loaded = repo.get_sync_cursor("wk_test")
+    assert loaded is not None
+    assert loaded.cursor == "cursor_next"
+    assert loaded.hasMore is True
