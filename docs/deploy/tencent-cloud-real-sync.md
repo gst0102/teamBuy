@@ -65,6 +65,8 @@ docker compose ps
 docker compose logs --tail=100 backend
 ```
 
+Compose 中的 PostgreSQL 默认只暴露在 Docker 内部网络，后端通过 `postgres:5432` 访问；不映射宿主机 `5432`，避免和服务器已有 PostgreSQL 冲突。
+
 不要把 `docker compose config` 的输出发到公开渠道，因为它会展开 `backend/.env` 中的真实密钥。
 
 ## 4. 健康检查
