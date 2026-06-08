@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 
-from app.api.dependencies import get_app_service, get_wecom_client, get_wecom_mock_service
+from app.api.dependencies import get_app_service, get_sync_task_queue, get_wecom_client, get_wecom_mock_service
 from app.core.config import settings
 from app.schemas.common import ApiResponse
 from app.schemas.imports import MockImportRequest
 from app.services.app_service import AppService
+from app.services.sync_task_queue import InMemorySyncTaskQueue
 from app.services.wecom_client import WecomClient, WecomClientError
 from app.services.wecom_crypto import WecomCryptoError, decrypt_aes_message, verify_signature
 from app.services.wecom_event_service import parse_callback_body
@@ -108,6 +109,7 @@ async def receive_callback(
     service: AppService = Depends(get_app_service),
     client: WecomClient = Depends(get_wecom_client),
     mock_service: WecomMockService = Depends(get_wecom_mock_service),
+    sync_task_queue: InMemorySyncTaskQueue = Depends(get_sync_task_queue),
 ):
     raw_body = await request.body()
     try:
@@ -130,16 +132,18 @@ async def receive_callback(
         result = service.trigger_mock_import(external_user_id, conversation_id, fixture)
         return ApiResponse(message="callback mock import completed", data={"callback": payload, "syncResult": result})
 
-    result = await _run_real_sync(
-        max_pages=10,
-        service=service,
-        client=client,
-        mock_service=mock_service,
+    task = sync_task_queue.enqueue(
+        "wecom-callback-real-sync",
+        lambda: _run_real_sync(
+            max_pages=10,
+            service=service,
+            client=client,
+            mock_service=mock_service,
+        ),
     )
     return ApiResponse(
-        success=result.get("syncStatus") != "running",
-        message="callback real sync triggered",
-        data={"callback": payload, "syncResult": result},
+        message="callback real sync queued",
+        data={"callback": payload, "syncTask": task.model_dump()},
     )
 
 
@@ -152,6 +156,11 @@ def mock_sync(payload: MockImportRequest, service: AppService = Depends(get_app_
 @router.get("/notifications", response_model=ApiResponse[list[dict]])
 def list_notifications(service: AppService = Depends(get_app_service)):
     return ApiResponse(data=service.list_import_notifications())
+
+
+@router.get("/sync-tasks", response_model=ApiResponse[list[dict]])
+def list_sync_tasks(sync_task_queue: InMemorySyncTaskQueue = Depends(get_sync_task_queue)):
+    return ApiResponse(data=[item.model_dump() for item in sync_task_queue.list_recent()])
 
 
 @router.get("/media-retries", response_model=ApiResponse[list[dict]])

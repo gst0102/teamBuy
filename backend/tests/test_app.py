@@ -1,15 +1,43 @@
 from __future__ import annotations
 
-from app.api.dependencies import get_app_service, get_wecom_client
+from app.api.dependencies import get_app_service, get_sync_task_queue, get_wecom_client
 from app.core.config import settings
 from app.services.media_storage_service import MediaStorageService
 from app.services.wecom_client import DownloadedMedia
 
 
+class FakeSyncTask:
+    def __init__(self):
+        self.id = "sync_task_test"
+
+    def model_dump(self):
+        return {
+            "id": self.id,
+            "name": "wecom-callback-real-sync",
+            "status": "queued",
+            "createdAt": "2026-06-08T10:00:00+08:00",
+            "updatedAt": "2026-06-08T10:00:00+08:00",
+            "result": None,
+            "errorMessage": None,
+        }
+
+
+class FakeSyncTaskQueue:
+    def __init__(self):
+        self.enqueued = []
+
+    def enqueue(self, name, task_factory):
+        self.enqueued.append((name, task_factory))
+        return FakeSyncTask()
+
+    def list_recent(self):
+        return [FakeSyncTask()]
+
+
 def test_wecom_callback_get_verify(client):
     response = client.get(
         "/api/wecom/callback",
-        params={"token": "teamBuy-dev-token", "echostr": "hello-teamBuy"},
+        params={"token": settings.wecom_callback_token, "echostr": "hello-teamBuy"},
     )
     assert response.status_code == 200
     assert response.json() == "hello-teamBuy"
@@ -52,18 +80,30 @@ def test_wecom_callback_post_triggers_real_sync_when_mock_disabled(client, monke
             }
 
     fake_client = CallbackWecomClient()
+    fake_queue = FakeSyncTaskQueue()
     monkeypatch.setattr(settings, "wecom_use_mock", False)
     monkeypatch.setattr(settings, "wecom_open_kfid", "wk_callback")
     client.app.dependency_overrides[get_wecom_client] = lambda: fake_client
+    client.app.dependency_overrides[get_sync_task_queue] = lambda: fake_queue
 
     response = client.post("/api/wecom/callback", json={"Event": "kf_msg_or_event"})
 
     assert response.status_code == 200
     payload = response.json()["data"]
-    assert fake_client.sync_called == 1
+    assert fake_client.sync_called == 0
+    assert fake_queue.enqueued[0][0] == "wecom-callback-real-sync"
     assert payload["callback"]["Event"] == "kf_msg_or_event"
-    assert payload["syncResult"]["syncStatus"] == "success"
-    assert len(payload["syncResult"]["importResult"]["importBatchIds"]) == 1
+    assert payload["syncTask"]["status"] == "queued"
+
+
+def test_wecom_sync_tasks_lists_background_queue(client):
+    fake_queue = FakeSyncTaskQueue()
+    client.app.dependency_overrides[get_sync_task_queue] = lambda: fake_queue
+
+    response = client.get("/api/wecom/sync-tasks")
+
+    assert response.status_code == 200
+    assert response.json()["data"][0]["id"] == "sync_task_test"
 
 
 def test_wecom_config_check_reports_missing_real_fields(client):
@@ -313,7 +353,8 @@ def test_media_retry_success_is_reused_by_next_real_sync(client, monkeypatch, tm
 
 def test_real_sync_returns_running_status_when_lock_exists(client):
     service = client.app.dependency_overrides[get_app_service]()
-    locked = service.acquire_sync_lock("default", "mock-real-sync-response", 600)
+    open_kfid = settings.wecom_open_kfid or "default"
+    locked = service.acquire_sync_lock(open_kfid, "mock-real-sync-response", 600)
     assert locked is not None
 
     response = client.post("/api/wecom/real-sync")
@@ -327,7 +368,8 @@ def test_real_sync_returns_running_status_when_lock_exists(client):
 
 def test_real_sync_unlock_releases_running_lock(client, monkeypatch):
     service = client.app.dependency_overrides[get_app_service]()
-    locked = service.acquire_sync_lock("default", "mock-real-sync-response", 600)
+    open_kfid = settings.wecom_open_kfid or "default"
+    locked = service.acquire_sync_lock(open_kfid, "mock-real-sync-response", 600)
     assert locked is not None
     monkeypatch.setattr(settings, "admin_token", "test-admin-token")
 
@@ -346,19 +388,21 @@ def test_real_sync_unlock_releases_running_lock(client, monkeypatch):
 
 def test_real_sync_unlock_rejects_missing_admin_token(client, monkeypatch):
     service = client.app.dependency_overrides[get_app_service]()
-    locked = service.acquire_sync_lock("default", "mock-real-sync-response", 600)
+    open_kfid = settings.wecom_open_kfid or "default"
+    locked = service.acquire_sync_lock(open_kfid, "mock-real-sync-response", 600)
     assert locked is not None
     monkeypatch.setattr(settings, "admin_token", "test-admin-token")
 
     response = client.post("/api/wecom/real-sync/unlock", params={"reason": "admin unlock"})
 
     assert response.status_code == 403
-    assert service.get_sync_cursor("default").syncStatus == "running"
+    assert service.get_sync_cursor(open_kfid).syncStatus == "running"
 
 
 def test_real_sync_takes_over_expired_lock(client, monkeypatch):
     service = client.app.dependency_overrides[get_app_service]()
-    locked = service.acquire_sync_lock("default", "mock-real-sync-response", 600)
+    open_kfid = settings.wecom_open_kfid or "default"
+    locked = service.acquire_sync_lock(open_kfid, "mock-real-sync-response", 600)
     assert locked is not None
     monkeypatch.setattr(settings, "wecom_sync_lock_timeout_seconds", 0)
 
