@@ -1,15 +1,14 @@
 <view class="page-shell">
   <custom-nav title="&#x767B;&#x5F55;" />
   <view class="login-hero">
-    <view class="brand-bar">悦享互动宝</view>
     <view class="hero-title">欢迎登录</view>
-    <view class="hero-subtitle">继续使用微信内容资源助手，查看谁访问了你的资源。</view>
+    <view class="hero-subtitle">继续使用微信内容资源助手，查看谁访问过你的资源。</view>
   </view>
   <view class="panel">
     <view class="title">一键进入体验</view>
     <view class="muted">当前阶段先使用 mock 登录，后续再替换为微信 code 登录。</view>
     <view class="field-label" style="margin-top: 24rpx;">昵称</view>
     <input class="field-input" value="{{nickname}}" bindinput="handleNicknameChange" />
-    <button class="primary-btn" bindtap="handleMockLogin">进入悦享互动宝</button>
+    <button class="primary-btn" bindtap="handleMockLogin">进入系统</button>
   </view>
 </view>

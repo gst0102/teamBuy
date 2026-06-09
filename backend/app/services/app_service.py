@@ -391,7 +391,8 @@ class AppService:
         now = now_iso()
         for key, value in update_data.items():
             if key == "relayConfig":
-                card.relayConfig = card.relayConfig.model_copy(update=value.model_dump())
+                relay_config_data = value.model_dump() if hasattr(value, "model_dump") else value
+                card.relayConfig = card.relayConfig.model_copy(update=relay_config_data)
             else:
                 setattr(card, key, value)
         card.updatedAt = now

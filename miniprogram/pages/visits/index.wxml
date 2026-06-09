@@ -1,6 +1,5 @@
 <view class="page-shell">
   <custom-nav title="&#x8BBF;&#x95EE;&#x8BB0;&#x5F55;" />
-  <view class="brand-bar">悦享互动宝</view>
   <view class="visits-hero">
     <view>
       <view class="hero-title">访问记录</view>
@@ -53,7 +52,7 @@
         <view wx:else class="visit-cover placeholder">{{item.categoryName}}</view>
         <view class="visit-info" bindtap="handleOpenCard" data-id="{{item.id}}">
           <view class="visit-title">{{item.title}}</view>
-          <view class="muted">访问 {{item.stats.pv}} ｜ 访客 {{item.stats.uv}}</view>
+          <view class="muted">访问 {{item.stats.pv}} · 访客 {{item.stats.uv}}</view>
         </view>
         <button class="mini-btn" data-id="{{item.id}}" bindtap="handleOpenManager">查看详情</button>
       </view>

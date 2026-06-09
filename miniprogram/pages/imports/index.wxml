@@ -1,6 +1,5 @@
 <view class="page-shell">
   <custom-nav title="&#x53D1;&#x7ED9;&#x5BA2;&#x670D;" />
-  <view class="brand-bar">悦享互动宝</view>
   <view class="imports-hero">
     <view>
       <view class="hero-title">发给客服</view>

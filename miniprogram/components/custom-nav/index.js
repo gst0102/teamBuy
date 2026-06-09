@@ -7,7 +7,7 @@ const ROUTE_TITLES = {
   "pages/visits/index": "访问记录",
   "pages/profile/index": "我的",
   "pages/login/index": "登录",
-  "pages/resource-create/index": "悦享互动宝",
+  "pages/resource-create/index": "手动添加资源",
   "pages/tag-manage/index": "标签管理",
   "pages/card-edit/index": "资源编辑",
   "pages/card-view/index": "资源详情",

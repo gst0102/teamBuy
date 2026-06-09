@@ -1,6 +1,5 @@
 <view class="page-shell">
   <custom-nav title="&#x6211;&#x7684;" />
-  <view class="brand-bar">悦享互动宝</view>
 
   <view class="profile-card" wx:if="{{user}}">
     <image class="profile-avatar" src="{{user.avatarUrl}}" mode="aspectFill"></image>

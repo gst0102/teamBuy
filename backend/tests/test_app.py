@@ -547,6 +547,44 @@ def test_manual_create_card_flow(client):
     assert any(item["id"] == card["id"] for item in cards)
 
 
+def test_update_card_flow_accepts_relay_config_payload(client):
+    login = client.post("/api/auth/mock-login", json={"nickname": "编辑资源用户"}).json()["data"]
+    created = client.post(
+        "/api/cards",
+        json={
+            "ownerUserId": login["id"],
+            "title": "待编辑资源",
+            "detailText": "初始内容",
+            "projectName": "初始项目",
+            "relayConfig": {"enabled": True, "requirePhone": False, "requireAddress": False},
+        },
+    )
+    assert created.status_code == 200
+    card = created.json()["data"]
+
+    updated = client.put(
+        f"/api/cards/{card['id']}",
+        json={
+            "ownerUserId": login["id"],
+            "title": "已编辑资源",
+            "detailText": "编辑后内容",
+            "projectName": "编辑后项目",
+            "locationText": "上海",
+            "phone": "13900000000",
+            "relayNotice": "请联系我",
+            "sourceUrl": None,
+            "enabledFields": [],
+            "categoryIds": [],
+            "relayConfig": {"enabled": True, "requirePhone": True, "requireAddress": False},
+        },
+    )
+
+    assert updated.status_code == 200
+    payload = updated.json()["data"]
+    assert payload["title"] == "已编辑资源"
+    assert payload["relayConfig"]["requirePhone"] is True
+
+
 def test_manual_asset_upload_returns_media_url(client):
     login = client.post("/api/auth/mock-login", json={"nickname": "上传用户"}).json()["data"]
 

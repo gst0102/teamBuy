@@ -20,6 +20,12 @@
   - 多图上传后“设为封面”是否符合预期。
   - 保存到资源库、预览并发布是否都能走通。
 
+## 2026-06-09 再补充
+
+- 已定位并修复资源编辑保存 500：后端 `update_card()` 错把 `relayConfig` 当模型对象二次 `model_dump()`。
+- 已补后端回归测试：`backend/tests/test_app.py::test_update_card_flow_accepts_relay_config_payload`。
+- 已移除多个页面顶部重复的“悦享互动宝”品牌条，避免自定义导航标题下方再次出现一行品牌文案。
+
 更新时间：2026-06-09  
 工作目录：`d:\Desktop\myprojects\teamBuy`  
 当前分支：`main`  
