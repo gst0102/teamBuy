@@ -1,4 +1,4 @@
-const api = require("../../services/api");
+const resourceStore = require("../../stores/resource-store");
 const { buildDashboard, getCurrentUser } = require("../../utils/dashboard");
 
 Page({
@@ -23,8 +23,8 @@ Page({
     const currentUser = getCurrentUser();
     this.setData({ loading: true });
     try {
-      const res = await api.fetchCards({ ownerUserId: currentUser.id });
-      const dashboard = buildDashboard(res.data || []);
+      const cards = await resourceStore.listCards({ ownerUserId: currentUser.id }, { force: true });
+      const dashboard = buildDashboard(cards || []);
       this.setData(dashboard);
     } catch (error) {
       wx.showToast({ title: "首页数据加载失败", icon: "none" });

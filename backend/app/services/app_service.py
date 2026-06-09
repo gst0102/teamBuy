@@ -13,6 +13,7 @@ from app.services.card_parser_service import CardParserService
 from app.services.helpers import mask_nickname, new_id
 from app.services.import_notification_service import ImportNotificationService
 from app.services.media_storage_service import MediaStorageService
+from app.services.media_processing_service import MediaProcessingService
 from app.services.message_aggregator import MessageAggregator
 from app.services.repository import AppRepository
 from app.services.time_utils import SHANGHAI, date_key, now_iso, parse_iso
@@ -30,10 +31,12 @@ class AppService:
         aggregator: MessageAggregator,
         notification_service: ImportNotificationService,
         normalizer: WecomMessageNormalizer,
+        media_processing_service: MediaProcessingService | None = None,
     ):
         self.repo = repo
         self.wecom_mock_service = wecom_mock_service
         self.media_storage_service = media_storage_service
+        self.media_processing_service = media_processing_service or MediaProcessingService()
         self.parser_service = parser_service
         self.aggregator = aggregator
         self.notification_service = notification_service
@@ -210,6 +213,28 @@ class AppService:
 
     def get_successful_media_url(self, media_id: str) -> str | None:
         return self.repo.get_successful_media_url(media_id)
+
+    def process_and_store_media(
+        self,
+        media_id: str,
+        media_type: str,
+        content: bytes,
+        content_type: str | None = None,
+        filename: str | None = None,
+    ) -> str:
+        processed = self.media_processing_service.process_upload(
+            media_type=media_type,
+            content=content,
+            content_type=content_type,
+            filename=filename,
+        )
+        return self.media_storage_service.store_bytes(
+            media_id=media_id,
+            media_type=media_type,
+            content=processed.content,
+            content_type=processed.content_type,
+            filename=processed.filename,
+        )
 
     def save_media_retry_failure(
         self,

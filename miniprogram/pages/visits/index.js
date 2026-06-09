@@ -1,4 +1,4 @@
-const api = require("../../services/api");
+const resourceStore = require("../../stores/resource-store");
 const { buildDashboard, buildVisitGroups, getCurrentUser } = require("../../utils/dashboard");
 
 Page({
@@ -35,8 +35,7 @@ Page({
   async loadVisits() {
     const currentUser = getCurrentUser();
     try {
-      const res = await api.fetchCards({ ownerUserId: currentUser.id });
-      const cards = res.data || [];
+      const cards = await resourceStore.listCards({ ownerUserId: currentUser.id }, { force: true });
       const dashboard = buildDashboard(cards);
       const groups = buildVisitGroups(cards);
       this.setData({

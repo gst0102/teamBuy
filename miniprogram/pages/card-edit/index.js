@@ -1,4 +1,5 @@
 const api = require("../../services/api");
+const resourceStore = require("../../stores/resource-store");
 const { getCurrentUser } = require("../../utils/dashboard");
 
 function statusLabel(status) {
@@ -46,14 +47,14 @@ Page({
   },
   async loadCard() {
     try {
-      const res = await api.fetchCard(this.data.cardId);
+      const resData = await resourceStore.getCard(this.data.cardId, { force: true });
       const card = {
-        ...res.data,
-        media: normalizeMedia(res.data.media || [], res.data.coverUrl),
+        ...resData,
+        media: normalizeMedia(resData.media || [], resData.coverUrl),
         relayConfig: {
-          enabled: !(res.data && res.data.relayConfig && res.data.relayConfig.enabled === false),
-          requirePhone: !!(res.data && res.data.relayConfig && res.data.relayConfig.requirePhone),
-          requireAddress: !!(res.data && res.data.relayConfig && res.data.relayConfig.requireAddress)
+          enabled: !(resData && resData.relayConfig && resData.relayConfig.enabled === false),
+          requirePhone: !!(resData && resData.relayConfig && resData.relayConfig.requirePhone),
+          requireAddress: !!(resData && resData.relayConfig && resData.relayConfig.requireAddress)
         }
       };
       this.setData({ card, statusLabel: statusLabel(card.status) });
@@ -66,8 +67,8 @@ Page({
     const currentUser = getCurrentUser();
     if (!currentUser) return;
     try {
-      const res = await api.fetchCategories(currentUser.id);
-      this.setData({ categories: res.data || [] });
+      const categories = await resourceStore.listCategories(currentUser.id, { force: true });
+      this.setData({ categories: categories || [] });
       this.syncCategorySelection(this.data.card ? this.data.card.categoryIds || [] : []);
     } catch (error) {
       wx.showToast({ title: error.detail || error.errMsg || "标签加载失败", icon: "none" });
@@ -289,6 +290,7 @@ Page({
         ...(res.data || {})
       };
       updatedCard.media = normalizeMedia(updatedCard.media || [], updatedCard.coverUrl);
+      resourceStore.upsertCard(updatedCard);
       this.setData({
         card: updatedCard,
         statusLabel: statusLabel(updatedCard.status)

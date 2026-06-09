@@ -41,6 +41,8 @@ teamBuy 是一个面向微信群私域场景的小程序工具，核心能力是
 - 数据库：PostgreSQL 为目标，开发阶段可保留 JSON/SQLite/mock 兜底。
 - 部署：Docker Compose，后端镜像构建使用清华 PyPI 源。
 - 对象存储：后续接腾讯云 COS 或 S3-compatible 存储。
+- 素材处理：图片/视频上传后先在后端压缩，再写入本地媒体目录或对象存储；资料库保存压缩后的 URL。
+- 前端资源状态：当前是原生微信小程序，不直接使用 Pinia；采用 `miniprogram/stores/resource-store.js` 承担 Pinia 类似的资源集中管理职责。
 - 大模型：规则优先，大模型兜底。
 - 当前不做完整 PC Web 管理端；客服侧边栏/H5 发卡片仅作为 P2 技术预研。
 

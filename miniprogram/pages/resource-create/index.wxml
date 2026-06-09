@@ -34,7 +34,7 @@
     <view class="upload-list" wx:if="{{uploadedAssets.length}}">
       <block wx:for="{{uploadedAssets}}" wx:key="url">
         <view class="upload-item">
-          <image wx:if="{{item.type === 'image'}}" class="upload-thumb" src="{{item.url}}" mode="aspectFill"></image>
+          <image wx:if="{{item.type === 'image'}}" class="upload-thumb" src="{{item.displayUrl || item.url}}" mode="aspectFill"></image>
           <view wx:else class="upload-thumb upload-thumb-video">{{item.type === 'video' ? '视频' : '文件'}}</view>
           <view class="upload-meta">
             <view class="upload-name">{{item.name}}</view>

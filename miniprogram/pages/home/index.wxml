@@ -100,7 +100,7 @@
     <scroll-view scroll-x class="hot-scroll" wx:if="{{hotResources.length}}">
       <block wx:for="{{hotResources}}" wx:key="id">
         <view class="hot-card" data-id="{{item.id}}" bindtap="handleOpenResource">
-          <image wx:if="{{item.coverUrl}}" class="hot-cover" src="{{item.coverUrl}}" mode="aspectFill"></image>
+          <image wx:if="{{item.coverUrl}}" class="hot-cover" src="{{item.coverDisplayUrl || item.coverUrl}}" mode="aspectFill"></image>
           <view wx:else class="hot-cover placeholder">资源</view>
           <view class="hot-title">{{item.title}}</view>
           <view class="resource-meta">访问 {{item.stats.pv}} · 接龙 {{item.stats.relayCount}}</view>

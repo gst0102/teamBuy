@@ -1,7 +1,7 @@
 <view class="page-shell" wx:if="{{card}}">
   <custom-nav title="&#x8D44;&#x6E90;&#x8BE6;&#x60C5;" showBack="{{true}}" />
   <view class="share-hero">
-    <image wx:if="{{card.coverUrl}}" class="share-cover" src="{{card.coverUrl}}" mode="aspectFill"></image>
+    <image wx:if="{{card.coverUrl}}" class="share-cover" src="{{card.coverDisplayUrl || card.coverUrl}}" mode="aspectFill"></image>
     <view wx:else class="share-cover placeholder">资源详情</view>
     <view class="share-overlay">
       <view class="share-brand">微信内容资源助手</view>
@@ -64,13 +64,13 @@
           <image
             wx:if="{{item.type === 'image'}}"
             class="media-image"
-            src="{{item.url}}"
+            src="{{item.displayUrl || item.url}}"
             mode="widthFix"
-            data-url="{{item.url}}"
+            data-url="{{item.displayUrl || item.url}}"
             bindtap="handlePreviewImage"
           ></image>
           <view wx:elif="{{item.type === 'video'}}" class="media-video-wrap">
-            <video class="media-video" src="{{item.url}}" controls object-fit="cover"></video>
+            <video class="media-video" src="{{item.displayUrl || item.url}}" controls object-fit="cover"></video>
           </view>
           <view class="media-caption">{{item.type === 'video' ? '详情视频' : '详情图片'}}</view>
         </view>

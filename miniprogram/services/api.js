@@ -1,4 +1,5 @@
 const { request } = require("../utils/request");
+const { withCachedMedia, withCachedCards } = require("../utils/media-cache");
 
 function toAbsoluteUrl(url) {
   if (!url) return url;
@@ -23,6 +24,14 @@ function normalizeCardPayload(card) {
   };
 }
 
+function normalizeAndCacheCard(card) {
+  return withCachedMedia(normalizeCardPayload(card));
+}
+
+function normalizeAndCacheCards(cards) {
+  return withCachedCards((cards || []).map(normalizeCardPayload));
+}
+
 function mockLogin(payload) {
   return request({
     url: "/api/auth/mock-login",
@@ -34,13 +43,13 @@ function mockLogin(payload) {
 function fetchPendingImports() {
   return request({
     url: "/api/imports/pending"
-  }).then((res) => ({
+  }).then(async (res) => ({
     ...res,
     data: Array.isArray(res.data)
-      ? res.data.map((item) => ({
+      ? await Promise.all(res.data.map(async (item) => ({
           ...item,
-          generatedCard: normalizeCardPayload(item.generatedCard)
-        }))
+          generatedCard: await normalizeAndCacheCard(item.generatedCard)
+        })))
       : res.data
   }));
 }
@@ -50,11 +59,11 @@ function claimImport(importId, userId) {
     url: `/api/imports/${importId}/claim`,
     method: "POST",
     data: { userId }
-  }).then((res) => ({
+  }).then(async (res) => ({
     ...res,
     data: {
       ...res.data,
-      card: normalizeCardPayload(res.data && res.data.card)
+      card: await normalizeAndCacheCard(res.data && res.data.card)
     }
   }));
 }
@@ -67,18 +76,18 @@ function fetchCards(params = {}) {
   const suffix = query.length ? `?${query.join("&")}` : "";
   return request({
     url: `/api/cards${suffix}`
-  }).then((res) => ({
+  }).then(async (res) => ({
     ...res,
-    data: Array.isArray(res.data) ? res.data.map(normalizeCardPayload) : res.data
+    data: Array.isArray(res.data) ? await normalizeAndCacheCards(res.data) : res.data
   }));
 }
 
 function fetchCard(cardId) {
   return request({
     url: `/api/cards/${cardId}`
-  }).then((res) => ({
+  }).then(async (res) => ({
     ...res,
-    data: normalizeCardPayload(res.data)
+    data: await normalizeAndCacheCard(res.data)
   }));
 }
 
@@ -109,7 +118,10 @@ function createCard(payload) {
     url: "/api/cards",
     method: "POST",
     data: payload
-  });
+  }).then(async (res) => ({
+    ...res,
+    data: await normalizeAndCacheCard(res.data)
+  }));
 }
 
 function uploadAsset({ filePath, mediaType = "image", ownerUserId = "" }) {
@@ -134,7 +146,8 @@ function uploadAsset({ filePath, mediaType = "image", ownerUserId = "" }) {
         if (res.statusCode >= 200 && res.statusCode < 300) {
           resolve({
             ...data.data,
-            url: toAbsoluteUrl(data.data && data.data.url)
+            url: toAbsoluteUrl(data.data && data.data.url),
+            displayUrl: toAbsoluteUrl(data.data && data.data.url)
           });
           return;
         }
@@ -152,7 +165,10 @@ function updateCard(cardId, payload) {
     url: `/api/cards/${cardId}`,
     method: "PUT",
     data: payload
-  });
+  }).then(async (res) => ({
+    ...res,
+    data: await normalizeAndCacheCard(res.data)
+  }));
 }
 
 function deleteCard(cardId, ownerUserId) {
@@ -167,7 +183,10 @@ function publishCard(cardId, userId) {
     url: `/api/cards/${cardId}/publish`,
     method: "POST",
     data: { userId }
-  });
+  }).then(async (res) => ({
+    ...res,
+    data: await normalizeAndCacheCard(res.data)
+  }));
 }
 
 function duplicateCard(cardId, userId) {
@@ -175,7 +194,10 @@ function duplicateCard(cardId, userId) {
     url: `/api/cards/${cardId}/duplicate`,
     method: "POST",
     data: { userId }
-  });
+  }).then(async (res) => ({
+    ...res,
+    data: await normalizeAndCacheCard(res.data)
+  }));
 }
 
 function recordView(cardId, payload) {

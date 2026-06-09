@@ -65,7 +65,7 @@ async def _download_sync_media(
             continue
         try:
             downloaded = await client.download_media(media_id)
-            media_urls[media_id] = service.media_storage_service.store_bytes(
+            media_urls[media_id] = service.process_and_store_media(
                 media_id=media_id,
                 media_type=msg_type,
                 content=downloaded.content,
@@ -85,7 +85,7 @@ async def _download_sync_media(
 
 async def _retry_media_job(job: dict, client: WecomClient, service: AppService):
     downloaded = await client.download_media(job["mediaId"])
-    local_url = service.media_storage_service.store_bytes(
+    local_url = service.process_and_store_media(
         media_id=job["mediaId"],
         media_type=job["mediaType"],
         content=downloaded.content,

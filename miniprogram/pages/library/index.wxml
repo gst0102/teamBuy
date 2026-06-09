@@ -70,7 +70,7 @@
   <view class="card-grid" wx:if="{{displayCards.length}}">
     <block wx:for="{{displayCards}}" wx:key="id">
       <view class="resource-card">
-        <image wx:if="{{item.coverUrl}}" class="resource-cover" src="{{item.coverUrl}}" mode="aspectFill" data-id="{{item.id}}" bindtap="handleView"></image>
+        <image wx:if="{{item.coverUrl}}" class="resource-cover" src="{{item.coverDisplayUrl || item.coverUrl}}" mode="aspectFill" data-id="{{item.id}}" bindtap="handleView"></image>
         <view wx:else class="resource-cover placeholder" data-id="{{item.id}}" bindtap="handleView">{{item.categoryName}}</view>
         <view class="resource-title">{{item.title}}</view>
         <view style="margin-top: 12rpx;" wx:if="{{item.tagNames.length}}">

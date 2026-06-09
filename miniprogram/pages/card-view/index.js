@@ -1,4 +1,5 @@
 const api = require("../../services/api");
+const resourceStore = require("../../stores/resource-store");
 
 function resolveRelayStatus(relay) {
   if (!relay) {
@@ -48,8 +49,7 @@ Page({
     await this.loadStats();
   },
   async loadCard() {
-    const res = await api.fetchCard(this.data.cardId);
-    const card = res.data;
+    const card = await resourceStore.getCard(this.data.cardId, { force: true });
     const detailMedia = (card.media || []).filter((item) => item.url !== card.coverUrl);
     const currentUser = getApp().globalData.currentUser || wx.getStorageSync("currentUser");
     this.setData({

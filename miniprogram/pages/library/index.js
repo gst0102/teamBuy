@@ -1,4 +1,5 @@
 const api = require("../../services/api");
+const resourceStore = require("../../stores/resource-store");
 const { enrichCard, getCurrentUser } = require("../../utils/dashboard");
 
 Page({
@@ -32,16 +33,15 @@ Page({
   async loadCards() {
     const currentUser = getCurrentUser();
     try {
-      const [res, categoryRes] = await Promise.all([
-        api.fetchCards({ ownerUserId: currentUser ? currentUser.id : "" }),
-        api.fetchCategories(currentUser ? currentUser.id : "")
+      const [cardsData, categories] = await Promise.all([
+        resourceStore.listCards({ ownerUserId: currentUser ? currentUser.id : "" }, { force: true }),
+        resourceStore.listCategories(currentUser ? currentUser.id : "", { force: true })
       ]);
-      const categories = categoryRes.data || [];
       const categoriesById = categories.reduce((result, item) => {
         result[item.id] = item.name;
         return result;
       }, {});
-      const cards = (res.data || []).map((card) => enrichCard(card, categoriesById));
+      const cards = (cardsData || []).map((card) => enrichCard(card, categoriesById));
       const categoryFilters = this.buildCountFilters(cards, (card) => card.categoryName);
       const tagItems = cards.flatMap((card) => (card.tagNames || []).map((tag) => ({ tag })));
       const tagFilters = this.buildCountFilters(tagItems, (item) => item.tag);
@@ -142,6 +142,7 @@ Page({
         if (!confirm) return;
         try {
           await api.deleteCard(cardId, currentUser.id);
+          resourceStore.invalidateOwner(currentUser.id);
           wx.showToast({ title: "已删除", icon: "success" });
           this.loadCards();
         } catch (error) {

@@ -1,4 +1,5 @@
 const api = require("../../services/api");
+const resourceStore = require("../../stores/resource-store");
 const { formatTime, statusText } = require("../../utils/dashboard");
 
 function filterRelays(relays, filter) {
@@ -86,7 +87,7 @@ Page({
   async loadAll() {
     const currentUser = getApp().globalData.currentUser;
     const [cardRes, statsRes] = await Promise.all([
-      api.fetchCard(this.data.cardId),
+      resourceStore.getCard(this.data.cardId, { force: true }),
       api.fetchStats(this.data.cardId, currentUser.id)
     ]);
     const relays = (statsRes.data.relayEntries || []).map((item) => ({
@@ -114,7 +115,7 @@ Page({
     const highIntentViewers = viewers.filter((item) => item.isHighIntent);
     const viewerFilter = this.data.viewerFilter || "intent";
     this.setData({
-      card: cardRes.data,
+      card: cardRes,
       stats: statsRes.data,
       viewers,
       relays,

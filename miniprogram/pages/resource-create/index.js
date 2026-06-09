@@ -1,4 +1,5 @@
 const api = require("../../services/api");
+const resourceStore = require("../../stores/resource-store");
 const { getCurrentUser } = require("../../utils/dashboard");
 
 function createUploadItem(data, fallbackName, fallbackType) {
@@ -7,6 +8,7 @@ function createUploadItem(data, fallbackName, fallbackType) {
     name: fallbackName,
     type: mediaType,
     url: data.url,
+    displayUrl: data.displayUrl || data.url,
     isCover: false
   };
 }
@@ -289,6 +291,7 @@ Page({
     try {
       const created = await api.createCard(this.buildCardPayload());
       const cardId = created.data.id;
+      resourceStore.invalidateOwner(currentUser.id);
       if (publishAfterCreate) {
         await api.publishCard(cardId, currentUser.id);
         wx.navigateTo({ url: `/pages/card-view/index?id=${cardId}` });

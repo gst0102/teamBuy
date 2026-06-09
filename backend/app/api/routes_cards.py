@@ -74,19 +74,28 @@ async def upload_asset(
             storage_dir=settings.media_storage_dir,
             public_url_prefix=settings.media_public_url_prefix,
         )
-    stored_url = storage.store_bytes(
-        media_id=new_id("manual_asset"),
+    processed = service.media_processing_service.process_upload(
         media_type=stored_type,
         content=content,
         content_type=file.content_type,
         filename=file.filename,
+    )
+    stored_url = storage.store_bytes(
+        media_id=new_id("manual_asset"),
+        media_type=stored_type,
+        content=processed.content,
+        content_type=processed.content_type,
+        filename=processed.filename,
     )
     return ApiResponse(
         data={
             "url": stored_url,
             "name": file.filename or "upload",
             "mediaType": normalized_type,
-            "contentType": file.content_type,
+            "contentType": processed.content_type,
+            "originalSize": processed.original_size,
+            "storedSize": processed.stored_size,
+            "compressed": processed.compressed,
         }
     )
 

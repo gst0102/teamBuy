@@ -3,7 +3,10 @@ from __future__ import annotations
 from app.api.dependencies import get_app_service, get_sync_task_queue, get_wecom_client
 from app.core.config import settings
 from app.services.media_storage_service import MediaStorageService
+from app.services.media_processing_service import MediaProcessingService
 from app.services.wecom_client import DownloadedMedia
+from io import BytesIO
+from PIL import Image
 
 
 class FakeSyncTask:
@@ -649,6 +652,34 @@ def test_manual_asset_upload_returns_media_url(client):
     assert payload["mediaType"] == "image"
     assert payload["name"] == "cover.png"
     assert payload["url"]
+
+
+def test_manual_image_upload_compresses_before_storage(client, tmp_path):
+    service = client.app.dependency_overrides[get_app_service]()
+    media_dir = tmp_path / "media"
+    service.media_storage_service = MediaStorageService("local", media_dir, "/media")
+    service.media_processing_service = MediaProcessingService(image_max_edge=640, image_quality=80)
+    login = client.post("/api/auth/mock-login", json={"nickname": "压缩上传用户"}).json()["data"]
+    image = Image.new("RGB", (1800, 1200), (200, 60, 60))
+    output = BytesIO()
+    image.save(output, format="PNG")
+
+    response = client.post(
+        "/api/uploads/asset",
+        data={"ownerUserId": login["id"], "mediaType": "image"},
+        files={"file": ("large.png", output.getvalue(), "image/png")},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()["data"]
+    assert payload["mediaType"] == "image"
+    assert payload["contentType"] == "image/jpeg"
+    assert payload["compressed"] is True
+    assert payload["storedSize"] < payload["originalSize"]
+    stored_files = list(media_dir.iterdir())
+    assert len(stored_files) == 1
+    with Image.open(stored_files[0]) as stored:
+      assert max(stored.size) <= 640
 
 
 def test_category_management_and_filtering(client):

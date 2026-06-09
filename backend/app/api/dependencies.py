@@ -6,6 +6,7 @@ from app.services.bootstrap import seed_runtime_state
 from app.services.card_parser_service import CardParserService
 from app.services.import_notification_service import ImportNotificationService
 from app.services.media_storage_service import MediaStorageService
+from app.services.media_processing_service import MediaProcessingService
 from app.services.message_aggregator import MessageAggregator
 from app.services.repository import build_repository
 from app.services.sync_task_queue import SyncTaskQueue
@@ -36,6 +37,13 @@ _service = AppService(
     aggregator=MessageAggregator(),
     notification_service=ImportNotificationService(),
     normalizer=WecomMessageNormalizer(),
+    media_processing_service=MediaProcessingService(
+        image_max_edge=settings.media_image_max_edge,
+        image_quality=settings.media_image_quality,
+        video_max_width=settings.media_video_max_width,
+        video_crf=settings.media_video_crf,
+        ffmpeg_bin=settings.ffmpeg_bin,
+    ),
 )
 _wecom_client = WecomClient(settings)
 _sync_task_queue = SyncTaskQueue(
