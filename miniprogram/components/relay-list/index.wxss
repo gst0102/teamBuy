@@ -62,8 +62,37 @@
   margin-bottom: 8rpx;
 }
 
+.relay-quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  margin: 18rpx 0 0 90rpx;
+}
+
+.quick-btn {
+  margin: 0;
+  padding: 0 18rpx;
+  height: 56rpx;
+  line-height: 56rpx;
+  border-radius: 999rpx;
+  background: #edf5ff;
+  color: #1677ff;
+  font-size: 22rpx;
+  font-weight: 800;
+}
+
+.quick-btn.primary {
+  background: #1677ff;
+  color: #fff;
+}
+
+.quick-btn::after {
+  border: none;
+}
+
 .relay-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 16rpx;
   margin: 18rpx 0 0 90rpx;
 }

@@ -12,6 +12,11 @@
       <view wx:if="{{item.phone}}" class="relay-field">电话：{{item.phone}}</view>
       <view wx:if="{{item.address}}" class="relay-field">地址：{{item.address}}</view>
     </view>
+    <view wx:if="{{isOwner && (item.phone || item.address)}}" class="relay-quick-actions">
+      <button wx:if="{{item.phone}}" data-phone="{{item.phone}}" class="quick-btn primary" size="mini" bindtap="handleCall">电话直拨</button>
+      <button wx:if="{{item.phone}}" data-phone="{{item.phone}}" class="quick-btn" size="mini" bindtap="handleCopyPhone">复制电话</button>
+      <button wx:if="{{item.address}}" data-address="{{item.address}}" class="quick-btn" size="mini" bindtap="handleCopyAddress">复制地址</button>
+    </view>
     <view wx:if="{{isOwner}}" class="relay-actions">
       <button data-id="{{item.id}}" class="ghost-btn" size="mini" bindtap="handleFollow">标记已跟进</button>
       <button data-id="{{item.id}}" class="ghost-btn" size="mini" bindtap="handleDelete">删除无效</button>
