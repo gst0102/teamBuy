@@ -45,15 +45,21 @@
     </view>
   </view>
 
-  <view class="panel pending-panel" wx:if="{{pendingRelays.length}}">
+  <view class="panel leads-panel">
     <view class="section-head">
       <view>
-        <view class="section-title">待跟进新线索</view>
-        <view class="muted">新提交的接龙会优先出现在这里</view>
+        <view class="section-title">接龙名单</view>
+        <view class="muted">按跟进状态处理线索</view>
       </view>
-      <view class="section-link">{{pendingRelays.length}} 条</view>
+      <view class="section-link">{{summary.pendingFollow}} 个待跟进</view>
     </view>
-    <relay-list relays="{{pendingRelays}}" isOwner="{{true}}" bind:delete="handleDelete" bind:follow="handleFollow" />
+    <view class="relay-filter-row">
+      <view class="relay-filter {{relayFilter === 'pending' ? 'active' : ''}}" data-filter="pending" bindtap="handleRelayFilterChange">待跟进 {{pendingRelays.length}}</view>
+      <view class="relay-filter {{relayFilter === 'followed' ? 'active' : ''}}" data-filter="followed" bindtap="handleRelayFilterChange">已跟进 {{followedRelays.length}}</view>
+      <view class="relay-filter {{relayFilter === 'all' ? 'active' : ''}}" data-filter="all" bindtap="handleRelayFilterChange">全部 {{relays.length}}</view>
+    </view>
+    <relay-list relays="{{filteredRelays}}" isOwner="{{true}}" bind:delete="handleDelete" bind:follow="handleFollow" />
+    <view class="empty-state compact" wx:if="{{!filteredRelays.length}}">{{relayFilterEmptyText}}</view>
   </view>
 
   <view class="panel">
@@ -74,12 +80,4 @@
     <view class="empty-state compact" wx:if="{{!viewers.length}}">暂无登录访客，匿名访问只计入总量。</view>
   </view>
 
-  <view class="panel">
-    <view class="section-head">
-      <view class="section-title">全部接龙名单</view>
-      <view class="section-link">{{summary.pendingFollow}} 个待跟进</view>
-    </view>
-    <relay-list relays="{{relays}}" isOwner="{{true}}" bind:delete="handleDelete" bind:follow="handleFollow" />
-    <view class="empty-state compact" wx:if="{{!relays.length}}">暂无接龙线索。</view>
-  </view>
 </view>

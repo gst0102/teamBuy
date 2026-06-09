@@ -1,6 +1,18 @@
 const api = require("../../services/api");
 const { formatTime, statusText } = require("../../utils/dashboard");
 
+function filterRelays(relays, filter) {
+  if (filter === "pending") return relays.filter((item) => item.isPending);
+  if (filter === "followed") return relays.filter((item) => item.followUpStatus === "followed");
+  return relays;
+}
+
+function filterEmptyText(filter) {
+  if (filter === "pending") return "暂无待跟进线索。";
+  if (filter === "followed") return "暂无已跟进线索。";
+  return "暂无接龙线索。";
+}
+
 Page({
   data: {
     cardId: "",
@@ -9,6 +21,10 @@ Page({
     viewers: [],
     relays: [],
     pendingRelays: [],
+    followedRelays: [],
+    filteredRelays: [],
+    relayFilter: "pending",
+    relayFilterEmptyText: "暂无待跟进线索。",
     summary: {
       loggedViewers: 0,
       anonymousPv: 0,
@@ -35,6 +51,8 @@ Page({
       createdText: formatTime(item.createdAt)
     }));
     const pendingRelays = relays.filter((item) => item.isPending);
+    const followedRelays = relays.filter((item) => item.followUpStatus === "followed");
+    const relayFilter = this.data.relayFilter || "pending";
     const viewers = (statsRes.data.loggedInViewers || []).map((item) => ({
       ...item,
       viewedText: formatTime(item.viewedAt)
@@ -45,12 +63,23 @@ Page({
       viewers,
       relays,
       pendingRelays,
+      followedRelays,
+      filteredRelays: filterRelays(relays, relayFilter),
+      relayFilterEmptyText: filterEmptyText(relayFilter),
       summary: {
         loggedViewers: viewers.length,
         anonymousPv: statsRes.data.anonymousPv || 0,
         relayCount: statsRes.data.relayCount || relays.length,
         pendingFollow: pendingRelays.length
       }
+    });
+  },
+  handleRelayFilterChange(event) {
+    const filter = event.currentTarget.dataset.filter || "pending";
+    this.setData({
+      relayFilter: filter,
+      filteredRelays: filterRelays(this.data.relays || [], filter),
+      relayFilterEmptyText: filterEmptyText(filter)
     });
   },
   async handleDelete(event) {

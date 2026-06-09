@@ -66,9 +66,36 @@
   flex: 1;
 }
 
-.pending-panel {
+.leads-panel {
   border: 1rpx solid #ffd29a;
   background: linear-gradient(180deg, #fffaf2, #ffffff);
+}
+
+.relay-filter-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12rpx;
+  margin-top: 20rpx;
+  margin-bottom: 10rpx;
+  padding: 8rpx;
+  border-radius: 24rpx;
+  background: #f3f7ff;
+}
+
+.relay-filter {
+  height: 62rpx;
+  line-height: 62rpx;
+  border-radius: 18rpx;
+  color: #667085;
+  font-size: 24rpx;
+  font-weight: 800;
+  text-align: center;
+}
+
+.relay-filter.active {
+  background: #1677ff;
+  color: #fff;
+  box-shadow: 0 12rpx 26rpx rgba(22, 119, 255, 0.18);
 }
 
 .viewer-row {
