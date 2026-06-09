@@ -698,6 +698,10 @@ def test_anonymous_and_logged_in_view_stats_are_isolated(client):
         f"/api/cards/{card_id}/view",
         json={"viewerUserId": login["id"], "nickname": login["nickname"], "avatarUrl": login["avatarUrl"]},
     )
+    client.post(
+        f"/api/cards/{card_id}/view",
+        json={"viewerUserId": login["id"], "nickname": login["nickname"], "avatarUrl": login["avatarUrl"]},
+    )
     client.post(f"/api/cards/{card_id}/view", json={"anonymousId": "anon_1"})
 
     public_stats = client.get(f"/api/cards/{card_id}/stats").json()["data"]
@@ -707,7 +711,8 @@ def test_anonymous_and_logged_in_view_stats_are_isolated(client):
     ).json()["data"]
 
     assert public_stats["anonymousPv"] >= 1
-    assert any(item["nickname"] == "浏览用户" for item in owner_stats["loggedInViewers"])
+    browser_viewer = next(item for item in owner_stats["loggedInViewers"] if item["nickname"] == "浏览用户")
+    assert browser_viewer["viewCount"] == 2
     assert all(item["nickname"] != "匿名用户" for item in owner_stats["loggedInViewers"])
 
 

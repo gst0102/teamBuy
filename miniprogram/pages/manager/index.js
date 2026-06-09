@@ -13,6 +13,16 @@ function filterEmptyText(filter) {
   return "暂无接龙线索。";
 }
 
+function filterViewers(viewers, filter) {
+  if (filter === "intent") return viewers.filter((item) => item.isHighIntent);
+  return viewers;
+}
+
+function viewerEmptyText(filter) {
+  if (filter === "intent") return "暂无高意向访客。";
+  return "暂无登录访客，匿名访问只计入总量。";
+}
+
 Page({
   data: {
     cardId: "",
@@ -23,13 +33,18 @@ Page({
     pendingRelays: [],
     followedRelays: [],
     filteredRelays: [],
+    highIntentViewers: [],
+    filteredViewers: [],
     relayFilter: "pending",
     relayFilterEmptyText: "暂无待跟进线索。",
+    viewerFilter: "intent",
+    viewerFilterEmptyText: "暂无高意向访客。",
     summary: {
       loggedViewers: 0,
       anonymousPv: 0,
       relayCount: 0,
-      pendingFollow: 0
+      pendingFollow: 0,
+      highIntentViewers: 0
     }
   },
   onLoad(query) {
@@ -53,10 +68,20 @@ Page({
     const pendingRelays = relays.filter((item) => item.isPending);
     const followedRelays = relays.filter((item) => item.followUpStatus === "followed");
     const relayFilter = this.data.relayFilter || "pending";
+    const relayUserIds = new Set(relays.map((item) => item.userId).filter(Boolean));
     const viewers = (statsRes.data.loggedInViewers || []).map((item) => ({
       ...item,
-      viewedText: formatTime(item.viewedAt)
+      viewCount: Number(item.viewCount || 1),
+      viewedText: formatTime(item.viewedAt),
+      hasRelay: relayUserIds.has(item.userId)
+    })).map((item) => ({
+      ...item,
+      isRepeat: item.viewCount >= 2,
+      isHighIntent: item.viewCount >= 2 && !item.hasRelay,
+      intentText: item.hasRelay ? "已接龙" : item.viewCount >= 2 ? "高意向" : "普通访问"
     }));
+    const highIntentViewers = viewers.filter((item) => item.isHighIntent);
+    const viewerFilter = this.data.viewerFilter || "intent";
     this.setData({
       card: cardRes.data,
       stats: statsRes.data,
@@ -66,11 +91,15 @@ Page({
       followedRelays,
       filteredRelays: filterRelays(relays, relayFilter),
       relayFilterEmptyText: filterEmptyText(relayFilter),
+      highIntentViewers,
+      filteredViewers: filterViewers(viewers, viewerFilter),
+      viewerFilterEmptyText: viewerEmptyText(viewerFilter),
       summary: {
         loggedViewers: viewers.length,
         anonymousPv: statsRes.data.anonymousPv || 0,
         relayCount: statsRes.data.relayCount || relays.length,
-        pendingFollow: pendingRelays.length
+        pendingFollow: pendingRelays.length,
+        highIntentViewers: highIntentViewers.length
       }
     });
   },
@@ -80,6 +109,14 @@ Page({
       relayFilter: filter,
       filteredRelays: filterRelays(this.data.relays || [], filter),
       relayFilterEmptyText: filterEmptyText(filter)
+    });
+  },
+  handleViewerFilterChange(event) {
+    const filter = event.currentTarget.dataset.filter || "intent";
+    this.setData({
+      viewerFilter: filter,
+      filteredViewers: filterViewers(this.data.viewers || [], filter),
+      viewerFilterEmptyText: viewerEmptyText(filter)
     });
   },
   async handleDelete(event) {

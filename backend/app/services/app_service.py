@@ -608,30 +608,40 @@ class AppService:
                 "relayCount": 0,
             }
         )
-        unique_logged = defaultdict(set)
+        logged_viewers = defaultdict(dict)
         unique_anonymous = defaultdict(set)
         for event in state.view_events:
             row = stats[event.cardId]
             row["pv"] += 1
             if event.viewType == "logged_in":
                 key = event.viewerUserId or event.id
-                if key not in unique_logged[event.cardId]:
-                    unique_logged[event.cardId].add(key)
-                    row["loggedInViewers"].append(
-                        {
-                            "userId": event.viewerUserId,
-                            "nickname": event.nickname,
-                            "avatarUrl": event.avatarUrl,
-                            "viewedAt": event.viewedAt,
-                        }
-                    )
+                viewer = logged_viewers[event.cardId].setdefault(
+                    key,
+                    {
+                        "userId": event.viewerUserId,
+                        "nickname": event.nickname,
+                        "avatarUrl": event.avatarUrl,
+                        "viewedAt": event.viewedAt,
+                        "viewCount": 0,
+                    },
+                )
+                viewer["viewCount"] += 1
+                if event.viewedAt > viewer["viewedAt"]:
+                    viewer["viewedAt"] = event.viewedAt
+                    viewer["nickname"] = event.nickname
+                    viewer["avatarUrl"] = event.avatarUrl
             else:
                 row["anonymousPv"] += 1
                 key = event.anonymousId or event.id
                 unique_anonymous[event.cardId].add(key)
 
         for card_id, row in stats.items():
-            row["uv"] = len(unique_logged[card_id]) + len(unique_anonymous[card_id])
+            row["loggedInViewers"] = sorted(
+                logged_viewers[card_id].values(),
+                key=lambda item: item.get("viewedAt") or "",
+                reverse=True,
+            )
+            row["uv"] = len(logged_viewers[card_id]) + len(unique_anonymous[card_id])
             row["anonymousUv"] = len(unique_anonymous[card_id])
             row["relayCount"] = len(
                 [item for item in state.relay_entries if item.cardId == card_id and item.status == "active"]
@@ -647,25 +657,35 @@ class AppService:
             "loggedInViewers": [],
             "relayCount": len(relays),
         }
-        unique_logged = set()
+        logged_viewers = {}
         unique_anonymous = set()
         for event in events:
             row["pv"] += 1
             if event.viewType == "logged_in":
                 key = event.viewerUserId or event.id
-                if key not in unique_logged:
-                    unique_logged.add(key)
-                    row["loggedInViewers"].append(
-                        {
-                            "userId": event.viewerUserId,
-                            "nickname": event.nickname,
-                            "avatarUrl": event.avatarUrl,
-                            "viewedAt": event.viewedAt,
-                        }
-                    )
+                viewer = logged_viewers.setdefault(
+                    key,
+                    {
+                        "userId": event.viewerUserId,
+                        "nickname": event.nickname,
+                        "avatarUrl": event.avatarUrl,
+                        "viewedAt": event.viewedAt,
+                        "viewCount": 0,
+                    },
+                )
+                viewer["viewCount"] += 1
+                if event.viewedAt > viewer["viewedAt"]:
+                    viewer["viewedAt"] = event.viewedAt
+                    viewer["nickname"] = event.nickname
+                    viewer["avatarUrl"] = event.avatarUrl
             else:
                 row["anonymousPv"] += 1
                 unique_anonymous.add(event.anonymousId or event.id)
-        row["uv"] = len(unique_logged) + len(unique_anonymous)
+        row["loggedInViewers"] = sorted(
+            logged_viewers.values(),
+            key=lambda item: item.get("viewedAt") or "",
+            reverse=True,
+        )
+        row["uv"] = len(logged_viewers) + len(unique_anonymous)
         row["anonymousUv"] = len(unique_anonymous)
         return row

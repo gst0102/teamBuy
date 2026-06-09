@@ -64,20 +64,31 @@
 
   <view class="panel">
     <view class="section-head">
-      <view class="section-title">已登录访客</view>
-      <view class="section-link">{{summary.loggedViewers}} 人</view>
+      <view>
+        <view class="section-title">已登录访客</view>
+        <view class="muted">重复访问但未接龙的访客会标记为高意向</view>
+      </view>
+      <view class="section-link">{{summary.highIntentViewers}} 个高意向</view>
     </view>
-    <block wx:for="{{viewers}}" wx:key="userId">
-      <view class="viewer-row">
+    <view class="viewer-filter-row">
+      <view class="viewer-filter {{viewerFilter === 'intent' ? 'active' : ''}}" data-filter="intent" bindtap="handleViewerFilterChange">高意向 {{highIntentViewers.length}}</view>
+      <view class="viewer-filter {{viewerFilter === 'recent' ? 'active' : ''}}" data-filter="recent" bindtap="handleViewerFilterChange">最近 {{viewers.length}}</view>
+      <view class="viewer-filter {{viewerFilter === 'all' ? 'active' : ''}}" data-filter="all" bindtap="handleViewerFilterChange">全部 {{viewers.length}}</view>
+    </view>
+    <block wx:for="{{filteredViewers}}" wx:key="userId">
+      <view class="viewer-row {{item.isHighIntent ? 'high-intent' : ''}}">
         <image class="avatar" src="{{item.avatarUrl}}" mode="aspectFill"></image>
         <view class="viewer-main">
-          <view class="viewer-name">{{item.nickname}}</view>
-          <view class="muted">查看了资源详情</view>
+          <view class="viewer-name-row">
+            <view class="viewer-name">{{item.nickname}}</view>
+            <view class="viewer-badge {{item.isHighIntent ? 'intent' : item.hasRelay ? 'relay' : ''}}">{{item.intentText}}</view>
+          </view>
+          <view class="muted">查看 {{item.viewCount}} 次，最近 {{item.viewedText}}</view>
         </view>
         <view class="viewer-time">{{item.viewedText}}</view>
       </view>
     </block>
-    <view class="empty-state compact" wx:if="{{!viewers.length}}">暂无登录访客，匿名访问只计入总量。</view>
+    <view class="empty-state compact" wx:if="{{!filteredViewers.length}}">{{viewerFilterEmptyText}}</view>
   </view>
 
 </view>
