@@ -81,12 +81,21 @@
   <view class="panel">
     <view class="section-head">
       <view class="section-title">实名接龙</view>
-      <view class="section-link">登录后提交</view>
+      <view class="section-link">{{relaySubmitted ? '已提交' : '登录后提交'}}</view>
     </view>
-    <view class="muted">{{card.relayNotice || '感兴趣可以提交接龙，发布者会尽快跟进。'}}</view>
-    <input class="field-input" placeholder="手机号（按配置选填）" bindinput="handlePhoneChange" />
-    <input class="field-input" placeholder="地址（按配置选填）" bindinput="handleAddressChange" />
-    <button class="primary-btn" bindtap="handleRelaySubmit">提交接龙</button>
+    <view wx:if="{{relaySubmitted}}" class="relay-submitted-card">
+      <view class="relay-submitted-icon">✓</view>
+      <view>
+        <view class="relay-submitted-title">已提交接龙</view>
+        <view class="muted">{{relaySubmittedText || '发布者会尽快联系你'}}</view>
+      </view>
+    </view>
+    <block wx:else>
+      <view class="muted">{{card.relayNotice || '感兴趣可以提交接龙，发布者会尽快跟进。'}}</view>
+      <input class="field-input" placeholder="手机号（按配置选填）" bindinput="handlePhoneChange" />
+      <input class="field-input" placeholder="地址（按配置选填）" bindinput="handleAddressChange" />
+      <button class="primary-btn" loading="{{relaySubmitting}}" bindtap="handleRelaySubmit">提交接龙</button>
+    </block>
   </view>
 
   <view class="panel" wx:if="{{isOwner}}">

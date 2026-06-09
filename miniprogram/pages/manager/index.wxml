@@ -45,6 +45,17 @@
     </view>
   </view>
 
+  <view class="panel pending-panel" wx:if="{{pendingRelays.length}}">
+    <view class="section-head">
+      <view>
+        <view class="section-title">待跟进新线索</view>
+        <view class="muted">新提交的接龙会优先出现在这里</view>
+      </view>
+      <view class="section-link">{{pendingRelays.length}} 条</view>
+    </view>
+    <relay-list relays="{{pendingRelays}}" isOwner="{{true}}" bind:delete="handleDelete" bind:follow="handleFollow" />
+  </view>
+
   <view class="panel">
     <view class="section-head">
       <view class="section-title">已登录访客</view>
@@ -65,7 +76,7 @@
 
   <view class="panel">
     <view class="section-head">
-      <view class="section-title">接龙名单</view>
+      <view class="section-title">全部接龙名单</view>
       <view class="section-link">{{summary.pendingFollow}} 个待跟进</view>
     </view>
     <relay-list relays="{{relays}}" isOwner="{{true}}" bind:delete="handleDelete" bind:follow="handleFollow" />

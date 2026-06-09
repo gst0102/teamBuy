@@ -497,9 +497,12 @@ class AppService:
         stats = self._build_card_stats(card_id)
         relay_entries = self.repo.list_relay_entries_for_card(card_id, relay_status="active")
         is_owner = requester_user_id == card.ownerUserId
+        current_user_relay = None
         relay_payload = []
         for item in relay_entries:
             row = item.model_dump()
+            if requester_user_id and item.userId == requester_user_id:
+                current_user_relay = row.copy()
             if not is_owner:
                 row["nickname"] = item.maskedNickname
                 row["phone"] = None
@@ -508,6 +511,7 @@ class AppService:
         return {
             **stats,
             "relayEntries": relay_payload,
+            "currentUserRelay": current_user_relay,
         }
 
     def create_relay(self, card_id: str, payload: CreateRelayRequest) -> RelayEntry:
@@ -520,6 +524,16 @@ class AppService:
             raise HTTPException(status_code=400, detail="手机号为必填项")
         if card.relayConfig.requireAddress and not payload.address:
             raise HTTPException(status_code=400, detail="地址为必填项")
+        existing_relay = next(
+            (
+                item
+                for item in self.repo.list_relay_entries_for_card(card_id, relay_status="active")
+                if item.userId == payload.userId
+            ),
+            None,
+        )
+        if existing_relay:
+            raise HTTPException(status_code=409, detail="你已经提交过接龙")
 
         now = now_iso()
         relay = RelayEntry(

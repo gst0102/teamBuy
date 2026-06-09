@@ -8,7 +8,10 @@ Page({
     phone: "",
     address: "",
     detailMedia: [],
-    isOwner: false
+    isOwner: false,
+    relaySubmitted: false,
+    relaySubmitting: false,
+    relaySubmittedText: ""
   },
   onLoad(query) {
     this.setData({ cardId: query.id });
@@ -42,7 +45,14 @@ Page({
   async loadStats() {
     const currentUser = getApp().globalData.currentUser;
     const res = await api.fetchStats(this.data.cardId, currentUser ? currentUser.id : "");
-    this.setData({ stats: res.data });
+    const currentRelay =
+      res.data.currentUserRelay ||
+      ((res.data.relayEntries || []).find((item) => currentUser && item.userId === currentUser.id) || null);
+    this.setData({
+      stats: res.data,
+      relaySubmitted: !!currentRelay,
+      relaySubmittedText: currentRelay ? "已提交，发布者会尽快联系你" : ""
+    });
   },
   handleCall() {
     if (!this.data.card.phone) {
@@ -83,6 +93,11 @@ Page({
       wx.showToast({ title: "请先登录后接龙", icon: "none" });
       return;
     }
+    if (this.data.relaySubmitted || this.data.relaySubmitting) {
+      wx.showToast({ title: "你已经提交过接龙", icon: "none" });
+      return;
+    }
+    this.setData({ relaySubmitting: true });
     try {
       await api.createRelay(this.data.cardId, {
         userId: currentUser.id,
@@ -91,10 +106,23 @@ Page({
         phone: this.data.phone,
         address: this.data.address
       });
-      wx.showToast({ title: "接龙成功", icon: "success" });
-      this.loadStats();
+      this.setData({
+        relaySubmitted: true,
+        relaySubmittedText: "已提交，发布者会尽快联系你"
+      });
+      wx.showToast({ title: "提交成功", icon: "success" });
+      await this.loadStats();
     } catch (error) {
       wx.showToast({ title: error.detail || "接龙失败", icon: "none" });
+      if (error && error.detail === "你已经提交过接龙") {
+        this.setData({
+          relaySubmitted: true,
+          relaySubmittedText: "已提交，发布者会尽快联系你"
+        });
+        this.loadStats();
+      }
+    } finally {
+      this.setData({ relaySubmitting: false });
     }
   },
   handleGoManager() {

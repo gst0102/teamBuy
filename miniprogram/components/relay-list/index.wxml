@@ -1,5 +1,5 @@
 <block wx:for="{{relays}}" wx:key="id">
-  <view class="relay-card">
+  <view class="relay-card {{item.isPending ? 'pending' : ''}}">
     <view class="relay-head">
       <image class="relay-avatar" src="{{item.avatarUrl}}" mode="aspectFill"></image>
       <view class="relay-main">

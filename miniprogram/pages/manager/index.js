@@ -8,6 +8,7 @@ Page({
     stats: null,
     viewers: [],
     relays: [],
+    pendingRelays: [],
     summary: {
       loggedViewers: 0,
       anonymousPv: 0,
@@ -29,9 +30,11 @@ Page({
     ]);
     const relays = (statsRes.data.relayEntries || []).map((item) => ({
       ...item,
+      isPending: item.followUpStatus !== "followed",
       followUpText: statusText(item.followUpStatus),
       createdText: formatTime(item.createdAt)
     }));
+    const pendingRelays = relays.filter((item) => item.isPending);
     const viewers = (statsRes.data.loggedInViewers || []).map((item) => ({
       ...item,
       viewedText: formatTime(item.viewedAt)
@@ -41,11 +44,12 @@ Page({
       stats: statsRes.data,
       viewers,
       relays,
+      pendingRelays,
       summary: {
         loggedViewers: viewers.length,
         anonymousPv: statsRes.data.anonymousPv || 0,
         relayCount: statsRes.data.relayCount || relays.length,
-        pendingFollow: relays.filter((item) => item.followUpStatus !== "followed").length
+        pendingFollow: pendingRelays.length
       }
     });
   },

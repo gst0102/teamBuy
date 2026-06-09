@@ -3,6 +3,14 @@
   border-bottom: 1rpx solid #edf2f8;
 }
 
+.relay-card.pending {
+  margin: 16rpx 0;
+  padding: 22rpx;
+  border: 1rpx solid #ffd29a;
+  border-radius: 24rpx;
+  background: #fffaf2;
+}
+
 .relay-card:last-child {
   border-bottom: none;
 }

@@ -77,6 +77,35 @@
   line-height: 1.55;
 }
 
+.relay-submitted-card {
+  margin-top: 18rpx;
+  padding: 24rpx;
+  border-radius: 24rpx;
+  background: #f0fff7;
+  border: 1rpx solid #b8efce;
+  display: flex;
+  align-items: center;
+  gap: 18rpx;
+}
+
+.relay-submitted-icon {
+  width: 58rpx;
+  height: 58rpx;
+  border-radius: 50%;
+  background: #12b76a;
+  color: #fff;
+  font-size: 34rpx;
+  font-weight: 900;
+  line-height: 58rpx;
+  text-align: center;
+}
+
+.relay-submitted-title {
+  color: #087443;
+  font-size: 30rpx;
+  font-weight: 900;
+}
+
 .stat-icon.blue {
   background: linear-gradient(135deg, #368cff, #0066ff);
 }

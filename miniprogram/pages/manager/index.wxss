@@ -66,6 +66,11 @@
   flex: 1;
 }
 
+.pending-panel {
+  border: 1rpx solid #ffd29a;
+  background: linear-gradient(180deg, #fffaf2, #ffffff);
+}
+
 .viewer-row {
   display: flex;
   align-items: center;

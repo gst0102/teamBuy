@@ -754,6 +754,29 @@ def test_non_owner_stats_masks_relay_private_fields(client):
     assert owner_entry["address"] == "North Garden 1"
 
 
+def test_customer_relay_submission_is_single_active_entry(client):
+    card_id = "card_seed_001"
+    payload = {
+        "userId": "user_customer_repeat",
+        "nickname": "Repeat User",
+        "phone": "13900000000",
+        "address": "North Garden 2",
+    }
+
+    first = client.post(f"/api/cards/{card_id}/relay", json=payload)
+    assert first.status_code == 200
+
+    stats = client.get(
+        f"/api/cards/{card_id}/stats",
+        params={"requesterUserId": "user_customer_repeat"},
+    ).json()["data"]
+    assert stats["currentUserRelay"]["userId"] == "user_customer_repeat"
+
+    second = client.post(f"/api/cards/{card_id}/relay", json=payload)
+    assert second.status_code == 409
+    assert second.json()["detail"] == "你已经提交过接龙"
+
+
 def test_duplicate_card_keeps_stats_isolated(client):
     response = client.post(
         "/api/cards/card_seed_001/duplicate",
@@ -774,8 +797,8 @@ def test_owner_can_delete_and_follow_relay(client):
     relay_response = client.post(
         "/api/cards/card_seed_001/relay",
         json={
-            "userId": "user_seed_owner",
-            "nickname": "张团长",
+            "userId": "user_customer_follow",
+            "nickname": "Follow User",
             "phone": "13900000000",
             "address": "城南新区 1 号",
         },
