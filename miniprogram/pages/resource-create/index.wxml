@@ -109,6 +109,6 @@
 
   <view class="submit-bar">
     <button class="primary-btn action-btn" loading="{{submitting}}" bindtap="handleSubmit">保存到资源库</button>
-    <button class="ghost-btn action-btn" loading="{{previewSubmitting}}" bindtap="handlePreview">预览并发布</button>
+    <button class="ghost-btn action-btn" loading="{{previewSubmitting}}" bindtap="handlePreview">发布并预览</button>
   </view>
 </view>

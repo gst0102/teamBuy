@@ -1,13 +1,18 @@
 const api = require("../../services/api");
 const { getCurrentUser } = require("../../utils/dashboard");
 
+function statusLabel(status) {
+  return status === "published" ? "已发布" : "未发布";
+}
+
 Page({
   data: {
     cardId: "",
     card: null,
     categories: [],
     saving: false,
-    publishing: false
+    publishing: false,
+    statusLabel: ""
   },
   onLoad(query) {
     this.setData({ cardId: query.id });
@@ -34,7 +39,7 @@ Page({
           requireAddress: !!(res.data && res.data.relayConfig && res.data.relayConfig.requireAddress)
         }
       };
-      this.setData({ card });
+      this.setData({ card, statusLabel: statusLabel(card.status) });
       this.syncCategorySelection(card.categoryIds || []);
     } catch (error) {
       wx.showToast({ title: error.detail || error.errMsg || "卡片加载失败", icon: "none" });
@@ -130,7 +135,15 @@ Page({
     }
     this.setData({ saving: true });
     try {
-      await api.updateCard(this.data.cardId, this.buildPayload(currentUser));
+      const res = await api.updateCard(this.data.cardId, this.buildPayload(currentUser));
+      const updatedCard = res.data || this.data.card;
+      this.setData({
+        card: {
+          ...this.data.card,
+          ...updatedCard
+        },
+        statusLabel: statusLabel(updatedCard.status || this.data.card.status)
+      });
       wx.showToast({ title: "已保存", icon: "success" });
       return true;
     } catch (error) {

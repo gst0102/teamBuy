@@ -14,7 +14,7 @@
     <view wx:else class="preview-cover placeholder">资源</view>
     <view class="preview-main">
       <view class="preview-title">{{card.title || '未命名资源'}}</view>
-      <view class="muted">{{card.projectName || '未设置项目名'}} ｜ {{card.status}}</view>
+      <view class="muted">{{card.projectName || '未设置项目名'}} · {{statusLabel}}</view>
       <view class="preview-tags">
         <block wx:for="{{categories}}" wx:key="id">
           <text wx:if="{{item.selected}}" class="tag active">{{item.name}}</text>
@@ -86,7 +86,7 @@
   </view>
 
   <view class="submit-bar">
-    <button class="ghost-btn action-btn" loading="{{saving}}" bindtap="handleSave">保存草稿</button>
-    <button class="primary-btn action-btn" loading="{{publishing}}" bindtap="handlePublish">发布并预览</button>
+    <button class="ghost-btn action-btn" loading="{{saving}}" bindtap="handleSave">保存修改</button>
+    <button class="primary-btn action-btn" loading="{{publishing}}" bindtap="handlePublish">发布并查看</button>
   </view>
 </view>
