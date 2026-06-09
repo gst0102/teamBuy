@@ -23,6 +23,18 @@ function viewerEmptyText(filter) {
   return "暂无登录访客，匿名访问只计入总量。";
 }
 
+function viewerReminderKey(cardId) {
+  return `viewerReminders_${cardId}`;
+}
+
+function applyViewerReminders(viewers, reminderIds) {
+  const ids = new Set(reminderIds || []);
+  return viewers.map((item) => ({
+    ...item,
+    isReminded: ids.has(item.userId)
+  }));
+}
+
 Page({
   data: {
     cardId: "",
@@ -35,6 +47,7 @@ Page({
     filteredRelays: [],
     highIntentViewers: [],
     filteredViewers: [],
+    viewerReminderIds: [],
     relayFilter: "pending",
     relayFilterEmptyText: "暂无待跟进线索。",
     viewerFilter: "intent",
@@ -69,7 +82,8 @@ Page({
     const followedRelays = relays.filter((item) => item.followUpStatus === "followed");
     const relayFilter = this.data.relayFilter || "pending";
     const relayUserIds = new Set(relays.map((item) => item.userId).filter(Boolean));
-    const viewers = (statsRes.data.loggedInViewers || []).map((item) => ({
+    const reminderIds = wx.getStorageSync(viewerReminderKey(this.data.cardId)) || [];
+    const viewers = applyViewerReminders((statsRes.data.loggedInViewers || []).map((item) => ({
       ...item,
       viewCount: Number(item.viewCount || 1),
       viewedText: formatTime(item.viewedAt),
@@ -79,7 +93,7 @@ Page({
       isRepeat: item.viewCount >= 2,
       isHighIntent: item.viewCount >= 2 && !item.hasRelay,
       intentText: item.hasRelay ? "已接龙" : item.viewCount >= 2 ? "高意向" : "普通访问"
-    }));
+    })), reminderIds);
     const highIntentViewers = viewers.filter((item) => item.isHighIntent);
     const viewerFilter = this.data.viewerFilter || "intent";
     this.setData({
@@ -93,6 +107,7 @@ Page({
       relayFilterEmptyText: filterEmptyText(relayFilter),
       highIntentViewers,
       filteredViewers: filterViewers(viewers, viewerFilter),
+      viewerReminderIds: reminderIds,
       viewerFilterEmptyText: viewerEmptyText(viewerFilter),
       summary: {
         loggedViewers: viewers.length,
@@ -118,6 +133,32 @@ Page({
       filteredViewers: filterViewers(this.data.viewers || [], filter),
       viewerFilterEmptyText: viewerEmptyText(filter)
     });
+  },
+  handleCopyViewerNickname(event) {
+    const nickname = event.currentTarget.dataset.nickname;
+    if (!nickname) {
+      wx.showToast({ title: "暂无昵称", icon: "none" });
+      return;
+    }
+    wx.setClipboardData({ data: nickname });
+  },
+  handleAddViewerReminder(event) {
+    const userId = event.currentTarget.dataset.userId;
+    if (!userId) return;
+    const nextIds = [...new Set([...(this.data.viewerReminderIds || []), userId])];
+    wx.setStorageSync(viewerReminderKey(this.data.cardId), nextIds);
+    const viewers = applyViewerReminders(this.data.viewers || [], nextIds);
+    this.setData({
+      viewerReminderIds: nextIds,
+      viewers,
+      highIntentViewers: viewers.filter((item) => item.isHighIntent),
+      filteredViewers: filterViewers(viewers, this.data.viewerFilter),
+      summary: {
+        ...this.data.summary,
+        highIntentViewers: viewers.filter((item) => item.isHighIntent).length
+      }
+    });
+    wx.showToast({ title: "已加入待联系", icon: "success" });
   },
   async handleDelete(event) {
     const currentUser = getApp().globalData.currentUser;

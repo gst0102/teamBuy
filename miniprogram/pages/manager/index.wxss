@@ -187,6 +187,39 @@
   color: #079455;
 }
 
+.viewer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  margin-top: 14rpx;
+}
+
+.viewer-action {
+  margin: 0;
+  padding: 0 18rpx;
+  height: 54rpx;
+  line-height: 54rpx;
+  border-radius: 999rpx;
+  background: #edf5ff;
+  color: #1677ff;
+  font-size: 22rpx;
+  font-weight: 800;
+}
+
+.viewer-action.primary {
+  background: #172033;
+  color: #fff;
+}
+
+.viewer-action.done {
+  background: #dcfae6;
+  color: #079455;
+}
+
+.viewer-action::after {
+  border: none;
+}
+
 .viewer-time {
   color: #8a96a8;
   font-size: 24rpx;

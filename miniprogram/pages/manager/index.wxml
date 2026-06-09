@@ -84,6 +84,15 @@
             <view class="viewer-badge {{item.isHighIntent ? 'intent' : item.hasRelay ? 'relay' : ''}}">{{item.intentText}}</view>
           </view>
           <view class="muted">查看 {{item.viewCount}} 次，最近 {{item.viewedText}}</view>
+          <view wx:if="{{item.isHighIntent}}" class="viewer-actions">
+            <button class="viewer-action" size="mini" data-nickname="{{item.nickname}}" bindtap="handleCopyViewerNickname">复制昵称</button>
+            <button
+              class="viewer-action primary {{item.isReminded ? 'done' : ''}}"
+              size="mini"
+              data-user-id="{{item.userId}}"
+              bindtap="handleAddViewerReminder"
+            >{{item.isReminded ? '已备注待联系' : '加入待联系'}}</button>
+          </view>
         </view>
         <view class="viewer-time">{{item.viewedText}}</view>
       </view>
