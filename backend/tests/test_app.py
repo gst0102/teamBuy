@@ -547,6 +547,30 @@ def test_manual_create_card_flow(client):
     assert any(item["id"] == card["id"] for item in cards)
 
 
+def test_manual_create_card_persists_media_payload(client):
+    login = client.post("/api/auth/mock-login", json={"nickname": "素材资源用户"}).json()["data"]
+    response = client.post(
+        "/api/cards",
+        json={
+            "ownerUserId": login["id"],
+            "title": "带素材资源",
+            "detailText": "包含详情素材",
+            "coverUrl": "http://127.0.0.1:8000/media/cover.png",
+            "media": [
+                {"type": "image", "url": "http://127.0.0.1:8000/media/cover.png", "sortOrder": 1},
+                {"type": "image", "url": "http://127.0.0.1:8000/media/detail-1.png", "sortOrder": 2},
+                {"type": "video", "url": "http://127.0.0.1:8000/media/detail-2.mp4", "sortOrder": 3},
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    card = response.json()["data"]
+    assert len(card["media"]) == 3
+    assert card["media"][1]["url"].endswith("detail-1.png")
+    assert card["media"][2]["type"] == "video"
+
+
 def test_update_card_flow_accepts_relay_config_payload(client):
     login = client.post("/api/auth/mock-login", json={"nickname": "编辑资源用户"}).json()["data"]
     created = client.post(
@@ -575,6 +599,10 @@ def test_update_card_flow_accepts_relay_config_payload(client):
             "sourceUrl": None,
             "enabledFields": [],
             "categoryIds": [],
+            "media": [
+                {"type": "image", "url": "http://127.0.0.1:8000/media/edit-cover.png", "sortOrder": 1},
+                {"type": "video", "url": "http://127.0.0.1:8000/media/edit-video.mp4", "sortOrder": 2},
+            ],
             "relayConfig": {"enabled": True, "requirePhone": True, "requireAddress": False},
         },
     )
@@ -583,6 +611,7 @@ def test_update_card_flow_accepts_relay_config_payload(client):
     payload = updated.json()["data"]
     assert payload["title"] == "已编辑资源"
     assert payload["relayConfig"]["requirePhone"] is True
+    assert len(payload["media"]) == 2
 
 
 def test_delete_card_flow_removes_card(client):

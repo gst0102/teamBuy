@@ -5,7 +5,7 @@ from datetime import timedelta
 from uuid import uuid4
 from fastapi import HTTPException, status
 
-from app.models.domain import AppState, Card, Category, MediaRetryJob, RawMessage, RelayConfig, RelayEntry, SyncCursor, User, ViewEvent
+from app.models.domain import AppState, Card, CardMedia, Category, MediaRetryJob, RawMessage, RelayConfig, RelayEntry, SyncCursor, User, ViewEvent
 from app.schemas.auth import MockLoginRequest
 from app.schemas.categories import CategoryCreateRequest
 from app.schemas.cards import CardCreateRequest, CardUpdateRequest, CreateRelayRequest, RecordViewRequest
@@ -44,6 +44,24 @@ class AppService:
 
     def _save(self, state: AppState) -> None:
         self.repo.save(state)
+
+    def _build_card_media(self, card_id: str, media_payload: list[dict] | None) -> list[CardMedia]:
+        media_items: list[CardMedia] = []
+        for index, item in enumerate(media_payload or []):
+            if not item or item.get("type") not in {"image", "video"} or not item.get("url"):
+                continue
+            media_items.append(
+                CardMedia(
+                    id=new_id("card_media"),
+                    cardId=card_id,
+                    type=item["type"],
+                    url=item["url"],
+                    sortOrder=item.get("sortOrder") or index + 1,
+                    sourceMediaId=None,
+                    createdAt=now_iso(),
+                )
+            )
+        return media_items
 
     def list_pending_imports(self) -> list[dict]:
         pending = self.repo.list_import_batches(statuses={"pending", "success"})
@@ -368,8 +386,9 @@ class AppService:
             raise HTTPException(status_code=400, detail="标题不能为空")
 
         now = now_iso()
+        card_id = new_id("card")
         card = Card(
-            id=new_id("card"),
+            id=card_id,
             ownerUserId=payload.ownerUserId,
             status="draft",
             title=payload.title.strip(),
@@ -382,6 +401,7 @@ class AppService:
             sourceUrl=payload.sourceUrl,
             enabledFields=payload.enabledFields,
             categoryIds=payload.categoryIds,
+            media=self._build_card_media(card_id, payload.model_dump().get("media")),
             relayConfig=RelayConfig(**payload.relayConfig.model_dump()),
             createdAt=now,
             updatedAt=now,
@@ -402,6 +422,8 @@ class AppService:
             if key == "relayConfig":
                 relay_config_data = value.model_dump() if hasattr(value, "model_dump") else value
                 card.relayConfig = card.relayConfig.model_copy(update=relay_config_data)
+            elif key == "media":
+                card.media = self._build_card_media(card.id, value)
             else:
                 setattr(card, key, value)
         card.updatedAt = now

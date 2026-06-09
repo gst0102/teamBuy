@@ -6,7 +6,8 @@ Page({
     card: null,
     stats: null,
     phone: "",
-    address: ""
+    address: "",
+    detailMedia: []
   },
   onLoad(query) {
     this.setData({ cardId: query.id });
@@ -18,7 +19,9 @@ Page({
   },
   async loadCard() {
     const res = await api.fetchCard(this.data.cardId);
-    this.setData({ card: res.data });
+    const card = res.data;
+    const detailMedia = (card.media || []).filter((item) => item.url !== card.coverUrl);
+    this.setData({ card, detailMedia });
   },
   async recordView() {
     const currentUser = getApp().globalData.currentUser;
@@ -93,6 +96,12 @@ Page({
   },
   handleGoManager() {
     wx.navigateTo({ url: `/pages/manager/index?id=${this.data.cardId}` });
+  },
+  handlePreviewImage(event) {
+    const current = event.currentTarget.dataset.url;
+    const urls = this.data.detailMedia.filter((item) => item.type === "image").map((item) => item.url);
+    if (!current || !urls.length) return;
+    wx.previewImage({ current, urls });
   },
   onShareAppMessage() {
     return {

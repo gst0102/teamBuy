@@ -228,14 +228,24 @@ Page({
   },
   buildDetailText() {
     const form = this.data.form;
-    const detailAssets = this.data.uploadedAssets.filter((item) => item.url !== form.coverUrl);
+    const attachmentAssets = this.data.uploadedAssets.filter((item) => item.type === "file");
     const parts = [
       form.detailText.trim(),
       form.locationText ? `位置：${form.locationText.trim()}` : "",
       form.phone ? `电话：${form.phone.trim()}` : "",
-      detailAssets.length ? `详情素材：\n${detailAssets.map((item) => item.url).join("\n")}` : ""
+      attachmentAssets.length ? `附件素材：\n${attachmentAssets.map((item) => item.url).join("\n")}` : ""
     ].filter(Boolean);
     return parts.join("\n\n");
+  },
+  buildMediaPayload() {
+    return this.data.uploadedAssets
+      .filter((item) => item.type === "image" || item.type === "video")
+      .map((item, index) => ({
+        type: item.type,
+        url: item.url,
+        sortOrder: item.isCover ? 1 : index + 2
+      }))
+      .sort((a, b) => a.sortOrder - b.sortOrder);
   },
   buildCardPayload() {
     const currentUser = getCurrentUser();
@@ -250,6 +260,7 @@ Page({
       phone: form.phone.trim() || null,
       sourceUrl: null,
       categoryIds: this.data.categories.filter((item) => item.selected).map((item) => item.id),
+      media: this.buildMediaPayload(),
       relayNotice: form.relayNotice.trim() || "请留下你的称呼和联系方式，方便后续跟进。",
       relayConfig: {
         enabled: form.generatePage,

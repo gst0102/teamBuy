@@ -104,6 +104,13 @@ Page({
       sourceUrl: card.sourceUrl || null,
       enabledFields: Array.isArray(card.enabledFields) ? card.enabledFields : [],
       categoryIds: this.data.categories.filter((item) => item.selected).map((item) => item.id),
+      media: Array.isArray(card.media)
+        ? card.media.map((item, index) => ({
+            type: item.type,
+            url: item.url,
+            sortOrder: item.sortOrder || index + 1
+          }))
+        : [],
       relayConfig: {
         enabled: !(card.relayConfig && card.relayConfig.enabled === false),
         requirePhone: !!(card.relayConfig && card.relayConfig.requirePhone),

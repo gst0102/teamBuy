@@ -9,6 +9,12 @@ class RelayConfigPayload(BaseModel):
     requireAddress: bool = False
 
 
+class CardMediaPayload(BaseModel):
+    type: str
+    url: str
+    sortOrder: int = 1
+
+
 class CardUpdateRequest(BaseModel):
     ownerUserId: str
     title: str
@@ -21,6 +27,7 @@ class CardUpdateRequest(BaseModel):
     sourceUrl: str | None = None
     enabledFields: list[str] = Field(default_factory=list)
     categoryIds: list[str] = Field(default_factory=list)
+    media: list[CardMediaPayload] = Field(default_factory=list)
     relayConfig: RelayConfigPayload = Field(default_factory=RelayConfigPayload)
 
 
@@ -36,6 +43,7 @@ class CardCreateRequest(BaseModel):
     sourceUrl: str | None = None
     enabledFields: list[str] = Field(default_factory=list)
     categoryIds: list[str] = Field(default_factory=list)
+    media: list[CardMediaPayload] = Field(default_factory=list)
     relayConfig: RelayConfigPayload = Field(default_factory=RelayConfigPayload)
 
 
