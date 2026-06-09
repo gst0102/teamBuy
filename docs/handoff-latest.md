@@ -1,30 +1,156 @@
 # teamBuy 阶段性交接归档
 
-## 2026-06-10 高意向访客转待联系
+更新时间：2026-06-10  
+工作目录：`d:\Desktop\myprojects\teamBuy`  
+当前分支：`main`  
+当前最新提交：`feat: manage visitor follow-up reminder states`  
+本地状态：`main` 领先 `origin/main` 24 个提交，尚未推送。
 
-- 管理页高意向访客卡片已新增动作：
-  - 复制昵称
-  - 加入待联系
-- “加入待联系”当前为小程序本地轻量提醒：
-  - 按 `viewerReminders_{cardId}` 存储。
-  - 刷新管理页后仍显示“已备注待联系”。
-  - 不跨设备、不做团队共享。
-- 已验证：
-  - 小程序所有 `.js` `node --check` 通过。
-  - 小程序所有 `.json` 解析通过。
-  - `pytest backend\tests\test_app.py -q` 通过，34 项通过。
-- 仍需微信开发者工具人工确认：
-  - 高意向访客可复制昵称。
-  - 点击加入待联系后按钮变为“已备注待联系”。
-  - 刷新管理页后状态仍保留。
+## 1. 项目背景与目标
 
-## 2026-06-10 管理页访客筛选与意向提示
+teamBuy 是一个面向微信私域场景的小程序工具。当前产品名和 UI 方向为“悦享互动宝”。
 
-- 后端 stats 的登录访客数据已增强：
-  - 同一登录用户重复访问会聚合为一条记录。
+项目核心目标不是做团购交易系统，也不是做支付、订单、库存、分账或完整 CRM，而是验证一条“微信内容资源助理”主链路：
+
+```text
+企业微信客服收到用户转发的微信笔记 / 链接 / 图片 / 视频 / 位置等素材
+  -> 后端通过企业微信客服回调与 sync_msg 拉取消息
+  -> 聚合消息并生成资源卡片草稿
+  -> 小程序端认领、编辑、保存、发布
+  -> 分享给客户查看
+  -> 客户浏览、电话直拨、复制字段、实名接龙
+  -> 发布者查看访问统计、接龙名单、跟进状态
+  -> 资源库搜索、筛选、复用
+```
+
+第一优先用户是房产中介，第二优先用户是团购团长。当前 v0.1 重点是把“素材归档 -> 资源卡片 -> 分享查看 -> 浏览/接龙/跟进 -> 资源库复用”跑通。
+
+需要特别注意：企业微信真实 `sync_msg` 主链路目前仍因企业微信认证/权限配置问题阻塞，不能把手动添加资源或 mock 链路当作最终上线通过。
+
+## 2. 当前阶段目标
+
+当前阶段处于 v0.1 小程序产品化与本地可验收链路补齐阶段。
+
+阶段目标：
+
+- 在企业微信真实权限暂时无法继续推进时，先把小程序端资源管理、发布、分享、接龙、线索跟进体验打磨完整。
+- 参考 `docs/png/` 里的页面图，尽量复刻页面功能与体验，但 `docs/png/` 仅作为参考图，不纳入资源入库。
+- 保持真实企业微信导入为最终主链路；手动添加资源只是临时可用入口和本地验收入口。
+- 所有小程序页面使用自定义导航 `navigationStyle: "custom"`。
+- 阶段完成后需要在微信开发者工具里人工验收，自动化测试不能替代真实小程序运行环境验收。
+
+## 3. 已完成的功能
+
+### 3.1 后端基础能力
+
+- FastAPI 后端骨架。
+- 本地 JSON/mock 持久化与 PostgreSQL 目标仓储适配。
+- `/health` 健康检查。
+- 企业微信客服回调 GET/POST 骨架。
+- `sync_msg` 客户端、cursor、任务锁、任务日志、媒体转存抽象。
+- mock 企业微信导入、消息聚合、卡片草稿生成。
+- 卡片创建、更新、发布、复制复用。
+- 浏览统计、匿名浏览隔离、登录访客统计。
+- 实名接龙、删除无效接龙、标记已跟进。
+- 资源分类标签接口。
+- 卡片 `media` 字段，支持图片/视频结构化保存。
+- 手动上传资源文件接口 `POST /api/uploads/asset`，当前用于小程序本地上传图片/视频。
+- 删除资源时同步清理该资源的访问记录和接龙线索。
+- 登录访客统计增强：
+  - 同一登录用户重复访问聚合为一条记录。
   - 返回 `viewCount`。
   - `viewedAt` 使用最新访问时间。
-- 管理页访客区已支持三段筛选：
+- 接龙状态增强：
+  - 同一用户对同一资源只允许一条 active 接龙。
+  - stats 返回 `currentUserRelay`。
+  - 发布者标记已跟进后，客户侧能读取到 `followUpStatus=followed`。
+
+### 3.2 小程序基础页面
+
+- 登录页。
+- 首页。
+- 资源库页。
+- 发给客服页 / 待认领导入页。
+- 手动添加资源页。
+- 标签管理页。
+- 资源编辑页。
+- 资源详情 / 分享查看页。
+- 管理页 / 访问详情页。
+- 访问记录页。
+- 我的页。
+- 自定义导航组件 `custom-nav`。
+- tabBar 图标已接入 `miniprogram/static/tab`。
+
+### 3.3 资源库与标签
+
+- 资源库支持真实搜索。
+- 资源库支持分类筛选与标签筛选。
+- 第二排标签只展示真实自定义标签，不再混入“客服接收 / 手动添加 / 可接龙 / 带链接”等伪标签。
+- 标签管理支持新增、删除。
+- 卡片可绑定 `categoryIds`。
+- 删除标签时会从用户卡片中移除对应绑定。
+- 资源库支持删除资源。
+
+### 3.4 手动添加资源与素材
+
+- 手动添加资源页支持上传图片、视频、文件。
+- 图片/视频写入卡片结构化 `media`。
+- 附件类文件继续补充到详情文本。
+- 首张图片默认作为封面。
+- 多图上传时明确首图为封面，其余图片/视频进入详情。
+- 手动添加资源可选择自定义标签。
+- 可保存到资源库、进入编辑页。
+- 可发布并预览。
+
+### 3.5 资源编辑页
+
+- 编辑页改成接近最终发布页的“所见即所得”结构。
+- 顶部封面区可直接编辑标题、项目名、位置。
+- 不再显示“封面图片链接”技术字段。
+- 详情素材在编辑页内按正式展示形态呈现。
+- 点击图片可设为封面。
+- 支持删除素材、上移、下移。
+- 支持发布后继续上传图片/视频。
+- 新上传素材写入当前卡片 `media`，保存修改后持久化。
+- 编辑页按钮文案已改为“保存修改 / 发布并查看”，避免“保存草稿”误解。
+
+### 3.6 资源详情 / 客户分享页
+
+- 资源详情页展示封面、标题、项目、位置、详情文本、字段复制、详情素材。
+- 详情素材支持多图预览和视频播放。
+- 电话直拨。
+- 复制信息。
+- 复制来源链接。
+- 分享资源使用小程序原生 `open-type="share"` 调起微信分享面板。
+- 客户视角不展示 PV/UV/接龙数统计。
+- 客户视角不展示接龙名单。
+- “访问详情”仅发布者可见。
+- 客户提交接龙后：
+  - 页面切换为“已提交接龙”状态。
+  - 输入框和提交按钮隐藏。
+  - 刷新后通过 `currentUserRelay` 恢复已提交状态。
+- 发布者标记已跟进后：
+  - 客户重新打开资源页显示“发布者已跟进”。
+  - “已提交”和“已跟进”有不同状态卡样式。
+
+### 3.7 管理页 / 访问详情页
+
+- 发布者可查看 PV、UV、匿名 PV、接龙数。
+- 发布者可查看登录访客列表。
+- 发布者可查看接龙名单。
+- 接龙名单按状态分组：
+  - 待跟进
+  - 已跟进
+  - 全部
+- 默认展示待跟进线索。
+- 接龙线索支持：
+  - 电话直拨
+  - 复制电话
+  - 复制地址
+  - 标记已跟进
+  - 删除无效
+- 待跟进线索高亮。
+- 登录访客区支持：
   - 高意向
   - 最近
   - 全部
@@ -35,461 +161,140 @@
   - 重复访问但未接龙：高意向
   - 已提交接龙：已接龙
   - 其他：普通访问
-- 已验证：
-  - 小程序所有 `.js` `node --check` 通过。
-  - 小程序所有 `.json` 解析通过。
-  - `pytest backend\tests\test_app.py -q` 通过，34 项通过。
-- 仍需微信开发者工具人工确认：
-  - 同一登录用户多次访问后，管理页显示访问次数。
-  - 高意向筛选只显示重复访问且未接龙访客。
-  - 已接龙访客不再混入高意向列表。
+- 高意向访客支持：
+  - 复制昵称
+  - 加入待联系
+- 待联系提醒支持：
+  - 标记已联系
+  - 取消待联系
+  - 已联系后清除记录
+- 待联系提醒当前为小程序本地轻量状态：
+  - key 为 `viewerReminders_{cardId}`
+  - 存储格式为 `{ userId: "pending" | "contacted" }`
+  - 旧版用户 ID 数组会兼容为 `pending`
+  - 刷新管理页后保持待联系或已联系状态
+  - 不跨设备、不团队共享
 
-## 2026-06-10 管理页线索筛选分组
+### 3.8 已通过的自动化检查
 
-- 发布者管理页接龙名单已改为单一线索面板。
-- 支持三段筛选：
-  - 待跟进
-  - 已跟进
-  - 全部
-- 默认展示待跟进线索，筛选项显示对应数量。
-- 待跟进线索继续保留高亮卡片、电话直拨、复制电话、复制地址、标记已跟进、删除无效。
-- 已验证：
-  - 小程序所有 `.js` `node --check` 通过。
-  - 小程序所有 `.json` 解析通过。
-  - `pytest backend\tests\test_app.py -q` 通过，34 项通过。
-- 仍需微信开发者工具人工确认：
-  - 切换“待跟进 / 已跟进 / 全部”列表内容正确。
-  - 标记已跟进后，该线索从“待跟进”移到“已跟进”。
-  - 空列表提示文案正确。
-
-## 2026-06-10 发布者线索快捷动作
-
-- 发布者管理页线索卡片已支持快捷跟进动作：
-  - 有电话时显示“电话直拨”。
-  - 有电话时显示“复制电话”。
-  - 有地址时显示“复制地址”。
-- 快捷动作位于 `relay-list` 组件内，管理页待跟进列表和全部接龙名单都会复用。
-- 快捷动作只在 `isOwner=true` 时渲染；普通客户视角不显示电话、地址或快捷动作。
-- 已验证：
-  - 小程序所有 `.js` `node --check` 通过。
-  - 小程序所有 `.json` 解析通过。
-  - `pytest backend\tests\test_app.py -q` 通过，34 项通过。
-- 仍需微信开发者工具人工确认：
-  - 待跟进线索里电话直拨能调起拨号。
-  - 复制电话、复制地址能写入剪贴板。
-  - 普通客户打开资源页看不到这些线索动作。
-
-## 2026-06-10 发布者跟进后的客户侧状态
-
-- 客户资源页接龙状态已从“已提交”扩展为：
-  - `pending`：显示“已提交接龙”，提示发布者会尽快联系。
-  - `followed`：显示“发布者已跟进”，使用蓝色状态卡。
-- 状态来源：
-  - `GET /api/cards/{card_id}/stats?requesterUserId=...`
-  - 返回 `currentUserRelay.followUpStatus`。
-- 后端回归已覆盖：
-  - 客户提交接龙后 `currentUserRelay.followUpStatus=pending`。
-  - 发布者标记跟进后，客户再次请求 stats 时变为 `followed`。
-- 已验证：
-  - 小程序所有 `.js` `node --check` 通过。
-  - 小程序所有 `.json` 解析通过。
-  - `pytest backend\tests\test_app.py -q` 通过，34 项通过。
-- 仍需微信开发者工具人工确认：
-  - 客户提交后显示“已提交接龙”。
-  - 发布者在管理页标记已跟进。
-  - 客户重新打开资源页后显示“发布者已跟进”。
-
-## 2026-06-10 接龙提交闭环与待跟进高亮
-
-- 客户资源页接龙体验已收口：
-  - 提交成功后切换为“已提交接龙”状态。
-  - 输入框和提交按钮隐藏，避免客户重复操作。
-  - 页面刷新后会通过 stats 的 `currentUserRelay` 恢复已提交状态。
-- 后端已增加重复保护：
-  - 同一用户对同一卡片只能有一条 active 接龙。
-  - 重复提交返回 409：`你已经提交过接龙`。
-- 发布者管理页已增加“待跟进新线索”高亮区：
-  - `pending` 接龙优先展示。
-  - 全部接龙名单仍保留完整列表。
-- 已验证：
-  - 小程序所有 `.js` `node --check` 通过。
-  - 小程序所有 `.json` 解析通过。
-  - `pytest backend\tests\test_app.py -q` 通过，34 项通过。
-- 仍需微信开发者工具人工确认：
-  - 客户首次提交接龙后页面切换为已提交状态。
-  - 客户刷新资源页后仍显示已提交。
-  - 同一客户重复提交被拦截。
-  - 发布者管理页能看到待跟进新线索高亮，并能标记已跟进。
-
-## 2026-06-10 普通客户视角资源页隐私
-
-- 客户视角资源页已收口：
-  - 不展示 PV/UV/接龙数统计卡片。
-  - 不展示已接龙名单。
-  - 显示隐私提示：浏览统计和接龙名单仅发布者可见。
-- 发布者视角资源页继续展示：
-  - 统计卡片。
-  - 访问详情入口。
-  - 完整接龙名单。
-- `relay-list` 组件已增加字段级防护：非发布者不渲染电话和地址。
-- 后端新增隐私回归：非发布者 stats 中接龙昵称脱敏，电话和地址为空；发布者 stats 仍返回完整字段。
-- 已验证：
-  - 小程序所有 `.js` `node --check` 通过。
-  - 小程序所有 `.json` 解析通过。
-  - `pytest backend\tests\test_app.py -q` 通过，33 项通过。
-- 仍需微信开发者工具人工确认：
-  - 发布者打开资源页能看到统计、访问详情和接龙名单。
-  - 非发布者打开同一资源页看不到统计和接龙名单。
-  - 非发布者提交接龙后，页面仍能正常提示提交成功。
-
-## 2026-06-10 编辑页继续上传素材与分享权限
-
-- 资源编辑页已支持发布后继续上传图片/视频：
-  - 有素材时在“详情素材”标题右侧显示“添加图片/视频”。
-  - 无素材时显示空态上传卡片，并说明第一张图片作为封面、后续素材进入详情。
-  - 新素材写入当前卡片 `media`，保存修改后持久化。
-- 资源详情页“分享资源”已改为小程序原生 `open-type="share"`，会直接调起微信分享面板。
-- 资源详情页“访问详情”仅发布者可见；普通查看用户和接龙用户不展示该入口。
-- 已验证：
-  - 小程序所有 `.js` `node --check` 通过。
-  - 小程序所有 `.json` 解析通过。
-  - `pytest backend\tests\test_app.py -q` 通过，32 项通过。
-- 仍需微信开发者工具人工确认：
-  - 编辑页追加上传后，保存修改并回到资源详情页能展示新素材。
-  - 分享按钮能调起微信分享面板。
-  - 用非发布者身份打开资源页时看不到“访问详情”。
-
-## 2026-06-09 本轮补充
-
-- 新提交方向：修正自定义导航标题与胶囊对齐、手动添加资源页上传说明、封面设置，以及真实预览发布链路。
-- 关键改动文件：
-  - `miniprogram/components/custom-nav/index.js`
-  - `miniprogram/components/custom-nav/index.wxml`
-  - `miniprogram/utils/nav.js`
-  - `miniprogram/pages/resource-create/index.js`
-  - `miniprogram/pages/resource-create/index.wxml`
-  - `miniprogram/pages/resource-create/index.wxss`
-  - `miniprogram/pages/card-edit/index.js`
-- 这轮已确认：
-  - 自定义导航标题不能再用 WXML 属性实体串。
-  - 手动添加资源页不再显示“来源设置”。
-  - “预览资源页”已改成真实创建 + 发布 + 跳转详情。
-- 这轮仍需人工验证：
-  - 微信开发者工具里标题是否与胶囊视觉持平。
-  - 多图上传后“设为封面”是否符合预期。
-  - 保存到资源库、预览并发布是否都能走通。
-
-## 2026-06-09 再补充
-
-- 已定位并修复资源编辑保存 500：后端 `update_card()` 错把 `relayConfig` 当模型对象二次 `model_dump()`。
-- 已补后端回归测试：`backend/tests/test_app.py::test_update_card_flow_accepts_relay_config_payload`。
-- 已移除多个页面顶部重复的“悦享互动宝”品牌条，避免自定义导航标题下方再次出现一行品牌文案。
-
-## 2026-06-10 资源库补充
-
-- 资源库筛选语义已收口：
-  - 第一排是分类筛选
-  - 第二排是标签筛选
-- 第二排不再混入来源/能力型伪标签，只保留真实标签。
-- 新增删除资源能力，对应后端 `DELETE /api/cards/{card_id}?ownerUserId=...`。
-- 删除资源会同时清理该资源下的访问记录与接龙线索。
-
-## 2026-06-10 资源详情素材补充
-
-- 卡片创建/更新 schema 已支持 `media`。
-- 手动添加资源页已将上传的图片/视频写入卡片 `media`。
-- 资源详情页已新增“详情素材”展示区：
-  - 图片支持预览
-  - 视频支持播放
-- 卡片编辑保存时会保留现有素材，避免编辑后详情素材丢失。
-
-## 2026-06-10 编辑页操作文案补充
-
-- 卡片编辑页按钮已改为“保存修改 / 发布并查看”。
-- 手动添加资源页发布按钮已改为“发布并预览”。
-- 当前产品语义：资源进入编辑页时已经在资料库中；发布动作会自动保存最新修改。
-
-## 2026-06-10 编辑页素材管理补充
-
-- 卡片编辑页新增“素材管理”区。
-- 支持：
-  - 图片设为封面
-  - 详情图片/视频删除
-  - 素材上移/下移排序
-  - 图片点击预览
-- 保存修改时会将新的素材顺序和封面写回卡片。
-
-## 2026-06-10 编辑页发布页式重构
-
-- 编辑页已改为接近用户最终发布页的结构。
-- 顶部封面区内可直接编辑标题、项目名和位置。
-- 已移除“封面图片链接”输入框。
-- 详情素材区内点击图片即可设为封面，视频继续作为详情素材展示。
-- 仍保留标签、联系电话、来源链接、接龙设置、保存修改和发布并查看。
-
-更新时间：2026-06-09  
-工作目录：`d:\Desktop\myprojects\teamBuy`  
-当前分支：`main`  
-当前 HEAD：本轮已提交 `feat: productize yuexiang miniapp ui`  
-远端状态：本地 `main` 已完成小程序 UI 产品化改版提交，尚未推送到 `origin/main`。
-
-## 1. 项目背景与目标
-
-teamBuy 是一个面向微信群私域场景的小程序工具，核心目标是把用户发给企业微信客服的微信笔记、链接、图片、视频、位置等素材，自动聚合并生成可编辑的小程序卡片。
-
-项目首版不做收款、订单、支付、分账、库存和核销。当前核心闭环是：
+最近一次相关检查已通过：
 
 ```text
-企业微信客服导入素材
-  -> 后端回调 / sync_msg 拉取消息
-  -> 消息聚合与卡片草稿生成
-  -> 小程序认领、编辑、保存、分享
-  -> 群用户查看、拨号、复制、实名接龙
-  -> 团长查看浏览统计、接龙名单、跟进状态
-  -> 素材库一键复用
+小程序所有 .js：node --check 通过
+小程序所有 .json：JSON 解析通过
+backend/tests/test_app.py：34 passed
 ```
 
-第一批目标用户是房产中介，第二批目标用户是团购团长。产品定位已经从“团购交易系统”收敛为“素材导入、卡片生成、查看统计、实名接龙与复用工具”。
+注意：这些只代表本地逻辑和静态检查通过，不等于微信开发者工具或真实企业微信链路验收通过。
 
-## 2. 当前阶段目标
+## 4. 已修改 / 新增的文件
 
-当前已经进入阶段三代码落地阶段。
+### 4.1 主要后端文件
 
-阶段三目标是实现 v0.1 MVP：
-
-- 后端 FastAPI 服务可本地运行、Docker 构建、服务器部署。
-- 企业微信客服回调和 `sync_msg` 主链路具备真实接入能力。
-- 本地 mock 链路可验证导入、聚合、解析、认领、卡片、浏览、接龙、复用。
-- 小程序端具备登录、待认领、素材库、卡片编辑、卡片查看、团长管理等基础页面。
-- 后续继续完成真实企业微信权限配置和小程序人工验收。
-
-## 3. 已完成的功能
-
-以下内容已在 Git 提交历史或现有文档中体现。
-
-### 3.1 阶段一与阶段二文档
-
-- 已完成 `stage1-thinking/` 阶段一交付物。
-- 已完成 `docs/stage2-docs/` 阶段二开发文档包。
-- 已完成 `docs/qa/MVP_测试清单与验收标准.md`。
-- 已完成本地构建与拉镜像部署方案。
-- 已补充 Docker 使用清华 PyPI 源的要求。
-- 已补充企业微信客服侧边栏/H5 发送小程序卡片作为 P2 技术预研，不进入 v0.1 P0。
-- 已补充企业微信文档 `92455`、`101463` 作为后续技术预研参考。
-
-### 3.2 后端已实现能力
-
-根据 `docs/qa/阶段三MVP_Codex自测报告.md` 与提交历史，后端已实现：
-
-- FastAPI 后端骨架。
-- `/health` 与数据库健康检查。
-- JSON 本地持久化与 PostgreSQL 过渡仓储。
-- 企业微信回调 GET/POST 入口。
-- 企业微信回调签名校验/解密入口。
-- `sync_msg` 客户端骨架。
-- mock 企业微信导入。
-- 微信笔记 60 秒聚合。
-- 文本、图片、链接、视频、位置消息标准化适配。
-- 卡片草稿生成。
-- 导入认领、卡片编辑、发布、一键复用。
-- 浏览统计、匿名浏览隔离。
-- 实名接龙、团长删除无效接龙、标记已跟进。
-- 导入成功/失败通知抽象和查询接口。
-- 真实 `sync_msg` 主链路 normalizer -> 幂等过滤 -> 事务写入导入产物。
-- `sync_cursor` 持久化和分页推进。
-- real-sync 手动触发锁、锁超时恢复、管理令牌 unlock。
-- media_id 下载/转存抽象。
-- 本地 `/media/...` 转存 URL。
-- COS/S3-compatible 对象存储适配层。
-- 媒体转存失败补偿队列。
-- callback 触发后台 real-sync 任务。
-- PostgreSQL 持久化任务队列 `sync_tasks` / `sync_task_logs`。
-
-### 3.3 小程序已实现能力
-
-根据文件结构和自测报告，已存在：
-
-- `miniprogram/` 原生微信小程序骨架。
-- 登录页。
-- 待认领导入页。
-- 素材库页。
-- 卡片编辑页。
-- 卡片查看页。
-- 管理页。
-- 悦享互动宝首页。
-- 访问记录页。
-- 我的页。
-- 组件：`card-preview`、`field-copy-row`、`relay-list`。
-- API 服务封装。
-- 前端数据聚合工具：`miniprogram/utils/dashboard.js`。
-- tabBar：首页、资源库、发给客服、访问记录、我的，并接入 `miniprogram/static/tab` 图标。
-- 手动添加资源页：`miniprogram/pages/resource-create/index`。
-- 后端手动创建卡片接口：`POST /api/cards`。
-- 资源库支持基于真实卡片数据的搜索、分类筛选和标签筛选。
-- 卡片查看页支持复制信息、复制来源链接、分享占位和访问详情入口。
-- 标签管理页：`miniprogram/pages/tag-manage/index`。
-- 后端分类标签接口：`GET /api/categories`、`POST /api/categories`、`DELETE /api/categories/{id}`。
-- 手动添加资源时可选择自定义标签并写入卡片 `categoryIds`。
-- 卡片编辑页可选择和保存自定义标签，并采用分区编辑结构。
-- 管理页/访问详情页已产品化为线索管理界面。
-- 卡片查看页已产品化为正式分享资源页。
-
-### 3.4 部署与真实联调
-
-根据 `docs/qa/企业微信真实联调记录.md`：
-
-- 代码已推送到 GitHub `main`。
-- 腾讯云服务器 `81.70.84.35` 已克隆仓库到 `/home/ubuntu/teamBuy`。
-- Docker Compose 已启动 `postgres` 和 `backend`。
-- 后端宿主机端口使用 `8002`。
-- Compose 构建确认使用清华 PyPI 源。
-- PostgreSQL 仅暴露在 Docker 内部网络。
-- 公网域名确认为 `teambuy.lifelove.top`。
-- DNS A 记录已生效：`teambuy.lifelove.top -> 81.70.84.35`。
-- 已使用 certbot 签发并部署 HTTPS 证书。
-- 公网 HTTPS 健康检查已通过：
-  - `GET https://teambuy.lifelove.top/health -> 200`
-  - `GET https://teambuy.lifelove.top/api/wecom/config-check -> success=true`
-  - `GET https://teambuy.lifelove.top/api/wecom/callback?echostr=hello-teamBuy -> "hello-teamBuy"`
-
-## 4. 已修改/新增的文件
-
-### 4.1 已提交到 Git 的核心文件
-
-阶段文档与规则：
-
-- `AGENTS.md`
-- `stage1-thinking/*`
-- `docs/stage2-docs/*`
-- `docs/qa/MVP_测试清单与验收标准.md`
-- `docs/qa/2026-06-08_teamBuy_本地构建与拉镜像部署方案.md`
-- `docs/qa/阶段三MVP_Codex自测报告.md`
-- `docs/qa/企业微信客服配置清单.md`
-- `docs/qa/企业微信真实联调记录.md`
-- `docs/deploy/tencent-cloud-real-sync.md`
-
-后端：
-
-- `backend/.env.example`
-- `backend/Dockerfile`
-- `backend/README.md`
-- `backend/requirements.txt`
-- `backend/app/main.py`
-- `backend/app/api/*`
-- `backend/app/core/*`
+- `backend/app/services/app_service.py`
+- `backend/app/services/repository.py`
+- `backend/app/api/routes_cards.py`
+- `backend/app/schemas/cards.py`
 - `backend/app/models/domain.py`
-- `backend/app/schemas/*`
-- `backend/app/services/*`
-- `backend/mock/*`
-- `backend/tests/*`
+- `backend/tests/test_app.py`
+- `backend/core/schema.sql` 相关迁移/表结构文件已在历史提交中维护
 
-小程序：
+### 4.2 主要小程序文件
 
-- `miniprogram/README.md`
 - `miniprogram/app.js`
 - `miniprogram/app.json`
 - `miniprogram/app.wxss`
 - `miniprogram/services/api.js`
 - `miniprogram/utils/request.js`
-- `miniprogram/pages/login/*`
-- `miniprogram/pages/imports/*`
+- `miniprogram/utils/dashboard.js`
+- `miniprogram/utils/nav.js`
+- `miniprogram/components/custom-nav/*`
+- `miniprogram/components/relay-list/*`
+- `miniprogram/components/field-copy-row/*`
+- `miniprogram/components/card-preview/*`
+- `miniprogram/pages/home/*`
 - `miniprogram/pages/library/*`
+- `miniprogram/pages/imports/*`
+- `miniprogram/pages/resource-create/*`
+- `miniprogram/pages/tag-manage/*`
 - `miniprogram/pages/card-edit/*`
 - `miniprogram/pages/card-view/*`
 - `miniprogram/pages/manager/*`
-- `miniprogram/components/card-preview/*`
-- `miniprogram/components/field-copy-row/*`
-- `miniprogram/components/relay-list/*`
+- `miniprogram/pages/visits/*`
+- `miniprogram/pages/profile/*`
+- `miniprogram/pages/login/*`
+- `miniprogram/static/tab/*`
 
-部署：
-
-- `docker-compose.yml`
-- `backend/.dockerignore`
-
-### 4.2 当前工作区未提交改动
-
-当前 `git status --short --branch` 显示以下已跟踪文件被修改但未提交：
+### 4.3 文档文件
 
 - `AGENTS.md`
-- `miniprogram/app.json`
-- `miniprogram/app.wxss`
-- `miniprogram/pages/imports/index.js`
-- `miniprogram/pages/imports/index.wxml`
-- `miniprogram/pages/imports/index.wxss`
-- `miniprogram/pages/library/index.js`
-- `miniprogram/pages/library/index.wxml`
-- `miniprogram/pages/library/index.wxss`
-- `miniprogram/pages/login/index.js`
-- `miniprogram/pages/login/index.wxml`
-- `miniprogram/pages/login/index.wxss`
+- `docs/project-memory.md`
+- `docs/decisions.md`
+- `docs/pitfalls.md`
+- `docs/dev-log.md`
+- `docs/handoff-latest.md`
+- `docs/prompts/codex-start.md`
+- `docs/prompts/codex-handoff.md`
+- `docs/stage2-docs/*`
+- `docs/qa/*`
 
-当前还存在以下未跟踪文件或目录：
+### 4.4 当前不要纳入提交的文件/目录
 
 - `docs/png/`
-- `docs/qa/悦享互动宝_v0.1_UI产品化改版_Codex自测报告.md`
-- `docs/stage2-docs/07-yuexiang-ui-productization-v0.1.md`
-- `docs/悦享互动宝 MVP 产品开发文档.md`
-- `miniprogram/pages/home/`
-- `miniprogram/pages/profile/`
-- `miniprogram/pages/visits/`
-- `miniprogram/utils/dashboard.js`
-
-这些内容属于小程序 UI/产品化改版方向，准备作为正式提交归档。`docs/png/` 中存在较多设计参考大图，本轮不纳入提交范围。
+  - 这是页面参考图目录，只用于参考，不加入资源入库，不应随便提交。
+- `backend/mock/runtime-state.json`
+  - 当前为本地运行态数据，已被多轮手动测试污染，除非明确要固化 mock 状态，否则不要提交。
+- `miniprogram/project.config.json`
+- `miniprogram/project.private.config.json`
+  - 微信开发者工具本地配置，当前为未跟踪文件，不要默认提交。
+- `docs/qa/当前项目_验收报告m1.md`
+  - 当前为未跟踪文件，未确认是否应纳入提交。
 
 ## 5. 当前代码状态
 
-### 5.1 Git 状态
-
-最近远端同步状态：
+当前 `git status --short --branch`：
 
 ```text
-## main...origin/main
+## main...origin/main [ahead 24]
+ M backend/mock/runtime-state.json
+?? docs/png/
+?? docs/qa/当前项目_验收报告m1.md
+?? miniprogram/project.config.json
+?? miniprogram/project.private.config.json
 ```
 
-但工作区不干净，存在已修改和未跟踪文件。
-
-当前 HEAD：
+最新提交：
 
 ```text
-feat: productize yuexiang miniapp ui
+feat: manage visitor follow-up reminder states
 ```
 
-最近提交包括：
+本地 `main` 已领先远端 `origin/main` 24 个提交，尚未推送。
+
+最近关键提交包括：
 
 ```text
-本轮提交：feat: productize yuexiang miniapp ui
-c0a6f16 docs: record lifelove https callback readiness
-12c7898 docs: update wecom real sync domain
-fe30c7c docs: record wecom real sync deployment check
-dbac2a7 fix: keep postgres internal in compose
-b8fae13 docs: prepare docker compose real sync deploy
-d8bd796 feat: persist real sync task queue
-a3e49ca feat: queue real sync from callback
-e9b3d07 feat: trigger real sync from wecom callback
+35c6a5f feat: manage visitor follow-up reminder states
+feat: manage visitor follow-up reminder states
+43e51cf feat: convert visitors into follow-up reminders
+ae218b3 feat: highlight manager visitor intent
+a0617c8 feat: filter manager relay leads
+44016de feat: add relay lead quick actions
+9753b99 feat: show followed relay status to customers
+ece6e60 feat: close relay submission follow-up loop
+3725ff0 feat: hide customer-facing private resource stats
+d0d9f4a feat: support edit page media upload and sharing guard
+548a65e feat: make card edit mirror published page
+943640d feat: manage card edit media assets
 ```
 
-### 5.2 后端测试状态
+当前没有需要继续提交的业务代码改动，工作区剩余改动主要是运行态数据和未跟踪本地/参考文件。
 
-`docs/qa/阶段三MVP_Codex自测报告.md` 记录：
+## 6. 已知问题和风险
 
-- 已执行：`cd backend && pytest`
-- 当前结果：48 项通过
-- 已执行：`cd backend && python -m compileall app`
+### 6.1 P0：真实企业微信 `sync_msg` 仍未跑通
 
-本 handoff 生成时未重新运行测试。
-
-本轮 UI 产品化收尾已重新执行：
-
-- 小程序所有 `.js`：`node --check` 通过。
-- 小程序所有 `.json`：JSON 解析通过。
-- `cd backend && pytest`：50 项通过。
-- `cd backend && python -m compileall app`：通过。
-
-### 5.3 真实联调状态
-
-HTTPS 域名和后端健康检查已经可用。
-
-当前主要阻塞是真实 `sync_msg` 返回：
+真实企业微信客服主链路仍卡在：
 
 ```text
 errcode=48002
@@ -497,166 +302,171 @@ errmsg=api forbidden
 from ip=81.70.84.35
 ```
 
-初步判断代码已经请求到企业微信接口，但企业微信后台权限或配置未完全满足。下一轮应检查 Secret、API 管理模式、客服账号权限、可信 IP/白名单和微信客服 API 权限。
+当前判断更像企业微信后台权限、Secret、API 管理、客服账号权限、可信 IP 或认证状态问题，不应盲目大改代码。
 
-## 6. 已知问题和风险
+企业微信认证目前用户侧也有问题，需要和官方沟通后才能继续真实权限配置。
 
-- 当前工作区存在未提交的小程序 UI 改动和新增文档/图片资源，新会话不要盲目提交或删除。
-- 真实企业微信 `sync_msg` 仍被 `48002 api forbidden` 阻塞。
-- 回调验签和解密入口已实现，但真实 XML 字段映射仍需企业微信账号实测。
-- 小程序尚未完成微信开发者工具中的系统性人工验收。
-- 电话拨号、字段复制、接龙管理等小程序能力需要在微信开发者工具或真机环境确认。
-- 未接入真实微信登录 code 换 openid。
-- 未完成真实对象存储端到端验证。
-- PostgreSQL 仓储当前仍有 JSONB 过渡结构，后续可按热点查询继续拆表和优化索引。
-- 分类能力目前以查询过滤为主，独立分类管理 API 仍可增强。
-- 当前全局 Python 环境曾出现 `sse-starlette` 与 `starlette` 版本约束冲突，后续建议使用项目虚拟环境。
-- PC Web 管理端未纳入 v0.1；客服侧边栏/H5 发送卡片仅作为 P2 技术预研。
+### 6.2 手动添加资源不是最终主链路
 
-## 7. 用户已经确认过的产品/技术决策
+手动添加资源已经可用于本地验收，但它不能替代：
 
-- 首版主产品形态是“小程序端 + FastAPI 后端”，不是 PC 管理后台。
-- 不做收款、订单、支付、分账。
-- 第一批目标用户是房产中介，第二批是团购团长。
-- 主链路是企业微信客服导入微信笔记/链接，生成小程序卡片。
-- 微信笔记必须支持；小程序链接尽量支持，优先级高于公众号链接和普通网页链接。
-- 卡片字段采用通用可选字段，不写死房产或团购专用字段。
-- 接龙必须登录，不允许匿名。
-- 默认接龙使用头像和微信昵称。
-- 手机号、地址是首版接龙可选附加字段。
-- 浏览用户列表只展示已登录用户；匿名用户只计入总浏览量。
-- 一键复用定义为复制整张历史卡片重新发起，新旧卡片数据独立。
-- 技术栈使用原生微信小程序 + FastAPI。
-- 后端 Docker 构建使用清华 PyPI 源，并支持 `PIP_INDEX_URL` 覆盖。
-- 前期以本地开发为主，AppID、服务器、真实企业微信配置等由用户在测试完整后提供。
-- 后续客服侧边栏/H5 发送小程序卡片可作为 P2 预研，不影响 v0.1 主链路。
-- 企业微信文档 `92455` 适合 P2 小程序端企业微信能力预研。
-- 企业微信文档 `101463` 仅作为机器人/消息能力预研，不替代 v0.1 微信客服回调 + `sync_msg` 主链路。
+- 企业微信客服真实接收微信笔记/链接。
+- `sync_msg` 拉取真实消息。
+- 图片/视频 `media_id` 及时下载与转存。
+- 导入成功/失败通知。
+- 用户认领真实导入内容。
+
+### 6.3 小程序仍需微信开发者工具人工验收
+
+自动化检查不能替代微信环境验收。尤其需要人工确认：
+
+- 登录。
+- 上传图片/视频预览。
+- 保存、发布、查看。
+- 微信原生分享面板。
+- 电话直拨。
+- 复制字段。
+- 接龙提交。
+- 发布者和普通客户身份切换后的权限差异。
+
+### 6.4 本地待联系提醒不是团队协作能力
+
+高意向访客“加入待联系 / 标记已联系 / 取消待联系”目前只保存在小程序本地 storage：
+
+- 不跨设备。
+- 不多人共享。
+- 清理缓存后会丢失。
+- 当前只表示发布者个人的本地处理状态，不等同于后端团队待办。
+
+如果后续要做长期跟进或团队协作，需要新增后端待办/备注模型。
+
+### 6.5 隐私与权限风险
+
+必须继续保持：
+
+- 普通客户看不到统计卡片。
+- 普通客户看不到接龙名单。
+- 普通客户看不到电话、地址、快捷动作。
+- `relay-list` 只有 `isOwner=true` 时渲染电话、地址和快捷动作。
+- 后端非发布者 stats/list relays 必须继续脱敏，电话和地址置空。
+
+### 6.6 工作区风险
+
+当前存在未提交运行态数据和未跟踪参考文件。新会话不要批量删除或随便提交。
+
+项目规则明确禁止批量删除文件或目录，不要使用：
+
+```text
+del /s
+rd /s
+rmdir /s
+Remove-Item -Recurse
+rm -rf
+```
+
+## 7. 用户已经确认过的产品 / 技术决策
+
+- v0.1 不做交易系统，不做支付、订单、库存、核销、分账。
+- 第一批优先用户是房产中介，其次是团购团长。
+- 企业微信客服接收微信笔记/链接并自动归档，是最终核心主链路。
+- 企业微信权限认证问题暂时无法推进时，先继续小程序产品化开发。
+- `docs/png/` 是页面参考图，不加入资源入库。
+- 小程序所有页面使用 `navigationStyle: "custom"`。
+- 自定义导航标题不要用 WXML 属性实体串传递，避免显示 `&#x...`。
+- tabBar 图标使用 `miniprogram/static/tab`，`-a` 未选中，`-b` 选中。
+- 手动添加资源是临时入口，不替代企业微信导入。
+- 手动上传的图片/视频作为结构化 `media` 保存，不塞进纯文本详情。
+- 编辑页尽量接近用户最终看到的发布页，减少学习成本。
+- 不向用户暴露“封面图片链接”这类技术字段。
+- 资源进入编辑页后已经在资料库中，按钮使用“保存修改 / 发布并查看”，不再叫“保存草稿”。
+- 资源详情页分享使用小程序原生 `open-type="share"`。
+- 访问详情、统计、接龙名单属于发布者能力，普通客户不应看到。
+- 同一用户对同一资源只允许一条有效接龙。
+- 发布者标记已跟进后，客户侧应看到“发布者已跟进”。
+- 管理页线索优先处理待跟进，支持按状态筛选。
+- 高意向访客规则当前为“重复访问且未接龙”。
+- 高意向访客转待联系先做本地轻量提醒，不做后端协作模型。
+- 待联系提醒需要支持取消和标记已联系，避免本地提醒越积越多。
 
 ## 8. 下一步建议执行顺序
 
-1. 先把当前小程序在微信开发者工具中跑起来，完成登录、tabBar、首页、资源库、发给客服、访问记录、我的页、手动添加页人工验收。
-2. 重点验收标签管理：新增标签 -> 手动添加资源选择标签 -> 编辑页调整标签 -> 资源库按标签筛选 -> 删除标签后筛选恢复。
-3. 重点验收卡片编辑页字段：封面、标题、项目名、详情、位置、电话、来源链接、接龙说明、手机号/地址必填。
-4. 重点验收资源库搜索、分类 chip、标签 chip、资源卡片「详情 / 访问 / 复制 / 编辑」入口。
-5. 重点验收卡片查看页：大封面、电话直拨、复制信息、分享占位、资源详情、实名接龙。
-6. 重点验收管理页：访问统计、登录访客、接龙名单、标记已跟进、删除无效、一键复用。
-7. 继续验收本地可跑链路：手动添加资源 -> 编辑 -> 发布查看 -> 拨号/复制/实名接龙 -> 管理页 -> 一键复用。
-8. 继续验收 mock 企业微信链路：发给客服 mock 导入 -> 待认领 -> 认领编辑 -> 发布查看。
-9. 企业微信认证问题解决后，优先排查真实 `sync_msg` 的 `48002 api forbidden`：
-   - 确认 `WECOM_SECRET` 是微信客服对应 Secret。
-   - 确认企业微信后台已开启“微信客服 - 通过 API 管理微信客服帐号”。
-   - 确认 `WECOM_OPEN_KFID` 对应客服账号允许 API 管理。
-   - 检查企业微信可信 IP/白名单是否包含 `81.70.84.35`。
-   - 检查当前企业/应用是否具备微信客服相关 API 权限。
-10. 真实发送文本消息后检查：
+建议新会话按以下顺序继续：
 
-```text
-/api/wecom/sync-tasks
-/api/imports/pending
-/api/wecom/media-retries
-```
+1. 先读取项目规则和记忆文档：
+   - `AGENTS.md`
+   - `docs/project-memory.md`
+   - `docs/decisions.md`
+   - `docs/pitfalls.md`
+   - `docs/dev-log.md`
+   - `docs/handoff-latest.md`
 
-11. 继续测试真实链接、图片、视频、位置和微信笔记。
-12. 真实链路跑通后，再补充 QA 验收报告，不要提前标记上线通过。
+2. 检查当前工作区：
+   - `git status --short --branch`
+   - `git diff --stat`
+   - 确认不要提交 `backend/mock/runtime-state.json`、`docs/png/`、微信开发者工具本地配置。
+
+3. 在微信开发者工具里人工验收最近补齐的小程序链路：
+   - 手动添加资源。
+   - 编辑页继续上传素材。
+   - 保存修改、发布并查看。
+   - 客户视角资源页隐私。
+   - 客户提交接龙后已提交状态。
+   - 发布者标记已跟进后客户侧已跟进状态。
+   - 管理页接龙筛选、快捷动作。
+   - 管理页访客高意向筛选与待联系提醒。
+   - 待联系提醒的加入、标记已联系、取消待联系、清除记录。
+
+4. 如果继续开发产品体验，优先做：
+   - 把本地待联系升级为后端持久化备注/待办。
+   - 或继续补资源库/管理页的真实小程序人工验收问题。
+
+5. 如果回到核心 P0 主链路，优先做：
+   - 等用户解决企业微信认证/权限问题后，继续排查 `sync_msg 48002 api forbidden`。
+   - 核对 `WECOM_SECRET` 是否为微信客服 Secret。
+   - 核对企业微信后台是否允许 API 管理微信客服账号。
+   - 核对 `WECOM_OPEN_KFID` 对应客服账号权限。
+   - 核对可信 IP 是否包含 `81.70.84.35`。
+   - 跑真实企业微信客服导入验收。
+
+6. 每轮开发结束必须：
+   - 运行小程序 JS 静态检查。
+   - 运行小程序 JSON 解析检查。
+   - 涉及后端时运行 `pytest backend\tests\test_app.py -q`。
+   - 更新 `docs/dev-log.md`、`docs/decisions.md`、`docs/pitfalls.md`、`docs/handoff-latest.md`。
+   - 合理 commit。
 
 ## 9. 新 Codex 会话接手时的第一条提示词
 
-```text
-请接手 d:\Desktop\myprojects\teamBuy 项目。
+可直接复制给新 Codex：
 
-先不要继续开发新功能。请先读取：
-1. AGENTS.md
-2. docs/handoff-latest.md
-3. docs/stage2-docs/codex-prompt.md
-4. docs/qa/MVP_测试清单与验收标准.md
-5. docs/qa/阶段三MVP_Codex自测报告.md
-6. docs/qa/企业微信真实联调记录.md
+```text
+请先读取：
+
+- AGENTS.md
+- docs/project-memory.md
+- docs/decisions.md
+- docs/pitfalls.md
+- docs/dev-log.md
+- docs/handoff-latest.md
 
 然后执行：
-1. 检查 git status，明确当前已提交、未提交、未跟踪文件。
-2. 不要删除或覆盖未提交的小程序 UI/产品化改动。
-3. 总结当前代码状态和风险。
-4. 优先处理当前工作区归档与验收：小程序微信开发者工具人工验收、后端 pytest/compileall 复跑。
-5. 如果继续真实联调，优先排查企业微信 sync_msg 返回 48002 api forbidden 的权限配置问题。
 
-请先输出你的接手理解、当前风险、第一轮只做什么、不会做什么，然后再开始执行。
+- git status --short --branch
+- git diff --stat
+
+请先不要改代码。请输出：
+
+1. 你理解的项目目标
+2. 当前代码状态
+3. 已确认的重要决策
+4. 当前风险
+5. 下一步建议执行顺序
+
+注意：
+
+- docs/png/ 是页面参考图，不要提交或入库。
+- backend/mock/runtime-state.json 是本地运行态数据，默认不要提交。
+- miniprogram/project.config.json 和 project.private.config.json 是本地微信开发者工具配置，默认不要提交。
+- 当前真实企业微信 sync_msg 仍卡在 48002 api forbidden，手动添加资源不能替代最终主链路。
+- 禁止批量删除文件或目录，严格遵守 AGENTS.md。
 ```
-
-## 10. 最新 QA 验收状态（2026-06-09）
-
-本轮已由 AI 测试官 / 验收官输出：
-
-```text
-docs/qa/当前项目_验收报告m1.md
-```
-
-自动化回归结果：
-
-- `cd backend && pytest`：50 passed。
-- `cd backend && python -m compileall app`：通过。
-- `miniprogram/**/*.js` 执行 `node --check`：通过。
-- `miniprogram/**/*.json` 解析：通过。
-- 密钥关键词扫描未发现真实密钥硬编码。
-
-验收结论：
-
-```text
-不通过
-```
-
-阻断项：
-
-- 真实企业微信 `sync_msg` 仍返回 `48002 api forbidden`。
-- 小程序仍为 mock 登录，真实微信 code 换 openid 未形成上线闭环。
-- 真实 media_id 下载与对象存储端到端未验收。
-- 小程序电话拨号、字段复制、原生分享、实名接龙、接龙管理、一键复用尚未在微信开发者工具或真机完成系统人工验收。
-
-下一轮建议：
-
-1. 先排查企业微信后台权限和 `WECOM_SECRET` / `WECOM_OPEN_KFID` / 可信 IP 配置，打通真实 `sync_msg`。
-2. 补真实微信登录链路或明确上线前必须完成。
-3. 真实 `sync_msg` 可用后补测图片、视频 media_id 下载和转存。
-4. 用微信开发者工具或真机按 `docs/qa/当前项目_验收报告m1.md` 的回归清单执行人工验收。
-# 2026-06-09 补充交接
-
-## 本轮新增完成
-
-- 小程序所有页面 JSON 已统一为 `navigationStyle: "custom"`。
-- 资源库搜索按钮和我的页“编辑资料”按钮已修正居中。
-- 手动添加资源页已从“封面 URL 输入”升级为上传式结构。
-- 新增后端上传接口 `POST /api/uploads/asset`，前端通过 `wx.uploadFile` 使用。
-- 小程序 JSON 编码问题已修复，`app.json` 和相关页面配置可正常解析。
-
-## 本轮验证
-
-- `miniprogram/**/*.js` 执行 `node --check`：通过。
-- `miniprogram/**/*.json` 解析检查：通过。
-- `cd backend && pytest`：51 passed。
-
-## 当前仍需人工确认
-
-- 微信开发者工具内图片/视频上传是否都能正常回填、预览和保存。
-- 自定义导航开启后，各页面顶部与胶囊区留白是否仍与参考图一致。
-
-## 下一步建议
-
-1. 先验收手动添加资源页上传链路。
-2. 再补卡片编辑页素材上传/管理。
-3. 然后继续做正式分享态和资源详情动作细化。
-# 2026-06-09 二次补充
-
-## 当前新增
-
-- 已新增 `miniprogram/components/custom-nav/` 和 `miniprogram/utils/nav.js`。
-- `app.js` 会在启动时缓存胶囊按钮位置，页面标题可与右上角胶囊区对齐。
-- 标签管理页、手动添加资源页、资源编辑页等二级页面已补返回箭头。
-- 上传资源后图片不预览的问题已通过绝对 URL 归一化修复。
-- 资源编辑页保存 / 发布失败时会优先检查当前登录用户，并显示更明确的错误信息。
-
-## 现在优先验收
-
-1. 资源库 / 我的 / 发给客服 / 访问记录 顶部标题是否与胶囊区持平。
-2. 手动添加资源页上传图片后是否立即显示预览。
-3. 从标签管理返回手动添加页是否正常。
-4. 手动添加资源 -> 资源编辑页 -> 保存 / 发布 是否恢复正常。

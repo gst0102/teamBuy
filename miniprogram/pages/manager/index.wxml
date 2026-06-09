@@ -86,12 +86,17 @@
           <view class="muted">查看 {{item.viewCount}} 次，最近 {{item.viewedText}}</view>
           <view wx:if="{{item.isHighIntent}}" class="viewer-actions">
             <button class="viewer-action" size="mini" data-nickname="{{item.nickname}}" bindtap="handleCopyViewerNickname">复制昵称</button>
-            <button
-              class="viewer-action primary {{item.isReminded ? 'done' : ''}}"
-              size="mini"
-              data-user-id="{{item.userId}}"
-              bindtap="handleAddViewerReminder"
-            >{{item.isReminded ? '已备注待联系' : '加入待联系'}}</button>
+            <block wx:if="{{!item.reminderStatus}}">
+              <button class="viewer-action primary" size="mini" data-user-id="{{item.userId}}" bindtap="handleAddViewerReminder">加入待联系</button>
+            </block>
+            <block wx:elif="{{item.isReminded}}">
+              <button class="viewer-action primary done" size="mini" data-user-id="{{item.userId}}" bindtap="handleMarkViewerContacted">标记已联系</button>
+              <button class="viewer-action danger" size="mini" data-user-id="{{item.userId}}" bindtap="handleCancelViewerReminder">取消待联系</button>
+            </block>
+            <block wx:else>
+              <button class="viewer-action done" size="mini">已联系</button>
+              <button class="viewer-action danger" size="mini" data-user-id="{{item.userId}}" bindtap="handleCancelViewerReminder">清除记录</button>
+            </block>
           </view>
         </view>
         <view class="viewer-time">{{item.viewedText}}</view>

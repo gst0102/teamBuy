@@ -27,11 +27,28 @@ function viewerReminderKey(cardId) {
   return `viewerReminders_${cardId}`;
 }
 
-function applyViewerReminders(viewers, reminderIds) {
-  const ids = new Set(reminderIds || []);
+function normalizeViewerReminderMap(value) {
+  if (Array.isArray(value)) {
+    return value.reduce((memo, userId) => {
+      if (userId) memo[userId] = "pending";
+      return memo;
+    }, {});
+  }
+  if (!value || typeof value !== "object") return {};
+  return Object.keys(value).reduce((memo, userId) => {
+    if (value[userId] === "pending" || value[userId] === "contacted") {
+      memo[userId] = value[userId];
+    }
+    return memo;
+  }, {});
+}
+
+function applyViewerReminders(viewers, reminderMap) {
   return viewers.map((item) => ({
     ...item,
-    isReminded: ids.has(item.userId)
+    reminderStatus: reminderMap[item.userId] || "",
+    isReminded: reminderMap[item.userId] === "pending",
+    isContacted: reminderMap[item.userId] === "contacted"
   }));
 }
 
@@ -47,7 +64,7 @@ Page({
     filteredRelays: [],
     highIntentViewers: [],
     filteredViewers: [],
-    viewerReminderIds: [],
+    viewerReminderMap: {},
     relayFilter: "pending",
     relayFilterEmptyText: "暂无待跟进线索。",
     viewerFilter: "intent",
@@ -82,7 +99,7 @@ Page({
     const followedRelays = relays.filter((item) => item.followUpStatus === "followed");
     const relayFilter = this.data.relayFilter || "pending";
     const relayUserIds = new Set(relays.map((item) => item.userId).filter(Boolean));
-    const reminderIds = wx.getStorageSync(viewerReminderKey(this.data.cardId)) || [];
+    const reminderMap = normalizeViewerReminderMap(wx.getStorageSync(viewerReminderKey(this.data.cardId)));
     const viewers = applyViewerReminders((statsRes.data.loggedInViewers || []).map((item) => ({
       ...item,
       viewCount: Number(item.viewCount || 1),
@@ -93,7 +110,7 @@ Page({
       isRepeat: item.viewCount >= 2,
       isHighIntent: item.viewCount >= 2 && !item.hasRelay,
       intentText: item.hasRelay ? "已接龙" : item.viewCount >= 2 ? "高意向" : "普通访问"
-    })), reminderIds);
+    })), reminderMap);
     const highIntentViewers = viewers.filter((item) => item.isHighIntent);
     const viewerFilter = this.data.viewerFilter || "intent";
     this.setData({
@@ -107,7 +124,7 @@ Page({
       relayFilterEmptyText: filterEmptyText(relayFilter),
       highIntentViewers,
       filteredViewers: filterViewers(viewers, viewerFilter),
-      viewerReminderIds: reminderIds,
+      viewerReminderMap: reminderMap,
       viewerFilterEmptyText: viewerEmptyText(viewerFilter),
       summary: {
         loggedViewers: viewers.length,
@@ -145,11 +162,29 @@ Page({
   handleAddViewerReminder(event) {
     const userId = event.currentTarget.dataset.userId;
     if (!userId) return;
-    const nextIds = [...new Set([...(this.data.viewerReminderIds || []), userId])];
-    wx.setStorageSync(viewerReminderKey(this.data.cardId), nextIds);
-    const viewers = applyViewerReminders(this.data.viewers || [], nextIds);
+    this.updateViewerReminder(userId, "pending", "已加入待联系");
+  },
+  handleMarkViewerContacted(event) {
+    const userId = event.currentTarget.dataset.userId;
+    if (!userId) return;
+    this.updateViewerReminder(userId, "contacted", "已标记联系");
+  },
+  handleCancelViewerReminder(event) {
+    const userId = event.currentTarget.dataset.userId;
+    if (!userId) return;
+    this.updateViewerReminder(userId, "", "已取消待联系");
+  },
+  updateViewerReminder(userId, status, toastTitle) {
+    const nextMap = { ...(this.data.viewerReminderMap || {}) };
+    if (status) {
+      nextMap[userId] = status;
+    } else {
+      delete nextMap[userId];
+    }
+    wx.setStorageSync(viewerReminderKey(this.data.cardId), nextMap);
+    const viewers = applyViewerReminders(this.data.viewers || [], nextMap);
     this.setData({
-      viewerReminderIds: nextIds,
+      viewerReminderMap: nextMap,
       viewers,
       highIntentViewers: viewers.filter((item) => item.isHighIntent),
       filteredViewers: filterViewers(viewers, this.data.viewerFilter),
@@ -158,7 +193,7 @@ Page({
         highIntentViewers: viewers.filter((item) => item.isHighIntent).length
       }
     });
-    wx.showToast({ title: "已加入待联系", icon: "success" });
+    wx.showToast({ title: toastTitle, icon: "success" });
   },
   async handleDelete(event) {
     const currentUser = getApp().globalData.currentUser;

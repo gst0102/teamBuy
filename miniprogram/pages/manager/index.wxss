@@ -216,6 +216,11 @@
   color: #079455;
 }
 
+.viewer-action.danger {
+  background: #fff1f3;
+  color: #e5484d;
+}
+
 .viewer-action::after {
   border: none;
 }
