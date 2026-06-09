@@ -765,12 +765,26 @@ def test_customer_relay_submission_is_single_active_entry(client):
 
     first = client.post(f"/api/cards/{card_id}/relay", json=payload)
     assert first.status_code == 200
+    relay_id = first.json()["data"]["id"]
 
     stats = client.get(
         f"/api/cards/{card_id}/stats",
         params={"requesterUserId": "user_customer_repeat"},
     ).json()["data"]
     assert stats["currentUserRelay"]["userId"] == "user_customer_repeat"
+    assert stats["currentUserRelay"]["followUpStatus"] == "pending"
+
+    follow = client.post(
+        f"/api/relays/{relay_id}/follow-up",
+        json={"operatorUserId": "user_seed_owner"},
+    )
+    assert follow.status_code == 200
+
+    followed_stats = client.get(
+        f"/api/cards/{card_id}/stats",
+        params={"requesterUserId": "user_customer_repeat"},
+    ).json()["data"]
+    assert followed_stats["currentUserRelay"]["followUpStatus"] == "followed"
 
     second = client.post(f"/api/cards/{card_id}/relay", json=payload)
     assert second.status_code == 409

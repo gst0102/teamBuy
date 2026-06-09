@@ -1,5 +1,25 @@
 # teamBuy 阶段性交接归档
 
+## 2026-06-10 发布者跟进后的客户侧状态
+
+- 客户资源页接龙状态已从“已提交”扩展为：
+  - `pending`：显示“已提交接龙”，提示发布者会尽快联系。
+  - `followed`：显示“发布者已跟进”，使用蓝色状态卡。
+- 状态来源：
+  - `GET /api/cards/{card_id}/stats?requesterUserId=...`
+  - 返回 `currentUserRelay.followUpStatus`。
+- 后端回归已覆盖：
+  - 客户提交接龙后 `currentUserRelay.followUpStatus=pending`。
+  - 发布者标记跟进后，客户再次请求 stats 时变为 `followed`。
+- 已验证：
+  - 小程序所有 `.js` `node --check` 通过。
+  - 小程序所有 `.json` 解析通过。
+  - `pytest backend\tests\test_app.py -q` 通过，34 项通过。
+- 仍需微信开发者工具人工确认：
+  - 客户提交后显示“已提交接龙”。
+  - 发布者在管理页标记已跟进。
+  - 客户重新打开资源页后显示“发布者已跟进”。
+
 ## 2026-06-10 接龙提交闭环与待跟进高亮
 
 - 客户资源页接龙体验已收口：

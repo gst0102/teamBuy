@@ -2,6 +2,17 @@
 
 ## 2026-06-10
 
+### 发布者跟进后的客户侧状态
+
+- 资源详情页客户接龙状态从单一“已提交”扩展为“已提交 / 已跟进”。
+- 当 `currentUserRelay.followUpStatus === "followed"` 时，客户页显示“发布者已跟进”，并切换为蓝色状态卡。
+- 当接龙仍为 `pending` 时，客户页继续显示“已提交接龙，发布者会尽快联系你”。
+- 后端测试补充：发布者标记跟进后，客户再次请求 stats 时 `currentUserRelay.followUpStatus` 为 `followed`。
+- 静态检查：小程序所有 `.js` `node --check` 通过；小程序所有 `.json` 解析通过。
+- 后端回归：`pytest backend\tests\test_app.py -q` 通过，34 项通过。
+
+## 2026-06-10
+
 ### 客户提交接龙后的体验闭环
 
 - 资源详情页会根据当前登录用户的接龙记录识别“已提交”状态。

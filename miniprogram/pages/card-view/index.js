@@ -1,5 +1,27 @@
 const api = require("../../services/api");
 
+function resolveRelayStatus(relay) {
+  if (!relay) {
+    return {
+      submitted: false,
+      followed: false,
+      label: "登录后提交",
+      title: "",
+      text: "",
+      icon: "✓"
+    };
+  }
+  const followed = relay.followUpStatus === "followed";
+  return {
+    submitted: true,
+    followed,
+    label: followed ? "已跟进" : "已提交",
+    title: followed ? "发布者已跟进" : "已提交接龙",
+    text: followed ? "发布者已处理这条接龙，如需沟通可直接联系。" : "已提交，发布者会尽快联系你",
+    icon: "✓"
+  };
+}
+
 Page({
   data: {
     cardId: "",
@@ -10,8 +32,12 @@ Page({
     detailMedia: [],
     isOwner: false,
     relaySubmitted: false,
+    relayFollowed: false,
     relaySubmitting: false,
-    relaySubmittedText: ""
+    relayStatusLabel: "登录后提交",
+    relaySubmittedTitle: "",
+    relaySubmittedText: "",
+    relaySubmittedIcon: "✓"
   },
   onLoad(query) {
     this.setData({ cardId: query.id });
@@ -48,10 +74,15 @@ Page({
     const currentRelay =
       res.data.currentUserRelay ||
       ((res.data.relayEntries || []).find((item) => currentUser && item.userId === currentUser.id) || null);
+    const relayStatus = resolveRelayStatus(currentRelay);
     this.setData({
       stats: res.data,
-      relaySubmitted: !!currentRelay,
-      relaySubmittedText: currentRelay ? "已提交，发布者会尽快联系你" : ""
+      relaySubmitted: relayStatus.submitted,
+      relayFollowed: relayStatus.followed,
+      relayStatusLabel: relayStatus.label,
+      relaySubmittedTitle: relayStatus.title,
+      relaySubmittedText: relayStatus.text,
+      relaySubmittedIcon: relayStatus.icon
     });
   },
   handleCall() {
@@ -106,18 +137,28 @@ Page({
         phone: this.data.phone,
         address: this.data.address
       });
+      const relayStatus = resolveRelayStatus({ followUpStatus: "pending" });
       this.setData({
-        relaySubmitted: true,
-        relaySubmittedText: "已提交，发布者会尽快联系你"
+        relaySubmitted: relayStatus.submitted,
+        relayFollowed: relayStatus.followed,
+        relayStatusLabel: relayStatus.label,
+        relaySubmittedTitle: relayStatus.title,
+        relaySubmittedText: relayStatus.text,
+        relaySubmittedIcon: relayStatus.icon
       });
       wx.showToast({ title: "提交成功", icon: "success" });
       await this.loadStats();
     } catch (error) {
       wx.showToast({ title: error.detail || "接龙失败", icon: "none" });
       if (error && error.detail === "你已经提交过接龙") {
+        const relayStatus = resolveRelayStatus({ followUpStatus: "pending" });
         this.setData({
-          relaySubmitted: true,
-          relaySubmittedText: "已提交，发布者会尽快联系你"
+          relaySubmitted: relayStatus.submitted,
+          relayFollowed: relayStatus.followed,
+          relayStatusLabel: relayStatus.label,
+          relaySubmittedTitle: relayStatus.title,
+          relaySubmittedText: relayStatus.text,
+          relaySubmittedIcon: relayStatus.icon
         });
         this.loadStats();
       }

@@ -88,6 +88,11 @@
   gap: 18rpx;
 }
 
+.relay-submitted-card.followed {
+  background: #f4f8ff;
+  border-color: #bcd7ff;
+}
+
 .relay-submitted-icon {
   width: 58rpx;
   height: 58rpx;
@@ -100,10 +105,18 @@
   text-align: center;
 }
 
+.relay-submitted-card.followed .relay-submitted-icon {
+  background: #1677ff;
+}
+
 .relay-submitted-title {
   color: #087443;
   font-size: 30rpx;
   font-weight: 900;
+}
+
+.relay-submitted-card.followed .relay-submitted-title {
+  color: #175cd3;
 }
 
 .stat-icon.blue {

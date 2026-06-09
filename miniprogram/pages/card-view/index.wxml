@@ -81,12 +81,12 @@
   <view class="panel">
     <view class="section-head">
       <view class="section-title">实名接龙</view>
-      <view class="section-link">{{relaySubmitted ? '已提交' : '登录后提交'}}</view>
+      <view class="section-link">{{relayStatusLabel}}</view>
     </view>
-    <view wx:if="{{relaySubmitted}}" class="relay-submitted-card">
-      <view class="relay-submitted-icon">✓</view>
+    <view wx:if="{{relaySubmitted}}" class="relay-submitted-card {{relayFollowed ? 'followed' : ''}}">
+      <view class="relay-submitted-icon">{{relaySubmittedIcon}}</view>
       <view>
-        <view class="relay-submitted-title">已提交接龙</view>
+        <view class="relay-submitted-title">{{relaySubmittedTitle}}</view>
         <view class="muted">{{relaySubmittedText || '发布者会尽快联系你'}}</view>
       </view>
     </view>
