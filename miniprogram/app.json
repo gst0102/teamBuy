@@ -38,8 +38,8 @@
         "selectedIconPath": "static/tab/ziyuan-b.png"
       },
       {
-        "pagePath": "pages/imports/index",
-        "text": "\u53d1\u7ed9\u5ba2\u670d",
+        "pagePath": "pages/resource-create/index",
+        "text": "\u6dfb\u52a0",
         "iconPath": "static/tab/tianjiakefu.png",
         "selectedIconPath": "static/tab/tianjiakefu.png"
       },

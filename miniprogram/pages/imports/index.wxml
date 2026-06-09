@@ -1,22 +1,22 @@
 <view class="page-shell">
-  <custom-nav title="&#x53D1;&#x7ED9;&#x5BA2;&#x670D;" />
+  <custom-nav showBack="{{true}}" />
   <view class="imports-hero">
     <view>
-      <view class="hero-title">发给客服</view>
-      <view class="hero-subtitle">把图片、视频、文字、文件、链接发给企业微信客服，系统自动整理成资源卡片。</view>
+      <view class="hero-title">待认领导入</view>
+      <view class="hero-subtitle">外部导入生成的资料草稿会出现在这里，认领后可继续编辑和管理。</view>
     </view>
-    <view class="imports-visual">企微</view>
+    <view class="imports-visual">认领</view>
   </view>
 
   <view class="panel">
     <view class="section-head">
-      <view class="section-title">自动归档入口</view>
-      <view class="section-link">v0.1 联调版</view>
+      <view class="section-title">导入处理</view>
+      <view class="section-link">待认领</view>
     </view>
     <view class="step-row">
       <view class="step-item">
         <view class="step-dot">1</view>
-        <view>发给企业微信客服</view>
+        <view>外部内容导入</view>
       </view>
       <view class="step-item">
         <view class="step-dot">2</view>
@@ -27,12 +27,11 @@
         <view>认领编辑并分享</view>
       </view>
     </view>
-    <button class="primary-btn" bindtap="handleMockImport">生成一条 mock 导入</button>
-    <button class="ghost-btn" bindtap="handleOpenLibrary" style="margin-top: 16rpx;">进入我的资源库</button>
+    <button class="ghost-btn" bindtap="handleOpenLibrary">进入我的资源库</button>
   </view>
 
   <view class="panel" wx:if="{{notifications.length}}">
-    <view class="section-title">自动归档结果</view>
+    <view class="section-title">导入结果</view>
     <block wx:for="{{notifications}}" wx:key="id">
       <view class="notice-row">
         <view class="notice-dot {{item.status}}"></view>
@@ -54,5 +53,5 @@
       <button class="ghost-btn" data-id="{{item.id}}" bindtap="handleClaim">认领并编辑</button>
     </view>
   </block>
-  <view class="empty-state" wx:if="{{!imports.length && !loading}}">暂无待认领内容。真实企微打通后，客户发来的内容会出现在这里。</view>
+  <view class="empty-state" wx:if="{{!imports.length && !loading}}">暂无待认领内容。外部导入成功后，资料草稿会出现在这里。</view>
 </view>

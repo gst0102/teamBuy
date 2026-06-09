@@ -82,9 +82,6 @@ Page({
   handleGoTagManage() {
     wx.navigateTo({ url: "/pages/tag-manage/index" });
   },
-  handleGoImports() {
-    wx.switchTab({ url: "/pages/imports/index" });
-  },
   handleChooseUpload() {
     wx.showActionSheet({
       itemList: ["上传图片", "上传视频", "上传文件"],

@@ -47,9 +47,9 @@
             </view>
             <view class="media-edit-actions">
               <text wx:if="{{item.isCover}}" class="cover-label">当前封面</text>
-              <text wx:if="{{index > 0}}" data-index="{{index}}" data-direction="up" bindtap="handleMoveMedia">上移</text>
-              <text wx:if="{{index < card.media.length - 1}}" data-index="{{index}}" data-direction="down" bindtap="handleMoveMedia">下移</text>
-              <text class="danger-action" data-index="{{index}}" bindtap="handleRemoveMedia">删除</text>
+              <button wx:if="{{index > 0}}" class="media-action-btn" size="mini" data-index="{{index}}" data-direction="up" bindtap="handleMoveMedia">上移</button>
+              <button wx:if="{{index < card.media.length - 1}}" class="media-action-btn" size="mini" data-index="{{index}}" data-direction="down" bindtap="handleMoveMedia">下移</button>
+              <button class="media-action-btn danger" size="mini" data-index="{{index}}" bindtap="handleRemoveMedia">删除</button>
             </view>
           </view>
         </view>

@@ -4,14 +4,14 @@
   <view class="home-hero">
     <view class="hero-copy">
       <view class="hero-title">微信内容<text class="hero-highlight">资源助手</text></view>
-      <view class="hero-subtitle">发给企业微信客服，自动整理成你的资源库。</view>
+      <view class="hero-subtitle">快速录入资料，整理成可分享的资源页。</view>
       <view class="feature-row">
         <text class="feature-pill">自动整理</text>
         <text class="feature-pill">生成页面</text>
         <text class="feature-pill">追踪访问</text>
         <text class="feature-pill">访问提醒</text>
       </view>
-      <button class="primary-btn hero-btn" bindtap="handleGoImports">立即发给客服</button>
+      <button class="primary-btn hero-btn" bindtap="handleQuickAdd">快速入库</button>
       <view class="hero-note">支持图片 / 视频 / 文字 / 文件 / 链接等</view>
     </view>
     <view class="hero-visual">
@@ -53,12 +53,12 @@
   </view>
 
   <view class="panel shortcut-panel">
-    <view class="shortcut-item" bindtap="handleGoImports">
+    <view class="shortcut-item" bindtap="handleQuickAdd">
       <view class="shortcut-icon blue">房</view>
       <view class="shortcut-title">房源发布</view>
       <view class="shortcut-desc">一键生成房源页</view>
     </view>
-    <view class="shortcut-item" bindtap="handleGoImports">
+    <view class="shortcut-item" bindtap="handleQuickAdd">
       <view class="shortcut-icon orange">团</view>
       <view class="shortcut-title">团购发布</view>
       <view class="shortcut-desc">创建团购接龙</view>
@@ -107,7 +107,7 @@
         </view>
       </block>
     </scroll-view>
-    <view class="empty-state" wx:else>暂无热门资源，先发给客服生成一张卡片吧。</view>
+    <view class="empty-state" wx:else>暂无热门资源，可以先快速添加一张资源卡片。</view>
   </view>
 
   <view class="invite-banner" bindtap="handleInvitePlaceholder">

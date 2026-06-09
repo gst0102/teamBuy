@@ -1,4 +1,4 @@
-<block wx:for="{{relays}}" wx:key="id">
+<block wx:for="{{displayRelays}}" wx:key="id">
   <view class="relay-card {{item.isPending ? 'pending' : ''}}">
     <view class="relay-head">
       <image class="relay-avatar" src="{{item.avatarUrl}}" mode="aspectFill"></image>
@@ -6,7 +6,7 @@
         <view class="relay-name">{{item.nickname}}</view>
         <view class="muted">{{item.createdText || item.createdAt}}</view>
       </view>
-      <view class="relay-status {{item.followUpStatus}}">{{item.followUpText || item.followUpStatus}}</view>
+      <view class="relay-status {{item.followUpStatus}}">{{item.followUpText}}</view>
     </view>
     <view wx:if="{{isOwner}}" class="relay-fields">
       <view wx:if="{{item.phone}}" class="relay-field">电话：{{item.phone}}</view>
@@ -18,8 +18,8 @@
       <button wx:if="{{item.address}}" data-address="{{item.address}}" class="quick-btn" size="mini" bindtap="handleCopyAddress">复制地址</button>
     </view>
     <view wx:if="{{isOwner}}" class="relay-actions">
-      <button data-id="{{item.id}}" class="ghost-btn" size="mini" bindtap="handleFollow">标记已跟进</button>
-      <button data-id="{{item.id}}" class="ghost-btn" size="mini" bindtap="handleDelete">删除无效</button>
+      <button wx:if="{{item.followUpStatus !== 'followed'}}" data-id="{{item.id}}" class="relay-action-btn" size="mini" bindtap="handleFollow">标记已跟进</button>
+      <button data-id="{{item.id}}" class="relay-action-btn danger" size="mini" bindtap="handleDelete">删除无效</button>
     </view>
   </view>
 </block>

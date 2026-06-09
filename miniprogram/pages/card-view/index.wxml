@@ -103,7 +103,7 @@
       <view class="section-title">已接龙名单</view>
       <view class="section-link">{{stats.relayEntries.length || 0}} 人</view>
     </view>
-    <relay-list relays="{{stats.relayEntries || []}}" isOwner="{{true}}" />
+    <relay-list relays="{{stats.relayEntries || []}}" isOwner="{{true}}" bind:delete="handleDeleteRelay" bind:follow="handleFollowRelay" />
     <view class="empty-state compact" wx:if="{{!stats.relayEntries.length}}">还没有人接龙。</view>
   </view>
 </view>

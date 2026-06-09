@@ -148,8 +148,12 @@ Page({
     const current = media[index];
     media[index] = media[nextIndex];
     media[nextIndex] = current;
+    const reordered = media.map((item, itemIndex) => ({
+      ...item,
+      sortOrder: itemIndex + 1
+    }));
     this.setData({
-      "card.media": normalizeMedia(media, this.data.card.coverUrl)
+      "card.media": normalizeMedia(reordered, this.data.card.coverUrl)
     });
   },
   handleChooseUpload() {

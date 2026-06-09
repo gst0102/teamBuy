@@ -166,6 +166,26 @@ Page({
       this.setData({ relaySubmitting: false });
     }
   },
+  async handleDeleteRelay(event) {
+    const currentUser = getApp().globalData.currentUser;
+    if (!currentUser) {
+      wx.showToast({ title: "请先登录", icon: "none" });
+      return;
+    }
+    await api.deleteRelay(event.detail.id, currentUser.id);
+    wx.showToast({ title: "已删除", icon: "success" });
+    await this.loadStats();
+  },
+  async handleFollowRelay(event) {
+    const currentUser = getApp().globalData.currentUser;
+    if (!currentUser) {
+      wx.showToast({ title: "请先登录", icon: "none" });
+      return;
+    }
+    await api.followRelay(event.detail.id, currentUser.id);
+    wx.showToast({ title: "已跟进", icon: "success" });
+    await this.loadStats();
+  },
   handleGoManager() {
     if (!this.data.isOwner) {
       wx.showToast({ title: "仅发布者可查看访问详情", icon: "none" });

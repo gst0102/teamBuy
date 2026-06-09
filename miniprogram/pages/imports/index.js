@@ -24,19 +24,6 @@ Page({
       this.setData({ loading: false });
     }
   },
-  async handleMockImport() {
-    try {
-      await api.triggerMockImport({
-        externalUserId: "external_demo",
-        conversationId: "conv_demo",
-        fixture: "note"
-      });
-      wx.showToast({ title: "已生成 mock 导入", icon: "none" });
-      this.loadImports();
-    } catch (error) {
-      wx.showToast({ title: "导入失败", icon: "none" });
-    }
-  },
   async handleClaim(event) {
     const currentUser = getApp().globalData.currentUser;
     try {

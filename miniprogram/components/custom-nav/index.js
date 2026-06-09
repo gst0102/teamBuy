@@ -3,11 +3,11 @@ const { getButtonPositionData } = require("../../utils/nav");
 const ROUTE_TITLES = {
   "pages/home/index": "首页",
   "pages/library/index": "资源库",
-  "pages/imports/index": "发给客服",
+  "pages/imports/index": "待认领导入",
   "pages/visits/index": "访问记录",
   "pages/profile/index": "我的",
   "pages/login/index": "登录",
-  "pages/resource-create/index": "手动添加资源",
+  "pages/resource-create/index": "添加资源",
   "pages/tag-manage/index": "标签管理",
   "pages/card-edit/index": "资源编辑",
   "pages/card-view/index": "资源详情",

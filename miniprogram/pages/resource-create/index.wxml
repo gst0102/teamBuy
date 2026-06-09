@@ -1,5 +1,5 @@
 <view class="page-shell">
-  <custom-nav showBack="{{true}}" />
+  <custom-nav />
 
   <view class="create-hero">
     <view class="hero-copy">
@@ -97,14 +97,6 @@
       </view>
       <switch checked="{{form.generatePage}}" data-field="generatePage" bindchange="handleSwitchChange" />
     </view>
-  </view>
-
-  <view class="panel assist-panel">
-    <view class="assist-copy">
-      <view class="assist-title">也可发给企业微信客服自动归档</view>
-      <view class="assist-desc">支持图片、视频、文字、文件等内容，客服接收后自动整理到资源库</view>
-    </view>
-    <button class="ghost-btn assist-btn" bindtap="handleGoImports">去发给客服</button>
   </view>
 
   <view class="submit-bar">

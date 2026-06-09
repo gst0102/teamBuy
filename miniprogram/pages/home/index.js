@@ -32,8 +32,8 @@ Page({
       this.setData({ loading: false });
     }
   },
-  handleGoImports() {
-    wx.switchTab({ url: "/pages/imports/index" });
+  handleQuickAdd() {
+    wx.switchTab({ url: "/pages/resource-create/index" });
   },
   handleGoLibrary() {
     wx.switchTab({ url: "/pages/library/index" });

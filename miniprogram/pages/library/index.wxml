@@ -3,7 +3,7 @@
   <view class="library-hero">
     <view class="hero-copy">
       <view class="hero-title">我的资源库</view>
-      <view class="hero-subtitle">支持手动添加 / 企微客服自动归档</view>
+      <view class="hero-subtitle">支持手动添加、待认领导入和标签管理</view>
     </view>
     <view class="library-visual">库</view>
   </view>
@@ -16,11 +16,11 @@
   <view class="quick-actions">
     <view class="quick-action" bindtap="handleManualAdd">
       <view class="quick-icon blue">+</view>
-      <view>手动添加</view>
+      <view>快速入库</view>
     </view>
-    <view class="quick-action" bindtap="handleGoImports">
-      <view class="quick-icon green">微</view>
-      <view>发给客服</view>
+    <view class="quick-action" bindtap="handleOpenPendingImports">
+      <view class="quick-icon green">认</view>
+      <view>待认领</view>
     </view>
     <view class="quick-action" bindtap="handleTagPlaceholder">
       <view class="quick-icon orange">签</view>
@@ -91,5 +91,5 @@
     </block>
   </view>
 
-  <view class="empty-state" wx:else>暂无资源。可以先发给客服，自动生成资源卡片。</view>
+  <view class="empty-state" wx:else>暂无资源。可以先快速添加一张资源卡片。</view>
 </view>

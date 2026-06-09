@@ -1,3 +1,32 @@
+function padTime(value) {
+  return String(value).padStart(2, "0");
+}
+
+function formatRelayTime(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日 ${padTime(date.getHours())}:${padTime(date.getMinutes())}`;
+}
+
+function relayStatusText(value) {
+  if (value === "followed") return "已跟进";
+  if (value === "pending") return "待跟进";
+  if (value === "deleted") return "已删除";
+  return value || "待跟进";
+}
+
+function normalizeRelay(item = {}) {
+  const followUpStatus = item.followUpStatus || "pending";
+  return {
+    ...item,
+    followUpStatus,
+    isPending: followUpStatus !== "followed",
+    createdText: item.createdText || formatRelayTime(item.createdAt),
+    followUpText: item.followUpText || relayStatusText(followUpStatus)
+  };
+}
+
 Component({
   properties: {
     relays: {
@@ -7,6 +36,16 @@ Component({
     isOwner: {
       type: Boolean,
       value: false
+    }
+  },
+  data: {
+    displayRelays: []
+  },
+  observers: {
+    relays(value) {
+      this.setData({
+        displayRelays: (value || []).map(normalizeRelay)
+      });
     }
   },
   methods: {

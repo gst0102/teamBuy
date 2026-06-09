@@ -114,11 +114,11 @@ Page({
   handleView(event) {
     wx.navigateTo({ url: `/pages/card-view/index?id=${event.currentTarget.dataset.id}` });
   },
-  handleGoImports() {
-    wx.switchTab({ url: "/pages/imports/index" });
+  handleOpenPendingImports() {
+    wx.navigateTo({ url: "/pages/imports/index" });
   },
   handleManualAdd() {
-    wx.navigateTo({ url: "/pages/resource-create/index" });
+    wx.switchTab({ url: "/pages/resource-create/index" });
   },
   handleTagPlaceholder() {
     wx.navigateTo({ url: "/pages/tag-manage/index" });
