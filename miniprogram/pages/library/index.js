@@ -67,7 +67,9 @@ Page({
     }, {});
     return [
       { name: "全部", count: items.length },
-      ...Object.keys(counts).sort().map((name) => ({ name, count: counts[name] }))
+      ...Object.keys(counts)
+        .sort()
+        .map((name) => ({ name, count: counts[name] }))
     ];
   },
   applyFilter() {
@@ -82,7 +84,10 @@ Page({
         card.sourceUrl,
         card.categoryName,
         ...(card.tagNames || [])
-      ].filter(Boolean).join(" ").toLowerCase();
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
       const matchKeyword = !keyword || haystack.includes(keyword);
       return matchCategory && matchTag && matchKeyword;
     });
@@ -125,8 +130,5 @@ Page({
     wx.setClipboardData({
       data: `${card.title}\n${card.detailText || ""}\n${card.sourceUrl || ""}`.trim()
     });
-  },
-  handleSharePlaceholder() {
-    wx.showToast({ title: "请进入详情页后分享", icon: "none" });
   }
 });

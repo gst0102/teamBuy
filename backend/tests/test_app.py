@@ -547,6 +547,22 @@ def test_manual_create_card_flow(client):
     assert any(item["id"] == card["id"] for item in cards)
 
 
+def test_manual_asset_upload_returns_media_url(client):
+    login = client.post("/api/auth/mock-login", json={"nickname": "上传用户"}).json()["data"]
+
+    response = client.post(
+        "/api/uploads/asset",
+        data={"ownerUserId": login["id"], "mediaType": "image"},
+        files={"file": ("cover.png", b"image-bytes", "image/png")},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()["data"]
+    assert payload["mediaType"] == "image"
+    assert payload["name"] == "cover.png"
+    assert payload["url"]
+
+
 def test_category_management_and_filtering(client):
     login = client.post("/api/auth/mock-login", json={"nickname": "标签用户"}).json()["data"]
     created = client.post(

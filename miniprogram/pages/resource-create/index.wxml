@@ -2,23 +2,65 @@
   <view class="brand-bar">悦享互动宝</view>
 
   <view class="create-hero">
-    <view>
+    <view class="hero-copy">
       <view class="hero-title">手动添加资源</view>
-      <view class="hero-subtitle">企业微信真实导入未打通前，也可以先手动沉淀资源卡片。</view>
+      <view class="hero-subtitle">自己上传创建，轻松管理您的优质资源</view>
+      <view class="hero-badges">
+        <text class="hero-badge">多种类型支持</text>
+        <text class="hero-badge">自定义标签</text>
+        <text class="hero-badge">灵活分类管理</text>
+        <text class="hero-badge">一键生成资源页</text>
+      </view>
     </view>
     <view class="create-visual">+</view>
   </view>
 
-  <view class="chip-row type-row">
-    <block wx:for="{{typeOptions}}" wx:key="*this">
-      <view class="chip {{type === item ? 'active' : ''}}" data-type="{{item}}" bindtap="handleTypeChange">{{item}}</view>
-    </block>
+  <view class="panel upload-panel">
+    <view class="upload-header">
+      <view class="section-title">上传图片 / 视频</view>
+      <view class="muted">支持多图、视频或文件上传，首张图片会作为资源封面</view>
+    </view>
+    <view class="upload-dropzone" bindtap="handleChooseUpload">
+      <view class="upload-plus">+</view>
+      <view class="upload-title">{{uploading ? '上传中...' : '点击上传'}}</view>
+      <view class="upload-subtitle">或拖拽文件到此处</view>
+      <view class="upload-hint">支持 JPG / PNG / MP4 / PDF，单个文件不超过 200MB</view>
+    </view>
+    <view class="upload-list" wx:if="{{uploadedAssets.length}}">
+      <block wx:for="{{uploadedAssets}}" wx:key="url">
+        <view class="upload-item">
+          <image wx:if="{{item.type === 'image'}}" class="upload-thumb" src="{{item.url}}" mode="aspectFill"></image>
+          <view wx:else class="upload-thumb upload-thumb-video">{{item.type === 'video' ? '视频' : '文件'}}</view>
+          <view class="upload-meta">
+            <view class="upload-name">{{item.name}}</view>
+            <view class="upload-tag">{{item.type === 'video' ? '视频素材' : item.type === 'image' ? '图片素材' : '附件素材'}}</view>
+          </view>
+          <view class="upload-action" data-url="{{item.url}}" bindtap="handleRemoveUpload">移除</view>
+        </view>
+      </block>
+    </view>
+  </view>
+
+  <view class="panel">
+    <view class="section-title">资源信息</view>
+    <view class="field-label">输入标题 *</view>
+    <input class="field-input" data-field="title" value="{{form.title}}" placeholder="请输入资源标题（2-60字）" maxlength="60" bindinput="handleFieldChange" />
+
+    <view class="field-label">资源描述</view>
+    <textarea class="field-input textarea" data-field="detailText" value="{{form.detailText}}" placeholder="请简要描述资源内容、亮点或使用场景（选填）" maxlength="500" bindinput="handleFieldChange"></textarea>
+
+    <view class="field-label">选择分类 *</view>
+    <view class="chip-row type-row">
+      <block wx:for="{{typeOptions}}" wx:key="*this">
+        <view class="chip {{type === item ? 'active' : ''}}" data-type="{{item}}" bindtap="handleTypeChange">{{item}}</view>
+      </block>
+    </view>
   </view>
 
   <view class="panel">
     <view class="section-head">
-      <view class="section-title">分类标签</view>
-      <view class="section-link" bindtap="handleGoTagManage">管理标签 ></view>
+      <view class="section-title">添加标签</view>
+      <view class="section-link" bindtap="handleGoTagManage">添加 / 管理标签</view>
     </view>
     <view class="tag-pick-row" wx:if="{{categories.length}}">
       <block wx:for="{{categories}}" wx:key="id">
@@ -29,55 +71,58 @@
   </view>
 
   <view class="panel">
-    <view class="section-title">基础信息</view>
-    <view class="field-label">资源标题</view>
-    <input class="field-input" data-field="title" value="{{form.title}}" placeholder="例如：滨江花园 3房2厅 / 今日水果团购" bindinput="handleFieldChange" />
-
-    <view class="field-label">项目名 / 分类说明</view>
-    <input class="field-input" data-field="projectName" value="{{form.projectName}}" placeholder="例如：滨江花园 / 社区团购 / 资料包" bindinput="handleFieldChange" />
-
-    <view class="field-label">封面图片链接</view>
-    <input class="field-input" data-field="coverUrl" value="{{form.coverUrl}}" placeholder="可先粘贴图片 URL，后续再接入上传" bindinput="handleFieldChange" />
-
-    <view class="field-label">详情描述</view>
-    <textarea class="field-input textarea" data-field="detailText" value="{{form.detailText}}" placeholder="写清楚卖点、亮点、领取方式或活动说明" bindinput="handleFieldChange"></textarea>
+    <view class="section-title">来源设置</view>
+    <view class="source-row">
+      <view class="source-option {{sourceMode === 'original' ? 'active' : ''}}" data-mode="original" bindtap="handleSourceModeChange">
+        <view class="source-dot"></view>
+        <text>原创：本人制作或整理</text>
+      </view>
+      <view class="source-option {{sourceMode === 'repost' ? 'active' : ''}}" data-mode="repost" bindtap="handleSourceModeChange">
+        <view class="source-dot"></view>
+        <text>转载：来源公开可追溯</text>
+      </view>
+    </view>
+    <input class="field-input" data-field="sourceUrl" value="{{form.sourceUrl}}" placeholder="可填写原始链接、公众号、小程序或网页地址" bindinput="handleFieldChange" />
   </view>
 
   <view class="panel">
-    <view class="section-title">联系与来源</view>
+    <view class="section-title">联系与展示</view>
+    <view class="field-label">项目名称 / 分类说明</view>
+    <input class="field-input" data-field="projectName" value="{{form.projectName}}" placeholder="例如：滨江花园 / 社区团购 / 资料包" bindinput="handleFieldChange" />
+
     <view class="field-label">位置 / 地址</view>
     <input class="field-input" data-field="locationText" value="{{form.locationText}}" placeholder="例如：上海浦东新区" bindinput="handleFieldChange" />
 
     <view class="field-label">联系电话</view>
     <input class="field-input" data-field="phone" value="{{form.phone}}" type="number" placeholder="用于资源页一键拨号" bindinput="handleFieldChange" />
 
-    <view class="field-label">原始链接</view>
-    <input class="field-input" data-field="sourceUrl" value="{{form.sourceUrl}}" placeholder="可填写公众号、小程序或网页链接" bindinput="handleFieldChange" />
+    <view class="switch-row">
+      <view>
+        <view class="switch-title">是否公开展示</view>
+        <view class="muted">公开资源页展示给访客查看</view>
+      </view>
+      <switch checked="{{form.isPublic}}" data-field="isPublic" bindchange="handleSwitchChange" />
+    </view>
+
+    <view class="switch-row">
+      <view>
+        <view class="switch-title">生成资源页</view>
+        <view class="muted">为该资源自动生成独立资源页面</view>
+      </view>
+      <switch checked="{{form.generatePage}}" data-field="generatePage" bindchange="handleSwitchChange" />
+    </view>
   </view>
 
-  <view class="panel">
-    <view class="section-title">接龙设置</view>
-    <view class="field-label">接龙说明</view>
-    <textarea class="field-input" data-field="relayNotice" value="{{form.relayNotice}}" placeholder="例如：感兴趣请接龙，团长会尽快联系你" bindinput="handleFieldChange"></textarea>
-
-    <view class="switch-row">
-      <view>
-        <view class="switch-title">手机号必填</view>
-        <view class="muted">适合需要电话跟进的资源</view>
-      </view>
-      <switch checked="{{form.requirePhone}}" data-field="requirePhone" bindchange="handleSwitchChange" />
+  <view class="panel assist-panel">
+    <view class="assist-copy">
+      <view class="assist-title">也可发给企业微信客服自动归档</view>
+      <view class="assist-desc">支持图片 / 视频 / 文字 / 文件等内容，客服接收后自动整理到资源库</view>
     </view>
-
-    <view class="switch-row">
-      <view>
-        <view class="switch-title">地址必填</view>
-        <view class="muted">适合团购配送或资料寄送</view>
-      </view>
-      <switch checked="{{form.requireAddress}}" data-field="requireAddress" bindchange="handleSwitchChange" />
-    </view>
+    <button class="ghost-btn assist-btn" bindtap="handleGoImports">去发给客服</button>
   </view>
 
   <view class="submit-bar">
-    <button class="primary-btn" loading="{{submitting}}" bindtap="handleSubmit">生成资源草稿</button>
+    <button class="primary-btn action-btn" loading="{{submitting}}" bindtap="handleSubmit">保存到资源库</button>
+    <button class="ghost-btn action-btn" bindtap="handlePreviewPlaceholder">预览资源页</button>
   </view>
 </view>

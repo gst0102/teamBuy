@@ -1,8 +1,8 @@
 {
-  "navigationBarTitleText": "查看卡片",
+  "navigationBarTitleText": "\u67e5\u770b\u5361\u7247",
+  "navigationStyle": "custom",
   "usingComponents": {
     "field-copy-row": "/components/field-copy-row/index",
     "relay-list": "/components/relay-list/index"
   }
 }
-

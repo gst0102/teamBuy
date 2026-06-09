@@ -13,7 +13,7 @@
     "pages/manager/index"
   ],
   "window": {
-    "navigationBarTitleText": "悦享互动宝",
+    "navigationBarTitleText": "\u60a6\u4eab\u4e92\u52a8\u5b9d",
     "navigationBarBackgroundColor": "#eef6ff",
     "navigationBarTextStyle": "black",
     "backgroundColor": "#eef6ff",
@@ -27,31 +27,31 @@
     "list": [
       {
         "pagePath": "pages/home/index",
-        "text": "首页",
+        "text": "\u9996\u9875",
         "iconPath": "static/tab/shouye-a.png",
         "selectedIconPath": "static/tab/shouye-b.png"
       },
       {
         "pagePath": "pages/library/index",
-        "text": "资源库",
+        "text": "\u8d44\u6e90\u5e93",
         "iconPath": "static/tab/ziyuan-a.png",
         "selectedIconPath": "static/tab/ziyuan-b.png"
       },
       {
         "pagePath": "pages/imports/index",
-        "text": "发给客服",
+        "text": "\u53d1\u7ed9\u5ba2\u670d",
         "iconPath": "static/tab/tianjiakefu.png",
         "selectedIconPath": "static/tab/tianjiakefu.png"
       },
       {
         "pagePath": "pages/visits/index",
-        "text": "访问记录",
+        "text": "\u8bbf\u95ee\u8bb0\u5f55",
         "iconPath": "static/tab/jilu-a.png",
         "selectedIconPath": "static/tab/jilu-b.png"
       },
       {
         "pagePath": "pages/profile/index",
-        "text": "我的",
+        "text": "\u6211\u7684",
         "iconPath": "static/tab/wode-a.png",
         "selectedIconPath": "static/tab/wode-b.png"
       }

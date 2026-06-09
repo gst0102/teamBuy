@@ -5,6 +5,12 @@
   padding: 30rpx 0 24rpx;
 }
 
+.hero-copy {
+  flex: 1;
+  min-width: 0;
+  padding-right: 22rpx;
+}
+
 .library-visual {
   width: 180rpx;
   height: 180rpx;
@@ -32,17 +38,21 @@
 
 .search-input {
   flex: 1;
+  min-height: 64rpx;
   font-size: 28rpx;
 }
 
 .search-btn {
   width: 128rpx;
   height: 64rpx;
-  line-height: 64rpx;
+  padding: 0;
   border-radius: 999rpx;
   color: #fff;
   background: #1677ff;
   font-size: 24rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .quick-actions {

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 
 from app.api.dependencies import get_app_service
+from app.core.config import settings
 from app.schemas.categories import CategoryCreateRequest
 from app.schemas.cards import (
     CardCreateRequest,
@@ -15,6 +16,8 @@ from app.schemas.cards import (
 )
 from app.schemas.common import ApiResponse
 from app.services.app_service import AppService
+from app.services.helpers import new_id
+from app.services.media_storage_service import MediaStorageService
 
 
 router = APIRouter(prefix="/api", tags=["cards"])
@@ -48,6 +51,44 @@ def delete_category(category_id: str, ownerUserId: str = Query(...), service: Ap
 @router.post("/cards", response_model=ApiResponse[dict])
 def create_card(payload: CardCreateRequest, service: AppService = Depends(get_app_service)):
     return ApiResponse(data=service.create_card(payload).model_dump())
+
+
+@router.post("/uploads/asset", response_model=ApiResponse[dict])
+async def upload_asset(
+    ownerUserId: str = Form(default=""),
+    mediaType: str = Form(default="image"),
+    file: UploadFile = File(...),
+    service: AppService = Depends(get_app_service),
+):
+    if ownerUserId and not service.repo.get_user(ownerUserId):
+        raise HTTPException(status_code=404, detail="用户不存在")
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="上传文件不能为空")
+    normalized_type = mediaType if mediaType in {"image", "video", "file"} else "image"
+    stored_type = "video" if normalized_type == "video" else "image"
+    storage = service.media_storage_service
+    if storage.storage_mode == "mock":
+        storage = MediaStorageService(
+            storage_mode="local",
+            storage_dir=settings.media_storage_dir,
+            public_url_prefix=settings.media_public_url_prefix,
+        )
+    stored_url = storage.store_bytes(
+        media_id=new_id("manual_asset"),
+        media_type=stored_type,
+        content=content,
+        content_type=file.content_type,
+        filename=file.filename,
+    )
+    return ApiResponse(
+        data={
+            "url": stored_url,
+            "name": file.filename or "upload",
+            "mediaType": normalized_type,
+            "contentType": file.content_type,
+        }
+    )
 
 
 @router.get("/cards/{card_id}", response_model=ApiResponse[dict])

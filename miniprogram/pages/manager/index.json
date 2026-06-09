@@ -1,7 +1,7 @@
 {
-  "navigationBarTitleText": "团长管理",
+  "navigationBarTitleText": "\u56e2\u957f\u7ba1\u7406",
+  "navigationStyle": "custom",
   "usingComponents": {
     "relay-list": "/components/relay-list/index"
   }
 }
-

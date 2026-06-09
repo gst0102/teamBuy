@@ -69,6 +69,38 @@ function createCard(payload) {
   });
 }
 
+function uploadAsset({ filePath, mediaType = "image", ownerUserId = "" }) {
+  const app = getApp();
+  return new Promise((resolve, reject) => {
+    wx.uploadFile({
+      url: `${app.globalData.apiBaseUrl}/api/uploads/asset`,
+      filePath,
+      name: "file",
+      formData: {
+        ownerUserId,
+        mediaType
+      },
+      success(res) {
+        let data = {};
+        try {
+          data = JSON.parse(res.data);
+        } catch (error) {
+          reject({ detail: "上传返回解析失败" });
+          return;
+        }
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          resolve(data.data);
+          return;
+        }
+        reject(data);
+      },
+      fail(err) {
+        reject(err);
+      }
+    });
+  });
+}
+
 function updateCard(cardId, payload) {
   return request({
     url: `/api/cards/${cardId}`,
@@ -161,6 +193,7 @@ module.exports = {
   createCategory,
   deleteCategory,
   createCard,
+  uploadAsset,
   updateCard,
   publishCard,
   duplicateCard,

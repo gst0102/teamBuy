@@ -36,7 +36,7 @@
         <text class="stat-label">接龙线索</text>
       </view>
       <view class="stat-item">
-        <view class="stat-icon purple">奖</view>
+        <view class="stat-icon purple">邀</view>
         <text class="stat-value">--</text>
         <text class="stat-label">邀请权益</text>
       </view>

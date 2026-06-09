@@ -1,7 +1,7 @@
 {
-  "navigationBarTitleText": "素材库",
+  "navigationBarTitleText": "\u7d20\u6750\u5e93",
+  "navigationStyle": "custom",
   "usingComponents": {
     "card-preview": "/components/card-preview/index"
   }
 }
-

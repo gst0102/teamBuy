@@ -8,3 +8,4 @@ tzdata==2025.2
 pytest==8.3.5
 httpx==0.28.1
 boto3==1.35.99
+python-multipart==0.0.20
