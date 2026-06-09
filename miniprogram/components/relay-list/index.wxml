@@ -8,7 +8,7 @@
       </view>
       <view class="relay-status {{item.followUpStatus}}">{{item.followUpText || item.followUpStatus}}</view>
     </view>
-    <view class="relay-fields">
+    <view wx:if="{{isOwner}}" class="relay-fields">
       <view wx:if="{{item.phone}}" class="relay-field">电话：{{item.phone}}</view>
       <view wx:if="{{item.address}}" class="relay-field">地址：{{item.address}}</view>
     </view>

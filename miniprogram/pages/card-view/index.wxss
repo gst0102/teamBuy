@@ -67,6 +67,16 @@
   margin-top: 26rpx;
 }
 
+.privacy-note {
+  margin-top: 22rpx;
+  padding: 20rpx 22rpx;
+  border-radius: 20rpx;
+  background: #f6f9ff;
+  color: #667085;
+  font-size: 24rpx;
+  line-height: 1.55;
+}
+
 .stat-icon.blue {
   background: linear-gradient(135deg, #368cff, #0066ff);
 }

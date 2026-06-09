@@ -20,7 +20,7 @@
       <button class="ghost-btn share-action-btn" open-type="share">分享资源</button>
       <button class="ghost-btn" wx:if="{{isOwner}}" bindtap="handleGoManager">访问详情</button>
     </view>
-    <view class="stat-grid detail-stats">
+    <view class="stat-grid detail-stats" wx:if="{{isOwner}}">
       <view class="stat-item">
         <view class="stat-icon blue">PV</view>
         <text class="stat-value">{{stats.pv || 0}}</text>
@@ -36,6 +36,9 @@
         <text class="stat-value">{{stats.relayCount || 0}}</text>
         <text class="stat-label">接龙</text>
       </view>
+    </view>
+    <view class="privacy-note" wx:else>
+      浏览统计和接龙名单仅发布者可见，你提交后发布者会尽快联系。
     </view>
   </view>
 
@@ -86,12 +89,12 @@
     <button class="primary-btn" bindtap="handleRelaySubmit">提交接龙</button>
   </view>
 
-  <view class="panel">
+  <view class="panel" wx:if="{{isOwner}}">
     <view class="section-head">
       <view class="section-title">已接龙名单</view>
       <view class="section-link">{{stats.relayEntries.length || 0}} 人</view>
     </view>
-    <relay-list relays="{{stats.relayEntries || []}}" isOwner="{{false}}" />
+    <relay-list relays="{{stats.relayEntries || []}}" isOwner="{{true}}" />
     <view class="empty-state compact" wx:if="{{!stats.relayEntries.length}}">还没有人接龙。</view>
   </view>
 </view>

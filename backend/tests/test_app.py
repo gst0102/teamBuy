@@ -721,6 +721,39 @@ def test_relay_requires_phone_when_enabled(client):
     assert response.json()["detail"] == "手机号为必填项"
 
 
+def test_non_owner_stats_masks_relay_private_fields(client):
+    card_id = "card_seed_001"
+    relay_response = client.post(
+        f"/api/cards/{card_id}/relay",
+        json={
+            "userId": "user_customer_alpha",
+            "nickname": "Alice",
+            "phone": "13900000000",
+            "address": "North Garden 1",
+        },
+    )
+    assert relay_response.status_code == 200
+
+    public_stats = client.get(
+        f"/api/cards/{card_id}/stats",
+        params={"requesterUserId": "user_customer_beta"},
+    ).json()["data"]
+    owner_stats = client.get(
+        f"/api/cards/{card_id}/stats",
+        params={"requesterUserId": "user_seed_owner"},
+    ).json()["data"]
+
+    public_entry = next(item for item in public_stats["relayEntries"] if item["userId"] == "user_customer_alpha")
+    owner_entry = next(item for item in owner_stats["relayEntries"] if item["userId"] == "user_customer_alpha")
+
+    assert public_entry["nickname"] != "Alice"
+    assert public_entry["phone"] is None
+    assert public_entry["address"] is None
+    assert owner_entry["nickname"] == "Alice"
+    assert owner_entry["phone"] == "13900000000"
+    assert owner_entry["address"] == "North Garden 1"
+
+
 def test_duplicate_card_keeps_stats_isolated(client):
     response = client.post(
         "/api/cards/card_seed_001/duplicate",
