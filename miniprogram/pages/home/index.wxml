@@ -1,4 +1,5 @@
 <view class="page-shell">
+  <custom-nav title="&#x9996;&#x9875;" />
   <view class="brand-bar">悦享互动宝</view>
 
   <view class="home-hero">

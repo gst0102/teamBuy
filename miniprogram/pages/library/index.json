@@ -2,6 +2,7 @@
   "navigationBarTitleText": "\u7d20\u6750\u5e93",
   "navigationStyle": "custom",
   "usingComponents": {
+    "custom-nav": "/components/custom-nav/index",
     "card-preview": "/components/card-preview/index"
   }
 }

@@ -1,5 +1,5 @@
 <view class="page-shell">
-  <view class="brand-bar">悦享互动宝</view>
+  <custom-nav title="&#x60A6;&#x4EAB;&#x4E92;&#x52A8;&#x5B9D;" showBack="{{true}}" />
 
   <view class="create-hero">
     <view class="hero-copy">

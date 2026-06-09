@@ -1,5 +1,28 @@
 const { request } = require("../utils/request");
 
+function toAbsoluteUrl(url) {
+  if (!url) return url;
+  if (/^https?:\/\//i.test(url)) return url;
+  const app = getApp();
+  const baseUrl = (app && app.globalData && app.globalData.apiBaseUrl) || "";
+  if (!baseUrl) return url;
+  return `${baseUrl}${url.startsWith("/") ? "" : "/"}${url}`;
+}
+
+function normalizeCardPayload(card) {
+  if (!card || typeof card !== "object") return card;
+  return {
+    ...card,
+    coverUrl: toAbsoluteUrl(card.coverUrl),
+    media: Array.isArray(card.media)
+      ? card.media.map((item) => ({
+          ...item,
+          url: toAbsoluteUrl(item.url)
+        }))
+      : card.media
+  };
+}
+
 function mockLogin(payload) {
   return request({
     url: "/api/auth/mock-login",
@@ -11,7 +34,15 @@ function mockLogin(payload) {
 function fetchPendingImports() {
   return request({
     url: "/api/imports/pending"
-  });
+  }).then((res) => ({
+    ...res,
+    data: Array.isArray(res.data)
+      ? res.data.map((item) => ({
+          ...item,
+          generatedCard: normalizeCardPayload(item.generatedCard)
+        }))
+      : res.data
+  }));
 }
 
 function claimImport(importId, userId) {
@@ -19,7 +50,13 @@ function claimImport(importId, userId) {
     url: `/api/imports/${importId}/claim`,
     method: "POST",
     data: { userId }
-  });
+  }).then((res) => ({
+    ...res,
+    data: {
+      ...res.data,
+      card: normalizeCardPayload(res.data && res.data.card)
+    }
+  }));
 }
 
 function fetchCards(params = {}) {
@@ -30,13 +67,19 @@ function fetchCards(params = {}) {
   const suffix = query.length ? `?${query.join("&")}` : "";
   return request({
     url: `/api/cards${suffix}`
-  });
+  }).then((res) => ({
+    ...res,
+    data: Array.isArray(res.data) ? res.data.map(normalizeCardPayload) : res.data
+  }));
 }
 
 function fetchCard(cardId) {
   return request({
     url: `/api/cards/${cardId}`
-  });
+  }).then((res) => ({
+    ...res,
+    data: normalizeCardPayload(res.data)
+  }));
 }
 
 function fetchCategories(ownerUserId) {
@@ -89,7 +132,10 @@ function uploadAsset({ filePath, mediaType = "image", ownerUserId = "" }) {
           return;
         }
         if (res.statusCode >= 200 && res.statusCode < 300) {
-          resolve(data.data);
+          resolve({
+            ...data.data,
+            url: toAbsoluteUrl(data.data && data.data.url)
+          });
           return;
         }
         reject(data);

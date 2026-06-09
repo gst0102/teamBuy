@@ -1,4 +1,5 @@
 <view class="page-shell" wx:if="{{card}}">
+  <custom-nav title="&#x8D44;&#x6E90;&#x8BE6;&#x60C5;" showBack="{{true}}" />
   <view class="share-hero">
     <image wx:if="{{card.coverUrl}}" class="share-cover" src="{{card.coverUrl}}" mode="aspectFill"></image>
     <view wx:else class="share-cover placeholder">悦享互动宝</view>

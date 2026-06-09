@@ -2,6 +2,7 @@
   "navigationBarTitleText": "\u56e2\u957f\u7ba1\u7406",
   "navigationStyle": "custom",
   "usingComponents": {
+    "custom-nav": "/components/custom-nav/index",
     "relay-list": "/components/relay-list/index"
   }
 }

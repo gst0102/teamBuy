@@ -1,4 +1,5 @@
 const api = require("../../services/api");
+const { getCurrentUser } = require("../../utils/dashboard");
 
 Page({
   data: {
@@ -12,6 +13,11 @@ Page({
     this.setData({ cardId: query.id });
   },
   async onShow() {
+    const currentUser = getCurrentUser();
+    if (!currentUser) {
+      wx.reLaunch({ url: "/pages/login/index" });
+      return;
+    }
     await this.loadAll();
   },
   async loadAll() {
@@ -21,20 +27,20 @@ Page({
     try {
       const res = await api.fetchCard(this.data.cardId);
       this.setData({ card: res.data });
-      this.syncCategorySelection(res.data.categoryIds || []);
+      this.syncCategorySelection((res.data && res.data.categoryIds) || []);
     } catch (error) {
-      wx.showToast({ title: "加载卡片失败", icon: "none" });
+      wx.showToast({ title: error.detail || "加载卡片失败", icon: "none" });
     }
   },
   async loadCategories() {
-    const currentUser = getApp().globalData.currentUser;
+    const currentUser = getCurrentUser();
     if (!currentUser) return;
     try {
       const res = await api.fetchCategories(currentUser.id);
       this.setData({ categories: res.data || [] });
       this.syncCategorySelection(this.data.card ? this.data.card.categoryIds || [] : []);
     } catch (error) {
-      wx.showToast({ title: "标签加载失败", icon: "none" });
+      wx.showToast({ title: error.detail || "标签加载失败", icon: "none" });
     }
   },
   syncCategorySelection(categoryIds) {
@@ -77,10 +83,14 @@ Page({
     wx.navigateTo({ url: "/pages/tag-manage/index" });
   },
   async handleSave() {
-    const currentUser = getApp().globalData.currentUser;
-    if (!this.data.card.title || !this.data.card.title.trim()) {
+    const currentUser = getCurrentUser();
+    if (!currentUser) {
+      wx.reLaunch({ url: "/pages/login/index" });
+      return false;
+    }
+    if (!this.data.card || !this.data.card.title || !this.data.card.title.trim()) {
       wx.showToast({ title: "标题不能为空", icon: "none" });
-      return;
+      return false;
     }
     this.setData({ saving: true });
     try {
@@ -96,19 +106,27 @@ Page({
         sourceUrl: this.data.card.sourceUrl,
         enabledFields: this.data.card.enabledFields || [],
         categoryIds: this.data.categories.filter((item) => item.selected).map((item) => item.id),
-        relayConfig: this.data.card.relayConfig
+        relayConfig: this.data.card.relayConfig || {
+          enabled: true,
+          requirePhone: false,
+          requireAddress: false
+        }
       });
       wx.showToast({ title: "已保存", icon: "success" });
       return true;
     } catch (error) {
-      wx.showToast({ title: "保存失败", icon: "none" });
+      wx.showToast({ title: error.detail || "保存失败", icon: "none" });
       return false;
     } finally {
       this.setData({ saving: false });
     }
   },
   async handlePublish() {
-    const currentUser = getApp().globalData.currentUser;
+    const currentUser = getCurrentUser();
+    if (!currentUser) {
+      wx.reLaunch({ url: "/pages/login/index" });
+      return;
+    }
     const saved = await this.handleSave();
     if (!saved) return;
     this.setData({ publishing: true });
@@ -116,7 +134,7 @@ Page({
       await api.publishCard(this.data.cardId, currentUser.id);
       wx.navigateTo({ url: `/pages/card-view/index?id=${this.data.cardId}` });
     } catch (error) {
-      wx.showToast({ title: "发布失败", icon: "none" });
+      wx.showToast({ title: error.detail || "发布失败", icon: "none" });
     } finally {
       this.setData({ publishing: false });
     }

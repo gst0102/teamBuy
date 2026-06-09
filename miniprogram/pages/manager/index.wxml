@@ -1,5 +1,5 @@
 <view class="page-shell" wx:if="{{card}}">
-  <view class="brand-bar">悦享互动宝</view>
+  <custom-nav title="&#x7EBF;&#x7D22;&#x7BA1;&#x7406;" showBack="{{true}}" />
 
   <view class="manager-hero">
     <view>
