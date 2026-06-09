@@ -101,6 +101,11 @@ def update_card(card_id: str, payload: CardUpdateRequest, service: AppService = 
     return ApiResponse(data=service.update_card(card_id, payload).model_dump())
 
 
+@router.delete("/cards/{card_id}", response_model=ApiResponse[dict])
+def delete_card(card_id: str, ownerUserId: str = Query(...), service: AppService = Depends(get_app_service)):
+    return ApiResponse(data=service.delete_card(card_id, ownerUserId))
+
+
 @router.post("/cards/{card_id}/publish", response_model=ApiResponse[dict])
 def publish_card(card_id: str, payload: PublishCardRequest, service: AppService = Depends(get_app_service)):
     return ApiResponse(data=service.publish_card(card_id, payload.userId).model_dump())

@@ -351,6 +351,15 @@ class AppService:
             raise HTTPException(status_code=404, detail="卡片不存在")
         return card
 
+    def delete_card(self, card_id: str, owner_user_id: str) -> dict:
+        card = self.repo.get_card(card_id)
+        if not card:
+            raise HTTPException(status_code=404, detail="卡片不存在")
+        if card.ownerUserId != owner_user_id:
+            raise HTTPException(status_code=403, detail="仅卡片拥有者可删除")
+        self.repo.delete_card(card_id)
+        return {"deletedCardId": card_id}
+
     def create_card(self, payload: CardCreateRequest) -> Card:
         user = self.repo.get_user(payload.ownerUserId)
         if not user:

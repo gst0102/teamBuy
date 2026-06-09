@@ -155,6 +155,13 @@ function updateCard(cardId, payload) {
   });
 }
 
+function deleteCard(cardId, ownerUserId) {
+  return request({
+    url: `/api/cards/${cardId}?ownerUserId=${ownerUserId}`,
+    method: "DELETE"
+  });
+}
+
 function publishCard(cardId, userId) {
   return request({
     url: `/api/cards/${cardId}/publish`,
@@ -241,6 +248,7 @@ module.exports = {
   createCard,
   uploadAsset,
   updateCard,
+  deleteCard,
   publishCard,
   duplicateCard,
   recordView,

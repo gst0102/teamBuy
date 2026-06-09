@@ -26,6 +26,15 @@
 - 已补后端回归测试：`backend/tests/test_app.py::test_update_card_flow_accepts_relay_config_payload`。
 - 已移除多个页面顶部重复的“悦享互动宝”品牌条，避免自定义导航标题下方再次出现一行品牌文案。
 
+## 2026-06-10 资源库补充
+
+- 资源库筛选语义已收口：
+  - 第一排是分类筛选
+  - 第二排是标签筛选
+- 第二排不再混入来源/能力型伪标签，只保留真实标签。
+- 新增删除资源能力，对应后端 `DELETE /api/cards/{card_id}?ownerUserId=...`。
+- 删除资源会同时清理该资源下的访问记录与接龙线索。
+
 更新时间：2026-06-09  
 工作目录：`d:\Desktop\myprojects\teamBuy`  
 当前分支：`main`  

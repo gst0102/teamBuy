@@ -74,6 +74,9 @@ class AppRepository(Protocol):
     def save_card(self, card: Card) -> None:
         ...
 
+    def delete_card(self, card_id: str) -> None:
+        ...
+
     def list_categories(self, owner_user_id: str | None = None) -> list[Category]:
         ...
 
@@ -264,6 +267,13 @@ class JsonRepository:
         state = self.load()
         state.cards = [item for item in state.cards if item.id != card.id]
         state.cards.append(card)
+        self.save(state)
+
+    def delete_card(self, card_id: str) -> None:
+        state = self.load()
+        state.cards = [item for item in state.cards if item.id != card_id]
+        state.view_events = [item for item in state.view_events if item.cardId != card_id]
+        state.relay_entries = [item for item in state.relay_entries if item.cardId != card_id]
         self.save(state)
 
     def list_categories(self, owner_user_id: str | None = None) -> list[Category]:
@@ -768,6 +778,12 @@ class PostgresRepository:
 
     def save_card(self, card: Card) -> None:
         self._save_model("cards", card)
+
+    def delete_card(self, card_id: str) -> None:
+        with psycopg.connect(self.database_url) as conn:
+            conn.execute("delete from relay_entries where card_id = %s", (card_id,))
+            conn.execute("delete from view_events where card_id = %s", (card_id,))
+            conn.execute("delete from cards where id = %s", (card_id,))
 
     def list_categories(self, owner_user_id: str | None = None) -> list[Category]:
         if owner_user_id:

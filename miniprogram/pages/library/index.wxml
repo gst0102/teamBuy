@@ -28,13 +28,15 @@
     </view>
   </view>
 
+  <view class="filter-title">分类筛选</view>
   <view class="chip-row">
     <block wx:for="{{categoryFilters}}" wx:key="name">
       <view class="chip {{activeCategory === item.name ? 'active' : ''}}" data-filter="{{item.name}}" bindtap="handleFilter">{{item.name}} {{item.count}}</view>
     </block>
   </view>
 
-  <view class="tag-row">
+  <view class="filter-title" wx:if="{{tagFilters.length > 1}}">标签筛选</view>
+  <view class="tag-row" wx:if="{{tagFilters.length > 1}}">
     <block wx:for="{{tagFilters}}" wx:key="name">
       <text class="tag {{activeTag === item.name ? 'active' : ''}}" data-tag="{{item.name}}" bindtap="handleTagFilter">{{item.name}} {{item.count}}</text>
     </block>
@@ -55,7 +57,7 @@
       <view class="stat-item">
         <view class="stat-icon purple">签</view>
         <text class="stat-value">{{stats.tags}}</text>
-        <text class="stat-label">分类数量</text>
+        <text class="stat-label">标签数量</text>
       </view>
       <view class="stat-item">
         <view class="stat-icon orange">访</view>
@@ -71,18 +73,19 @@
         <image wx:if="{{item.coverUrl}}" class="resource-cover" src="{{item.coverUrl}}" mode="aspectFill" data-id="{{item.id}}" bindtap="handleView"></image>
         <view wx:else class="resource-cover placeholder" data-id="{{item.id}}" bindtap="handleView">{{item.categoryName}}</view>
         <view class="resource-title">{{item.title}}</view>
-        <view style="margin-top: 12rpx;">
+        <view style="margin-top: 12rpx;" wx:if="{{item.tagNames.length}}">
           <block wx:for="{{item.tagNames}}" wx:key="*this">
             <text class="tag mini">{{item}}</text>
           </block>
         </view>
-        <view class="resource-source">来源：{{item.importBatchId ? '客服接收' : '手动添加'}}</view>
+        <view class="resource-source">来源：{{item.sourceLabel}}</view>
         <view class="resource-meta">浏览 {{item.stats.pv}} · 访客 {{item.stats.uv}}</view>
         <view class="card-actions">
           <text data-id="{{item.id}}" bindtap="handleView">详情</text>
           <text data-id="{{item.id}}" bindtap="handleManage">访问</text>
           <text data-id="{{item.id}}" bindtap="handleCopySummary">复制</text>
           <text data-id="{{item.id}}" bindtap="handleOpen">编辑</text>
+          <text class="danger-action" data-id="{{item.id}}" bindtap="handleDelete">删除</text>
         </view>
       </view>
     </block>

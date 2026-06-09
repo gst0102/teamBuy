@@ -101,6 +101,13 @@
   background: linear-gradient(135deg, #ffb24a, #ff7a1a);
 }
 
+.filter-title {
+  margin: 10rpx 0 12rpx;
+  color: #5d6b7c;
+  font-size: 24rpx;
+  font-weight: 700;
+}
+
 .stat-icon.purple {
   background: linear-gradient(135deg, #8b7cff, #6845f5);
 }
@@ -144,10 +151,15 @@
 
 .card-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: 10rpx;
   margin-top: 18rpx;
   color: #1677ff;
   font-size: 22rpx;
   font-weight: 700;
+}
+
+.danger-action {
+  color: #ff5d5d;
 }

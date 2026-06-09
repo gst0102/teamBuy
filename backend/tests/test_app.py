@@ -585,6 +585,27 @@ def test_update_card_flow_accepts_relay_config_payload(client):
     assert payload["relayConfig"]["requirePhone"] is True
 
 
+def test_delete_card_flow_removes_card(client):
+    login = client.post("/api/auth/mock-login", json={"nickname": "删除资源用户"}).json()["data"]
+    created = client.post(
+        "/api/cards",
+        json={
+            "ownerUserId": login["id"],
+            "title": "待删除资源",
+            "detailText": "删除前内容",
+        },
+    )
+    assert created.status_code == 200
+    card_id = created.json()["data"]["id"]
+
+    deleted = client.delete(f"/api/cards/{card_id}", params={"ownerUserId": login["id"]})
+    assert deleted.status_code == 200
+    assert deleted.json()["data"]["deletedCardId"] == card_id
+
+    missing = client.get(f"/api/cards/{card_id}")
+    assert missing.status_code == 404
+
+
 def test_manual_asset_upload_returns_media_url(client):
     login = client.post("/api/auth/mock-login", json={"nickname": "上传用户"}).json()["data"]
 

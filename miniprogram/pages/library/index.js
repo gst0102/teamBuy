@@ -43,25 +43,24 @@ Page({
       }, {});
       const cards = (res.data || []).map((card) => enrichCard(card, categoriesById));
       const categoryFilters = this.buildCountFilters(cards, (card) => card.categoryName);
-      const tagFilters = this.buildCountFilters(
-        cards.flatMap((card) => card.tagNames.map((tag) => ({ tag }))),
-        (item) => item.tag
-      );
+      const tagItems = cards.flatMap((card) => (card.tagNames || []).map((tag) => ({ tag })));
+      const tagFilters = this.buildCountFilters(tagItems, (item) => item.tag);
       const stats = {
         total: cards.length,
         pv: cards.reduce((sum, card) => sum + card.stats.pv, 0),
-        tags: new Set(cards.map((card) => card.categoryName)).size,
+        tags: new Set(tagItems.map((item) => item.tag)).size,
         today: cards.reduce((sum, card) => sum + card.stats.pv, 0)
       };
       this.setData({ cards, categories, categoryFilters, tagFilters, stats });
       this.applyFilter();
     } catch (error) {
-      wx.showToast({ title: "加载素材失败", icon: "none" });
+      wx.showToast({ title: error.detail || "加载资源失败", icon: "none" });
     }
   },
   buildCountFilters(items, resolveName) {
     const counts = items.reduce((result, item) => {
-      const name = resolveName(item) || "资料";
+      const name = resolveName(item);
+      if (!name) return result;
       result[name] = (result[name] || 0) + 1;
       return result;
     }, {});
@@ -76,7 +75,7 @@ Page({
     const keyword = this.data.keyword.trim().toLowerCase();
     const displayCards = this.data.cards.filter((card) => {
       const matchCategory = this.data.activeCategory === "全部" || card.categoryName === this.data.activeCategory;
-      const matchTag = this.data.activeTag === "全部" || card.tagNames.includes(this.data.activeTag);
+      const matchTag = this.data.activeTag === "全部" || (card.tagNames || []).includes(this.data.activeTag);
       const haystack = [
         card.title,
         card.projectName,
@@ -129,6 +128,26 @@ Page({
     if (!card) return;
     wx.setClipboardData({
       data: `${card.title}\n${card.detailText || ""}\n${card.sourceUrl || ""}`.trim()
+    });
+  },
+  handleDelete(event) {
+    const cardId = event.currentTarget.dataset.id;
+    const currentUser = getCurrentUser();
+    if (!cardId || !currentUser) return;
+    wx.showModal({
+      title: "删除资源",
+      content: "删除后该资源、访问记录和接龙线索都会移除，确认删除吗？",
+      confirmColor: "#ff5d5d",
+      success: async ({ confirm }) => {
+        if (!confirm) return;
+        try {
+          await api.deleteCard(cardId, currentUser.id);
+          wx.showToast({ title: "已删除", icon: "success" });
+          this.loadCards();
+        } catch (error) {
+          wx.showToast({ title: error.detail || "删除失败", icon: "none" });
+        }
+      }
     });
   }
 });

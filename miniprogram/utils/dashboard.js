@@ -53,26 +53,19 @@ function inferCategory(card = {}) {
   return "资料";
 }
 
-function inferTags(card = {}, categoriesById = {}) {
-  const categoryNames = (card.categoryIds || []).map((id) => categoriesById[id]).filter(Boolean);
-  const tags = categoryNames.length ? categoryNames : [inferCategory(card)];
-  if (card.projectName) tags.push(card.projectName);
-  if (card.importBatchId) tags.push("客服接收");
-  if (!card.importBatchId) tags.push("手动添加");
-  if (card.sourceUrl) tags.push("带链接");
-  if (card.phone) tags.push("可拨号");
-  if (card.relayConfig && card.relayConfig.enabled !== false) tags.push("可接龙");
-  return [...new Set(tags.filter(Boolean))];
+function resolveCustomTags(card = {}, categoriesById = {}) {
+  return [...new Set((card.categoryIds || []).map((id) => categoriesById[id]).filter(Boolean))];
 }
 
 function enrichCard(card = {}, categoriesById = {}) {
   const normalized = withStats(card);
-  const categoryNames = (normalized.categoryIds || []).map((id) => categoriesById[id]).filter(Boolean);
-  const categoryName = categoryNames[0] || inferCategory(normalized);
+  const customTagNames = resolveCustomTags(normalized, categoriesById);
+  const categoryName = inferCategory(normalized);
   return {
     ...normalized,
     categoryName,
-    tagNames: inferTags(normalized, categoriesById)
+    tagNames: customTagNames,
+    sourceLabel: normalized.importBatchId ? "客服接收" : "手动添加"
   };
 }
 
@@ -108,21 +101,25 @@ function buildDashboard(cards = []) {
 }
 
 function buildVisitGroups(cards = []) {
-  return cards.map(enrichCard).map((card) => {
-    const viewers = card.stats.loggedInViewers.slice(0, 3).map((viewer, index) => ({
-      ...viewer,
-      timeText: formatTime(viewer.viewedAt),
-      actionLabel: index === 0 ? "刚刚访问了详情页" : index === 1 ? "重复查看了资源页" : "对该资源感兴趣"
-    }));
-    const highIntent = card.stats.pv >= 3 || card.stats.relayCount > 0 || card.stats.loggedInViewers.length >= 2;
-    return {
-      ...card,
-      viewers,
-      highIntent,
-      collectHint: card.stats.relayCount,
-      visitSummary: `访问 ${card.stats.pv} · 访客 ${card.stats.uv}`
-    };
-  }).sort((a, b) => b.stats.pv - a.stats.pv);
+  return cards
+    .map(enrichCard)
+    .map((card) => {
+      const viewers = card.stats.loggedInViewers.slice(0, 3).map((viewer, index) => ({
+        ...viewer,
+        timeText: formatTime(viewer.viewedAt),
+        actionLabel:
+          index === 0 ? "刚刚访问了详情页" : index === 1 ? "重复查看了资源页" : "对该资源感兴趣"
+      }));
+      const highIntent = card.stats.pv >= 3 || card.stats.relayCount > 0 || card.stats.loggedInViewers.length >= 2;
+      return {
+        ...card,
+        viewers,
+        highIntent,
+        collectHint: card.stats.relayCount,
+        visitSummary: `访问 ${card.stats.pv} · 访客 ${card.stats.uv}`
+      };
+    })
+    .sort((a, b) => b.stats.pv - a.stats.pv);
 }
 
 module.exports = {
@@ -132,7 +129,6 @@ module.exports = {
   statusText,
   getCurrentUser,
   enrichCard,
-  inferTags,
   inferCategory,
   withStats
 };
