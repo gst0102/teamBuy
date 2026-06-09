@@ -20,7 +20,10 @@
   <view class="panel" wx:if="{{card.media.length}}">
     <view class="section-head">
       <view class="section-title">详情素材</view>
-      <view class="section-link">{{card.media.length}} 项</view>
+      <view class="media-head-actions">
+        <view class="section-link">{{card.media.length}} 项</view>
+        <button class="mini-upload-btn" loading="{{uploading}}" bindtap="handleChooseUpload">添加图片/视频</button>
+      </view>
     </view>
     <view class="media-edit-stack">
       <block wx:for="{{card.media}}" wx:key="url">
@@ -52,6 +55,17 @@
         </view>
       </block>
     </view>
+  </view>
+
+  <view class="panel" wx:else>
+    <view class="section-head">
+      <view class="section-title">详情素材</view>
+    </view>
+    <button class="upload-empty-card" loading="{{uploading}}" bindtap="handleChooseUpload">
+      <text class="upload-plus">+</text>
+      <text>添加图片/视频</text>
+      <text class="upload-help">第一张图片会作为资源封面，后续图片/视频会展示在详情内容里</text>
+    </button>
   </view>
 
   <view class="panel">

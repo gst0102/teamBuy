@@ -17,8 +17,8 @@
     <view class="detail-actions">
       <button class="primary-btn" bindtap="handleCall" wx:if="{{card.phone}}">电话直拨</button>
       <button class="ghost-btn" bindtap="handleCopyInfo">复制信息</button>
-      <button class="ghost-btn" bindtap="handleSharePlaceholder">分享资源</button>
-      <button class="ghost-btn" bindtap="handleGoManager">访问详情</button>
+      <button class="ghost-btn share-action-btn" open-type="share">分享资源</button>
+      <button class="ghost-btn" wx:if="{{isOwner}}" bindtap="handleGoManager">访问详情</button>
     </view>
     <view class="stat-grid detail-stats">
       <view class="stat-item">

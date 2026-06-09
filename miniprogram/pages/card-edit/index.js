@@ -27,6 +27,7 @@ Page({
     categories: [],
     saving: false,
     publishing: false,
+    uploading: false,
     statusLabel: ""
   },
   onLoad(query) {
@@ -150,6 +151,82 @@ Page({
     this.setData({
       "card.media": normalizeMedia(media, this.data.card.coverUrl)
     });
+  },
+  handleChooseUpload() {
+    if (this.data.uploading) return;
+    wx.showActionSheet({
+      itemList: ["上传图片", "上传视频"],
+      success: ({ tapIndex }) => {
+        if (tapIndex === 0) {
+          this.chooseImageFiles();
+          return;
+        }
+        this.chooseVideoFile();
+      }
+    });
+  },
+  chooseImageFiles() {
+    wx.chooseMedia({
+      count: 9,
+      mediaType: ["image"],
+      sourceType: ["album", "camera"],
+      success: ({ tempFiles = [] }) => {
+        this.uploadAssets(tempFiles.map((file) => file.tempFilePath).filter(Boolean), "image");
+      }
+    });
+  },
+  chooseVideoFile() {
+    wx.chooseMedia({
+      count: 1,
+      mediaType: ["video"],
+      sourceType: ["album", "camera"],
+      success: ({ tempFiles = [] }) => {
+        const file = tempFiles[0];
+        if (!file || !file.tempFilePath) return;
+        this.uploadAssets([file.tempFilePath], "video");
+      }
+    });
+  },
+  uploadAssets(paths, type) {
+    const currentUser = getCurrentUser();
+    if (!currentUser) {
+      wx.reLaunch({ url: "/pages/login/index" });
+      return;
+    }
+    if (!paths.length) return;
+    this.setData({ uploading: true });
+    Promise.all(
+      paths.map((path) =>
+        api.uploadAsset({
+          filePath: path,
+          mediaType: type,
+          ownerUserId: currentUser.id
+        })
+      )
+    )
+      .then((uploaded) => {
+        const baseLength = (this.data.card.media || []).length;
+        const nextItems = uploaded.map((data, index) => ({
+          type: data.mediaType || type,
+          url: data.url,
+          sortOrder: baseLength + index + 1
+        }));
+        const nextMedia = [...(this.data.card.media || []), ...nextItems];
+        const firstImage = nextItems.find((item) => item.type === "image");
+        const nextCoverUrl =
+          this.data.card.coverUrl || (firstImage ? firstImage.url : "");
+        this.setData({
+          "card.coverUrl": nextCoverUrl,
+          "card.media": normalizeMedia(nextMedia, nextCoverUrl)
+        });
+        wx.showToast({ title: "上传成功，记得保存", icon: "none" });
+      })
+      .catch((error) => {
+        wx.showToast({ title: error.detail || error.errMsg || "上传失败", icon: "none" });
+      })
+      .finally(() => {
+        this.setData({ uploading: false });
+      });
   },
   handleMediaTap(event) {
     const url = event.currentTarget.dataset.url;

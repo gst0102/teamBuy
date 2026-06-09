@@ -7,7 +7,8 @@ Page({
     stats: null,
     phone: "",
     address: "",
-    detailMedia: []
+    detailMedia: [],
+    isOwner: false
   },
   onLoad(query) {
     this.setData({ cardId: query.id });
@@ -21,7 +22,12 @@ Page({
     const res = await api.fetchCard(this.data.cardId);
     const card = res.data;
     const detailMedia = (card.media || []).filter((item) => item.url !== card.coverUrl);
-    this.setData({ card, detailMedia });
+    const currentUser = getApp().globalData.currentUser || wx.getStorageSync("currentUser");
+    this.setData({
+      card,
+      detailMedia,
+      isOwner: !!(currentUser && card.ownerUserId === currentUser.id)
+    });
   },
   async recordView() {
     const currentUser = getApp().globalData.currentUser;
@@ -65,9 +71,6 @@ Page({
     }
     wx.setClipboardData({ data: this.data.card.sourceUrl });
   },
-  handleSharePlaceholder() {
-    wx.showToast({ title: "可通过小程序右上角分享", icon: "none" });
-  },
   handlePhoneChange(event) {
     this.setData({ phone: event.detail.value });
   },
@@ -95,6 +98,10 @@ Page({
     }
   },
   handleGoManager() {
+    if (!this.data.isOwner) {
+      wx.showToast({ title: "仅发布者可查看访问详情", icon: "none" });
+      return;
+    }
     wx.navigateTo({ url: `/pages/manager/index?id=${this.data.cardId}` });
   },
   handlePreviewImage(event) {
@@ -104,9 +111,13 @@ Page({
     wx.previewImage({ current, urls });
   },
   onShareAppMessage() {
-    return {
+    const shareData = {
       title: this.data.card ? this.data.card.title : "悦享互动宝资源",
       path: `/pages/card-view/index?id=${this.data.cardId}`
     };
+    if (this.data.card && this.data.card.coverUrl) {
+      shareData.imageUrl = this.data.card.coverUrl;
+    }
+    return shareData;
   }
 });
