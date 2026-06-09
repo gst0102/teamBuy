@@ -5,7 +5,7 @@
         <view class="custom-nav__back-icon"></view>
       </view>
     </view>
-    <view class="custom-nav__title">{{title}}</view>
+    <view class="custom-nav__title">{{resolvedTitle || title}}</view>
     <view class="custom-nav__side" style="width: {{nav.sideWidth}};"></view>
   </view>
 </view>

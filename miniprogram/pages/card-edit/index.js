@@ -26,10 +26,18 @@ Page({
   async loadCard() {
     try {
       const res = await api.fetchCard(this.data.cardId);
-      this.setData({ card: res.data });
-      this.syncCategorySelection((res.data && res.data.categoryIds) || []);
+      const card = {
+        ...res.data,
+        relayConfig: {
+          enabled: !(res.data && res.data.relayConfig && res.data.relayConfig.enabled === false),
+          requirePhone: !!(res.data && res.data.relayConfig && res.data.relayConfig.requirePhone),
+          requireAddress: !!(res.data && res.data.relayConfig && res.data.relayConfig.requireAddress)
+        }
+      };
+      this.setData({ card });
+      this.syncCategorySelection(card.categoryIds || []);
     } catch (error) {
-      wx.showToast({ title: error.detail || "加载卡片失败", icon: "none" });
+      wx.showToast({ title: error.detail || error.errMsg || "卡片加载失败", icon: "none" });
     }
   },
   async loadCategories() {
@@ -40,7 +48,7 @@ Page({
       this.setData({ categories: res.data || [] });
       this.syncCategorySelection(this.data.card ? this.data.card.categoryIds || [] : []);
     } catch (error) {
-      wx.showToast({ title: error.detail || "标签加载失败", icon: "none" });
+      wx.showToast({ title: error.detail || error.errMsg || "标签加载失败", icon: "none" });
     }
   },
   syncCategorySelection(categoryIds) {
@@ -82,6 +90,27 @@ Page({
   handleGoTagManage() {
     wx.navigateTo({ url: "/pages/tag-manage/index" });
   },
+  buildPayload(currentUser) {
+    const card = this.data.card || {};
+    return {
+      ownerUserId: currentUser.id,
+      title: (card.title || "").trim(),
+      coverUrl: card.coverUrl || null,
+      detailText: card.detailText || "",
+      projectName: card.projectName || null,
+      locationText: card.locationText || null,
+      phone: card.phone || null,
+      relayNotice: card.relayNotice || null,
+      sourceUrl: card.sourceUrl || null,
+      enabledFields: Array.isArray(card.enabledFields) ? card.enabledFields : [],
+      categoryIds: this.data.categories.filter((item) => item.selected).map((item) => item.id),
+      relayConfig: {
+        enabled: !(card.relayConfig && card.relayConfig.enabled === false),
+        requirePhone: !!(card.relayConfig && card.relayConfig.requirePhone),
+        requireAddress: !!(card.relayConfig && card.relayConfig.requireAddress)
+      }
+    };
+  },
   async handleSave() {
     const currentUser = getCurrentUser();
     if (!currentUser) {
@@ -94,28 +123,11 @@ Page({
     }
     this.setData({ saving: true });
     try {
-      await api.updateCard(this.data.cardId, {
-        ownerUserId: currentUser.id,
-        title: this.data.card.title.trim(),
-        coverUrl: this.data.card.coverUrl || null,
-        detailText: this.data.card.detailText || "",
-        projectName: this.data.card.projectName,
-        locationText: this.data.card.locationText,
-        phone: this.data.card.phone,
-        relayNotice: this.data.card.relayNotice,
-        sourceUrl: this.data.card.sourceUrl,
-        enabledFields: this.data.card.enabledFields || [],
-        categoryIds: this.data.categories.filter((item) => item.selected).map((item) => item.id),
-        relayConfig: this.data.card.relayConfig || {
-          enabled: true,
-          requirePhone: false,
-          requireAddress: false
-        }
-      });
+      await api.updateCard(this.data.cardId, this.buildPayload(currentUser));
       wx.showToast({ title: "已保存", icon: "success" });
       return true;
     } catch (error) {
-      wx.showToast({ title: error.detail || "保存失败", icon: "none" });
+      wx.showToast({ title: error.detail || error.errMsg || "保存失败", icon: "none" });
       return false;
     } finally {
       this.setData({ saving: false });
@@ -134,7 +146,7 @@ Page({
       await api.publishCard(this.data.cardId, currentUser.id);
       wx.navigateTo({ url: `/pages/card-view/index?id=${this.data.cardId}` });
     } catch (error) {
-      wx.showToast({ title: error.detail || "发布失败", icon: "none" });
+      wx.showToast({ title: error.detail || error.errMsg || "发布失败", icon: "none" });
     } finally {
       this.setData({ publishing: false });
     }

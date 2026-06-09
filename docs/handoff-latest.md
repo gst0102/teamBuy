@@ -1,5 +1,25 @@
 # teamBuy 阶段性交接归档
 
+## 2026-06-09 本轮补充
+
+- 新提交方向：修正自定义导航标题与胶囊对齐、手动添加资源页上传说明、封面设置，以及真实预览发布链路。
+- 关键改动文件：
+  - `miniprogram/components/custom-nav/index.js`
+  - `miniprogram/components/custom-nav/index.wxml`
+  - `miniprogram/utils/nav.js`
+  - `miniprogram/pages/resource-create/index.js`
+  - `miniprogram/pages/resource-create/index.wxml`
+  - `miniprogram/pages/resource-create/index.wxss`
+  - `miniprogram/pages/card-edit/index.js`
+- 这轮已确认：
+  - 自定义导航标题不能再用 WXML 属性实体串。
+  - 手动添加资源页不再显示“来源设置”。
+  - “预览资源页”已改成真实创建 + 发布 + 跳转详情。
+- 这轮仍需人工验证：
+  - 微信开发者工具里标题是否与胶囊视觉持平。
+  - 多图上传后“设为封面”是否符合预期。
+  - 保存到资源库、预览并发布是否都能走通。
+
 更新时间：2026-06-09  
 工作目录：`d:\Desktop\myprojects\teamBuy`  
 当前分支：`main`  

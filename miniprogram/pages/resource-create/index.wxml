@@ -1,14 +1,14 @@
 <view class="page-shell">
-  <custom-nav title="&#x60A6;&#x4EAB;&#x4E92;&#x52A8;&#x5B9D;" showBack="{{true}}" />
+  <custom-nav showBack="{{true}}" />
 
   <view class="create-hero">
     <view class="hero-copy">
       <view class="hero-title">手动添加资源</view>
-      <view class="hero-subtitle">自己上传创建，轻松管理您的优质资源</view>
+      <view class="hero-subtitle">自己上传创建，轻松管理你的优质资源</view>
       <view class="hero-badges">
         <text class="hero-badge">多种类型支持</text>
         <text class="hero-badge">自定义标签</text>
-        <text class="hero-badge">灵活分类管理</text>
+        <text class="hero-badge">分类管理</text>
         <text class="hero-badge">一键生成资源页</text>
       </view>
     </view>
@@ -18,13 +18,18 @@
   <view class="panel upload-panel">
     <view class="upload-header">
       <view class="section-title">上传图片 / 视频</view>
-      <view class="muted">支持多图、视频或文件上传，首张图片会作为资源封面</view>
+      <view class="muted">首张图片默认作为资源页封面，其他图片、视频和附件会放入详情说明</view>
     </view>
     <view class="upload-dropzone" bindtap="handleChooseUpload">
       <view class="upload-plus">+</view>
       <view class="upload-title">{{uploading ? '上传中...' : '点击上传'}}</view>
-      <view class="upload-subtitle">或拖拽文件到此处</view>
+      <view class="upload-subtitle">支持图片、短视频和文件</view>
       <view class="upload-hint">支持 JPG / PNG / MP4 / PDF，单个文件不超过 200MB</view>
+    </view>
+    <view class="upload-tips" wx:if="{{uploadedAssets.length}}">
+      <view class="tip-item">封面图会展示在资源页顶部。</view>
+      <view class="tip-item">其他图片、视频、附件会作为详情素材保留。</view>
+      <view class="tip-item">如果要换首页图，点击“设为封面”。</view>
     </view>
     <view class="upload-list" wx:if="{{uploadedAssets.length}}">
       <block wx:for="{{uploadedAssets}}" wx:key="url">
@@ -33,9 +38,13 @@
           <view wx:else class="upload-thumb upload-thumb-video">{{item.type === 'video' ? '视频' : '文件'}}</view>
           <view class="upload-meta">
             <view class="upload-name">{{item.name}}</view>
-            <view class="upload-tag">{{item.type === 'video' ? '视频素材' : item.type === 'image' ? '图片素材' : '附件素材'}}</view>
+            <view class="upload-tag">{{item.roleText}}</view>
           </view>
-          <view class="upload-action" data-url="{{item.url}}" bindtap="handleRemoveUpload">移除</view>
+          <view class="upload-buttons">
+            <view wx:if="{{item.type === 'image' && !item.isCover}}" class="upload-secondary" data-url="{{item.url}}" bindtap="handleSetCover">设为封面</view>
+            <view wx:if="{{item.isCover}}" class="upload-primary">当前封面</view>
+            <view class="upload-action" data-url="{{item.url}}" bindtap="handleRemoveUpload">移除</view>
+          </view>
         </view>
       </block>
     </view>
@@ -71,21 +80,6 @@
   </view>
 
   <view class="panel">
-    <view class="section-title">来源设置</view>
-    <view class="source-row">
-      <view class="source-option {{sourceMode === 'original' ? 'active' : ''}}" data-mode="original" bindtap="handleSourceModeChange">
-        <view class="source-dot"></view>
-        <text>原创：本人制作或整理</text>
-      </view>
-      <view class="source-option {{sourceMode === 'repost' ? 'active' : ''}}" data-mode="repost" bindtap="handleSourceModeChange">
-        <view class="source-dot"></view>
-        <text>转载：来源公开可追溯</text>
-      </view>
-    </view>
-    <input class="field-input" data-field="sourceUrl" value="{{form.sourceUrl}}" placeholder="可填写原始链接、公众号、小程序或网页地址" bindinput="handleFieldChange" />
-  </view>
-
-  <view class="panel">
     <view class="section-title">联系与展示</view>
     <view class="field-label">项目名称 / 分类说明</view>
     <input class="field-input" data-field="projectName" value="{{form.projectName}}" placeholder="例如：滨江花园 / 社区团购 / 资料包" bindinput="handleFieldChange" />
@@ -95,14 +89,6 @@
 
     <view class="field-label">联系电话</view>
     <input class="field-input" data-field="phone" value="{{form.phone}}" type="number" placeholder="用于资源页一键拨号" bindinput="handleFieldChange" />
-
-    <view class="switch-row">
-      <view>
-        <view class="switch-title">是否公开展示</view>
-        <view class="muted">公开资源页展示给访客查看</view>
-      </view>
-      <switch checked="{{form.isPublic}}" data-field="isPublic" bindchange="handleSwitchChange" />
-    </view>
 
     <view class="switch-row">
       <view>
@@ -116,13 +102,13 @@
   <view class="panel assist-panel">
     <view class="assist-copy">
       <view class="assist-title">也可发给企业微信客服自动归档</view>
-      <view class="assist-desc">支持图片 / 视频 / 文字 / 文件等内容，客服接收后自动整理到资源库</view>
+      <view class="assist-desc">支持图片、视频、文字、文件等内容，客服接收后自动整理到资源库</view>
     </view>
     <button class="ghost-btn assist-btn" bindtap="handleGoImports">去发给客服</button>
   </view>
 
   <view class="submit-bar">
     <button class="primary-btn action-btn" loading="{{submitting}}" bindtap="handleSubmit">保存到资源库</button>
-    <button class="ghost-btn action-btn" bindtap="handlePreviewPlaceholder">预览资源页</button>
+    <button class="ghost-btn action-btn" loading="{{previewSubmitting}}" bindtap="handlePreview">预览并发布</button>
   </view>
 </view>

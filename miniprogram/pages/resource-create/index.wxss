@@ -93,6 +93,19 @@
   margin-top: 20rpx;
 }
 
+.upload-tips {
+  margin-top: 18rpx;
+  padding: 18rpx 20rpx;
+  border-radius: 20rpx;
+  background: #f5f9ff;
+}
+
+.tip-item {
+  color: #56708f;
+  font-size: 22rpx;
+  line-height: 1.7;
+}
+
 .upload-item {
   display: flex;
   align-items: center;
@@ -143,6 +156,31 @@
   color: #ff5d5d;
   font-size: 24rpx;
   font-weight: 700;
+}
+
+.upload-buttons {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10rpx;
+}
+
+.upload-primary,
+.upload-secondary {
+  padding: 8rpx 18rpx;
+  border-radius: 999rpx;
+  font-size: 22rpx;
+  font-weight: 700;
+}
+
+.upload-primary {
+  background: #1677ff;
+  color: #fff;
+}
+
+.upload-secondary {
+  color: #1677ff;
+  background: #edf5ff;
 }
 
 .type-row {
