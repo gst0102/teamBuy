@@ -151,11 +151,15 @@ Page({
       "card.media": normalizeMedia(media, this.data.card.coverUrl)
     });
   },
-  handlePreviewMedia(event) {
+  handleMediaTap(event) {
     const url = event.currentTarget.dataset.url;
-    const urls = (this.data.card.media || []).filter((item) => item.type === "image").map((item) => item.url);
-    if (!url || !urls.length) return;
-    wx.previewImage({ current: url, urls });
+    const type = event.currentTarget.dataset.type;
+    if (!url || type !== "image") return;
+    this.setData({
+      "card.coverUrl": url,
+      "card.media": normalizeMedia(this.data.card.media || [], url)
+    });
+    wx.showToast({ title: "已设为封面", icon: "success" });
   },
   buildPayload(currentUser) {
     const card = this.data.card || {};

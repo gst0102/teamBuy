@@ -1,50 +1,48 @@
 <view class="page-shell" wx:if="{{card}}">
   <custom-nav title="&#x8D44;&#x6E90;&#x7F16;&#x8F91;" showBack="{{true}}" />
 
-  <view class="edit-hero">
-    <view>
-      <view class="hero-title">资源编辑页</view>
-      <view class="hero-subtitle">调整资源内容、分类标签、详情素材和接龙字段。</view>
-    </view>
-    <view class="edit-visual">编</view>
-  </view>
-
-  <view class="preview-card">
-    <image wx:if="{{card.coverUrl}}" class="preview-cover" src="{{card.coverUrl}}" mode="aspectFill"></image>
-    <view wx:else class="preview-cover placeholder">资源</view>
-    <view class="preview-main">
-      <view class="preview-title">{{card.title || '未命名资源'}}</view>
-      <view class="muted">{{card.projectName || '未设置项目名'}} · {{statusLabel}}</view>
-      <view class="preview-tags">
-        <block wx:for="{{categories}}" wx:key="id">
-          <text wx:if="{{item.selected}}" class="tag active">{{item.name}}</text>
-        </block>
-      </view>
+  <view class="edit-share-hero">
+    <image wx:if="{{card.coverUrl}}" class="edit-share-cover" src="{{card.coverUrl}}" mode="aspectFill"></image>
+    <view wx:else class="edit-share-cover placeholder">资源封面</view>
+    <view class="edit-share-overlay">
+      <view class="status-pill">{{statusLabel}}</view>
+      <input class="hero-title-input" data-field="title" value="{{card.title}}" placeholder="填写资源标题" bindinput="handleFieldChange" />
+      <input class="hero-meta-input" data-field="projectName" value="{{card.projectName}}" placeholder="填写项目名或分类说明" bindinput="handleFieldChange" />
+      <input class="hero-meta-input" data-field="locationText" value="{{card.locationText}}" placeholder="填写位置或地址（选填）" bindinput="handleFieldChange" />
     </view>
   </view>
 
   <view class="panel">
+    <view class="section-title">资源详情</view>
+    <textarea class="field-input textarea-large" data-field="detailText" value="{{card.detailText}}" placeholder="写清楚卖点、亮点、领取方式或活动说明" bindinput="handleFieldChange"></textarea>
+  </view>
+
+  <view class="panel" wx:if="{{card.media.length}}">
     <view class="section-head">
-      <view class="section-title">素材管理</view>
-      <view class="section-link">{{card.media.length || 0}} 项</view>
+      <view class="section-title">详情素材</view>
+      <view class="section-link">{{card.media.length}} 项</view>
     </view>
-    <view class="media-editor-list" wx:if="{{card.media.length}}">
+    <view class="media-edit-stack">
       <block wx:for="{{card.media}}" wx:key="url">
-        <view class="media-editor-item">
+        <view class="media-edit-card">
           <image
             wx:if="{{item.type === 'image'}}"
-            class="media-editor-thumb"
+            class="media-edit-image"
             src="{{item.url}}"
-            mode="aspectFill"
+            mode="widthFix"
             data-url="{{item.url}}"
-            bindtap="handlePreviewMedia"
+            data-type="{{item.type}}"
+            bindtap="handleMediaTap"
           ></image>
-          <view wx:else class="media-editor-thumb video-thumb">视频</view>
-          <view class="media-editor-main">
-            <view class="media-editor-title">{{item.roleText}}</view>
-            <view class="media-editor-sub">第 {{index + 1}} 项 · {{item.type === 'video' ? '视频素材' : '图片素材'}}</view>
-            <view class="media-editor-actions">
-              <text wx:if="{{item.type === 'image' && !item.isCover}}" data-url="{{item.url}}" bindtap="handleSetCover">设为封面</text>
+          <view wx:else class="media-edit-video-wrap">
+            <video class="media-edit-video" src="{{item.url}}" controls object-fit="cover"></video>
+          </view>
+          <view class="media-edit-footer">
+            <view>
+              <view class="media-edit-title">{{item.roleText}}</view>
+              <view class="media-edit-sub">{{item.type === 'image' ? '点击图片可设为封面' : '详情视频'}}</view>
+            </view>
+            <view class="media-edit-actions">
               <text wx:if="{{item.isCover}}" class="cover-label">当前封面</text>
               <text wx:if="{{index > 0}}" data-index="{{index}}" data-direction="up" bindtap="handleMoveMedia">上移</text>
               <text wx:if="{{index < card.media.length - 1}}" data-index="{{index}}" data-direction="down" bindtap="handleMoveMedia">下移</text>
@@ -54,7 +52,6 @@
         </view>
       </block>
     </view>
-    <view class="empty-state compact" wx:else>暂无详情素材，可在手动添加资源时上传图片或视频。</view>
   </view>
 
   <view class="panel">
@@ -71,25 +68,7 @@
   </view>
 
   <view class="panel">
-    <view class="section-title">基础信息</view>
-    <view class="field-label">资源标题</view>
-    <input class="field-input" data-field="title" value="{{card.title}}" placeholder="填写资源标题" bindinput="handleFieldChange" />
-
-    <view class="field-label">项目名 / 分类说明</view>
-    <input class="field-input" data-field="projectName" value="{{card.projectName}}" placeholder="例如：滨江花园 / 社区团购" bindinput="handleFieldChange" />
-
-    <view class="field-label">封面图片链接</view>
-    <input class="field-input" data-field="coverUrl" value="{{card.coverUrl}}" placeholder="粘贴封面图片 URL" bindinput="handleFieldChange" />
-
-    <view class="field-label">详情描述</view>
-    <textarea class="field-input textarea-large" data-field="detailText" value="{{card.detailText}}" placeholder="写清楚卖点、亮点、领取方式或活动说明" bindinput="handleFieldChange"></textarea>
-  </view>
-
-  <view class="panel">
     <view class="section-title">联系与来源</view>
-    <view class="field-label">位置 / 地址</view>
-    <input class="field-input" data-field="locationText" value="{{card.locationText}}" placeholder="例如：上海浦东新区" bindinput="handleFieldChange" />
-
     <view class="field-label">联系电话</view>
     <input class="field-input" data-field="phone" value="{{card.phone}}" type="number" placeholder="用于资源页一键拨号" bindinput="handleFieldChange" />
 
