@@ -4,7 +4,7 @@
   <view class="edit-hero">
     <view>
       <view class="hero-title">资源编辑页</view>
-      <view class="hero-subtitle">调整资源内容、分类标签和接龙字段，发布后即可分享给用户访问。</view>
+      <view class="hero-subtitle">调整资源内容、分类标签、详情素材和接龙字段。</view>
     </view>
     <view class="edit-visual">编</view>
   </view>
@@ -21,6 +21,40 @@
         </block>
       </view>
     </view>
+  </view>
+
+  <view class="panel">
+    <view class="section-head">
+      <view class="section-title">素材管理</view>
+      <view class="section-link">{{card.media.length || 0}} 项</view>
+    </view>
+    <view class="media-editor-list" wx:if="{{card.media.length}}">
+      <block wx:for="{{card.media}}" wx:key="url">
+        <view class="media-editor-item">
+          <image
+            wx:if="{{item.type === 'image'}}"
+            class="media-editor-thumb"
+            src="{{item.url}}"
+            mode="aspectFill"
+            data-url="{{item.url}}"
+            bindtap="handlePreviewMedia"
+          ></image>
+          <view wx:else class="media-editor-thumb video-thumb">视频</view>
+          <view class="media-editor-main">
+            <view class="media-editor-title">{{item.roleText}}</view>
+            <view class="media-editor-sub">第 {{index + 1}} 项 · {{item.type === 'video' ? '视频素材' : '图片素材'}}</view>
+            <view class="media-editor-actions">
+              <text wx:if="{{item.type === 'image' && !item.isCover}}" data-url="{{item.url}}" bindtap="handleSetCover">设为封面</text>
+              <text wx:if="{{item.isCover}}" class="cover-label">当前封面</text>
+              <text wx:if="{{index > 0}}" data-index="{{index}}" data-direction="up" bindtap="handleMoveMedia">上移</text>
+              <text wx:if="{{index < card.media.length - 1}}" data-index="{{index}}" data-direction="down" bindtap="handleMoveMedia">下移</text>
+              <text class="danger-action" data-index="{{index}}" bindtap="handleRemoveMedia">删除</text>
+            </view>
+          </view>
+        </view>
+      </block>
+    </view>
+    <view class="empty-state compact" wx:else>暂无详情素材，可在手动添加资源时上传图片或视频。</view>
   </view>
 
   <view class="panel">

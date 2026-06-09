@@ -5,6 +5,21 @@ function statusLabel(status) {
   return status === "published" ? "已发布" : "未发布";
 }
 
+function normalizeMedia(media = [], coverUrl = "") {
+  return media
+    .map((item, index) => ({
+      ...item,
+      sortOrder: item.sortOrder || index + 1
+    }))
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+    .map((item, index) => ({
+      ...item,
+      sortOrder: index + 1,
+      isCover: item.type === "image" && item.url === coverUrl,
+      roleText: item.type === "video" ? "详情视频" : item.url === coverUrl ? "封面图" : "详情图片"
+    }));
+}
+
 Page({
   data: {
     cardId: "",
@@ -33,6 +48,7 @@ Page({
       const res = await api.fetchCard(this.data.cardId);
       const card = {
         ...res.data,
+        media: normalizeMedia(res.data.media || [], res.data.coverUrl),
         relayConfig: {
           enabled: !(res.data && res.data.relayConfig && res.data.relayConfig.enabled === false),
           requirePhone: !!(res.data && res.data.relayConfig && res.data.relayConfig.requirePhone),
@@ -67,9 +83,13 @@ Page({
   },
   handleFieldChange(event) {
     const field = event.currentTarget.dataset.field;
-    this.setData({
+    const nextState = {
       [`card.${field}`]: event.detail.value
-    });
+    };
+    if (field === "coverUrl") {
+      nextState["card.media"] = normalizeMedia(this.data.card.media || [], event.detail.value);
+    }
+    this.setData(nextState);
   },
   handleToggleRelayPhone(event) {
     this.setData({
@@ -95,8 +115,57 @@ Page({
   handleGoTagManage() {
     wx.navigateTo({ url: "/pages/tag-manage/index" });
   },
+  handleSetCover(event) {
+    const url = event.currentTarget.dataset.url;
+    if (!url) return;
+    this.setData({
+      "card.coverUrl": url,
+      "card.media": normalizeMedia(this.data.card.media || [], url)
+    });
+  },
+  handleRemoveMedia(event) {
+    const index = Number(event.currentTarget.dataset.index);
+    const media = [...(this.data.card.media || [])];
+    const removed = media[index];
+    if (!removed) return;
+    const nextMedia = media.filter((_, itemIndex) => itemIndex !== index);
+    const nextCoverUrl =
+      removed.url === this.data.card.coverUrl
+        ? ((nextMedia.find((item) => item.type === "image") || {}).url || "")
+        : this.data.card.coverUrl;
+    this.setData({
+      "card.coverUrl": nextCoverUrl,
+      "card.media": normalizeMedia(nextMedia, nextCoverUrl)
+    });
+  },
+  handleMoveMedia(event) {
+    const index = Number(event.currentTarget.dataset.index);
+    const direction = event.currentTarget.dataset.direction;
+    const nextIndex = direction === "up" ? index - 1 : index + 1;
+    const media = [...(this.data.card.media || [])];
+    if (index < 0 || nextIndex < 0 || index >= media.length || nextIndex >= media.length) return;
+    const current = media[index];
+    media[index] = media[nextIndex];
+    media[nextIndex] = current;
+    this.setData({
+      "card.media": normalizeMedia(media, this.data.card.coverUrl)
+    });
+  },
+  handlePreviewMedia(event) {
+    const url = event.currentTarget.dataset.url;
+    const urls = (this.data.card.media || []).filter((item) => item.type === "image").map((item) => item.url);
+    if (!url || !urls.length) return;
+    wx.previewImage({ current: url, urls });
+  },
   buildPayload(currentUser) {
     const card = this.data.card || {};
+    const media = Array.isArray(card.media)
+      ? card.media.map((item, index) => ({
+          type: item.type,
+          url: item.url,
+          sortOrder: index + 1
+        }))
+      : [];
     return {
       ownerUserId: currentUser.id,
       title: (card.title || "").trim(),
@@ -109,13 +178,7 @@ Page({
       sourceUrl: card.sourceUrl || null,
       enabledFields: Array.isArray(card.enabledFields) ? card.enabledFields : [],
       categoryIds: this.data.categories.filter((item) => item.selected).map((item) => item.id),
-      media: Array.isArray(card.media)
-        ? card.media.map((item, index) => ({
-            type: item.type,
-            url: item.url,
-            sortOrder: item.sortOrder || index + 1
-          }))
-        : [],
+      media,
       relayConfig: {
         enabled: !(card.relayConfig && card.relayConfig.enabled === false),
         requirePhone: !!(card.relayConfig && card.relayConfig.requirePhone),
@@ -136,13 +199,14 @@ Page({
     this.setData({ saving: true });
     try {
       const res = await api.updateCard(this.data.cardId, this.buildPayload(currentUser));
-      const updatedCard = res.data || this.data.card;
+      const updatedCard = {
+        ...this.data.card,
+        ...(res.data || {})
+      };
+      updatedCard.media = normalizeMedia(updatedCard.media || [], updatedCard.coverUrl);
       this.setData({
-        card: {
-          ...this.data.card,
-          ...updatedCard
-        },
-        statusLabel: statusLabel(updatedCard.status || this.data.card.status)
+        card: updatedCard,
+        statusLabel: statusLabel(updatedCard.status)
       });
       wx.showToast({ title: "已保存", icon: "success" });
       return true;
