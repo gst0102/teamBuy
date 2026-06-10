@@ -742,16 +742,42 @@ def test_lead_reminder_flow_persists_status_note_and_filters(client):
     assert contacted_payload["nextFollowUpAt"] == "2026-06-12"
     assert contacted_payload["followUpLogs"][0]["content"] == "电话沟通过，想再看一次详情"
 
+    archived = client.put(
+        f"/api/lead-reminders/{reminder['id']}",
+        json={"ownerUserId": owner["id"], "status": "invalid", "conclusionReason": "客户明确不需要"},
+    )
+    assert archived.status_code == 200
+    archived_payload = archived.json()["data"]
+    assert archived_payload["status"] == "invalid"
+    assert archived_payload["conclusionReason"] == "客户明确不需要"
+    assert archived_payload["closedAt"]
+
+    invalid_rows = client.get(
+        "/api/lead-reminders",
+        params={"ownerUserId": owner["id"], "status": "invalid"},
+    ).json()["data"]
+    assert len(invalid_rows) == 1
+
+    restored = client.put(
+        f"/api/lead-reminders/{reminder['id']}",
+        json={"ownerUserId": owner["id"], "status": "pending"},
+    )
+    assert restored.status_code == 200
+    restored_payload = restored.json()["data"]
+    assert restored_payload["status"] == "pending"
+    assert restored_payload["conclusionReason"] is None
+    assert restored_payload["closedAt"] is None
+
     pending = client.get(
         "/api/lead-reminders",
         params={"ownerUserId": owner["id"], "status": "pending"},
     ).json()["data"]
-    assert pending == []
+    assert len(pending) == 1
     contacted_rows = client.get(
         "/api/lead-reminders",
         params={"ownerUserId": owner["id"], "status": "contacted"},
     ).json()["data"]
-    assert len(contacted_rows) == 1
+    assert contacted_rows == []
 
     deleted = client.delete(
         f"/api/lead-reminders/{reminder['id']}",

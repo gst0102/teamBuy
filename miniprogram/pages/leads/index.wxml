@@ -31,6 +31,11 @@
         <text class="stat-value">{{summary.overdue || 0}}</text>
         <text class="stat-label">已逾期</text>
       </view>
+      <view class="stat-item">
+        <view class="stat-icon gray">归</view>
+        <text class="stat-value">{{summary.closed || 0}}</text>
+        <text class="stat-label">已归档</text>
+      </view>
     </view>
   </view>
 
@@ -105,12 +110,23 @@
         </view>
         <input class="field-input follow-input" data-id="{{item.id}}" placeholder="新增跟进记录" bindinput="handleFollowUpChange" />
       </view>
+      <view class="archive-box">
+        <input class="field-input archive-input" data-id="{{item.id}}" value="{{item.conclusionReasonValue}}" placeholder="归档原因，如客户不需要、暂缓、已成交" bindinput="handleConclusionReasonChange" />
+        <view class="archive-actions" wx:if="{{!item.isClosed}}">
+          <text data-id="{{item.id}}" data-status="invalid" bindtap="handleArchiveLead">无效</text>
+          <text data-id="{{item.id}}" data-status="paused" bindtap="handleArchiveLead">暂不跟进</text>
+          <text data-id="{{item.id}}" data-status="completed" bindtap="handleArchiveLead">已完成</text>
+        </view>
+        <view class="archive-result" wx:else>
+          <text>归档原因：{{item.conclusionReason || '未填写'}}</text>
+        </view>
+      </view>
       <view class="card-actions">
         <text data-card-id="{{item.cardId}}" bindtap="handleOpenDetail">资源详情</text>
         <text data-card-id="{{item.cardId}}" bindtap="handleOpenManager">线索管理</text>
         <text data-id="{{item.id}}" bindtap="handleSaveNote">保存备注</text>
         <text data-id="{{item.id}}" bindtap="handleSaveFollowUp">保存跟进</text>
-        <text wx:if="{{item.status !== 'contacted'}}" data-id="{{item.id}}" bindtap="handleMarkContacted">标记已联系</text>
+        <text wx:if="{{item.status === 'pending'}}" data-id="{{item.id}}" bindtap="handleMarkContacted">标记已联系</text>
         <text wx:else data-id="{{item.id}}" bindtap="handleRestorePending">恢复待联系</text>
         <text class="danger-action" data-id="{{item.id}}" bindtap="handleDelete">清除</text>
       </view>

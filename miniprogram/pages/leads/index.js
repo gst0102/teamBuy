@@ -4,6 +4,7 @@ const { getCurrentUser, formatTime } = require("../../utils/dashboard");
 function filterLeads(leads, filter) {
   if (filter === "pending") return leads.filter((item) => item.status === "pending");
   if (filter === "contacted") return leads.filter((item) => item.status === "contacted");
+  if (filter === "closed") return leads.filter((item) => item.isClosed);
   return leads;
 }
 
@@ -15,7 +16,7 @@ function todayKey() {
 }
 
 function getLeadDueState(lead) {
-  if (lead.status === "contacted") return "done";
+  if (lead.status === "contacted" || lead.isClosed) return "done";
   if (!lead.nextFollowUpValue) return "unset";
   const today = todayKey();
   if (lead.nextFollowUpValue < today) return "overdue";
@@ -31,7 +32,7 @@ function filterBySchedule(leads, filter) {
 function sortLeads(leads) {
   const rank = { overdue: 0, today: 1, future: 2, unset: 3, done: 4 };
   return [...leads].sort((a, b) => {
-    const rankDiff = (rank[a.dueState] || 9) - (rank[b.dueState] || 9);
+    const rankDiff = (rank[a.dueState] ?? 9) - (rank[b.dueState] ?? 9);
     if (rankDiff !== 0) return rankDiff;
     const aDate = a.nextFollowUpValue || "9999-12-31";
     const bDate = b.nextFollowUpValue || "9999-12-31";
@@ -57,6 +58,17 @@ function dueStateText(state) {
   return "未设置跟进时间";
 }
 
+function leadStatusText(status) {
+  const map = {
+    pending: "待联系",
+    contacted: "已联系",
+    invalid: "无效",
+    paused: "暂不跟进",
+    completed: "已完成"
+  };
+  return map[status] || "待联系";
+}
+
 Page({
   data: {
     leads: [],
@@ -66,6 +78,7 @@ Page({
     filters: [
       { key: "pending", label: "待联系" },
       { key: "contacted", label: "已联系" },
+      { key: "closed", label: "已归档" },
       { key: "all", label: "全部" }
     ],
     scheduleFilters: [
@@ -77,6 +90,7 @@ Page({
     ],
     notes: {},
     followUps: {},
+    conclusionReasons: {},
     nextFollowUpDates: {},
     summary: {
       pending: 0,
@@ -101,8 +115,10 @@ Page({
       const res = await api.fetchLeadReminders(currentUser.id);
       const leads = (res.data || []).map((item) => ({
         ...item,
-        statusText: item.status === "contacted" ? "已联系" : "待联系",
+        isClosed: ["invalid", "paused", "completed"].includes(item.status),
+        statusText: leadStatusText(item.status),
         noteValue: item.note || "",
+        conclusionReasonValue: item.conclusionReason || "",
         nextFollowUpValue: item.nextFollowUpAt ? String(item.nextFollowUpAt).slice(0, 10) : "",
         nextFollowUpDisplay: formatDate(item.nextFollowUpAt),
         latestFollowUp: (item.followUpLogs || [])[0] || null,
@@ -125,15 +141,21 @@ Page({
         memo[item.id] = item.nextFollowUpAt ? String(item.nextFollowUpAt).slice(0, 10) : "";
         return memo;
       }, {});
+      const conclusionReasons = leads.reduce((memo, item) => {
+        memo[item.id] = item.conclusionReason || "";
+        return memo;
+      }, {});
       this.setData({
         leads,
         notes,
         followUps: {},
+        conclusionReasons,
         nextFollowUpDates,
         filteredLeads: applyFilters(leads, this.data.activeFilter, this.data.activeScheduleFilter),
         summary: {
           pending: leads.filter((item) => item.status === "pending").length,
           contacted: leads.filter((item) => item.status === "contacted").length,
+          closed: leads.filter((item) => item.isClosed).length,
           total: leads.length,
           today: leads.filter((item) => item.dueState === "today").length,
           overdue: leads.filter((item) => item.dueState === "overdue").length,
@@ -146,9 +168,11 @@ Page({
   },
   handleFilterChange(event) {
     const activeFilter = event.currentTarget.dataset.filter;
+    const activeScheduleFilter = ["contacted", "closed"].includes(activeFilter) ? "all" : this.data.activeScheduleFilter;
     this.setData({
       activeFilter,
-      filteredLeads: applyFilters(this.data.leads, activeFilter, this.data.activeScheduleFilter)
+      activeScheduleFilter,
+      filteredLeads: applyFilters(this.data.leads, activeFilter, activeScheduleFilter)
     });
   },
   handleScheduleFilterChange(event) {
@@ -189,6 +213,10 @@ Page({
   handleFollowUpChange(event) {
     const id = event.currentTarget.dataset.id;
     this.setData({ [`followUps.${id}`]: event.detail.value });
+  },
+  handleConclusionReasonChange(event) {
+    const id = event.currentTarget.dataset.id;
+    this.setData({ [`conclusionReasons.${id}`]: event.detail.value });
   },
   handleNextFollowUpChange(event) {
     const id = event.currentTarget.dataset.id;
@@ -262,12 +290,35 @@ Page({
     try {
       await api.updateLeadReminder(event.currentTarget.dataset.id, {
         ownerUserId: currentUser.id,
-        status: "pending"
+        status: "pending",
+        conclusionReason: ""
       });
       wx.showToast({ title: "已恢复待联系", icon: "success" });
       this.loadLeads();
     } catch (error) {
       wx.showToast({ title: error.detail || "操作失败", icon: "none" });
+    }
+  },
+  async handleArchiveLead(event) {
+    const currentUser = getCurrentUser();
+    const id = event.currentTarget.dataset.id;
+    const status = event.currentTarget.dataset.status;
+    const reason = ((this.data.conclusionReasons || {})[id] || "").trim();
+    const titleMap = {
+      invalid: "已标记无效",
+      paused: "已暂不跟进",
+      completed: "已完成"
+    };
+    try {
+      await api.updateLeadReminder(id, {
+        ownerUserId: currentUser.id,
+        status,
+        conclusionReason: reason
+      });
+      wx.showToast({ title: titleMap[status] || "已归档", icon: "success" });
+      this.loadLeads();
+    } catch (error) {
+      wx.showToast({ title: error.detail || "归档失败", icon: "none" });
     }
   },
   async handleDelete(event) {

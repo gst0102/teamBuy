@@ -587,6 +587,21 @@
 
 ## 本次继续开发
 
+- 后端线索状态扩展为 `pending / contacted / invalid / paused / completed`。
+- `LeadReminder` 新增 `closedAt` 和 `conclusionReason`。
+- 待联系页新增“已归档”筛选。
+- 待联系页每条线索支持填写归档原因，并一键标记为无效、暂不跟进、已完成。
+- 管理页高意向访客状态展示同步支持归档状态，不再把归档线索误显示为“已联系”。
+
+## 验证结果
+
+- `python -m compileall backend\app backend\tests`：通过。
+- 小程序所有 `.js` 执行 `node --check`：通过。
+- 小程序所有 `.json` 解析：通过。
+- `pytest backend\tests -q`：60 项通过。
+
+## 本次继续开发
+
 - 待联系页顶部新增提醒看板，突出“今日待跟进”和“已逾期”数量。
 - 点击今日 / 逾期提醒卡片会直接切到对应筛选。
 - 新增“一键只看未处理线索”，快速回到待联系线索列表，并按跟进优先级排序。

@@ -304,6 +304,48 @@
   background: linear-gradient(135deg, #ff8a8a, #e5484d);
 }
 
+.stat-icon.gray {
+  background: linear-gradient(135deg, #98a2b3, #667085);
+}
+
+.archive-box {
+  margin-top: 16rpx;
+  padding: 18rpx;
+  border-radius: 22rpx;
+  background: #f8fbff;
+  border: 1rpx solid #e6eef9;
+}
+
+.archive-input {
+  margin-bottom: 12rpx;
+}
+
+.archive-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+}
+
+.archive-actions text {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 54rpx;
+  padding: 0 20rpx;
+  border-radius: 999rpx;
+  background: #edf5ff;
+  border: 1rpx solid rgba(22, 119, 255, 0.14);
+  color: #1677ff;
+  font-size: 23rpx;
+  font-weight: 900;
+}
+
+.archive-result {
+  color: #667085;
+  font-size: 24rpx;
+  line-height: 1.45;
+}
+
 .card-actions {
   display: flex;
   flex-wrap: wrap;

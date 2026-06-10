@@ -10,7 +10,7 @@ CardStatus = Literal["draft", "published", "archived"]
 ViewType = Literal["logged_in", "anonymous"]
 RelayStatus = Literal["active", "deleted"]
 FollowUpStatus = Literal["pending", "followed"]
-LeadReminderStatus = Literal["pending", "contacted"]
+LeadReminderStatus = Literal["pending", "contacted", "invalid", "paused", "completed"]
 MessageType = Literal["text", "image", "link", "location", "video", "file", "unknown"]
 SourceType = Literal["wechat_note", "miniapp_link", "mp_link", "web_link", "unknown"]
 SyncStatus = Literal["idle", "running", "success", "failed"]
@@ -146,6 +146,8 @@ class LeadReminder(BaseModel):
     viewCount: int = 0
     lastViewedAt: str | None = None
     contactedAt: str | None = None
+    closedAt: str | None = None
+    conclusionReason: str | None = None
     nextFollowUpAt: str | None = None
     followUpLogs: list[LeadFollowUpLog] = Field(default_factory=list)
     createdAt: str

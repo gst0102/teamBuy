@@ -95,7 +95,7 @@
               <button class="viewer-action danger" size="mini" data-user-id="{{item.userId}}" bindtap="handleCancelViewerReminder">取消待联系</button>
             </block>
             <block wx:else>
-              <button class="viewer-action done" size="mini">已联系</button>
+              <button class="viewer-action done" size="mini">{{item.reminderStatusText}}</button>
               <button class="viewer-action danger" size="mini" data-user-id="{{item.userId}}" bindtap="handleCancelViewerReminder">清除记录</button>
             </block>
           </view>

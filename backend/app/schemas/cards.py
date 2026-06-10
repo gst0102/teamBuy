@@ -91,5 +91,6 @@ class LeadReminderUpdateRequest(BaseModel):
     ownerUserId: str
     status: str | None = None
     note: str | None = None
+    conclusionReason: str | None = None
     nextFollowUpAt: str | None = None
     logContent: str | None = None

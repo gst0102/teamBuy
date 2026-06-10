@@ -24,12 +24,24 @@ function viewerEmptyText(filter) {
   return "暂无登录访客，匿名访问只计入总量。";
 }
 
+function leadReminderStatusText(status) {
+  const map = {
+    pending: "待联系",
+    contacted: "已联系",
+    invalid: "无效",
+    paused: "暂不跟进",
+    completed: "已完成"
+  };
+  return map[status] || "";
+}
+
 function applyViewerReminders(viewers, reminderMap) {
   return viewers.map((item) => ({
     ...item,
     reminder: reminderMap[item.userId] || null,
     reminderId: reminderMap[item.userId] ? reminderMap[item.userId].id : "",
     reminderStatus: reminderMap[item.userId] ? reminderMap[item.userId].status : "",
+    reminderStatusText: reminderMap[item.userId] ? leadReminderStatusText(reminderMap[item.userId].status) : "",
     reminderNote: reminderMap[item.userId] ? reminderMap[item.userId].note || "" : "",
     leadNoteValue: reminderMap[item.userId] ? reminderMap[item.userId].note || "" : "",
     isReminded: reminderMap[item.userId] && reminderMap[item.userId].status === "pending",

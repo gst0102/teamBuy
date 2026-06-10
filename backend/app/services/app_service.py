@@ -21,6 +21,10 @@ from app.services.wecom_message_normalizer import WecomMessageNormalizer
 from app.services.wecom_mock_service import WecomMockService
 
 
+LEAD_REMINDER_STATUSES = {"pending", "contacted", "invalid", "paused", "completed"}
+LEAD_CLOSED_STATUSES = {"invalid", "paused", "completed"}
+
+
 class AppService:
     def __init__(
         self,
@@ -634,7 +638,7 @@ class AppService:
             raise HTTPException(status_code=404, detail="资源不存在")
         if card.ownerUserId != payload.ownerUserId:
             raise HTTPException(status_code=403, detail="仅发布者可管理线索")
-        if payload.status not in {"pending", "contacted"}:
+        if payload.status not in LEAD_REMINDER_STATUSES:
             raise HTTPException(status_code=400, detail="线索状态无效")
 
         now = now_iso()
@@ -644,6 +648,11 @@ class AppService:
             contacted_at = now
         if payload.status == "pending":
             contacted_at = None
+        closed_at = existing.closedAt if existing else None
+        conclusion_reason = existing.conclusionReason if existing else None
+        if payload.status not in LEAD_CLOSED_STATUSES:
+            closed_at = None
+            conclusion_reason = None
         reminder = LeadReminder(
             id=existing.id if existing else new_id("lead"),
             ownerUserId=payload.ownerUserId,
@@ -656,6 +665,8 @@ class AppService:
             viewCount=max(0, int(payload.viewCount or 0)),
             lastViewedAt=payload.lastViewedAt,
             contactedAt=contacted_at,
+            closedAt=closed_at,
+            conclusionReason=conclusion_reason,
             nextFollowUpAt=payload.nextFollowUpAt,
             followUpLogs=existing.followUpLogs if existing else [],
             createdAt=existing.createdAt if existing else now,
@@ -670,14 +681,19 @@ class AppService:
             raise HTTPException(status_code=404, detail="线索不存在")
         if reminder.ownerUserId != payload.ownerUserId:
             raise HTTPException(status_code=403, detail="仅发布者可管理线索")
-        if payload.status is not None and payload.status not in {"pending", "contacted"}:
+        if payload.status is not None and payload.status not in LEAD_REMINDER_STATUSES:
             raise HTTPException(status_code=400, detail="线索状态无效")
         now = now_iso()
         if payload.status is not None:
             reminder.status = payload.status
             reminder.contactedAt = now if payload.status == "contacted" else None
+            reminder.closedAt = now if payload.status in LEAD_CLOSED_STATUSES else None
+            if payload.status not in LEAD_CLOSED_STATUSES:
+                reminder.conclusionReason = None
         if payload.note is not None:
             reminder.note = payload.note
+        if payload.conclusionReason is not None and reminder.status in LEAD_CLOSED_STATUSES:
+            reminder.conclusionReason = payload.conclusionReason
         if payload.nextFollowUpAt is not None:
             reminder.nextFollowUpAt = payload.nextFollowUpAt
         log_content = (payload.logContent or "").strip()
