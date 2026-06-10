@@ -21,6 +21,13 @@ const SORT_OPTIONS = [
   { key: "updated", label: "最近更新" }
 ];
 
+function todayValue() {
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${now.getFullYear()}-${month}-${day}`;
+}
+
 function hasProfile(item) {
   return !!(item.customerPhone || item.customerWechat || item.budgetText || item.intentLevel || (item.customerTags || []).length);
 }
@@ -157,7 +164,9 @@ Page({
         customerTags: item.customerTags || [],
         intentLevel: item.intentLevel || "待判断",
         updatedText: formatTime(item.updatedAt),
-        lastViewedText: formatTime(item.lastViewedAt)
+        lastViewedText: formatTime(item.lastViewedAt),
+        nextFollowUpText: item.nextFollowUpAt ? String(item.nextFollowUpAt).slice(0, 10) : "",
+        latestFollowUp: (item.followUpLogs || [])[0] ? (item.followUpLogs || [])[0].content : ""
       })));
       this.setData({
         customers,
@@ -308,6 +317,45 @@ Page({
       data: buildCustomerSummary(customers),
       success: () => wx.showToast({ title: `已复制${customers.length}条`, icon: "success" })
     });
+  },
+  async updateCustomerLead(reminderId, payload, successTitle) {
+    const currentUser = getCurrentUser();
+    try {
+      await api.updateLeadReminder(reminderId, {
+        ownerUserId: currentUser.id,
+        ...payload
+      });
+      wx.showToast({ title: successTitle, icon: "success" });
+      this.loadCustomers();
+    } catch (error) {
+      wx.showToast({ title: error.detail || "操作失败", icon: "none" });
+    }
+  },
+  handleSetTodayFollowUp(event) {
+    const reminderId = event.currentTarget.dataset.id;
+    this.updateCustomerLead(reminderId, { nextFollowUpAt: todayValue() }, "已设今日跟进");
+  },
+  handleQuickFollowUp(event) {
+    const reminderId = event.currentTarget.dataset.id;
+    wx.showModal({
+      title: "添加跟进记录",
+      editable: true,
+      placeholderText: "例如：已电话沟通，约明天看资料",
+      confirmText: "保存",
+      success: (res) => {
+        const content = String(res.content || "").trim();
+        if (!res.confirm) return;
+        if (!content) {
+          wx.showToast({ title: "请填写跟进记录", icon: "none" });
+          return;
+        }
+        this.updateCustomerLead(reminderId, { logContent: content }, "跟进已保存");
+      }
+    });
+  },
+  handleMarkContacted(event) {
+    const reminderId = event.currentTarget.dataset.id;
+    this.updateCustomerLead(reminderId, { status: "contacted" }, "已标记联系");
   },
   handleOpenLead(event) {
     wx.navigateTo({ url: `/pages/lead-detail/index?id=${event.currentTarget.dataset.id}` });
