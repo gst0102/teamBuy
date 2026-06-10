@@ -49,6 +49,12 @@
       <view class="intent-filter {{activeProfileFilter === item.key ? 'active' : ''}}" data-filter="{{item.key}}" bindtap="handleProfileFilterChange">{{item.label}}</view>
     </block>
   </view>
+  <view class="filter-title">活跃筛选</view>
+  <view class="intent-filter-row compact">
+    <block wx:for="{{activityFilters}}" wx:key="key">
+      <view class="intent-filter {{activeActivityFilter === item.key ? 'active' : ''}}" data-filter="{{item.key}}" bindtap="handleActivityFilterChange">{{item.label}}</view>
+    </block>
+  </view>
   <view class="filter-title" wx:if="{{sourceFilters.length > 1}}">来源资料</view>
   <view class="intent-filter-row compact" wx:if="{{sourceFilters.length > 1}}">
     <block wx:for="{{sourceFilters}}" wx:key="key">
@@ -99,6 +105,8 @@
         </view>
         <view wx:if="{{item.budgetText}}">预算：{{item.budgetText}}</view>
         <view>来源：{{item.cardTitle}}</view>
+        <view wx:if="{{item.lastViewedText}}">最近查看：{{item.lastViewedText}}</view>
+        <view wx:if="{{item.latestFollowUpText}}">最近跟进时间：{{item.latestFollowUpText}}</view>
         <view wx:if="{{item.nextFollowUpText}}">下次跟进：{{item.nextFollowUpText}}</view>
         <view wx:if="{{item.latestFollowUp}}">最近跟进：{{item.latestFollowUp}}</view>
       </view>

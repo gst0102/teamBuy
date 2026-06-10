@@ -21,11 +21,29 @@ const SORT_OPTIONS = [
   { key: "updated", label: "最近更新" }
 ];
 
+const ACTIVITY_FILTERS = [
+  { key: "all", label: "全部活跃" },
+  { key: "recent-viewed", label: "近7天查看" },
+  { key: "recent-followed", label: "近7天跟进" },
+  { key: "dormant", label: "14天未跟进" }
+];
+
+const RECENT_DAYS = 7;
+const DORMANT_DAYS = 14;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 function todayValue() {
   const now = new Date();
   const month = String(now.getMonth() + 1).padStart(2, "0");
   const day = String(now.getDate()).padStart(2, "0");
   return `${now.getFullYear()}-${month}-${day}`;
+}
+
+function daysSince(value) {
+  if (!value) return null;
+  const time = new Date(value).getTime();
+  if (Number.isNaN(time)) return null;
+  return Math.floor((Date.now() - time) / DAY_MS);
 }
 
 function hasProfile(item) {
@@ -60,6 +78,27 @@ function matchesTagFilter(item, filter) {
   return filter === "all" || (item.customerTags || []).includes(filter);
 }
 
+function getLatestFollowUpAt(item) {
+  const latestLog = (item.followUpLogs || [])[0];
+  return latestLog ? latestLog.createdAt : "";
+}
+
+function matchesActivityFilter(item, filter) {
+  if (filter === "recent-viewed") {
+    const viewedDays = daysSince(item.lastViewedAt);
+    return viewedDays !== null && viewedDays <= RECENT_DAYS;
+  }
+  if (filter === "recent-followed") {
+    const followUpDays = daysSince(getLatestFollowUpAt(item));
+    return followUpDays !== null && followUpDays <= RECENT_DAYS;
+  }
+  if (filter === "dormant") {
+    const followUpDays = daysSince(getLatestFollowUpAt(item));
+    return !["invalid", "completed"].includes(item.status) && (followUpDays === null || followUpDays >= DORMANT_DAYS);
+  }
+  return true;
+}
+
 function buildCountFilters(items, pickValue, allLabel) {
   const counts = items.reduce((memo, item) => {
     const value = pickValue(item);
@@ -84,13 +123,14 @@ function buildTagFilters(customers) {
   ];
 }
 
-function filterCustomers(customers, intentFilter, keyword = "", profileFilter = "all", sourceFilter = "all", tagFilter = "all") {
+function filterCustomers(customers, intentFilter, keyword = "", profileFilter = "all", sourceFilter = "all", tagFilter = "all", activityFilter = "all") {
   return customers.filter((item) => {
     const intentMatched = intentFilter === "all" || (item.intentLevel || "待判断") === intentFilter;
     return intentMatched &&
       matchesProfileFilter(item, profileFilter) &&
       matchesSourceFilter(item, sourceFilter) &&
       matchesTagFilter(item, tagFilter) &&
+      matchesActivityFilter(item, activityFilter) &&
       matchesSearch(item, keyword.trim());
   });
 }
@@ -107,8 +147,8 @@ function sortCustomers(customers, sortMode = "intent") {
   });
 }
 
-function applyCustomerView(customers, intentFilter, profileFilter, keyword, sortMode, sourceFilter, tagFilter) {
-  return sortCustomers(filterCustomers(customers, intentFilter, keyword, profileFilter, sourceFilter, tagFilter), sortMode);
+function applyCustomerView(customers, intentFilter, profileFilter, keyword, sortMode, sourceFilter, tagFilter, activityFilter) {
+  return sortCustomers(filterCustomers(customers, intentFilter, keyword, profileFilter, sourceFilter, tagFilter, activityFilter), sortMode);
 }
 
 function buildCustomerSummary(customers) {
@@ -133,10 +173,12 @@ Page({
     activeProfileFilter: "all",
     activeSourceFilter: "all",
     activeTagFilter: "all",
+    activeActivityFilter: "all",
     activeSort: "intent",
     searchKeyword: "",
     intentFilters: INTENT_FILTERS,
     profileFilters: PROFILE_FILTERS,
+    activityFilters: ACTIVITY_FILTERS,
     sourceFilters: [],
     tagFilters: [],
     sortOptions: SORT_OPTIONS,
@@ -164,7 +206,8 @@ Page({
         customerTags: item.customerTags || [],
         intentLevel: item.intentLevel || "待判断",
         updatedText: formatTime(item.updatedAt),
-        lastViewedText: formatTime(item.lastViewedAt),
+        lastViewedText: item.lastViewedAt ? formatTime(item.lastViewedAt) : "",
+        latestFollowUpText: getLatestFollowUpAt(item) ? formatTime(getLatestFollowUpAt(item)) : "",
         nextFollowUpText: item.nextFollowUpAt ? String(item.nextFollowUpAt).slice(0, 10) : "",
         latestFollowUp: (item.followUpLogs || [])[0] ? (item.followUpLogs || [])[0].content : ""
       })));
@@ -177,7 +220,8 @@ Page({
           this.data.searchKeyword,
           this.data.activeSort,
           this.data.activeSourceFilter,
-          this.data.activeTagFilter
+          this.data.activeTagFilter,
+          this.data.activeActivityFilter
         ),
         sourceFilters: buildCountFilters(customers, (item) => item.cardTitle, "全部来源"),
         tagFilters: buildTagFilters(customers),
@@ -203,7 +247,8 @@ Page({
         this.data.searchKeyword,
         this.data.activeSort,
         this.data.activeSourceFilter,
-        this.data.activeTagFilter
+        this.data.activeTagFilter,
+        this.data.activeActivityFilter
       )
     });
   },
@@ -218,7 +263,24 @@ Page({
         this.data.searchKeyword,
         this.data.activeSort,
         this.data.activeSourceFilter,
-        this.data.activeTagFilter
+        this.data.activeTagFilter,
+        this.data.activeActivityFilter
+      )
+    });
+  },
+  handleActivityFilterChange(event) {
+    const activeActivityFilter = event.currentTarget.dataset.filter;
+    this.setData({
+      activeActivityFilter,
+      filteredCustomers: applyCustomerView(
+        this.data.customers,
+        this.data.activeIntent,
+        this.data.activeProfileFilter,
+        this.data.searchKeyword,
+        this.data.activeSort,
+        this.data.activeSourceFilter,
+        this.data.activeTagFilter,
+        activeActivityFilter
       )
     });
   },
@@ -233,7 +295,8 @@ Page({
         this.data.searchKeyword,
         this.data.activeSort,
         activeSourceFilter,
-        this.data.activeTagFilter
+        this.data.activeTagFilter,
+        this.data.activeActivityFilter
       )
     });
   },
@@ -248,7 +311,8 @@ Page({
         this.data.searchKeyword,
         this.data.activeSort,
         this.data.activeSourceFilter,
-        activeTagFilter
+        activeTagFilter,
+        this.data.activeActivityFilter
       )
     });
   },
@@ -263,7 +327,8 @@ Page({
         this.data.searchKeyword,
         activeSort,
         this.data.activeSourceFilter,
-        this.data.activeTagFilter
+        this.data.activeTagFilter,
+        this.data.activeActivityFilter
       )
     });
   },
@@ -278,7 +343,8 @@ Page({
         searchKeyword,
         this.data.activeSort,
         this.data.activeSourceFilter,
-        this.data.activeTagFilter
+        this.data.activeTagFilter,
+        this.data.activeActivityFilter
       )
     });
   },
@@ -292,7 +358,8 @@ Page({
         "",
         this.data.activeSort,
         this.data.activeSourceFilter,
-        this.data.activeTagFilter
+        this.data.activeTagFilter,
+        this.data.activeActivityFilter
       )
     });
   },
