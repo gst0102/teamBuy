@@ -30,16 +30,15 @@
     </view>
   </view>
 
-  <view class="panel">
-    <view class="section-title">备注</view>
-    <textarea class="text-area" value="{{note}}" placeholder="补充线索摘要、客户偏好、预算等" bindinput="handleNoteChange"></textarea>
-    <view class="detail-actions">
-      <text bindtap="handleSaveNote">保存备注</text>
-    </view>
-  </view>
-
-  <view class="panel">
+  <view class="panel customer-profile-panel">
     <view class="section-title">客户资料</view>
+    <view class="profile-summary">
+      <view>
+        <view class="profile-name">{{lead.nickname}}</view>
+        <view class="profile-meta">{{intentLevel || '待判断'}} · {{customerPhone || customerWechat || '未填联系方式'}}</view>
+      </view>
+      <view class="profile-copy" bindtap="handleCopyCustomerProfile">复制档案</view>
+    </view>
     <input class="field-input" value="{{customerPhone}}" placeholder="手机号" bindinput="handleCustomerPhoneChange" />
     <input class="field-input" value="{{customerWechat}}" placeholder="微信号" bindinput="handleCustomerWechatChange" />
     <input class="field-input" value="{{budgetText}}" placeholder="预算，如 200 万内 / 3000-5000 元" bindinput="handleBudgetChange" />
@@ -48,6 +47,14 @@
     </picker>
     <view class="detail-actions">
       <text bindtap="handleSaveCustomerProfile">保存客户资料</text>
+    </view>
+  </view>
+
+  <view class="panel">
+    <view class="section-title">备注</view>
+    <textarea class="text-area" value="{{note}}" placeholder="补充线索摘要、客户偏好、预算等" bindinput="handleNoteChange"></textarea>
+    <view class="detail-actions">
+      <text bindtap="handleSaveNote">保存备注</text>
     </view>
   </view>
 

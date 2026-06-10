@@ -16,6 +16,22 @@ function formatDate(value) {
   return value ? String(value).slice(0, 10) : "设置下次跟进";
 }
 
+function buildCustomerProfileText(lead) {
+  if (!lead) return "";
+  const latestLog = (lead.followUpLogs || [])[0];
+  return [
+    `姓名：${lead.nickname || ""}`,
+    `手机号：${lead.customerPhone || ""}`,
+    `微信号：${lead.customerWechat || ""}`,
+    `预算：${lead.budgetText || ""}`,
+    `意向等级：${lead.intentLevel || "待判断"}`,
+    `来源资料：${lead.cardTitle || ""}`,
+    `状态：${lead.statusText || ""}`,
+    `备注：${lead.note || ""}`,
+    latestLog ? `最近跟进：${latestLog.content || ""}` : ""
+  ].filter(Boolean).join("\n");
+}
+
 Page({
   data: {
     leadId: "",
@@ -117,6 +133,16 @@ Page({
     } catch (error) {
       wx.showToast({ title: error.detail || "保存失败", icon: "none" });
     }
+  },
+  handleCopyCustomerProfile() {
+    if (!this.data.lead) {
+      wx.showToast({ title: "暂无客户资料", icon: "none" });
+      return;
+    }
+    wx.setClipboardData({
+      data: buildCustomerProfileText(this.data.lead),
+      success: () => wx.showToast({ title: "客户档案已复制", icon: "success" })
+    });
   },
   async handleSaveNote() {
     const currentUser = getCurrentUser();
