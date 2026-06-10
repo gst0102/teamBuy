@@ -86,6 +86,13 @@
   font-weight: 900;
 }
 
+.export-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 12rpx;
+}
+
 .search-panel {
   display: flex;
   align-items: center;

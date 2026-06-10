@@ -165,6 +165,17 @@ function buildCustomerSummary(customers) {
   return [header, ...rows].join("\n");
 }
 
+function buildFollowUpList(customers) {
+  return customers.map((item, index) => [
+    `${index + 1}. ${item.nickname || "未命名客户"}（${item.intentLevel || "待判断"}）`,
+    item.customerPhone ? `电话：${item.customerPhone}` : "",
+    item.customerWechat ? `微信：${item.customerWechat}` : "",
+    item.latestFollowUp ? `最近跟进：${item.latestFollowUp}` : "最近跟进：暂无",
+    item.nextFollowUpText ? `下次跟进：${item.nextFollowUpText}` : "下次跟进：未设置",
+    item.cardTitle ? `来源：${item.cardTitle}` : ""
+  ].filter(Boolean).join("\n"));
+}
+
 Page({
   data: {
     customers: [],
@@ -382,6 +393,17 @@ Page({
     }
     wx.setClipboardData({
       data: buildCustomerSummary(customers),
+      success: () => wx.showToast({ title: `已复制${customers.length}条`, icon: "success" })
+    });
+  },
+  handleCopyFollowUpList() {
+    const customers = this.data.filteredCustomers || [];
+    if (!customers.length) {
+      wx.showToast({ title: "暂无可复制清单", icon: "none" });
+      return;
+    }
+    wx.setClipboardData({
+      data: buildFollowUpList(customers).join("\n\n"),
       success: () => wx.showToast({ title: `已复制${customers.length}条`, icon: "success" })
     });
   },

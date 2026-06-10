@@ -75,9 +75,12 @@
   <view class="export-panel">
     <view>
       <view class="export-title">当前筛选结果</view>
-      <view class="export-sub">共 {{filteredCustomers.length}} 位客户，可复制为表格文本</view>
+      <view class="export-sub">共 {{filteredCustomers.length}} 位客户，可复制为表格文本或跟进清单</view>
     </view>
-    <view class="export-btn" bindtap="handleCopySummary">复制客户摘要</view>
+    <view class="export-actions">
+      <view class="export-btn" bindtap="handleCopySummary">复制客户摘要</view>
+      <view class="export-btn" bindtap="handleCopyFollowUpList">复制跟进清单</view>
+    </view>
   </view>
 
   <block wx:for="{{filteredCustomers}}" wx:key="id">
