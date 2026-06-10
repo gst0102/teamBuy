@@ -39,6 +39,21 @@
     <view class="clear-search" wx:if="{{searchKeyword}}" bindtap="handleClearSearch">清空</view>
   </view>
 
+  <view class="view-toolbar">
+    <view class="view-action" bindtap="handleResetFilters">清空筛选</view>
+    <view class="view-action primary" bindtap="handleSaveCurrentView">保存常用视图</view>
+  </view>
+
+  <view class="filter-title" wx:if="{{savedViews.length}}">常用视图</view>
+  <view class="saved-view-row" wx:if="{{savedViews.length}}">
+    <block wx:for="{{savedViews}}" wx:key="id">
+      <view class="saved-view-pill" data-id="{{item.id}}" bindtap="handleApplySavedView">
+        <text>{{item.name}}</text>
+        <text class="saved-view-remove" data-id="{{item.id}}" catchtap="handleRemoveSavedView">×</text>
+      </view>
+    </block>
+  </view>
+
   <view class="intent-filter-row">
     <block wx:for="{{intentFilters}}" wx:key="key">
       <view class="intent-filter {{activeIntent === item.key ? 'active' : ''}}" data-filter="{{item.key}}" bindtap="handleIntentFilterChange">{{item.label}}</view>

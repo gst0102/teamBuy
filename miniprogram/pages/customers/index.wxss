@@ -115,6 +115,52 @@
   font-size: 25rpx;
 }
 
+.view-toolbar,
+.saved-view-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  margin-bottom: 18rpx;
+}
+
+.view-action,
+.saved-view-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 56rpx;
+  padding: 0 20rpx;
+  border-radius: 999rpx;
+  background: #edf5ff;
+  border: 1rpx solid rgba(22, 119, 255, 0.14);
+  color: #1677ff;
+  font-size: 23rpx;
+  font-weight: 900;
+}
+
+.view-action.primary {
+  background: #1677ff;
+  color: #ffffff;
+  box-shadow: 0 12rpx 26rpx rgba(22, 119, 255, 0.18);
+}
+
+.saved-view-pill {
+  gap: 12rpx;
+}
+
+.saved-view-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34rpx;
+  height: 34rpx;
+  border-radius: 50%;
+  background: rgba(22, 119, 255, 0.12);
+  color: #1677ff;
+  font-size: 24rpx;
+  font-weight: 900;
+}
+
 .clear-search,
 .copy-pill {
   display: inline-flex;

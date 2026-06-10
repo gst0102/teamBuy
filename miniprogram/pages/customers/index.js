@@ -32,6 +32,20 @@ const RECENT_DAYS = 7;
 const DORMANT_DAYS = 14;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+const DEFAULT_VIEW_FILTERS = {
+  activeIntent: "all",
+  activeProfileFilter: "all",
+  activeSourceFilter: "all",
+  activeTagFilter: "all",
+  activeActivityFilter: "all",
+  activeSort: "intent",
+  searchKeyword: ""
+};
+
+function savedViewsKey(ownerUserId) {
+  return `customerSavedViews_${ownerUserId || "guest"}`;
+}
+
 function todayValue() {
   const now = new Date();
   const month = String(now.getMonth() + 1).padStart(2, "0");
@@ -176,6 +190,20 @@ function buildFollowUpList(customers) {
   ].filter(Boolean).join("\n"));
 }
 
+function buildViewName(filters) {
+  const profileOption = PROFILE_FILTERS.find((item) => item.key === filters.activeProfileFilter);
+  const activityOption = ACTIVITY_FILTERS.find((item) => item.key === filters.activeActivityFilter);
+  const parts = [
+    filters.activeIntent !== "all" ? filters.activeIntent : "",
+    filters.activeProfileFilter !== "all" && profileOption ? profileOption.label : "",
+    filters.activeActivityFilter !== "all" && activityOption ? activityOption.label : "",
+    filters.activeSourceFilter !== "all" ? filters.activeSourceFilter : "",
+    filters.activeTagFilter !== "all" ? filters.activeTagFilter : "",
+    filters.searchKeyword ? `搜索:${filters.searchKeyword}` : ""
+  ].filter(Boolean);
+  return parts.length ? parts.join(" + ") : "全部客户";
+}
+
 Page({
   data: {
     customers: [],
@@ -193,6 +221,7 @@ Page({
     sourceFilters: [],
     tagFilters: [],
     sortOptions: SORT_OPTIONS,
+    savedViews: [],
     summary: {
       total: 0,
       high: 0,
@@ -206,7 +235,17 @@ Page({
       wx.reLaunch({ url: "/pages/login/index" });
       return;
     }
+    this.loadSavedViews(currentUser.id);
     this.loadCustomers();
+  },
+  loadSavedViews(ownerUserId) {
+    const savedViews = wx.getStorageSync(savedViewsKey(ownerUserId)) || [];
+    this.setData({ savedViews });
+  },
+  persistSavedViews(savedViews) {
+    const currentUser = getCurrentUser();
+    wx.setStorageSync(savedViewsKey(currentUser ? currentUser.id : ""), savedViews);
+    this.setData({ savedViews });
   },
   async loadCustomers() {
     const currentUser = getCurrentUser();
@@ -373,6 +412,76 @@ Page({
         this.data.activeActivityFilter
       )
     });
+  },
+  handleResetFilters() {
+    this.setData({
+      ...DEFAULT_VIEW_FILTERS,
+      filteredCustomers: applyCustomerView(
+        this.data.customers,
+        DEFAULT_VIEW_FILTERS.activeIntent,
+        DEFAULT_VIEW_FILTERS.activeProfileFilter,
+        DEFAULT_VIEW_FILTERS.searchKeyword,
+        DEFAULT_VIEW_FILTERS.activeSort,
+        DEFAULT_VIEW_FILTERS.activeSourceFilter,
+        DEFAULT_VIEW_FILTERS.activeTagFilter,
+        DEFAULT_VIEW_FILTERS.activeActivityFilter
+      )
+    });
+  },
+  getCurrentViewFilters() {
+    return {
+      activeIntent: this.data.activeIntent,
+      activeProfileFilter: this.data.activeProfileFilter,
+      activeSourceFilter: this.data.activeSourceFilter,
+      activeTagFilter: this.data.activeTagFilter,
+      activeActivityFilter: this.data.activeActivityFilter,
+      activeSort: this.data.activeSort,
+      searchKeyword: this.data.searchKeyword
+    };
+  },
+  handleSaveCurrentView() {
+    const filters = this.getCurrentViewFilters();
+    wx.showModal({
+      title: "保存常用视图",
+      editable: true,
+      placeholderText: buildViewName(filters),
+      confirmText: "保存",
+      success: (res) => {
+        if (!res.confirm) return;
+        const name = String(res.content || "").trim() || buildViewName(filters);
+        const savedViews = [
+          { id: `view_${Date.now()}`, name, filters },
+          ...(this.data.savedViews || []).filter((item) => item.name !== name)
+        ].slice(0, 8);
+        this.persistSavedViews(savedViews);
+        wx.showToast({ title: "视图已保存", icon: "success" });
+      }
+    });
+  },
+  handleApplySavedView(event) {
+    const viewId = event.currentTarget.dataset.id;
+    const view = (this.data.savedViews || []).find((item) => item.id === viewId);
+    if (!view) return;
+    const filters = { ...DEFAULT_VIEW_FILTERS, ...(view.filters || {}) };
+    this.setData({
+      ...filters,
+      filteredCustomers: applyCustomerView(
+        this.data.customers,
+        filters.activeIntent,
+        filters.activeProfileFilter,
+        filters.searchKeyword,
+        filters.activeSort,
+        filters.activeSourceFilter,
+        filters.activeTagFilter,
+        filters.activeActivityFilter
+      )
+    });
+  },
+  handleRemoveSavedView(event) {
+    const viewId = event.currentTarget.dataset.id;
+    const savedViews = (this.data.savedViews || []).filter((item) => item.id !== viewId);
+    this.persistSavedViews(savedViews);
+    wx.showToast({ title: "已移除视图", icon: "success" });
   },
   handleCopyField(event) {
     const value = event.currentTarget.dataset.value;

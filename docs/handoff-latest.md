@@ -534,5 +534,6 @@ rm -rf
 - backend/mock/runtime-state.json 是本地运行态数据，默认不要提交。
 - miniprogram/project.config.json 和 project.private.config.json 是本地微信开发者工具配置，默认不要提交。
 - 当前真实企业微信 sync_msg 仍卡在 48002 api forbidden，手动添加资源不能替代最终主链路。
+- 客户资料库常用视图目前是小程序本地 storage 偏好，不是后端持久客户数据。
 - 禁止批量删除文件或目录，严格遵守 AGENTS.md。
 ```
