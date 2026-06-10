@@ -81,7 +81,10 @@ Page({
     summary: {
       pending: 0,
       contacted: 0,
-      total: 0
+      total: 0,
+      today: 0,
+      overdue: 0,
+      unhandled: 0
     }
   },
   onShow() {
@@ -133,7 +136,8 @@ Page({
           contacted: leads.filter((item) => item.status === "contacted").length,
           total: leads.length,
           today: leads.filter((item) => item.dueState === "today").length,
-          overdue: leads.filter((item) => item.dueState === "overdue").length
+          overdue: leads.filter((item) => item.dueState === "overdue").length,
+          unhandled: leads.filter((item) => item.status === "pending").length
         }
       });
     } catch (error) {
@@ -152,6 +156,30 @@ Page({
     this.setData({
       activeScheduleFilter,
       filteredLeads: applyFilters(this.data.leads, this.data.activeFilter, activeScheduleFilter)
+    });
+  },
+  handleReminderShortcut(event) {
+    const shortcut = event.currentTarget.dataset.shortcut;
+    if (shortcut === "today") {
+      this.setData({
+        activeFilter: "pending",
+        activeScheduleFilter: "today",
+        filteredLeads: applyFilters(this.data.leads, "pending", "today")
+      });
+      return;
+    }
+    if (shortcut === "overdue") {
+      this.setData({
+        activeFilter: "pending",
+        activeScheduleFilter: "overdue",
+        filteredLeads: applyFilters(this.data.leads, "pending", "overdue")
+      });
+      return;
+    }
+    this.setData({
+      activeFilter: "pending",
+      activeScheduleFilter: "all",
+      filteredLeads: applyFilters(this.data.leads, "pending", "all")
     });
   },
   handleNoteChange(event) {

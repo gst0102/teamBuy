@@ -34,6 +34,26 @@
     </view>
   </view>
 
+  <view class="reminder-board">
+    <view class="reminder-card today" data-shortcut="today" bindtap="handleReminderShortcut">
+      <view class="reminder-label">今日待跟进</view>
+      <view class="reminder-value">{{summary.today || 0}}</view>
+      <view class="reminder-action">查看今日 ></view>
+    </view>
+    <view class="reminder-card overdue" data-shortcut="overdue" bindtap="handleReminderShortcut">
+      <view class="reminder-label">已逾期</view>
+      <view class="reminder-value">{{summary.overdue || 0}}</view>
+      <view class="reminder-action">优先处理 ></view>
+    </view>
+  </view>
+  <view class="quick-unhandled" data-shortcut="unhandled" bindtap="handleReminderShortcut">
+    <view>
+      <view class="quick-title">只看未处理线索</view>
+      <view class="quick-sub">待联系 {{summary.unhandled || 0}} 条，按跟进优先级排序</view>
+    </view>
+    <view class="quick-pill">打开</view>
+  </view>
+
   <view class="viewer-filter-row">
     <block wx:for="{{filters}}" wx:key="key">
       <view class="viewer-filter {{activeFilter === item.key ? 'active' : ''}}" data-filter="{{item.key}}" bindtap="handleFilterChange">{{item.label}}</view>
