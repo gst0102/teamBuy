@@ -47,7 +47,13 @@
     <input class="field-input" value="{{customerPhone}}" placeholder="手机号" bindinput="handleCustomerPhoneChange" />
     <input class="field-input" value="{{customerWechat}}" placeholder="微信号" bindinput="handleCustomerWechatChange" />
     <input class="field-input" value="{{budgetText}}" placeholder="预算，如 200 万内 / 3000-5000 元" bindinput="handleBudgetChange" />
-    <input class="field-input" value="{{customerTagsText}}" placeholder="客户标签，如 刚需、老客户、可复购" bindinput="handleCustomerTagsChange" />
+    <view class="tag-input-panel">
+      <view>
+        <view class="tag-input-title">客户标签入库</view>
+        <view class="tag-input-sub">用标签沉淀客户特点，多个标签可用顿号、逗号或空格分隔。</view>
+      </view>
+      <input class="field-input tag-input" value="{{customerTagsText}}" placeholder="如 刚需、老客户、可复购" bindinput="handleCustomerTagsChange" />
+    </view>
     <picker range="{{intentOptions}}" value="{{intentIndex}}" bindchange="handleIntentLevelChange">
       <view class="date-pill">意向等级：{{intentLevel || '待判断'}}</view>
     </picker>

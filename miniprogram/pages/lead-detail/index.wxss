@@ -126,6 +126,31 @@
   font-weight: 900;
 }
 
+.tag-input-panel {
+  margin-top: 18rpx;
+  padding: 18rpx;
+  border-radius: 24rpx;
+  background: #f8fbff;
+  border: 1rpx dashed rgba(22, 119, 255, 0.22);
+}
+
+.tag-input-title {
+  color: #172033;
+  font-size: 25rpx;
+  font-weight: 900;
+}
+
+.tag-input-sub {
+  margin-top: 6rpx;
+  color: #667085;
+  font-size: 22rpx;
+  line-height: 1.45;
+}
+
+.tag-input {
+  margin-top: 14rpx;
+}
+
 .text-area {
   width: 100%;
   min-height: 180rpx;

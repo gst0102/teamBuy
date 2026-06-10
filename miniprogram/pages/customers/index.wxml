@@ -108,10 +108,20 @@
         <view class="intent-pill">{{item.intentLevel}}</view>
       </view>
 
-      <view class="customer-tag-row" wx:if="{{item.customerTags.length}}">
-        <block wx:for="{{item.customerTags}}" wx:key="*this">
-          <text class="customer-tag">{{item}}</text>
-        </block>
+      <view class="customer-tag-panel">
+        <view class="tag-panel-head">
+          <text class="tag-panel-title">客户标签</text>
+          <text class="tag-panel-action" data-id="{{item.id}}" bindtap="handleOpenLead">编辑标签</text>
+        </view>
+        <view class="customer-tag-row" wx:if="{{item.customerTags.length}}">
+          <block wx:for="{{item.customerTags}}" wx:key="*this">
+            <text class="customer-tag">{{item}}</text>
+          </block>
+        </view>
+        <view class="tag-empty-row" wx:else data-id="{{item.id}}" bindtap="handleOpenLead">
+          <text>还没有客户标签</text>
+          <text class="tag-empty-action">补客户标签</text>
+        </view>
       </view>
 
       <view class="customer-info-block">
@@ -161,6 +171,7 @@
       </view>
       <view class="customer-actions secondary">
         <text data-id="{{item.id}}" bindtap="handleOpenLead">查看客户</text>
+        <text data-id="{{item.id}}" bindtap="handleOpenLead">编辑资料/标签</text>
         <text data-card-id="{{item.cardId}}" bindtap="handleOpenCard">资源详情</text>
       </view>
     </view>

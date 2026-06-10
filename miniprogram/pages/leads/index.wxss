@@ -241,6 +241,18 @@
   margin-top: 8rpx;
 }
 
+.stat-icon.blue {
+  background: linear-gradient(135deg, #368cff, #0066ff);
+}
+
+.stat-icon.green {
+  background: linear-gradient(135deg, #44d58a, #12b76a);
+}
+
+.stat-icon.orange {
+  background: linear-gradient(135deg, #ffb24a, #ff7a1a);
+}
+
 .stat-icon.red {
   background: linear-gradient(135deg, #ff8a8a, #e5484d);
 }
