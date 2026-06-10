@@ -16,6 +16,16 @@ function formatDate(value) {
   return value ? String(value).slice(0, 10) : "设置下次跟进";
 }
 
+function normalizeCustomerTags(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item || "").trim()).filter(Boolean);
+  }
+  return String(value || "")
+    .split(/[\s,，、]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 function buildCustomerProfileText(lead) {
   if (!lead) return "";
   const latestLog = (lead.followUpLogs || [])[0];
@@ -25,6 +35,7 @@ function buildCustomerProfileText(lead) {
     `微信号：${lead.customerWechat || ""}`,
     `预算：${lead.budgetText || ""}`,
     `意向等级：${lead.intentLevel || "待判断"}`,
+    `客户标签：${(lead.customerTags || []).join("、")}`,
     `来源资料：${lead.cardTitle || ""}`,
     `状态：${lead.statusText || ""}`,
     `备注：${lead.note || ""}`,
@@ -45,7 +56,8 @@ Page({
     budgetText: "",
     intentLevel: "",
     intentIndex: 3,
-    intentOptions: ["高意向", "中意向", "低意向", "待判断"]
+    intentOptions: ["高意向", "中意向", "低意向", "待判断"],
+    customerTagsText: ""
   },
   onLoad(query) {
     this.setData({ leadId: query.id || "" });
@@ -84,7 +96,8 @@ Page({
         customerWechat: data.customerWechat || "",
         budgetText: data.budgetText || "",
         intentLevel: data.intentLevel || "",
-        intentIndex: Math.max(0, this.data.intentOptions.indexOf(data.intentLevel || "待判断"))
+        intentIndex: Math.max(0, this.data.intentOptions.indexOf(data.intentLevel || "待判断")),
+        customerTagsText: normalizeCustomerTags(data.customerTags).join("、")
       });
     } catch (error) {
       wx.showToast({ title: error.detail || "线索加载失败", icon: "none" });
@@ -118,6 +131,9 @@ Page({
       intentLevel: this.data.intentOptions[index] || ""
     });
   },
+  handleCustomerTagsChange(event) {
+    this.setData({ customerTagsText: event.detail.value });
+  },
   async handleSaveCustomerProfile() {
     const currentUser = getCurrentUser();
     try {
@@ -126,7 +142,8 @@ Page({
         customerPhone: this.data.customerPhone || "",
         customerWechat: this.data.customerWechat || "",
         budgetText: this.data.budgetText || "",
-        intentLevel: this.data.intentLevel || ""
+        intentLevel: this.data.intentLevel || "",
+        customerTags: normalizeCustomerTags(this.data.customerTagsText)
       });
       wx.showToast({ title: "客户资料已保存", icon: "success" });
       this.loadLead();

@@ -105,6 +105,27 @@
   font-weight: 900;
 }
 
+.customer-tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  margin: -4rpx 0 16rpx;
+}
+
+.customer-tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48rpx;
+  padding: 0 18rpx;
+  border-radius: 999rpx;
+  background: #edf5ff;
+  border: 1rpx solid rgba(22, 119, 255, 0.14);
+  color: #1677ff;
+  font-size: 22rpx;
+  font-weight: 900;
+}
+
 .text-area {
   width: 100%;
   min-height: 180rpx;

@@ -147,6 +147,7 @@ class LeadReminder(BaseModel):
     customerWechat: str | None = None
     budgetText: str | None = None
     intentLevel: str | None = None
+    customerTags: list[str] = Field(default_factory=list)
     viewCount: int = 0
     lastViewedAt: str | None = None
     contactedAt: str | None = None

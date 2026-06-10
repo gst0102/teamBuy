@@ -95,6 +95,7 @@ class LeadReminderUpdateRequest(BaseModel):
     customerWechat: str | None = None
     budgetText: str | None = None
     intentLevel: str | None = None
+    customerTags: list[str] | None = None
     conclusionReason: str | None = None
     nextFollowUpAt: str | None = None
     logContent: str | None = None

@@ -733,6 +733,7 @@ def test_lead_reminder_flow_persists_status_note_and_filters(client):
             "customerWechat": "wx_high_intent",
             "budgetText": "300 万内",
             "intentLevel": "高意向",
+            "customerTags": ["改善", "老客户"],
         },
     )
     assert profile_update.status_code == 200
@@ -741,6 +742,7 @@ def test_lead_reminder_flow_persists_status_note_and_filters(client):
     assert profile_payload["customerWechat"] == "wx_high_intent"
     assert profile_payload["budgetText"] == "300 万内"
     assert profile_payload["intentLevel"] == "高意向"
+    assert profile_payload["customerTags"] == ["改善", "老客户"]
 
     forbidden_detail = client.get(
         f"/api/lead-reminders/{reminder['id']}",

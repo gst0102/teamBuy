@@ -49,6 +49,18 @@
       <view class="intent-filter {{activeProfileFilter === item.key ? 'active' : ''}}" data-filter="{{item.key}}" bindtap="handleProfileFilterChange">{{item.label}}</view>
     </block>
   </view>
+  <view class="filter-title" wx:if="{{sourceFilters.length > 1}}">来源资料</view>
+  <view class="intent-filter-row compact" wx:if="{{sourceFilters.length > 1}}">
+    <block wx:for="{{sourceFilters}}" wx:key="key">
+      <view class="intent-filter {{activeSourceFilter === item.key ? 'active' : ''}}" data-filter="{{item.key}}" bindtap="handleSourceFilterChange">{{item.label}} {{item.count}}</view>
+    </block>
+  </view>
+  <view class="filter-title" wx:if="{{tagFilters.length > 1}}">客户标签</view>
+  <view class="intent-filter-row compact" wx:if="{{tagFilters.length > 1}}">
+    <block wx:for="{{tagFilters}}" wx:key="key">
+      <view class="intent-filter {{activeTagFilter === item.key ? 'active' : ''}}" data-filter="{{item.key}}" bindtap="handleTagFilterChange">{{item.label}} {{item.count}}</view>
+    </block>
+  </view>
   <view class="sort-row">
     <block wx:for="{{sortOptions}}" wx:key="key">
       <view class="sort-pill {{activeSort === item.key ? 'active' : ''}}" data-sort="{{item.key}}" bindtap="handleSortChange">{{item.label}}</view>
@@ -72,6 +84,11 @@
         <view class="intent-pill">{{item.intentLevel}}</view>
       </view>
       <view class="customer-fields">
+        <view class="customer-tag-row" wx:if="{{item.customerTags.length}}">
+          <block wx:for="{{item.customerTags}}" wx:key="*this">
+            <text class="customer-tag">{{item}}</text>
+          </block>
+        </view>
         <view class="field-line" wx:if="{{item.customerPhone}}">
           <text>手机号：{{item.customerPhone}}</text>
           <text class="copy-pill" data-value="{{item.customerPhone}}" bindtap="handleCopyField">复制</text>

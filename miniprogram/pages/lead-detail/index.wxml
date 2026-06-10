@@ -39,9 +39,15 @@
       </view>
       <view class="profile-copy" bindtap="handleCopyCustomerProfile">复制档案</view>
     </view>
+    <view class="customer-tag-row" wx:if="{{lead.customerTags.length}}">
+      <block wx:for="{{lead.customerTags}}" wx:key="*this">
+        <text class="customer-tag">{{item}}</text>
+      </block>
+    </view>
     <input class="field-input" value="{{customerPhone}}" placeholder="手机号" bindinput="handleCustomerPhoneChange" />
     <input class="field-input" value="{{customerWechat}}" placeholder="微信号" bindinput="handleCustomerWechatChange" />
     <input class="field-input" value="{{budgetText}}" placeholder="预算，如 200 万内 / 3000-5000 元" bindinput="handleBudgetChange" />
+    <input class="field-input" value="{{customerTagsText}}" placeholder="客户标签，如 刚需、老客户、可复购" bindinput="handleCustomerTagsChange" />
     <picker range="{{intentOptions}}" value="{{intentIndex}}" bindchange="handleIntentLevelChange">
       <view class="date-pill">意向等级：{{intentLevel || '待判断'}}</view>
     </picker>

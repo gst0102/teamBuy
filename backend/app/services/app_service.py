@@ -678,6 +678,7 @@ class AppService:
             customerWechat=existing.customerWechat if existing else None,
             budgetText=existing.budgetText if existing else None,
             intentLevel=existing.intentLevel if existing else None,
+            customerTags=existing.customerTags if existing else [],
             viewCount=max(0, int(payload.viewCount or 0)),
             lastViewedAt=payload.lastViewedAt,
             contactedAt=contacted_at,
@@ -716,6 +717,8 @@ class AppService:
             reminder.budgetText = payload.budgetText
         if payload.intentLevel is not None:
             reminder.intentLevel = payload.intentLevel
+        if payload.customerTags is not None:
+            reminder.customerTags = [tag.strip() for tag in payload.customerTags if tag.strip()]
         if payload.conclusionReason is not None and reminder.status in LEAD_CLOSED_STATUSES:
             reminder.conclusionReason = payload.conclusionReason
         if payload.nextFollowUpAt is not None:

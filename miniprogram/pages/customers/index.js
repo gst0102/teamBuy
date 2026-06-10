@@ -22,7 +22,7 @@ const SORT_OPTIONS = [
 ];
 
 function hasProfile(item) {
-  return !!(item.customerPhone || item.customerWechat || item.budgetText || item.intentLevel);
+  return !!(item.customerPhone || item.customerWechat || item.budgetText || item.intentLevel || (item.customerTags || []).length);
 }
 
 function matchesSearch(item, keyword) {
@@ -32,7 +32,8 @@ function matchesSearch(item, keyword) {
     item.customerPhone,
     item.customerWechat,
     item.budgetText,
-    item.cardTitle
+    item.cardTitle,
+    ...(item.customerTags || [])
   ].filter(Boolean).join(" ").toLowerCase();
   return text.includes(keyword.toLowerCase());
 }
@@ -44,10 +45,46 @@ function matchesProfileFilter(item, filter) {
   return true;
 }
 
-function filterCustomers(customers, intentFilter, keyword = "", profileFilter = "all") {
+function matchesSourceFilter(item, filter) {
+  return filter === "all" || item.cardTitle === filter;
+}
+
+function matchesTagFilter(item, filter) {
+  return filter === "all" || (item.customerTags || []).includes(filter);
+}
+
+function buildCountFilters(items, pickValue, allLabel) {
+  const counts = items.reduce((memo, item) => {
+    const value = pickValue(item);
+    if (value) memo[value] = (memo[value] || 0) + 1;
+    return memo;
+  }, {});
+  return [
+    { key: "all", label: allLabel, count: items.length },
+    ...Object.keys(counts).sort().map((key) => ({ key, label: key, count: counts[key] }))
+  ];
+}
+
+function buildTagFilters(customers) {
+  const tags = customers.flatMap((item) => item.customerTags || []);
+  const counts = tags.reduce((memo, tag) => {
+    memo[tag] = (memo[tag] || 0) + 1;
+    return memo;
+  }, {});
+  return [
+    { key: "all", label: "全部标签", count: customers.length },
+    ...Object.keys(counts).sort().map((key) => ({ key, label: key, count: counts[key] }))
+  ];
+}
+
+function filterCustomers(customers, intentFilter, keyword = "", profileFilter = "all", sourceFilter = "all", tagFilter = "all") {
   return customers.filter((item) => {
     const intentMatched = intentFilter === "all" || (item.intentLevel || "待判断") === intentFilter;
-    return intentMatched && matchesProfileFilter(item, profileFilter) && matchesSearch(item, keyword.trim());
+    return intentMatched &&
+      matchesProfileFilter(item, profileFilter) &&
+      matchesSourceFilter(item, sourceFilter) &&
+      matchesTagFilter(item, tagFilter) &&
+      matchesSearch(item, keyword.trim());
   });
 }
 
@@ -63,18 +100,19 @@ function sortCustomers(customers, sortMode = "intent") {
   });
 }
 
-function applyCustomerView(customers, intentFilter, profileFilter, keyword, sortMode) {
-  return sortCustomers(filterCustomers(customers, intentFilter, keyword, profileFilter), sortMode);
+function applyCustomerView(customers, intentFilter, profileFilter, keyword, sortMode, sourceFilter, tagFilter) {
+  return sortCustomers(filterCustomers(customers, intentFilter, keyword, profileFilter, sourceFilter, tagFilter), sortMode);
 }
 
 function buildCustomerSummary(customers) {
-  const header = "姓名\t手机号\t微信号\t预算\t意向等级\t来源资料";
+  const header = "姓名\t手机号\t微信号\t预算\t意向等级\t客户标签\t来源资料";
   const rows = customers.map((item) => [
     item.nickname || "",
     item.customerPhone || "",
     item.customerWechat || "",
     item.budgetText || "",
     item.intentLevel || "待判断",
+    (item.customerTags || []).join("、"),
     item.cardTitle || ""
   ].join("\t"));
   return [header, ...rows].join("\n");
@@ -86,10 +124,14 @@ Page({
     filteredCustomers: [],
     activeIntent: "all",
     activeProfileFilter: "all",
+    activeSourceFilter: "all",
+    activeTagFilter: "all",
     activeSort: "intent",
     searchKeyword: "",
     intentFilters: INTENT_FILTERS,
     profileFilters: PROFILE_FILTERS,
+    sourceFilters: [],
+    tagFilters: [],
     sortOptions: SORT_OPTIONS,
     summary: {
       total: 0,
@@ -112,6 +154,7 @@ Page({
       const res = await api.fetchLeadReminders(currentUser.id);
       const customers = sortCustomers((res.data || []).filter(hasProfile).map((item) => ({
         ...item,
+        customerTags: item.customerTags || [],
         intentLevel: item.intentLevel || "待判断",
         updatedText: formatTime(item.updatedAt),
         lastViewedText: formatTime(item.lastViewedAt)
@@ -123,8 +166,12 @@ Page({
           this.data.activeIntent,
           this.data.activeProfileFilter,
           this.data.searchKeyword,
-          this.data.activeSort
+          this.data.activeSort,
+          this.data.activeSourceFilter,
+          this.data.activeTagFilter
         ),
+        sourceFilters: buildCountFilters(customers, (item) => item.cardTitle, "全部来源"),
+        tagFilters: buildTagFilters(customers),
         summary: {
           total: customers.length,
           high: customers.filter((item) => item.intentLevel === "高意向").length,
@@ -145,7 +192,9 @@ Page({
         activeIntent,
         this.data.activeProfileFilter,
         this.data.searchKeyword,
-        this.data.activeSort
+        this.data.activeSort,
+        this.data.activeSourceFilter,
+        this.data.activeTagFilter
       )
     });
   },
@@ -158,7 +207,39 @@ Page({
         this.data.activeIntent,
         activeProfileFilter,
         this.data.searchKeyword,
-        this.data.activeSort
+        this.data.activeSort,
+        this.data.activeSourceFilter,
+        this.data.activeTagFilter
+      )
+    });
+  },
+  handleSourceFilterChange(event) {
+    const activeSourceFilter = event.currentTarget.dataset.filter;
+    this.setData({
+      activeSourceFilter,
+      filteredCustomers: applyCustomerView(
+        this.data.customers,
+        this.data.activeIntent,
+        this.data.activeProfileFilter,
+        this.data.searchKeyword,
+        this.data.activeSort,
+        activeSourceFilter,
+        this.data.activeTagFilter
+      )
+    });
+  },
+  handleTagFilterChange(event) {
+    const activeTagFilter = event.currentTarget.dataset.filter;
+    this.setData({
+      activeTagFilter,
+      filteredCustomers: applyCustomerView(
+        this.data.customers,
+        this.data.activeIntent,
+        this.data.activeProfileFilter,
+        this.data.searchKeyword,
+        this.data.activeSort,
+        this.data.activeSourceFilter,
+        activeTagFilter
       )
     });
   },
@@ -171,7 +252,9 @@ Page({
         this.data.activeIntent,
         this.data.activeProfileFilter,
         this.data.searchKeyword,
-        activeSort
+        activeSort,
+        this.data.activeSourceFilter,
+        this.data.activeTagFilter
       )
     });
   },
@@ -184,7 +267,9 @@ Page({
         this.data.activeIntent,
         this.data.activeProfileFilter,
         searchKeyword,
-        this.data.activeSort
+        this.data.activeSort,
+        this.data.activeSourceFilter,
+        this.data.activeTagFilter
       )
     });
   },
@@ -196,7 +281,9 @@ Page({
         this.data.activeIntent,
         this.data.activeProfileFilter,
         "",
-        this.data.activeSort
+        this.data.activeSort,
+        this.data.activeSourceFilter,
+        this.data.activeTagFilter
       )
     });
   },
