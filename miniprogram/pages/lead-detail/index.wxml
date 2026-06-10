@@ -1,0 +1,75 @@
+<view class="page-shell" wx:if="{{lead}}">
+  <custom-nav showBack="{{true}}" />
+
+  <view class="detail-hero">
+    <view>
+      <view class="hero-title">线索详情</view>
+      <view class="hero-subtitle">{{lead.nickname}} · {{lead.statusText}}</view>
+    </view>
+    <view class="status-pill">{{lead.statusText}}</view>
+  </view>
+
+  <view class="panel">
+    <view class="section-head">
+      <view>
+        <view class="section-title">{{lead.nickname}}</view>
+        <view class="muted">查看 {{lead.viewCount}} 次，最近 {{lead.lastViewedText}}</view>
+      </view>
+      <view class="section-link">{{lead.updatedText}}</view>
+    </view>
+    <view class="source-card" bindtap="handleOpenDetail">
+      <view>
+        <view class="source-label">来源资料</view>
+        <view class="source-title">{{lead.cardTitle}}</view>
+      </view>
+      <view class="source-link">查看详情 ></view>
+    </view>
+    <view class="detail-actions">
+      <text bindtap="handleOpenDetail">资源详情</text>
+      <text bindtap="handleOpenManager">线索管理</text>
+    </view>
+  </view>
+
+  <view class="panel">
+    <view class="section-title">备注</view>
+    <textarea class="text-area" value="{{note}}" placeholder="补充线索摘要、客户偏好、预算等" bindinput="handleNoteChange"></textarea>
+    <view class="detail-actions">
+      <text bindtap="handleSaveNote">保存备注</text>
+    </view>
+  </view>
+
+  <view class="panel">
+    <view class="section-title">跟进</view>
+    <picker mode="date" value="{{nextFollowUpAt}}" bindchange="handleNextFollowUpChange">
+      <view class="date-pill">下次跟进：{{nextFollowUpAt || lead.nextFollowUpDisplay}}</view>
+    </picker>
+    <textarea class="text-area" value="{{followUp}}" placeholder="新增一次跟进记录" bindinput="handleFollowUpChange"></textarea>
+    <view class="detail-actions">
+      <text bindtap="handleSaveFollowUp">保存跟进</text>
+    </view>
+    <view class="timeline" wx:if="{{lead.followUpLogsDisplay.length}}">
+      <block wx:for="{{lead.followUpLogsDisplay}}" wx:key="id" wx:for-item="log">
+        <view class="timeline-item">
+          <view class="timeline-dot"></view>
+          <view class="timeline-main">
+            <view class="timeline-text">{{log.content}}</view>
+            <view class="timeline-time">{{log.createdText}}</view>
+          </view>
+        </view>
+      </block>
+    </view>
+  </view>
+
+  <view class="panel">
+    <view class="section-title">归档结论</view>
+    <input class="field-input" value="{{conclusionReason}}" placeholder="归档原因，如客户不需要、暂缓、已成交" bindinput="handleConclusionReasonChange" />
+    <view class="detail-actions">
+      <text data-status="invalid" bindtap="handleSetStatus">无效</text>
+      <text data-status="paused" bindtap="handleSetStatus">暂不跟进</text>
+      <text data-status="completed" bindtap="handleSetStatus">已完成</text>
+      <text data-status="pending" bindtap="handleSetStatus">恢复待联系</text>
+      <text data-status="contacted" bindtap="handleSetStatus">标记已联系</text>
+    </view>
+    <view class="archive-note" wx:if="{{lead.isClosed}}">当前归档原因：{{lead.conclusionReason || '未填写'}}</view>
+  </view>
+</view>

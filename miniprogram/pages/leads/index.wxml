@@ -90,42 +90,15 @@
         <view class="source-link">查看详情 ></view>
       </view>
       <view class="muted">查看 {{item.viewCount}} 次，最近 {{item.lastViewedText}}</view>
-      <input class="field-input" data-id="{{item.id}}" value="{{item.noteValue}}" placeholder="补充备注" bindinput="handleNoteChange" />
-      <view class="follow-box">
-        <view class="follow-head">
-          <picker mode="date" data-id="{{item.id}}" value="{{item.nextFollowUpValue}}" bindchange="handleNextFollowUpChange">
-            <view class="follow-date-pill">下次跟进：{{item.nextFollowUpDisplay}}</view>
-          </picker>
-        </view>
-        <view class="follow-timeline" wx:if="{{item.followUpLogsPreview.length}}">
-          <block wx:for="{{item.followUpLogsPreview}}" wx:key="id" wx:for-item="log">
-            <view class="follow-log">
-              <view class="follow-dot"></view>
-              <view class="follow-log-main">
-                <view class="follow-log-text">{{log.content}}</view>
-                <view class="follow-log-time">{{log.createdText}}</view>
-              </view>
-            </view>
-          </block>
-        </view>
-        <input class="field-input follow-input" data-id="{{item.id}}" placeholder="新增跟进记录" bindinput="handleFollowUpChange" />
-      </view>
-      <view class="archive-box">
-        <input class="field-input archive-input" data-id="{{item.id}}" value="{{item.conclusionReasonValue}}" placeholder="归档原因，如客户不需要、暂缓、已成交" bindinput="handleConclusionReasonChange" />
-        <view class="archive-actions" wx:if="{{!item.isClosed}}">
-          <text data-id="{{item.id}}" data-status="invalid" bindtap="handleArchiveLead">无效</text>
-          <text data-id="{{item.id}}" data-status="paused" bindtap="handleArchiveLead">暂不跟进</text>
-          <text data-id="{{item.id}}" data-status="completed" bindtap="handleArchiveLead">已完成</text>
-        </view>
-        <view class="archive-result" wx:else>
-          <text>归档原因：{{item.conclusionReason || '未填写'}}</text>
-        </view>
+      <view class="lead-brief" wx:if="{{item.note || item.latestFollowUp || item.conclusionReason}}">
+        <view wx:if="{{item.note}}" class="brief-line">备注：{{item.note}}</view>
+        <view wx:if="{{item.latestFollowUp}}" class="brief-line">最近跟进：{{item.latestFollowUp.content}}</view>
+        <view wx:if="{{item.conclusionReason}}" class="brief-line">归档原因：{{item.conclusionReason}}</view>
       </view>
       <view class="card-actions">
+        <text data-id="{{item.id}}" bindtap="handleOpenLeadDetail">查看线索</text>
         <text data-card-id="{{item.cardId}}" bindtap="handleOpenDetail">资源详情</text>
         <text data-card-id="{{item.cardId}}" bindtap="handleOpenManager">线索管理</text>
-        <text data-id="{{item.id}}" bindtap="handleSaveNote">保存备注</text>
-        <text data-id="{{item.id}}" bindtap="handleSaveFollowUp">保存跟进</text>
         <text wx:if="{{item.status === 'pending'}}" data-id="{{item.id}}" bindtap="handleMarkContacted">标记已联系</text>
         <text wx:else data-id="{{item.id}}" bindtap="handleRestorePending">恢复待联系</text>
         <text class="danger-action" data-id="{{item.id}}" bindtap="handleDelete">清除</text>

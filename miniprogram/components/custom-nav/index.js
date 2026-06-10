@@ -12,7 +12,8 @@ const ROUTE_TITLES = {
   "pages/card-edit/index": "资源编辑",
   "pages/card-view/index": "资源详情",
   "pages/manager/index": "线索管理",
-  "pages/leads/index": "待联系"
+  "pages/leads/index": "待联系",
+  "pages/lead-detail/index": "线索详情"
 };
 
 Component({

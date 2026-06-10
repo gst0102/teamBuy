@@ -166,6 +166,15 @@ def list_lead_reminders(
     return ApiResponse(data=service.list_lead_reminders(ownerUserId, status))
 
 
+@router.get("/lead-reminders/{reminder_id}", response_model=ApiResponse[dict])
+def get_lead_reminder(
+    reminder_id: str,
+    ownerUserId: str = Query(...),
+    service: AppService = Depends(get_app_service),
+):
+    return ApiResponse(data=service.get_lead_reminder_detail(reminder_id, ownerUserId))
+
+
 @router.post("/lead-reminders", response_model=ApiResponse[dict])
 def upsert_lead_reminder(payload: LeadReminderUpsertRequest, service: AppService = Depends(get_app_service)):
     return ApiResponse(data=service.upsert_lead_reminder(payload).model_dump())

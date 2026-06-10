@@ -632,6 +632,18 @@ class AppService:
             rows.append(row)
         return rows
 
+    def get_lead_reminder_detail(self, reminder_id: str, owner_user_id: str) -> dict:
+        reminder = self.repo.get_lead_reminder(reminder_id)
+        if not reminder:
+            raise HTTPException(status_code=404, detail="线索不存在")
+        if reminder.ownerUserId != owner_user_id:
+            raise HTTPException(status_code=403, detail="仅发布者可查看线索")
+        row = reminder.model_dump()
+        card = self.repo.get_card(reminder.cardId)
+        row["cardTitle"] = card.title if card else "资源已删除"
+        row["cardStatus"] = card.status if card else "archived"
+        return row
+
     def upsert_lead_reminder(self, payload: LeadReminderUpsertRequest) -> LeadReminder:
         card = self.repo.get_card(payload.cardId)
         if not card:

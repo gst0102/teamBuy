@@ -266,6 +266,12 @@ function fetchLeadReminders(ownerUserId, status = "") {
   });
 }
 
+function fetchLeadReminder(reminderId, ownerUserId) {
+  return request({
+    url: `/api/lead-reminders/${reminderId}?ownerUserId=${ownerUserId}`
+  });
+}
+
 function upsertLeadReminder(payload) {
   return request({
     url: "/api/lead-reminders",
@@ -313,6 +319,7 @@ module.exports = {
   triggerMockImport,
   fetchImportNotifications,
   fetchLeadReminders,
+  fetchLeadReminder,
   upsertLeadReminder,
   updateLeadReminder,
   deleteLeadReminder

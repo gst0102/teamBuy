@@ -718,6 +718,19 @@ def test_lead_reminder_flow_persists_status_note_and_filters(client):
     assert len(listed) == 1
     assert listed[0]["cardTitle"] == "高意向资源"
 
+    detail = client.get(
+        f"/api/lead-reminders/{reminder['id']}",
+        params={"ownerUserId": owner["id"]},
+    )
+    assert detail.status_code == 200
+    assert detail.json()["data"]["cardTitle"] == "高意向资源"
+
+    forbidden_detail = client.get(
+        f"/api/lead-reminders/{reminder['id']}",
+        params={"ownerUserId": other["id"]},
+    )
+    assert forbidden_detail.status_code == 403
+
     forbidden = client.put(
         f"/api/lead-reminders/{reminder['id']}",
         json={"ownerUserId": other["id"], "status": "contacted"},

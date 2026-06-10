@@ -88,10 +88,6 @@ Page({
       { key: "future", label: "未来" },
       { key: "unset", label: "未设置" }
     ],
-    notes: {},
-    followUps: {},
-    conclusionReasons: {},
-    nextFollowUpDates: {},
     summary: {
       pending: 0,
       contacted: 0,
@@ -133,24 +129,8 @@ Page({
         dueState: getLeadDueState(item),
         dueStateText: dueStateText(getLeadDueState(item))
       }));
-      const notes = leads.reduce((memo, item) => {
-        memo[item.id] = item.note || "";
-        return memo;
-      }, {});
-      const nextFollowUpDates = leads.reduce((memo, item) => {
-        memo[item.id] = item.nextFollowUpAt ? String(item.nextFollowUpAt).slice(0, 10) : "";
-        return memo;
-      }, {});
-      const conclusionReasons = leads.reduce((memo, item) => {
-        memo[item.id] = item.conclusionReason || "";
-        return memo;
-      }, {});
       this.setData({
         leads,
-        notes,
-        followUps: {},
-        conclusionReasons,
-        nextFollowUpDates,
         filteredLeads: applyFilters(leads, this.data.activeFilter, this.data.activeScheduleFilter),
         summary: {
           pending: leads.filter((item) => item.status === "pending").length,
@@ -206,78 +186,12 @@ Page({
       filteredLeads: applyFilters(this.data.leads, "pending", "all")
     });
   },
-  handleNoteChange(event) {
-    const id = event.currentTarget.dataset.id;
-    this.setData({ [`notes.${id}`]: event.detail.value });
-  },
-  handleFollowUpChange(event) {
-    const id = event.currentTarget.dataset.id;
-    this.setData({ [`followUps.${id}`]: event.detail.value });
-  },
-  handleConclusionReasonChange(event) {
-    const id = event.currentTarget.dataset.id;
-    this.setData({ [`conclusionReasons.${id}`]: event.detail.value });
-  },
-  handleNextFollowUpChange(event) {
-    const id = event.currentTarget.dataset.id;
-    const value = event.detail.value;
-    const leads = this.data.leads.map((item) => (
-      item.id === id ? {
-        ...item,
-        nextFollowUpValue: value,
-        nextFollowUpDisplay: value,
-        dueState: getLeadDueState({ ...item, nextFollowUpValue: value }),
-        dueStateText: dueStateText(getLeadDueState({ ...item, nextFollowUpValue: value }))
-      } : item
-    ));
-    this.setData({
-      leads,
-      filteredLeads: applyFilters(leads, this.data.activeFilter, this.data.activeScheduleFilter),
-      [`nextFollowUpDates.${id}`]: value
-    });
-  },
-  async handleSaveNote(event) {
-    const currentUser = getCurrentUser();
-    const id = event.currentTarget.dataset.id;
-    try {
-      await api.updateLeadReminder(id, {
-        ownerUserId: currentUser.id,
-        note: (this.data.notes || {})[id] || ""
-      });
-      wx.showToast({ title: "备注已保存", icon: "success" });
-      this.loadLeads();
-    } catch (error) {
-      wx.showToast({ title: error.detail || "保存失败", icon: "none" });
-    }
-  },
-  async handleSaveFollowUp(event) {
-    const currentUser = getCurrentUser();
-    const id = event.currentTarget.dataset.id;
-    const logContent = ((this.data.followUps || {})[id] || "").trim();
-    const nextFollowUpAt = (this.data.nextFollowUpDates || {})[id] || "";
-    if (!logContent && !nextFollowUpAt) {
-      wx.showToast({ title: "请填写跟进记录或时间", icon: "none" });
-      return;
-    }
-    try {
-      await api.updateLeadReminder(id, {
-        ownerUserId: currentUser.id,
-        nextFollowUpAt,
-        logContent
-      });
-      wx.showToast({ title: "跟进已保存", icon: "success" });
-      this.loadLeads();
-    } catch (error) {
-      wx.showToast({ title: error.detail || "保存失败", icon: "none" });
-    }
-  },
   async handleMarkContacted(event) {
     const currentUser = getCurrentUser();
     try {
       await api.updateLeadReminder(event.currentTarget.dataset.id, {
         ownerUserId: currentUser.id,
-        status: "contacted",
-        note: (this.data.notes || {})[event.currentTarget.dataset.id] || ""
+        status: "contacted"
       });
       wx.showToast({ title: "已联系", icon: "success" });
       this.loadLeads();
@@ -299,28 +213,6 @@ Page({
       wx.showToast({ title: error.detail || "操作失败", icon: "none" });
     }
   },
-  async handleArchiveLead(event) {
-    const currentUser = getCurrentUser();
-    const id = event.currentTarget.dataset.id;
-    const status = event.currentTarget.dataset.status;
-    const reason = ((this.data.conclusionReasons || {})[id] || "").trim();
-    const titleMap = {
-      invalid: "已标记无效",
-      paused: "已暂不跟进",
-      completed: "已完成"
-    };
-    try {
-      await api.updateLeadReminder(id, {
-        ownerUserId: currentUser.id,
-        status,
-        conclusionReason: reason
-      });
-      wx.showToast({ title: titleMap[status] || "已归档", icon: "success" });
-      this.loadLeads();
-    } catch (error) {
-      wx.showToast({ title: error.detail || "归档失败", icon: "none" });
-    }
-  },
   async handleDelete(event) {
     const currentUser = getCurrentUser();
     try {
@@ -336,5 +228,8 @@ Page({
   },
   handleOpenManager(event) {
     wx.navigateTo({ url: `/pages/manager/index?id=${event.currentTarget.dataset.cardId}` });
+  },
+  handleOpenLeadDetail(event) {
+    wx.navigateTo({ url: `/pages/lead-detail/index?id=${event.currentTarget.dataset.id}` });
   }
 });
