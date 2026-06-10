@@ -34,6 +34,11 @@
     </view>
   </view>
 
+  <view class="search-panel">
+    <input class="customer-search" value="{{searchKeyword}}" placeholder="搜索昵称、手机号、微信号" bindinput="handleSearchChange" />
+    <view class="clear-search" wx:if="{{searchKeyword}}" bindtap="handleClearSearch">清空</view>
+  </view>
+
   <view class="intent-filter-row">
     <block wx:for="{{intentFilters}}" wx:key="key">
       <view class="intent-filter {{activeIntent === item.key ? 'active' : ''}}" data-filter="{{item.key}}" bindtap="handleIntentFilterChange">{{item.label}}</view>
@@ -50,8 +55,14 @@
         <view class="intent-pill">{{item.intentLevel}}</view>
       </view>
       <view class="customer-fields">
-        <view wx:if="{{item.customerPhone}}">手机号：{{item.customerPhone}}</view>
-        <view wx:if="{{item.customerWechat}}">微信号：{{item.customerWechat}}</view>
+        <view class="field-line" wx:if="{{item.customerPhone}}">
+          <text>手机号：{{item.customerPhone}}</text>
+          <text class="copy-pill" data-value="{{item.customerPhone}}" bindtap="handleCopyField">复制</text>
+        </view>
+        <view class="field-line" wx:if="{{item.customerWechat}}">
+          <text>微信号：{{item.customerWechat}}</text>
+          <text class="copy-pill" data-value="{{item.customerWechat}}" bindtap="handleCopyField">复制</text>
+        </view>
         <view wx:if="{{item.budgetText}}">预算：{{item.budgetText}}</view>
         <view>来源：{{item.cardTitle}}</view>
       </view>
