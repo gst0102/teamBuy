@@ -143,6 +143,10 @@ class LeadReminder(BaseModel):
     avatarUrl: str | None = None
     status: LeadReminderStatus
     note: str | None = None
+    customerPhone: str | None = None
+    customerWechat: str | None = None
+    budgetText: str | None = None
+    intentLevel: str | None = None
     viewCount: int = 0
     lastViewedAt: str | None = None
     contactedAt: str | None = None

@@ -725,6 +725,23 @@ def test_lead_reminder_flow_persists_status_note_and_filters(client):
     assert detail.status_code == 200
     assert detail.json()["data"]["cardTitle"] == "高意向资源"
 
+    profile_update = client.put(
+        f"/api/lead-reminders/{reminder['id']}",
+        json={
+            "ownerUserId": owner["id"],
+            "customerPhone": "13800000000",
+            "customerWechat": "wx_high_intent",
+            "budgetText": "300 万内",
+            "intentLevel": "高意向",
+        },
+    )
+    assert profile_update.status_code == 200
+    profile_payload = profile_update.json()["data"]
+    assert profile_payload["customerPhone"] == "13800000000"
+    assert profile_payload["customerWechat"] == "wx_high_intent"
+    assert profile_payload["budgetText"] == "300 万内"
+    assert profile_payload["intentLevel"] == "高意向"
+
     forbidden_detail = client.get(
         f"/api/lead-reminders/{reminder['id']}",
         params={"ownerUserId": other["id"]},

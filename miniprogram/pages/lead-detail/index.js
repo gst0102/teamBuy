@@ -23,7 +23,13 @@ Page({
     note: "",
     followUp: "",
     nextFollowUpAt: "",
-    conclusionReason: ""
+    conclusionReason: "",
+    customerPhone: "",
+    customerWechat: "",
+    budgetText: "",
+    intentLevel: "",
+    intentIndex: 3,
+    intentOptions: ["高意向", "中意向", "低意向", "待判断"]
   },
   onLoad(query) {
     this.setData({ leadId: query.id || "" });
@@ -57,7 +63,12 @@ Page({
         note: data.note || "",
         followUp: "",
         nextFollowUpAt: data.nextFollowUpAt ? String(data.nextFollowUpAt).slice(0, 10) : "",
-        conclusionReason: data.conclusionReason || ""
+        conclusionReason: data.conclusionReason || "",
+        customerPhone: data.customerPhone || "",
+        customerWechat: data.customerWechat || "",
+        budgetText: data.budgetText || "",
+        intentLevel: data.intentLevel || "",
+        intentIndex: Math.max(0, this.data.intentOptions.indexOf(data.intentLevel || "待判断"))
       });
     } catch (error) {
       wx.showToast({ title: error.detail || "线索加载失败", icon: "none" });
@@ -74,6 +85,38 @@ Page({
   },
   handleConclusionReasonChange(event) {
     this.setData({ conclusionReason: event.detail.value });
+  },
+  handleCustomerPhoneChange(event) {
+    this.setData({ customerPhone: event.detail.value });
+  },
+  handleCustomerWechatChange(event) {
+    this.setData({ customerWechat: event.detail.value });
+  },
+  handleBudgetChange(event) {
+    this.setData({ budgetText: event.detail.value });
+  },
+  handleIntentLevelChange(event) {
+    const index = Number(event.detail.value || 0);
+    this.setData({
+      intentIndex: index,
+      intentLevel: this.data.intentOptions[index] || ""
+    });
+  },
+  async handleSaveCustomerProfile() {
+    const currentUser = getCurrentUser();
+    try {
+      await api.updateLeadReminder(this.data.leadId, {
+        ownerUserId: currentUser.id,
+        customerPhone: this.data.customerPhone || "",
+        customerWechat: this.data.customerWechat || "",
+        budgetText: this.data.budgetText || "",
+        intentLevel: this.data.intentLevel || ""
+      });
+      wx.showToast({ title: "客户资料已保存", icon: "success" });
+      this.loadLead();
+    } catch (error) {
+      wx.showToast({ title: error.detail || "保存失败", icon: "none" });
+    }
   },
   async handleSaveNote() {
     const currentUser = getCurrentUser();

@@ -674,6 +674,10 @@ class AppService:
             avatarUrl=payload.avatarUrl,
             status=payload.status,
             note=payload.note,
+            customerPhone=existing.customerPhone if existing else None,
+            customerWechat=existing.customerWechat if existing else None,
+            budgetText=existing.budgetText if existing else None,
+            intentLevel=existing.intentLevel if existing else None,
             viewCount=max(0, int(payload.viewCount or 0)),
             lastViewedAt=payload.lastViewedAt,
             contactedAt=contacted_at,
@@ -704,6 +708,14 @@ class AppService:
                 reminder.conclusionReason = None
         if payload.note is not None:
             reminder.note = payload.note
+        if payload.customerPhone is not None:
+            reminder.customerPhone = payload.customerPhone
+        if payload.customerWechat is not None:
+            reminder.customerWechat = payload.customerWechat
+        if payload.budgetText is not None:
+            reminder.budgetText = payload.budgetText
+        if payload.intentLevel is not None:
+            reminder.intentLevel = payload.intentLevel
         if payload.conclusionReason is not None and reminder.status in LEAD_CLOSED_STATUSES:
             reminder.conclusionReason = payload.conclusionReason
         if payload.nextFollowUpAt is not None:
