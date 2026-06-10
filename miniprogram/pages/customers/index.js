@@ -67,6 +67,19 @@ function applyCustomerView(customers, intentFilter, profileFilter, keyword, sort
   return sortCustomers(filterCustomers(customers, intentFilter, keyword, profileFilter), sortMode);
 }
 
+function buildCustomerSummary(customers) {
+  const header = "姓名\t手机号\t微信号\t预算\t意向等级\t来源资料";
+  const rows = customers.map((item) => [
+    item.nickname || "",
+    item.customerPhone || "",
+    item.customerWechat || "",
+    item.budgetText || "",
+    item.intentLevel || "待判断",
+    item.cardTitle || ""
+  ].join("\t"));
+  return [header, ...rows].join("\n");
+}
+
 Page({
   data: {
     customers: [],
@@ -196,6 +209,17 @@ Page({
     wx.setClipboardData({
       data: value,
       success: () => wx.showToast({ title: "已复制", icon: "success" })
+    });
+  },
+  handleCopySummary() {
+    const customers = this.data.filteredCustomers || [];
+    if (!customers.length) {
+      wx.showToast({ title: "暂无可复制客户", icon: "none" });
+      return;
+    }
+    wx.setClipboardData({
+      data: buildCustomerSummary(customers),
+      success: () => wx.showToast({ title: `已复制${customers.length}条`, icon: "success" })
     });
   },
   handleOpenLead(event) {
