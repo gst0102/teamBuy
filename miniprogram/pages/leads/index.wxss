@@ -24,6 +24,79 @@
   box-shadow: 0 12rpx 26rpx rgba(23, 32, 51, 0.16);
 }
 
+.schedule-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  margin: 0 0 18rpx;
+}
+
+.schedule-filter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 58rpx;
+  padding: 0 22rpx;
+  border-radius: 999rpx;
+  background: #edf5ff;
+  border: 1rpx solid rgba(22, 119, 255, 0.14);
+  color: #1677ff;
+  font-size: 24rpx;
+  font-weight: 900;
+}
+
+.schedule-filter.active {
+  background: #1677ff;
+  color: #ffffff;
+  box-shadow: 0 12rpx 26rpx rgba(22, 119, 255, 0.18);
+}
+
+.lead-status-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10rpx;
+  margin-top: 8rpx;
+}
+
+.lead-status {
+  color: #738093;
+  font-size: 24rpx;
+  font-weight: 800;
+}
+
+.due-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 42rpx;
+  padding: 0 14rpx;
+  border-radius: 999rpx;
+  background: #edf5ff;
+  color: #1677ff;
+  font-size: 21rpx;
+  font-weight: 900;
+}
+
+.due-badge.overdue {
+  background: #fff1f3;
+  color: #e5484d;
+}
+
+.due-badge.today {
+  background: #fff7ed;
+  color: #f97316;
+}
+
+.due-badge.future {
+  background: #ecfdf3;
+  color: #079455;
+}
+
+.due-badge.done {
+  background: #f2f4f7;
+  color: #667085;
+}
+
 .lead-source {
   display: flex;
   align-items: center;
@@ -92,8 +165,50 @@
   line-height: 1.45;
 }
 
+.follow-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 10rpx;
+  margin-bottom: 14rpx;
+}
+
+.follow-log {
+  display: flex;
+  gap: 12rpx;
+}
+
+.follow-dot {
+  flex: 0 0 auto;
+  width: 12rpx;
+  height: 12rpx;
+  margin-top: 12rpx;
+  border-radius: 50%;
+  background: #1677ff;
+}
+
+.follow-log-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.follow-log-text {
+  color: #344054;
+  font-size: 24rpx;
+  line-height: 1.45;
+}
+
+.follow-log-time {
+  margin-top: 2rpx;
+  color: #8a96a8;
+  font-size: 21rpx;
+}
+
 .follow-input {
   margin-bottom: 0;
+}
+
+.stat-icon.red {
+  background: linear-gradient(135deg, #ff8a8a, #e5484d);
 }
 
 .card-actions {

@@ -7,9 +7,54 @@ function filterLeads(leads, filter) {
   return leads;
 }
 
+function todayKey() {
+  const date = new Date();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
+function getLeadDueState(lead) {
+  if (lead.status === "contacted") return "done";
+  if (!lead.nextFollowUpValue) return "unset";
+  const today = todayKey();
+  if (lead.nextFollowUpValue < today) return "overdue";
+  if (lead.nextFollowUpValue === today) return "today";
+  return "future";
+}
+
+function filterBySchedule(leads, filter) {
+  if (filter === "all") return leads;
+  return leads.filter((item) => item.dueState === filter);
+}
+
+function sortLeads(leads) {
+  const rank = { overdue: 0, today: 1, future: 2, unset: 3, done: 4 };
+  return [...leads].sort((a, b) => {
+    const rankDiff = (rank[a.dueState] || 9) - (rank[b.dueState] || 9);
+    if (rankDiff !== 0) return rankDiff;
+    const aDate = a.nextFollowUpValue || "9999-12-31";
+    const bDate = b.nextFollowUpValue || "9999-12-31";
+    if (aDate !== bDate) return aDate > bDate ? 1 : -1;
+    return String(b.updatedAt || "").localeCompare(String(a.updatedAt || ""));
+  });
+}
+
+function applyFilters(leads, statusFilter, scheduleFilter) {
+  return filterBySchedule(filterLeads(sortLeads(leads), statusFilter), scheduleFilter);
+}
+
 function formatDate(value) {
   if (!value) return "设置下次跟进";
   return String(value).slice(0, 10);
+}
+
+function dueStateText(state) {
+  if (state === "overdue") return "已逾期";
+  if (state === "today") return "今日跟进";
+  if (state === "future") return "未来跟进";
+  if (state === "done") return "已联系";
+  return "未设置跟进时间";
 }
 
 Page({
@@ -17,10 +62,18 @@ Page({
     leads: [],
     filteredLeads: [],
     activeFilter: "pending",
+    activeScheduleFilter: "all",
     filters: [
       { key: "pending", label: "待联系" },
       { key: "contacted", label: "已联系" },
       { key: "all", label: "全部" }
+    ],
+    scheduleFilters: [
+      { key: "all", label: "全部时间" },
+      { key: "today", label: "今日" },
+      { key: "overdue", label: "逾期" },
+      { key: "future", label: "未来" },
+      { key: "unset", label: "未设置" }
     ],
     notes: {},
     followUps: {},
@@ -50,8 +103,16 @@ Page({
         nextFollowUpValue: item.nextFollowUpAt ? String(item.nextFollowUpAt).slice(0, 10) : "",
         nextFollowUpDisplay: formatDate(item.nextFollowUpAt),
         latestFollowUp: (item.followUpLogs || [])[0] || null,
+        followUpLogsPreview: (item.followUpLogs || []).slice(0, 3).map((log) => ({
+          ...log,
+          createdText: formatTime(log.createdAt)
+        })),
         updatedText: formatTime(item.updatedAt),
         lastViewedText: formatTime(item.lastViewedAt)
+      })).map((item) => ({
+        ...item,
+        dueState: getLeadDueState(item),
+        dueStateText: dueStateText(getLeadDueState(item))
       }));
       const notes = leads.reduce((memo, item) => {
         memo[item.id] = item.note || "";
@@ -66,11 +127,13 @@ Page({
         notes,
         followUps: {},
         nextFollowUpDates,
-        filteredLeads: filterLeads(leads, this.data.activeFilter),
+        filteredLeads: applyFilters(leads, this.data.activeFilter, this.data.activeScheduleFilter),
         summary: {
           pending: leads.filter((item) => item.status === "pending").length,
           contacted: leads.filter((item) => item.status === "contacted").length,
-          total: leads.length
+          total: leads.length,
+          today: leads.filter((item) => item.dueState === "today").length,
+          overdue: leads.filter((item) => item.dueState === "overdue").length
         }
       });
     } catch (error) {
@@ -81,7 +144,14 @@ Page({
     const activeFilter = event.currentTarget.dataset.filter;
     this.setData({
       activeFilter,
-      filteredLeads: filterLeads(this.data.leads, activeFilter)
+      filteredLeads: applyFilters(this.data.leads, activeFilter, this.data.activeScheduleFilter)
+    });
+  },
+  handleScheduleFilterChange(event) {
+    const activeScheduleFilter = event.currentTarget.dataset.filter;
+    this.setData({
+      activeScheduleFilter,
+      filteredLeads: applyFilters(this.data.leads, this.data.activeFilter, activeScheduleFilter)
     });
   },
   handleNoteChange(event) {
@@ -96,11 +166,17 @@ Page({
     const id = event.currentTarget.dataset.id;
     const value = event.detail.value;
     const leads = this.data.leads.map((item) => (
-      item.id === id ? { ...item, nextFollowUpValue: value, nextFollowUpDisplay: value } : item
+      item.id === id ? {
+        ...item,
+        nextFollowUpValue: value,
+        nextFollowUpDisplay: value,
+        dueState: getLeadDueState({ ...item, nextFollowUpValue: value }),
+        dueStateText: dueStateText(getLeadDueState({ ...item, nextFollowUpValue: value }))
+      } : item
     ));
     this.setData({
       leads,
-      filteredLeads: filterLeads(leads, this.data.activeFilter),
+      filteredLeads: applyFilters(leads, this.data.activeFilter, this.data.activeScheduleFilter),
       [`nextFollowUpDates.${id}`]: value
     });
   },

@@ -26,6 +26,11 @@
         <text class="stat-value">{{summary.total}}</text>
         <text class="stat-label">全部线索</text>
       </view>
+      <view class="stat-item">
+        <view class="stat-icon red">逾</view>
+        <text class="stat-value">{{summary.overdue || 0}}</text>
+        <text class="stat-label">已逾期</text>
+      </view>
     </view>
   </view>
 
@@ -34,13 +39,21 @@
       <view class="viewer-filter {{activeFilter === item.key ? 'active' : ''}}" data-filter="{{item.key}}" bindtap="handleFilterChange">{{item.label}}</view>
     </block>
   </view>
+  <view class="schedule-filter-row">
+    <block wx:for="{{scheduleFilters}}" wx:key="key">
+      <view class="schedule-filter {{activeScheduleFilter === item.key ? 'active' : ''}}" data-filter="{{item.key}}" bindtap="handleScheduleFilterChange">{{item.label}}</view>
+    </block>
+  </view>
 
   <block wx:for="{{filteredLeads}}" wx:key="id">
     <view class="panel lead-card">
       <view class="section-head">
         <view>
           <view class="section-title">{{item.nickname}}</view>
-          <view class="muted">{{item.statusText}}</view>
+          <view class="lead-status-row">
+            <text class="lead-status">{{item.statusText}}</text>
+            <text class="due-badge {{item.dueState}}">{{item.dueStateText}}</text>
+          </view>
         </view>
         <view class="section-link">{{item.updatedText}}</view>
       </view>
@@ -58,7 +71,17 @@
           <picker mode="date" data-id="{{item.id}}" value="{{item.nextFollowUpValue}}" bindchange="handleNextFollowUpChange">
             <view class="follow-date-pill">下次跟进：{{item.nextFollowUpDisplay}}</view>
           </picker>
-          <view class="follow-latest" wx:if="{{item.latestFollowUp}}">最近：{{item.latestFollowUp.content}}</view>
+        </view>
+        <view class="follow-timeline" wx:if="{{item.followUpLogsPreview.length}}">
+          <block wx:for="{{item.followUpLogsPreview}}" wx:key="id" wx:for-item="log">
+            <view class="follow-log">
+              <view class="follow-dot"></view>
+              <view class="follow-log-main">
+                <view class="follow-log-text">{{log.content}}</view>
+                <view class="follow-log-time">{{log.createdText}}</view>
+              </view>
+            </view>
+          </block>
         </view>
         <input class="field-input follow-input" data-id="{{item.id}}" placeholder="新增跟进记录" bindinput="handleFollowUpChange" />
       </view>
