@@ -1,0 +1,66 @@
+<view class="page-shell">
+  <custom-nav showBack="{{true}}" />
+
+  <view class="customer-hero">
+    <view>
+      <view class="hero-title">客户资料库</view>
+      <view class="hero-subtitle">集中查看已沉淀的私有客户资料。</view>
+    </view>
+    <view class="customer-visual">客户</view>
+  </view>
+
+  <view class="panel">
+    <view class="stat-grid">
+      <view class="stat-item">
+        <view class="stat-icon blue">客</view>
+        <text class="stat-value">{{summary.total}}</text>
+        <text class="stat-label">客户</text>
+      </view>
+      <view class="stat-item">
+        <view class="stat-icon orange">高</view>
+        <text class="stat-value">{{summary.high}}</text>
+        <text class="stat-label">高意向</text>
+      </view>
+      <view class="stat-item">
+        <view class="stat-icon green">电</view>
+        <text class="stat-value">{{summary.withPhone}}</text>
+        <text class="stat-label">有电话</text>
+      </view>
+      <view class="stat-item">
+        <view class="stat-icon purple">微</view>
+        <text class="stat-value">{{summary.withWechat}}</text>
+        <text class="stat-label">有微信</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="intent-filter-row">
+    <block wx:for="{{intentFilters}}" wx:key="key">
+      <view class="intent-filter {{activeIntent === item.key ? 'active' : ''}}" data-filter="{{item.key}}" bindtap="handleIntentFilterChange">{{item.label}}</view>
+    </block>
+  </view>
+
+  <block wx:for="{{filteredCustomers}}" wx:key="id">
+    <view class="panel customer-card">
+      <view class="section-head">
+        <view>
+          <view class="section-title">{{item.nickname}}</view>
+          <view class="customer-meta">{{item.intentLevel}} · {{item.updatedText}}</view>
+        </view>
+        <view class="intent-pill">{{item.intentLevel}}</view>
+      </view>
+      <view class="customer-fields">
+        <view wx:if="{{item.customerPhone}}">手机号：{{item.customerPhone}}</view>
+        <view wx:if="{{item.customerWechat}}">微信号：{{item.customerWechat}}</view>
+        <view wx:if="{{item.budgetText}}">预算：{{item.budgetText}}</view>
+        <view>来源：{{item.cardTitle}}</view>
+      </view>
+      <view class="customer-actions">
+        <text data-id="{{item.id}}" bindtap="handleOpenLead">查看客户</text>
+        <text data-card-id="{{item.cardId}}" bindtap="handleOpenCard">资源详情</text>
+      </view>
+    </view>
+  </block>
+
+  <view class="empty-state" wx:if="{{!filteredCustomers.length}}">暂无对应客户资料。</view>
+</view>

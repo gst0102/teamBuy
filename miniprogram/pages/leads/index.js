@@ -231,5 +231,8 @@ Page({
   },
   handleOpenLeadDetail(event) {
     wx.navigateTo({ url: `/pages/lead-detail/index?id=${event.currentTarget.dataset.id}` });
+  },
+  handleOpenCustomers() {
+    wx.navigateTo({ url: "/pages/customers/index" });
   }
 });

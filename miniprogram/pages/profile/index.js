@@ -40,6 +40,9 @@ Page({
   handleGoLeads() {
     wx.navigateTo({ url: "/pages/leads/index" });
   },
+  handleGoCustomers() {
+    wx.navigateTo({ url: "/pages/customers/index" });
+  },
   handleMemberPlaceholder() {
     wx.showToast({ title: "会员权益将在 v0.2 开放", icon: "none" });
   },

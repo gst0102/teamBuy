@@ -58,6 +58,13 @@
     </view>
     <view class="quick-pill">打开</view>
   </view>
+  <view class="quick-unhandled" bindtap="handleOpenCustomers">
+    <view>
+      <view class="quick-title">客户资料库</view>
+      <view class="quick-sub">集中查看手机号、微信号、预算和意向等级</view>
+    </view>
+    <view class="quick-pill">进入</view>
+  </view>
 
   <view class="viewer-filter-row">
     <block wx:for="{{filters}}" wx:key="key">
