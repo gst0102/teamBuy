@@ -205,17 +205,34 @@
   box-shadow: 0 12rpx 26rpx rgba(23, 32, 51, 0.16);
 }
 
-.customer-meta,
-.customer-fields {
+.customer-card {
+  display: flex;
+  flex-direction: column;
+  gap: 18rpx;
+}
+
+.customer-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18rpx;
+}
+
+.customer-meta {
   color: #667085;
   font-size: 24rpx;
   line-height: 1.55;
 }
 
-.customer-fields {
+.customer-info-block,
+.follow-status-block {
   display: flex;
   flex-direction: column;
-  gap: 8rpx;
+  gap: 12rpx;
+  padding: 18rpx;
+  border-radius: 24rpx;
+  background: #f8fbff;
+  border: 1rpx solid #e6eef9;
 }
 
 .customer-tag-row {
@@ -238,16 +255,93 @@
   font-weight: 900;
 }
 
-.field-line {
+.info-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  min-height: 52rpx;
   gap: 14rpx;
 }
 
-.field-line > text:first-child {
+.info-label {
+  flex: 0 0 auto;
+  width: 72rpx;
+  color: #8a96a8;
+  font-size: 22rpx;
+  font-weight: 900;
+}
+
+.info-value {
   flex: 1;
   min-width: 0;
+  color: #344054;
+  font-size: 25rpx;
+  line-height: 1.4;
+  word-break: break-all;
+}
+
+.follow-status-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+}
+
+.follow-status-item {
+  flex: 1 1 160rpx;
+  min-width: 0;
+  padding: 14rpx;
+  border-radius: 18rpx;
+  background: #ffffff;
+  border: 1rpx solid #edf2f9;
+}
+
+.status-label {
+  display: block;
+  color: #8a96a8;
+  font-size: 20rpx;
+  font-weight: 900;
+}
+
+.status-value {
+  display: block;
+  margin-top: 6rpx;
+  color: #172033;
+  font-size: 23rpx;
+  font-weight: 900;
+}
+
+.latest-follow-text {
+  color: #344054;
+  font-size: 24rpx;
+  line-height: 1.45;
+}
+
+.source-strip {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  min-height: 56rpx;
+  padding: 0 18rpx;
+  border-radius: 18rpx;
+  background: #ffffff;
+  border: 1rpx solid #e6eef9;
+}
+
+.source-strip-label {
+  flex: 0 0 auto;
+  color: #8a96a8;
+  font-size: 22rpx;
+  font-weight: 900;
+}
+
+.source-strip-title {
+  flex: 1;
+  min-width: 0;
+  color: #1677ff;
+  font-size: 24rpx;
+  font-weight: 900;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .copy-pill {
@@ -261,14 +355,16 @@
   display: flex;
   flex-wrap: wrap;
   gap: 14rpx;
-  margin-top: 18rpx;
+}
+
+.customer-actions.secondary {
+  margin-top: -4rpx;
 }
 
 .quick-follow-row {
   display: flex;
   flex-wrap: wrap;
   gap: 12rpx;
-  margin-top: 18rpx;
   padding-top: 18rpx;
   border-top: 1rpx solid #edf2f9;
 }

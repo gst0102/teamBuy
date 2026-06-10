@@ -100,40 +100,66 @@
 
   <block wx:for="{{filteredCustomers}}" wx:key="id">
     <view class="panel customer-card">
-      <view class="section-head">
+      <view class="customer-card-head">
         <view>
           <view class="section-title">{{item.nickname}}</view>
-          <view class="customer-meta">{{item.intentLevel}} · {{item.updatedText}}</view>
+          <view class="customer-meta">{{item.updatedText}} 更新</view>
         </view>
         <view class="intent-pill">{{item.intentLevel}}</view>
       </view>
-      <view class="customer-fields">
-        <view class="customer-tag-row" wx:if="{{item.customerTags.length}}">
-          <block wx:for="{{item.customerTags}}" wx:key="*this">
-            <text class="customer-tag">{{item}}</text>
-          </block>
-        </view>
-        <view class="field-line" wx:if="{{item.customerPhone}}">
-          <text>手机号：{{item.customerPhone}}</text>
+
+      <view class="customer-tag-row" wx:if="{{item.customerTags.length}}">
+        <block wx:for="{{item.customerTags}}" wx:key="*this">
+          <text class="customer-tag">{{item}}</text>
+        </block>
+      </view>
+
+      <view class="customer-info-block">
+        <view class="info-row" wx:if="{{item.customerPhone}}">
+          <text class="info-label">电话</text>
+          <text class="info-value">{{item.customerPhone}}</text>
           <text class="copy-pill" data-value="{{item.customerPhone}}" bindtap="handleCopyField">复制</text>
         </view>
-        <view class="field-line" wx:if="{{item.customerWechat}}">
-          <text>微信号：{{item.customerWechat}}</text>
+        <view class="info-row" wx:if="{{item.customerWechat}}">
+          <text class="info-label">微信</text>
+          <text class="info-value">{{item.customerWechat}}</text>
           <text class="copy-pill" data-value="{{item.customerWechat}}" bindtap="handleCopyField">复制</text>
         </view>
-        <view wx:if="{{item.budgetText}}">预算：{{item.budgetText}}</view>
-        <view>来源：{{item.cardTitle}}</view>
-        <view wx:if="{{item.lastViewedText}}">最近查看：{{item.lastViewedText}}</view>
-        <view wx:if="{{item.latestFollowUpText}}">最近跟进时间：{{item.latestFollowUpText}}</view>
-        <view wx:if="{{item.nextFollowUpText}}">下次跟进：{{item.nextFollowUpText}}</view>
-        <view wx:if="{{item.latestFollowUp}}">最近跟进：{{item.latestFollowUp}}</view>
+        <view class="info-row" wx:if="{{item.budgetText}}">
+          <text class="info-label">预算</text>
+          <text class="info-value">{{item.budgetText}}</text>
+        </view>
       </view>
+
+      <view class="follow-status-block">
+        <view class="follow-status-grid">
+          <view class="follow-status-item" wx:if="{{item.lastViewedText}}">
+            <text class="status-label">最近查看</text>
+            <text class="status-value">{{item.lastViewedText}}</text>
+          </view>
+          <view class="follow-status-item" wx:if="{{item.latestFollowUpText}}">
+            <text class="status-label">最近跟进</text>
+            <text class="status-value">{{item.latestFollowUpText}}</text>
+          </view>
+          <view class="follow-status-item" wx:if="{{item.nextFollowUpText}}">
+            <text class="status-label">下次跟进</text>
+            <text class="status-value">{{item.nextFollowUpText}}</text>
+          </view>
+        </view>
+        <view class="latest-follow-text" wx:if="{{item.latestFollowUp}}">{{item.latestFollowUp}}</view>
+      </view>
+
+      <view class="source-strip" data-card-id="{{item.cardId}}" bindtap="handleOpenCard">
+        <text class="source-strip-label">来源</text>
+        <text class="source-strip-title">{{item.cardTitle}}</text>
+      </view>
+
       <view class="quick-follow-row">
         <text data-id="{{item.id}}" bindtap="handleSetTodayFollowUp">设为今日跟进</text>
         <text data-id="{{item.id}}" bindtap="handleQuickFollowUp">添加跟进记录</text>
         <text data-id="{{item.id}}" bindtap="handleMarkContacted">标记已联系</text>
       </view>
-      <view class="customer-actions">
+      <view class="customer-actions secondary">
         <text data-id="{{item.id}}" bindtap="handleOpenLead">查看客户</text>
         <text data-card-id="{{item.cardId}}" bindtap="handleOpenCard">资源详情</text>
       </view>

@@ -614,6 +614,20 @@
 
 ## 本次继续开发
 
+- 客户资料库卡片拆分为客户资料区、跟进状态区、来源资料条和操作区。
+- 电话、微信、预算集中展示，电话/微信继续支持一键复制。
+- 最近查看、最近跟进时间、下次跟进和最近跟进摘要集中到跟进状态区。
+- “设为今日跟进 / 添加跟进记录 / 标记已联系”保留为主快捷动作。
+- “查看客户 / 资源详情”降为次级操作，降低卡片视觉拥挤感。
+
+## 验证结果
+
+- 小程序所有 `.js` 执行 `node --check`：通过。
+- 小程序所有 `.json` 解析：通过。
+- `pytest backend\tests\test_app.py -q`：失败 1 项，`/health` 数据库 backend 当前返回 `postgresql`，测试期望 `postgres`；该失败来自当前工作区已有后端改动，不属于本次客户卡片 UI 调整范围。
+
+## 本次继续开发
+
 - 客户资料库新增“清空筛选”，重置搜索、意向、资料完整度、来源、标签、活跃度和排序。
 - 客户资料库新增“保存常用视图”，可保存当前筛选组合。
 - 常用视图以胶囊展示，点击恢复筛选组合，点击关闭按钮移除。
@@ -792,3 +806,17 @@
 - 小程序所有 `.js` 执行 `node --check`：通过。
 - 小程序所有 `.json` 解析：通过。
 - `pytest backend\tests -q`：60 项通过。
+## 2026-06-10
+
+### 企业微信客服回调地址拆分
+
+- 后端企业微信客服回调从通用 `/api/wecom/callback` 调整为专用 `/api/wecom/kf/teamBuy/callback`。
+- `GET` 验证和 `POST` 事件接收都走新路径，便于后续为其他客服、应用或开放平台回调预留独立入口。
+- `/api/wecom/config-check` 返回的 `callbackUrl` 已同步为新路径。
+- README、企业微信客服配置清单、真实联调记录、MVP 测试清单和腾讯云部署文档已同步新地址。
+
+### 验证结果
+
+- `python -m compileall backend\app backend\tests`：通过。
+- `pytest backend\tests\test_app.py -q -k "wecom_callback or wecom_config_check"`：4 项通过。
+- `pytest backend\tests\test_app.py -q`：35 项通过，1 项失败；失败项为 `test_health_reports_database_configuration`，当前环境读取到 `DATABASE_BACKEND=postgresql`，测试期望 `postgres`，与本次回调路径改动无关。

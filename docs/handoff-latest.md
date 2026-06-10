@@ -535,5 +535,14 @@ rm -rf
 - miniprogram/project.config.json 和 project.private.config.json 是本地微信开发者工具配置，默认不要提交。
 - 当前真实企业微信 sync_msg 仍卡在 48002 api forbidden，手动添加资源不能替代最终主链路。
 - 客户资料库常用视图目前是小程序本地 storage 偏好，不是后端持久客户数据。
+- 客户资料库卡片已按客户资料、跟进状态、来源和操作分区，后续新增字段时不要再平铺堆到卡片主区域。
 - 禁止批量删除文件或目录，严格遵守 AGENTS.md。
 ```
+## 2026-06-10 补充：企业微信客服回调地址已拆分
+
+- teamBuy 当前企业微信客服回调地址已从 `/api/wecom/callback` 调整为 `/api/wecom/kf/teamBuy/callback`。
+- 企业微信后台请填写：`https://teambuy.lifelove.top/api/wecom/kf/teamBuy/callback`。
+- 后端 `GET` 验证、`POST` 事件接收和 `/api/wecom/config-check` 的推荐回调地址已同步新路径。
+- README、企业微信客服配置清单、真实联调记录、MVP 测试清单和腾讯云部署文档已同步新路径。
+- 已验证：`python -m compileall backend\app backend\tests` 通过；`pytest backend\tests\test_app.py -q -k "wecom_callback or wecom_config_check"` 4 项通过。
+- 注意：整份 `pytest backend\tests\test_app.py -q` 当前仍有 1 个与本次无关的环境断言失败，原因是本机 `DATABASE_BACKEND` 读取为 `postgresql`，测试期望 `postgres`。
