@@ -5,7 +5,7 @@ from datetime import timedelta
 from uuid import uuid4
 from fastapi import HTTPException, status
 
-from app.models.domain import AppState, Card, CardMedia, Category, LeadReminder, MediaRetryJob, RawMessage, RelayConfig, RelayEntry, SyncCursor, User, ViewEvent
+from app.models.domain import AppState, Card, CardMedia, Category, LeadFollowUpLog, LeadReminder, MediaRetryJob, RawMessage, RelayConfig, RelayEntry, SyncCursor, User, ViewEvent
 from app.schemas.auth import MockLoginRequest
 from app.schemas.categories import CategoryCreateRequest
 from app.schemas.cards import CardCreateRequest, CardUpdateRequest, CreateRelayRequest, LeadReminderUpdateRequest, LeadReminderUpsertRequest, RecordViewRequest
@@ -656,6 +656,8 @@ class AppService:
             viewCount=max(0, int(payload.viewCount or 0)),
             lastViewedAt=payload.lastViewedAt,
             contactedAt=contacted_at,
+            nextFollowUpAt=payload.nextFollowUpAt,
+            followUpLogs=existing.followUpLogs if existing else [],
             createdAt=existing.createdAt if existing else now,
             updatedAt=now,
         )
@@ -676,6 +678,11 @@ class AppService:
             reminder.contactedAt = now if payload.status == "contacted" else None
         if payload.note is not None:
             reminder.note = payload.note
+        if payload.nextFollowUpAt is not None:
+            reminder.nextFollowUpAt = payload.nextFollowUpAt
+        log_content = (payload.logContent or "").strip()
+        if log_content:
+            reminder.followUpLogs.insert(0, LeadFollowUpLog(id=new_id("log"), content=log_content, createdAt=now))
         reminder.updatedAt = now
         self.repo.save_lead_reminder(reminder)
         return reminder

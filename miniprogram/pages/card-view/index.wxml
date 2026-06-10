@@ -16,9 +16,15 @@
   <view class="panel">
     <view class="detail-actions">
       <button class="primary-btn" bindtap="handleCall" wx:if="{{card.phone}}">电话直拨</button>
-      <button class="ghost-btn" bindtap="handleCopyInfo">复制信息</button>
+      <button class="copy-pill-btn" bindtap="handleCopyInfo">复制信息</button>
       <button class="ghost-btn share-action-btn" open-type="share">分享资源</button>
-      <button class="ghost-btn" wx:if="{{isOwner}}" bindtap="handleGoManager">访问详情</button>
+    </view>
+    <view class="owner-manager-entry" wx:if="{{isOwner}}" bindtap="handleGoManager">
+      <view>
+        <view class="owner-manager-title">线索管理</view>
+        <view class="owner-manager-sub">查看访问详情、高意向访客和接龙名单</view>
+      </view>
+      <view class="owner-manager-link">进入 ></view>
     </view>
     <view class="stat-grid detail-stats" wx:if="{{isOwner}}">
       <view class="stat-item">
@@ -50,7 +56,7 @@
       <field-copy-row label="位置" value="{{card.locationText}}" />
       <field-copy-row label="来源链接" value="{{card.sourceUrl}}" />
     </view>
-    <button class="ghost-btn source-btn" wx:if="{{card.sourceUrl}}" bindtap="handleCopySource">复制来源链接</button>
+    <button class="copy-pill-btn source-btn" wx:if="{{card.sourceUrl}}" bindtap="handleCopySource">复制来源链接</button>
   </view>
 
   <view class="panel" wx:if="{{detailMedia.length}}">

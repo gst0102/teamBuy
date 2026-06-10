@@ -1,1 +1,17 @@
+.copy-row-btn {
+  min-width: 104rpx;
+  min-height: 54rpx;
+  margin: 0;
+  padding: 0 22rpx;
+  line-height: 54rpx;
+  border-radius: 999rpx;
+  background: #edf5ff;
+  border: 1rpx solid rgba(22, 119, 255, 0.14);
+  color: #1677ff;
+  font-size: 23rpx;
+  font-weight: 900;
+}
 
+.copy-row-btn::after {
+  border: none;
+}

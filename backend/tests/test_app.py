@@ -726,13 +726,21 @@ def test_lead_reminder_flow_persists_status_note_and_filters(client):
 
     contacted = client.put(
         f"/api/lead-reminders/{reminder['id']}",
-        json={"ownerUserId": owner["id"], "status": "contacted", "note": "已电话联系"},
+        json={
+            "ownerUserId": owner["id"],
+            "status": "contacted",
+            "note": "已电话联系",
+            "nextFollowUpAt": "2026-06-12",
+            "logContent": "电话沟通过，想再看一次详情",
+        },
     )
     assert contacted.status_code == 200
     contacted_payload = contacted.json()["data"]
     assert contacted_payload["status"] == "contacted"
     assert contacted_payload["note"] == "已电话联系"
     assert contacted_payload["contactedAt"]
+    assert contacted_payload["nextFollowUpAt"] == "2026-06-12"
+    assert contacted_payload["followUpLogs"][0]["content"] == "电话沟通过，想再看一次详情"
 
     pending = client.get(
         "/api/lead-reminders",

@@ -40,15 +40,33 @@
       <view class="section-head">
         <view>
           <view class="section-title">{{item.nickname}}</view>
-          <view class="muted">{{item.cardTitle}} ｜ {{item.statusText}}</view>
+          <view class="muted">{{item.statusText}}</view>
         </view>
         <view class="section-link">{{item.updatedText}}</view>
       </view>
+      <view class="lead-source" data-card-id="{{item.cardId}}" bindtap="handleOpenDetail">
+        <view>
+          <view class="source-label">来源资料</view>
+          <view class="source-title">{{item.cardTitle}}</view>
+        </view>
+        <view class="source-link">查看详情 ></view>
+      </view>
       <view class="muted">查看 {{item.viewCount}} 次，最近 {{item.lastViewedText}}</view>
       <input class="field-input" data-id="{{item.id}}" value="{{item.noteValue}}" placeholder="补充备注" bindinput="handleNoteChange" />
+      <view class="follow-box">
+        <view class="follow-head">
+          <picker mode="date" data-id="{{item.id}}" value="{{item.nextFollowUpValue}}" bindchange="handleNextFollowUpChange">
+            <view class="follow-date-pill">下次跟进：{{item.nextFollowUpDisplay}}</view>
+          </picker>
+          <view class="follow-latest" wx:if="{{item.latestFollowUp}}">最近：{{item.latestFollowUp.content}}</view>
+        </view>
+        <input class="field-input follow-input" data-id="{{item.id}}" placeholder="新增跟进记录" bindinput="handleFollowUpChange" />
+      </view>
       <view class="card-actions">
-        <text data-card-id="{{item.cardId}}" bindtap="handleOpenCard">打开资源</text>
+        <text data-card-id="{{item.cardId}}" bindtap="handleOpenDetail">资源详情</text>
+        <text data-card-id="{{item.cardId}}" bindtap="handleOpenManager">线索管理</text>
         <text data-id="{{item.id}}" bindtap="handleSaveNote">保存备注</text>
+        <text data-id="{{item.id}}" bindtap="handleSaveFollowUp">保存跟进</text>
         <text wx:if="{{item.status !== 'contacted'}}" data-id="{{item.id}}" bindtap="handleMarkContacted">标记已联系</text>
         <text wx:else data-id="{{item.id}}" bindtap="handleRestorePending">恢复待联系</text>
         <text class="danger-action" data-id="{{item.id}}" bindtap="handleDelete">清除</text>

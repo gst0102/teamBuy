@@ -128,6 +128,12 @@ class RelayEntry(BaseModel):
     updatedAt: str
 
 
+class LeadFollowUpLog(BaseModel):
+    id: str
+    content: str
+    createdAt: str
+
+
 class LeadReminder(BaseModel):
     id: str
     ownerUserId: str
@@ -140,6 +146,8 @@ class LeadReminder(BaseModel):
     viewCount: int = 0
     lastViewedAt: str | None = None
     contactedAt: str | None = None
+    nextFollowUpAt: str | None = None
+    followUpLogs: list[LeadFollowUpLog] = Field(default_factory=list)
     createdAt: str
     updatedAt: str
 

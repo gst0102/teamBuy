@@ -84,9 +84,12 @@ class LeadReminderUpsertRequest(BaseModel):
     note: str | None = None
     viewCount: int = 0
     lastViewedAt: str | None = None
+    nextFollowUpAt: str | None = None
 
 
 class LeadReminderUpdateRequest(BaseModel):
     ownerUserId: str
     status: str | None = None
     note: str | None = None
+    nextFollowUpAt: str | None = None
+    logContent: str | None = None

@@ -7,6 +7,11 @@ function filterLeads(leads, filter) {
   return leads;
 }
 
+function formatDate(value) {
+  if (!value) return "设置下次跟进";
+  return String(value).slice(0, 10);
+}
+
 Page({
   data: {
     leads: [],
@@ -18,6 +23,8 @@ Page({
       { key: "all", label: "全部" }
     ],
     notes: {},
+    followUps: {},
+    nextFollowUpDates: {},
     summary: {
       pending: 0,
       contacted: 0,
@@ -40,6 +47,9 @@ Page({
         ...item,
         statusText: item.status === "contacted" ? "已联系" : "待联系",
         noteValue: item.note || "",
+        nextFollowUpValue: item.nextFollowUpAt ? String(item.nextFollowUpAt).slice(0, 10) : "",
+        nextFollowUpDisplay: formatDate(item.nextFollowUpAt),
+        latestFollowUp: (item.followUpLogs || [])[0] || null,
         updatedText: formatTime(item.updatedAt),
         lastViewedText: formatTime(item.lastViewedAt)
       }));
@@ -47,9 +57,15 @@ Page({
         memo[item.id] = item.note || "";
         return memo;
       }, {});
+      const nextFollowUpDates = leads.reduce((memo, item) => {
+        memo[item.id] = item.nextFollowUpAt ? String(item.nextFollowUpAt).slice(0, 10) : "";
+        return memo;
+      }, {});
       this.setData({
         leads,
         notes,
+        followUps: {},
+        nextFollowUpDates,
         filteredLeads: filterLeads(leads, this.data.activeFilter),
         summary: {
           pending: leads.filter((item) => item.status === "pending").length,
@@ -72,6 +88,22 @@ Page({
     const id = event.currentTarget.dataset.id;
     this.setData({ [`notes.${id}`]: event.detail.value });
   },
+  handleFollowUpChange(event) {
+    const id = event.currentTarget.dataset.id;
+    this.setData({ [`followUps.${id}`]: event.detail.value });
+  },
+  handleNextFollowUpChange(event) {
+    const id = event.currentTarget.dataset.id;
+    const value = event.detail.value;
+    const leads = this.data.leads.map((item) => (
+      item.id === id ? { ...item, nextFollowUpValue: value, nextFollowUpDisplay: value } : item
+    ));
+    this.setData({
+      leads,
+      filteredLeads: filterLeads(leads, this.data.activeFilter),
+      [`nextFollowUpDates.${id}`]: value
+    });
+  },
   async handleSaveNote(event) {
     const currentUser = getCurrentUser();
     const id = event.currentTarget.dataset.id;
@@ -81,6 +113,27 @@ Page({
         note: (this.data.notes || {})[id] || ""
       });
       wx.showToast({ title: "备注已保存", icon: "success" });
+      this.loadLeads();
+    } catch (error) {
+      wx.showToast({ title: error.detail || "保存失败", icon: "none" });
+    }
+  },
+  async handleSaveFollowUp(event) {
+    const currentUser = getCurrentUser();
+    const id = event.currentTarget.dataset.id;
+    const logContent = ((this.data.followUps || {})[id] || "").trim();
+    const nextFollowUpAt = (this.data.nextFollowUpDates || {})[id] || "";
+    if (!logContent && !nextFollowUpAt) {
+      wx.showToast({ title: "请填写跟进记录或时间", icon: "none" });
+      return;
+    }
+    try {
+      await api.updateLeadReminder(id, {
+        ownerUserId: currentUser.id,
+        nextFollowUpAt,
+        logContent
+      });
+      wx.showToast({ title: "跟进已保存", icon: "success" });
       this.loadLeads();
     } catch (error) {
       wx.showToast({ title: error.detail || "保存失败", icon: "none" });
@@ -123,7 +176,10 @@ Page({
       wx.showToast({ title: error.detail || "清除失败", icon: "none" });
     }
   },
-  handleOpenCard(event) {
+  handleOpenDetail(event) {
+    wx.navigateTo({ url: `/pages/card-view/index?id=${event.currentTarget.dataset.cardId}` });
+  },
+  handleOpenManager(event) {
     wx.navigateTo({ url: `/pages/manager/index?id=${event.currentTarget.dataset.cardId}` });
   }
 });
