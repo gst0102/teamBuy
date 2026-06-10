@@ -5,10 +5,10 @@ from datetime import timedelta
 from uuid import uuid4
 from fastapi import HTTPException, status
 
-from app.models.domain import AppState, Card, CardMedia, Category, MediaRetryJob, RawMessage, RelayConfig, RelayEntry, SyncCursor, User, ViewEvent
+from app.models.domain import AppState, Card, CardMedia, Category, LeadReminder, MediaRetryJob, RawMessage, RelayConfig, RelayEntry, SyncCursor, User, ViewEvent
 from app.schemas.auth import MockLoginRequest
 from app.schemas.categories import CategoryCreateRequest
-from app.schemas.cards import CardCreateRequest, CardUpdateRequest, CreateRelayRequest, RecordViewRequest
+from app.schemas.cards import CardCreateRequest, CardUpdateRequest, CreateRelayRequest, LeadReminderUpdateRequest, LeadReminderUpsertRequest, RecordViewRequest
 from app.services.card_parser_service import CardParserService
 from app.services.helpers import mask_nickname, new_id
 from app.services.import_notification_service import ImportNotificationService
@@ -616,6 +616,78 @@ class AppService:
         relay.updatedAt = now_iso()
         self.repo.save_relay_entry(relay)
         return relay
+
+    def list_lead_reminders(self, owner_user_id: str, reminder_status: str | None = None) -> list[dict]:
+        reminders = self.repo.list_lead_reminders(owner_user_id, reminder_status)
+        rows = []
+        for item in reminders:
+            row = item.model_dump()
+            card = self.repo.get_card(item.cardId)
+            row["cardTitle"] = card.title if card else "资源已删除"
+            row["cardStatus"] = card.status if card else "archived"
+            rows.append(row)
+        return rows
+
+    def upsert_lead_reminder(self, payload: LeadReminderUpsertRequest) -> LeadReminder:
+        card = self.repo.get_card(payload.cardId)
+        if not card:
+            raise HTTPException(status_code=404, detail="资源不存在")
+        if card.ownerUserId != payload.ownerUserId:
+            raise HTTPException(status_code=403, detail="仅发布者可管理线索")
+        if payload.status not in {"pending", "contacted"}:
+            raise HTTPException(status_code=400, detail="线索状态无效")
+
+        now = now_iso()
+        existing = self.repo.get_lead_reminder_by_card_viewer(payload.cardId, payload.viewerUserId)
+        contacted_at = existing.contactedAt if existing else None
+        if payload.status == "contacted" and not contacted_at:
+            contacted_at = now
+        if payload.status == "pending":
+            contacted_at = None
+        reminder = LeadReminder(
+            id=existing.id if existing else new_id("lead"),
+            ownerUserId=payload.ownerUserId,
+            cardId=payload.cardId,
+            viewerUserId=payload.viewerUserId,
+            nickname=payload.nickname,
+            avatarUrl=payload.avatarUrl,
+            status=payload.status,
+            note=payload.note,
+            viewCount=max(0, int(payload.viewCount or 0)),
+            lastViewedAt=payload.lastViewedAt,
+            contactedAt=contacted_at,
+            createdAt=existing.createdAt if existing else now,
+            updatedAt=now,
+        )
+        self.repo.save_lead_reminder(reminder)
+        return reminder
+
+    def update_lead_reminder(self, reminder_id: str, payload: LeadReminderUpdateRequest) -> LeadReminder:
+        reminder = self.repo.get_lead_reminder(reminder_id)
+        if not reminder:
+            raise HTTPException(status_code=404, detail="线索不存在")
+        if reminder.ownerUserId != payload.ownerUserId:
+            raise HTTPException(status_code=403, detail="仅发布者可管理线索")
+        if payload.status is not None and payload.status not in {"pending", "contacted"}:
+            raise HTTPException(status_code=400, detail="线索状态无效")
+        now = now_iso()
+        if payload.status is not None:
+            reminder.status = payload.status
+            reminder.contactedAt = now if payload.status == "contacted" else None
+        if payload.note is not None:
+            reminder.note = payload.note
+        reminder.updatedAt = now
+        self.repo.save_lead_reminder(reminder)
+        return reminder
+
+    def delete_lead_reminder(self, reminder_id: str, owner_user_id: str) -> dict:
+        reminder = self.repo.get_lead_reminder(reminder_id)
+        if not reminder:
+            raise HTTPException(status_code=404, detail="线索不存在")
+        if reminder.ownerUserId != owner_user_id:
+            raise HTTPException(status_code=403, detail="仅发布者可管理线索")
+        self.repo.delete_lead_reminder(reminder_id)
+        return {"deletedLeadReminderId": reminder_id}
 
     def _build_card_stats(self, card_id: str) -> dict:
         events = self.repo.list_view_events_for_card(card_id)

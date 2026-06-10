@@ -34,7 +34,7 @@ class MockMediaStorageBackend:
         return self.build_fallback_url(media_id, media_type)
 
     def build_fallback_url(self, media_id: str, media_type: str = "image") -> str:
-        extension = "mp4" if media_type == "video" else "jpg"
+        extension = "mp4" if media_type == "video" else "webp"
         return f"/mock-media/{new_id('media')}-{media_id}.{extension}"
 
 
@@ -216,8 +216,8 @@ def resolve_extension(media_type: str, content_type: str | None, filename: str |
             return "jpg"
         if subtype in {"png", "gif", "webp", "mp4", "mov"}:
             return subtype
-    return "mp4" if media_type == "video" else "jpg"
+    return "mp4" if media_type == "video" else "webp"
 
 
 def default_content_type(media_type: str) -> str:
-    return "video/mp4" if media_type == "video" else "image/jpeg"
+    return "video/mp4" if media_type == "video" else "image/webp"

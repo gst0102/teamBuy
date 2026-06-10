@@ -72,3 +72,21 @@ class CreateRelayRequest(BaseModel):
 
 class FollowUpRelayRequest(BaseModel):
     operatorUserId: str
+
+
+class LeadReminderUpsertRequest(BaseModel):
+    ownerUserId: str
+    cardId: str
+    viewerUserId: str
+    nickname: str
+    avatarUrl: str | None = None
+    status: str = "pending"
+    note: str | None = None
+    viewCount: int = 0
+    lastViewedAt: str | None = None
+
+
+class LeadReminderUpdateRequest(BaseModel):
+    ownerUserId: str
+    status: str | None = None
+    note: str | None = None

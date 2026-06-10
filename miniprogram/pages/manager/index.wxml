@@ -85,6 +85,7 @@
           </view>
           <view class="muted">查看 {{item.viewCount}} 次，最近 {{item.viewedText}}</view>
           <view wx:if="{{item.isHighIntent}}" class="viewer-actions">
+            <input class="viewer-note-input" data-user-id="{{item.userId}}" value="{{item.leadNoteValue}}" placeholder="备注：如预算、意向、约看时间" bindinput="handleLeadNoteChange" />
             <button class="viewer-action" size="mini" data-nickname="{{item.nickname}}" bindtap="handleCopyViewerNickname">复制昵称</button>
             <block wx:if="{{!item.reminderStatus}}">
               <button class="viewer-action primary" size="mini" data-user-id="{{item.userId}}" bindtap="handleAddViewerReminder">加入待联系</button>

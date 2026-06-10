@@ -194,6 +194,19 @@
   margin-top: 14rpx;
 }
 
+.viewer-note-input {
+  width: 100%;
+  min-height: 64rpx;
+  box-sizing: border-box;
+  margin-top: 14rpx;
+  padding: 0 20rpx;
+  border-radius: 18rpx;
+  background: #ffffff;
+  border: 1rpx solid #edf2f8;
+  color: #172033;
+  font-size: 24rpx;
+}
+
 .viewer-action {
   margin: 0;
   padding: 0 18rpx;

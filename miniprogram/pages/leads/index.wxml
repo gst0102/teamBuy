@@ -1,0 +1,60 @@
+<view class="page-shell">
+  <custom-nav showBack="{{true}}" />
+
+  <view class="manager-hero">
+    <view>
+      <view class="hero-title">待联系</view>
+      <view class="hero-subtitle">集中处理跨资源的高意向访客。</view>
+    </view>
+    <view class="manager-visual">线索</view>
+  </view>
+
+  <view class="panel">
+    <view class="stat-grid">
+      <view class="stat-item">
+        <view class="stat-icon orange">待</view>
+        <text class="stat-value">{{summary.pending}}</text>
+        <text class="stat-label">待联系</text>
+      </view>
+      <view class="stat-item">
+        <view class="stat-icon green">已</view>
+        <text class="stat-value">{{summary.contacted}}</text>
+        <text class="stat-label">已联系</text>
+      </view>
+      <view class="stat-item">
+        <view class="stat-icon blue">全</view>
+        <text class="stat-value">{{summary.total}}</text>
+        <text class="stat-label">全部线索</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="viewer-filter-row">
+    <block wx:for="{{filters}}" wx:key="key">
+      <view class="viewer-filter {{activeFilter === item.key ? 'active' : ''}}" data-filter="{{item.key}}" bindtap="handleFilterChange">{{item.label}}</view>
+    </block>
+  </view>
+
+  <block wx:for="{{filteredLeads}}" wx:key="id">
+    <view class="panel lead-card">
+      <view class="section-head">
+        <view>
+          <view class="section-title">{{item.nickname}}</view>
+          <view class="muted">{{item.cardTitle}} ｜ {{item.statusText}}</view>
+        </view>
+        <view class="section-link">{{item.updatedText}}</view>
+      </view>
+      <view class="muted">查看 {{item.viewCount}} 次，最近 {{item.lastViewedText}}</view>
+      <input class="field-input" data-id="{{item.id}}" value="{{item.noteValue}}" placeholder="补充备注" bindinput="handleNoteChange" />
+      <view class="card-actions">
+        <text data-card-id="{{item.cardId}}" bindtap="handleOpenCard">打开资源</text>
+        <text data-id="{{item.id}}" bindtap="handleSaveNote">保存备注</text>
+        <text wx:if="{{item.status !== 'contacted'}}" data-id="{{item.id}}" bindtap="handleMarkContacted">标记已联系</text>
+        <text wx:else data-id="{{item.id}}" bindtap="handleRestorePending">恢复待联系</text>
+        <text class="danger-action" data-id="{{item.id}}" bindtap="handleDelete">清除</text>
+      </view>
+    </view>
+  </block>
+
+  <view class="empty-state" wx:if="{{!filteredLeads.length}}">暂无对应线索。</view>
+</view>

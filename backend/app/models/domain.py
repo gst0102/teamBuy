@@ -10,6 +10,7 @@ CardStatus = Literal["draft", "published", "archived"]
 ViewType = Literal["logged_in", "anonymous"]
 RelayStatus = Literal["active", "deleted"]
 FollowUpStatus = Literal["pending", "followed"]
+LeadReminderStatus = Literal["pending", "contacted"]
 MessageType = Literal["text", "image", "link", "location", "video", "file", "unknown"]
 SourceType = Literal["wechat_note", "miniapp_link", "mp_link", "web_link", "unknown"]
 SyncStatus = Literal["idle", "running", "success", "failed"]
@@ -127,6 +128,22 @@ class RelayEntry(BaseModel):
     updatedAt: str
 
 
+class LeadReminder(BaseModel):
+    id: str
+    ownerUserId: str
+    cardId: str
+    viewerUserId: str
+    nickname: str
+    avatarUrl: str | None = None
+    status: LeadReminderStatus
+    note: str | None = None
+    viewCount: int = 0
+    lastViewedAt: str | None = None
+    contactedAt: str | None = None
+    createdAt: str
+    updatedAt: str
+
+
 class Category(BaseModel):
     id: str
     ownerUserId: str
@@ -210,6 +227,7 @@ class AppState(BaseModel):
     cards: list[Card] = Field(default_factory=list)
     view_events: list[ViewEvent] = Field(default_factory=list)
     relay_entries: list[RelayEntry] = Field(default_factory=list)
+    lead_reminders: list[LeadReminder] = Field(default_factory=list)
     categories: list[Category] = Field(default_factory=list)
     import_notifications: list[ImportNotification] = Field(default_factory=list)
     sync_cursors: list[SyncCursor] = Field(default_factory=list)

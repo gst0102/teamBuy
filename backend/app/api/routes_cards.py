@@ -11,6 +11,8 @@ from app.schemas.cards import (
     CreateRelayRequest,
     DuplicateCardRequest,
     FollowUpRelayRequest,
+    LeadReminderUpdateRequest,
+    LeadReminderUpsertRequest,
     PublishCardRequest,
     RecordViewRequest,
 )
@@ -153,3 +155,35 @@ def delete_relay(relay_id: str, operatorUserId: str = Query(...), service: AppSe
 @router.post("/relays/{relay_id}/follow-up", response_model=ApiResponse[dict])
 def mark_followed(relay_id: str, payload: FollowUpRelayRequest, service: AppService = Depends(get_app_service)):
     return ApiResponse(data=service.mark_followed(relay_id, payload.operatorUserId).model_dump())
+
+
+@router.get("/lead-reminders", response_model=ApiResponse[list[dict]])
+def list_lead_reminders(
+    ownerUserId: str = Query(...),
+    status: str | None = Query(default=None),
+    service: AppService = Depends(get_app_service),
+):
+    return ApiResponse(data=service.list_lead_reminders(ownerUserId, status))
+
+
+@router.post("/lead-reminders", response_model=ApiResponse[dict])
+def upsert_lead_reminder(payload: LeadReminderUpsertRequest, service: AppService = Depends(get_app_service)):
+    return ApiResponse(data=service.upsert_lead_reminder(payload).model_dump())
+
+
+@router.put("/lead-reminders/{reminder_id}", response_model=ApiResponse[dict])
+def update_lead_reminder(
+    reminder_id: str,
+    payload: LeadReminderUpdateRequest,
+    service: AppService = Depends(get_app_service),
+):
+    return ApiResponse(data=service.update_lead_reminder(reminder_id, payload).model_dump())
+
+
+@router.delete("/lead-reminders/{reminder_id}", response_model=ApiResponse[dict])
+def delete_lead_reminder(
+    reminder_id: str,
+    ownerUserId: str = Query(...),
+    service: AppService = Depends(get_app_service),
+):
+    return ApiResponse(data=service.delete_lead_reminder(reminder_id, ownerUserId))

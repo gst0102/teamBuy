@@ -258,6 +258,37 @@ function fetchImportNotifications() {
   });
 }
 
+function fetchLeadReminders(ownerUserId, status = "") {
+  const query = [`ownerUserId=${ownerUserId}`];
+  if (status) query.push(`status=${status}`);
+  return request({
+    url: `/api/lead-reminders?${query.join("&")}`
+  });
+}
+
+function upsertLeadReminder(payload) {
+  return request({
+    url: "/api/lead-reminders",
+    method: "POST",
+    data: payload
+  });
+}
+
+function updateLeadReminder(reminderId, payload) {
+  return request({
+    url: `/api/lead-reminders/${reminderId}`,
+    method: "PUT",
+    data: payload
+  });
+}
+
+function deleteLeadReminder(reminderId, ownerUserId) {
+  return request({
+    url: `/api/lead-reminders/${reminderId}?ownerUserId=${ownerUserId}`,
+    method: "DELETE"
+  });
+}
+
 module.exports = {
   mockLogin,
   fetchPendingImports,
@@ -280,5 +311,9 @@ module.exports = {
   deleteRelay,
   followRelay,
   triggerMockImport,
-  fetchImportNotifications
+  fetchImportNotifications,
+  fetchLeadReminders,
+  upsertLeadReminder,
+  updateLeadReminder,
+  deleteLeadReminder
 };

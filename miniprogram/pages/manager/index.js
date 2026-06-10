@@ -24,32 +24,16 @@ function viewerEmptyText(filter) {
   return "暂无登录访客，匿名访问只计入总量。";
 }
 
-function viewerReminderKey(cardId) {
-  return `viewerReminders_${cardId}`;
-}
-
-function normalizeViewerReminderMap(value) {
-  if (Array.isArray(value)) {
-    return value.reduce((memo, userId) => {
-      if (userId) memo[userId] = "pending";
-      return memo;
-    }, {});
-  }
-  if (!value || typeof value !== "object") return {};
-  return Object.keys(value).reduce((memo, userId) => {
-    if (value[userId] === "pending" || value[userId] === "contacted") {
-      memo[userId] = value[userId];
-    }
-    return memo;
-  }, {});
-}
-
 function applyViewerReminders(viewers, reminderMap) {
   return viewers.map((item) => ({
     ...item,
-    reminderStatus: reminderMap[item.userId] || "",
-    isReminded: reminderMap[item.userId] === "pending",
-    isContacted: reminderMap[item.userId] === "contacted"
+    reminder: reminderMap[item.userId] || null,
+    reminderId: reminderMap[item.userId] ? reminderMap[item.userId].id : "",
+    reminderStatus: reminderMap[item.userId] ? reminderMap[item.userId].status : "",
+    reminderNote: reminderMap[item.userId] ? reminderMap[item.userId].note || "" : "",
+    leadNoteValue: reminderMap[item.userId] ? reminderMap[item.userId].note || "" : "",
+    isReminded: reminderMap[item.userId] && reminderMap[item.userId].status === "pending",
+    isContacted: reminderMap[item.userId] && reminderMap[item.userId].status === "contacted"
   }));
 }
 
@@ -66,6 +50,7 @@ Page({
     highIntentViewers: [],
     filteredViewers: [],
     viewerReminderMap: {},
+    leadNotes: {},
     relayFilter: "pending",
     relayFilterEmptyText: "暂无待跟进线索。",
     viewerFilter: "intent",
@@ -86,9 +71,10 @@ Page({
   },
   async loadAll() {
     const currentUser = getApp().globalData.currentUser;
-    const [cardRes, statsRes] = await Promise.all([
+    const [cardRes, statsRes, reminderRes] = await Promise.all([
       resourceStore.getCard(this.data.cardId, { force: true }),
-      api.fetchStats(this.data.cardId, currentUser.id)
+      api.fetchStats(this.data.cardId, currentUser.id),
+      api.fetchLeadReminders(currentUser.id)
     ]);
     const relays = (statsRes.data.relayEntries || []).map((item) => ({
       ...item,
@@ -100,7 +86,12 @@ Page({
     const followedRelays = relays.filter((item) => item.followUpStatus === "followed");
     const relayFilter = this.data.relayFilter || "pending";
     const relayUserIds = new Set(relays.map((item) => item.userId).filter(Boolean));
-    const reminderMap = normalizeViewerReminderMap(wx.getStorageSync(viewerReminderKey(this.data.cardId)));
+    const reminderMap = (reminderRes.data || [])
+      .filter((item) => item.cardId === this.data.cardId)
+      .reduce((memo, item) => {
+        memo[item.viewerUserId] = item;
+        return memo;
+      }, {});
     const viewers = applyViewerReminders((statsRes.data.loggedInViewers || []).map((item) => ({
       ...item,
       viewCount: Number(item.viewCount || 1),
@@ -126,6 +117,10 @@ Page({
       highIntentViewers,
       filteredViewers: filterViewers(viewers, viewerFilter),
       viewerReminderMap: reminderMap,
+      leadNotes: viewers.reduce((memo, item) => {
+        memo[item.userId] = item.reminderNote || "";
+        return memo;
+      }, {}),
       viewerFilterEmptyText: viewerEmptyText(viewerFilter),
       summary: {
         loggedViewers: viewers.length,
@@ -163,32 +158,74 @@ Page({
   handleAddViewerReminder(event) {
     const userId = event.currentTarget.dataset.userId;
     if (!userId) return;
-    this.updateViewerReminder(userId, "pending", "已加入待联系");
+    this.saveViewerReminder(userId, "pending", "已加入待联系");
   },
   handleMarkViewerContacted(event) {
     const userId = event.currentTarget.dataset.userId;
     if (!userId) return;
-    this.updateViewerReminder(userId, "contacted", "已标记联系");
+    this.saveViewerReminder(userId, "contacted", "已标记联系");
   },
   handleCancelViewerReminder(event) {
     const userId = event.currentTarget.dataset.userId;
     if (!userId) return;
-    this.updateViewerReminder(userId, "", "已取消待联系");
+    this.deleteViewerReminder(userId, "已清除");
   },
-  updateViewerReminder(userId, status, toastTitle) {
-    const nextMap = { ...(this.data.viewerReminderMap || {}) };
-    if (status) {
-      nextMap[userId] = status;
-    } else {
-      delete nextMap[userId];
+  handleLeadNoteChange(event) {
+    const userId = event.currentTarget.dataset.userId;
+    this.setData({
+      [`leadNotes.${userId}`]: event.detail.value
+    });
+  },
+  async saveViewerReminder(userId, status, toastTitle) {
+    const currentUser = getApp().globalData.currentUser;
+    const viewer = (this.data.viewers || []).find((item) => item.userId === userId);
+    if (!currentUser || !viewer) return;
+    try {
+      const res = await api.upsertLeadReminder({
+        ownerUserId: currentUser.id,
+        cardId: this.data.cardId,
+        viewerUserId: userId,
+        nickname: viewer.nickname,
+        avatarUrl: viewer.avatarUrl,
+        status,
+        note: (this.data.leadNotes || {})[userId] || viewer.reminderNote || "",
+        viewCount: viewer.viewCount,
+        lastViewedAt: viewer.viewedAt
+      });
+      this.applyReminderChange(res.data, toastTitle);
+    } catch (error) {
+      wx.showToast({ title: error.detail || "线索保存失败", icon: "none" });
     }
-    wx.setStorageSync(viewerReminderKey(this.data.cardId), nextMap);
+  },
+  async deleteViewerReminder(userId, toastTitle) {
+    const reminder = (this.data.viewerReminderMap || {})[userId];
+    const currentUser = getApp().globalData.currentUser;
+    if (!reminder || !currentUser) return;
+    try {
+      await api.deleteLeadReminder(reminder.id, currentUser.id);
+      this.applyReminderChange(null, toastTitle, userId);
+    } catch (error) {
+      wx.showToast({ title: error.detail || "线索清除失败", icon: "none" });
+    }
+  },
+  applyReminderChange(reminder, toastTitle, deletedUserId = "") {
+    const nextMap = { ...(this.data.viewerReminderMap || {}) };
+    if (reminder && reminder.viewerUserId) {
+      nextMap[reminder.viewerUserId] = reminder;
+    }
+    if (deletedUserId) {
+      delete nextMap[deletedUserId];
+    }
     const viewers = applyViewerReminders(this.data.viewers || [], nextMap);
     this.setData({
       viewerReminderMap: nextMap,
       viewers,
       highIntentViewers: viewers.filter((item) => item.isHighIntent),
       filteredViewers: filterViewers(viewers, this.data.viewerFilter),
+      leadNotes: viewers.reduce((memo, item) => {
+        memo[item.userId] = item.reminderNote || (this.data.leadNotes || {})[item.userId] || "";
+        return memo;
+      }, {}),
       summary: {
         ...this.data.summary,
         highIntentViewers: viewers.filter((item) => item.isHighIntent).length

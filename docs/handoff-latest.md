@@ -3,8 +3,8 @@
 更新时间：2026-06-10  
 工作目录：`d:\Desktop\myprojects\teamBuy`  
 当前分支：`main`  
-当前最新提交：`fix: align miniapp resource entry flow`  
-本地状态：`main` 领先 `origin/main` 25 个提交，尚未推送。本轮素材压缩和资源 store/cache 改动尚未提交。
+当前最新提交：`feat: persist lead reminders and webp media`  
+本地状态：`main` 领先 `origin/main` 多个提交，尚未推送。本轮线索持久化第二阶段和 WebP 压缩改动准备提交。
 
 上一轮已提交修复：
 - `relay-list` 组件已增加接龙时间和跟进状态兜底格式化，资源详情页不再直接显示 ISO 时间或 `pending`。
@@ -14,12 +14,14 @@
 - 小程序可见页面已移除“发给客服 / 立即发给客服 / 去发给客服”和可见 mock 导入按钮。
 - 已验证：小程序 JS 静态检查通过，小程序 JSON 解析通过，`pytest backend\tests\test_app.py -q` 34 项通过。
 
-本轮待提交改动：
-- 后端上传接口和企微媒体转存已接入媒体处理服务，图片转 JPEG 压缩，视频通过 ffmpeg 转 H.264/AAC MP4。
+本轮改动：
+- 后端上传接口和企微媒体转存已接入媒体处理服务，图片通过 ffmpeg 转 WebP，视频通过 ffmpeg 转 H.264/AAC MP4。
 - 上传响应新增 `originalSize`、`storedSize`、`compressed`。
 - 小程序新增原生 `resource-store`，承担 Pinia 类似的资源集中管理职责。
 - 小程序新增媒体缓存工具，页面展示使用 `coverDisplayUrl` / `media[].displayUrl`，保存仍提交正式 URL。
-- 已验证：`python -m compileall backend\app backend\tests` 通过，`pytest backend\tests -q` 59 项通过，小程序 JS/JSON 检查通过。
+- 高意向访客待联系 / 已联系 / 备注已从小程序本地 storage 升级到后端 `lead_reminders`。
+- 新增统一“待联系”页面 `pages/leads/index`，可跨资源处理待联系线索。
+- 已验证：`python -m compileall backend\app backend\tests` 通过，`pytest backend\tests -q` 60 项通过，小程序 JS/JSON 检查通过。
 
 ## 1. 项目背景与目标
 
@@ -70,8 +72,9 @@ teamBuy 是一个面向微信私域场景的小程序工具。当前产品名和
 - 资源分类标签接口。
 - 卡片 `media` 字段，支持图片/视频结构化保存。
 - 手动上传资源文件接口 `POST /api/uploads/asset`，当前用于小程序本地上传图片/视频。
-- 手动上传图片/视频会先压缩再存储，默认不保存原始大文件。
+- 手动上传图片/视频会先压缩再存储，图片为 WebP，视频为 H.264/AAC MP4，默认不保存原始大文件。
 - 删除资源时同步清理该资源的访问记录和接龙线索。
+- 删除资源时同步清理该资源的访问记录、接龙线索和待联系提醒。
 - 登录访客统计增强：
   - 同一登录用户重复访问聚合为一条记录。
   - 返回 `viewCount`。
@@ -186,12 +189,20 @@ teamBuy 是一个面向微信私域场景的小程序工具。当前产品名和
   - 标记已联系
   - 取消待联系
   - 已联系后清除记录
-- 待联系提醒当前为小程序本地轻量状态：
-  - key 为 `viewerReminders_{cardId}`
-  - 存储格式为 `{ userId: "pending" | "contacted" }`
-  - 旧版用户 ID 数组会兼容为 `pending`
-  - 刷新管理页后保持待联系或已联系状态
-  - 不跨设备、不团队共享
+- 待联系提醒已升级为后端持久化：
+  - 数据模型为 `LeadReminder` / `lead_reminders`
+  - 支持 `pending` / `contacted`
+  - 支持备注 `note`
+  - 同一资源同一访客只保留一条提醒
+  - 用户换手机后仍可读取自己的待联系线索
+
+### 3.9 统一待联系页
+
+- 新增小程序 `pages/leads/index`。
+- 我的页新增“待联系线索”入口。
+- 页面支持待联系、已联系、全部筛选。
+- 支持保存备注、标记已联系、恢复待联系、清除线索。
+- 支持从线索打开对应资源管理页。
 
 ### 3.8 已通过的自动化检查
 
@@ -200,7 +211,8 @@ teamBuy 是一个面向微信私域场景的小程序工具。当前产品名和
 ```text
 小程序所有 .js：node --check 通过
 小程序所有 .json：JSON 解析通过
-backend/tests/test_app.py：34 passed
+python -m compileall backend\app backend\tests：通过
+pytest backend\tests -q：60 passed
 ```
 
 注意：这些只代表本地逻辑和静态检查通过，不等于微信开发者工具或真实企业微信链路验收通过。
@@ -215,6 +227,8 @@ backend/tests/test_app.py：34 passed
 - `backend/app/schemas/cards.py`
 - `backend/app/models/domain.py`
 - `backend/tests/test_app.py`
+- `backend/tests/test_media_processing_service.py`
+- `backend/tests/test_media_storage_service.py`
 - `backend/core/schema.sql` 相关迁移/表结构文件已在历史提交中维护
 
 ### 4.2 主要小程序文件
@@ -238,6 +252,7 @@ backend/tests/test_app.py：34 passed
 - `miniprogram/pages/card-edit/*`
 - `miniprogram/pages/card-view/*`
 - `miniprogram/pages/manager/*`
+- `miniprogram/pages/leads/*`
 - `miniprogram/pages/visits/*`
 - `miniprogram/pages/profile/*`
 - `miniprogram/pages/login/*`
@@ -273,7 +288,7 @@ backend/tests/test_app.py：34 passed
 当前 `git status --short --branch`：
 
 ```text
-## main...origin/main [ahead 24]
+## main...origin/main [ahead 27]
  M backend/mock/runtime-state.json
 ?? docs/png/
 ?? docs/qa/当前项目_验收报告m1.md
@@ -284,10 +299,10 @@ backend/tests/test_app.py：34 passed
 最新提交：
 
 ```text
-feat: manage visitor follow-up reminder states
+feat: persist lead reminders and webp media
 ```
 
-本地 `main` 已领先远端 `origin/main` 24 个提交，尚未推送。
+本地 `main` 已领先远端 `origin/main` 27 个提交，尚未推送。本轮未纳入 `backend/mock/runtime-state.json`、`docs/png/`、`docs/qa/当前项目_验收报告m1.md`、微信开发者工具本地配置。
 
 最近关键提交包括：
 
@@ -347,16 +362,16 @@ from ip=81.70.84.35
 - 接龙提交。
 - 发布者和普通客户身份切换后的权限差异。
 
-### 6.4 本地待联系提醒不是团队协作能力
+### 6.4 待联系提醒仍不是完整团队协作能力
 
-高意向访客“加入待联系 / 标记已联系 / 取消待联系”目前只保存在小程序本地 storage：
+高意向访客“加入待联系 / 标记已联系 / 取消待联系 / 备注”已升级为后端持久化，但当前仍是发布者个人待办：
 
-- 不跨设备。
-- 不多人共享。
-- 清理缓存后会丢失。
-- 当前只表示发布者个人的本地处理状态，不等同于后端团队待办。
+- 暂不支持多人分配。
+- 暂不支持跟进提醒通知。
+- 暂不支持跟进历史时间线。
+- 暂不支持客户手机号自动沉淀为 CRM 客户档案。
 
-如果后续要做长期跟进或团队协作，需要新增后端待办/备注模型。
+如果后续要做团队协作，需要在当前 `lead_reminders` 之上继续增加负责人、提醒时间、跟进记录和权限模型。
 
 ### 6.5 隐私与权限风险
 
@@ -407,7 +422,7 @@ rm -rf
 - 发布者标记已跟进后，客户侧应看到“发布者已跟进”。
 - 管理页线索优先处理待跟进，支持按状态筛选。
 - 高意向访客规则当前为“重复访问且未接龙”。
-- 高意向访客转待联系先做本地轻量提醒，不做后端协作模型。
+- 高意向访客待联系 / 已联系 / 备注已做后端持久化。
 - 待联系提醒需要支持取消和标记已联系，避免本地提醒越积越多。
 
 ## 8. 下一步建议执行顺序
@@ -439,9 +454,9 @@ rm -rf
    - 待联系提醒的加入、标记已联系、取消待联系、清除记录。
 
 4. 如果继续开发产品体验，优先做：
-   - 把本地待联系升级为后端持久化备注/待办。
-   - 增加统一“待联系”列表，跨资源集中处理线索。
-   - 或继续补资源库/管理页的真实小程序人工验收问题。
+   - 给待联系线索增加跟进时间线和下次提醒时间。
+   - 给线索增加手机号/微信号等客户字段，但注意普通客户侧隐私。
+   - 继续补资源库/管理页的真实小程序人工验收问题。
 
 5. 如果回到核心 P0 主链路，优先做：
    - 等用户解决企业微信认证/权限问题后，继续排查 `sync_msg 48002 api forbidden`。

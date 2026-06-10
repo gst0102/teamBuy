@@ -17,7 +17,7 @@ def test_media_storage_mock_backend_returns_placeholder_url():
     url = service.store_bytes("media_001", "image", b"image")
 
     assert url.startswith("/mock-media/")
-    assert url.endswith("-media_001.jpg")
+    assert url.endswith("-media_001.webp")
 
 
 def test_media_storage_local_backend_writes_file(tmp_path):

@@ -673,13 +673,84 @@ def test_manual_image_upload_compresses_before_storage(client, tmp_path):
     assert response.status_code == 200
     payload = response.json()["data"]
     assert payload["mediaType"] == "image"
-    assert payload["contentType"] == "image/jpeg"
+    assert payload["contentType"] == "image/webp"
     assert payload["compressed"] is True
     assert payload["storedSize"] < payload["originalSize"]
     stored_files = list(media_dir.iterdir())
     assert len(stored_files) == 1
     with Image.open(stored_files[0]) as stored:
-      assert max(stored.size) <= 640
+        assert stored.format == "WEBP"
+        assert max(stored.size) <= 640
+
+
+def test_lead_reminder_flow_persists_status_note_and_filters(client):
+    owner = client.post("/api/auth/mock-login", json={"nickname": "线索团长"}).json()["data"]
+    other = client.post("/api/auth/mock-login", json={"nickname": "其他用户"}).json()["data"]
+    card = client.post(
+        "/api/cards",
+        json={
+            "ownerUserId": owner["id"],
+            "title": "高意向资源",
+            "detailText": "线索持久化测试",
+        },
+    ).json()["data"]
+
+    created = client.post(
+        "/api/lead-reminders",
+        json={
+            "ownerUserId": owner["id"],
+            "cardId": card["id"],
+            "viewerUserId": "viewer-high",
+            "nickname": "高意向访客",
+            "avatarUrl": "",
+            "status": "pending",
+            "note": "先问预算",
+            "viewCount": 3,
+            "lastViewedAt": "2026-06-09T15:00:00+08:00",
+        },
+    )
+    assert created.status_code == 200
+    reminder = created.json()["data"]
+    assert reminder["status"] == "pending"
+    assert reminder["note"] == "先问预算"
+
+    listed = client.get("/api/lead-reminders", params={"ownerUserId": owner["id"]}).json()["data"]
+    assert len(listed) == 1
+    assert listed[0]["cardTitle"] == "高意向资源"
+
+    forbidden = client.put(
+        f"/api/lead-reminders/{reminder['id']}",
+        json={"ownerUserId": other["id"], "status": "contacted"},
+    )
+    assert forbidden.status_code == 403
+
+    contacted = client.put(
+        f"/api/lead-reminders/{reminder['id']}",
+        json={"ownerUserId": owner["id"], "status": "contacted", "note": "已电话联系"},
+    )
+    assert contacted.status_code == 200
+    contacted_payload = contacted.json()["data"]
+    assert contacted_payload["status"] == "contacted"
+    assert contacted_payload["note"] == "已电话联系"
+    assert contacted_payload["contactedAt"]
+
+    pending = client.get(
+        "/api/lead-reminders",
+        params={"ownerUserId": owner["id"], "status": "pending"},
+    ).json()["data"]
+    assert pending == []
+    contacted_rows = client.get(
+        "/api/lead-reminders",
+        params={"ownerUserId": owner["id"], "status": "contacted"},
+    ).json()["data"]
+    assert len(contacted_rows) == 1
+
+    deleted = client.delete(
+        f"/api/lead-reminders/{reminder['id']}",
+        params={"ownerUserId": owner["id"]},
+    )
+    assert deleted.status_code == 200
+    assert client.get("/api/lead-reminders", params={"ownerUserId": owner["id"]}).json()["data"] == []
 
 
 def test_category_management_and_filtering(client):

@@ -37,6 +37,9 @@ Page({
   handleGoVisits() {
     wx.switchTab({ url: "/pages/visits/index" });
   },
+  handleGoLeads() {
+    wx.navigateTo({ url: "/pages/leads/index" });
+  },
   handleMemberPlaceholder() {
     wx.showToast({ title: "会员权益将在 v0.2 开放", icon: "none" });
   },

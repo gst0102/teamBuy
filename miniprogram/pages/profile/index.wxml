@@ -52,6 +52,10 @@
       <text>访问记录</text>
       <text class="menu-arrow">></text>
     </view>
+    <view class="menu-item" bindtap="handleGoLeads">
+      <text>待联系线索</text>
+      <text class="menu-arrow">></text>
+    </view>
     <view class="menu-item" bindtap="handleMemberPlaceholder">
       <text>会员中心</text>
       <text class="menu-arrow">即将开放</text>

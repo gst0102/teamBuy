@@ -3,10 +3,7 @@ from __future__ import annotations
 import subprocess
 import tempfile
 from dataclasses import dataclass
-from io import BytesIO
 from pathlib import Path
-
-from PIL import Image, ImageOps
 
 
 @dataclass(slots=True)
@@ -48,29 +45,43 @@ class MediaProcessingService:
         return ProcessedMedia(content, content_type, filename, len(content), len(content), False)
 
     def process_image(self, content: bytes, filename: str | None = None) -> ProcessedMedia:
+        input_suffix = _suffix_from_filename(filename) or ".img"
+        with tempfile.NamedTemporaryFile(suffix=input_suffix, delete=False) as input_file:
+            input_file.write(content)
+            input_path = Path(input_file.name)
+        with tempfile.NamedTemporaryFile(suffix=".webp", delete=False) as output_file:
+            output_path = Path(output_file.name)
         try:
-            with Image.open(BytesIO(content)) as image:
-                image = ImageOps.exif_transpose(image)
-                image.thumbnail((self.image_max_edge, self.image_max_edge))
-                if image.mode not in {"RGB", "L"}:
-                    image = image.convert("RGB")
-                with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as output:
-                    output_path = Path(output.name)
-                try:
-                    image.save(output_path, format="JPEG", quality=self.image_quality, optimize=True, progressive=True)
-                    processed = output_path.read_bytes()
-                finally:
-                    output_path.unlink(missing_ok=True)
+            command = [
+                self.ffmpeg_bin,
+                "-y",
+                "-i",
+                str(input_path),
+                "-vf",
+                f"scale='min({self.image_max_edge},iw)':'min({self.image_max_edge},ih)':force_original_aspect_ratio=decrease",
+                "-c:v",
+                "libwebp",
+                "-quality",
+                str(self.image_quality),
+                str(output_path),
+            ]
+            subprocess.run(command, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60)
+            processed = output_path.read_bytes()
+            if not processed:
+                raise ValueError("ffmpeg produced empty image output")
             return ProcessedMedia(
                 content=processed,
-                content_type="image/jpeg",
-                filename=_replace_extension(filename, "jpg"),
+                content_type="image/webp",
+                filename=_replace_extension(filename, "webp"),
                 original_size=len(content),
                 stored_size=len(processed),
-                compressed=len(processed) < len(content) or filename != _replace_extension(filename, "jpg"),
+                compressed=len(processed) < len(content) or filename != _replace_extension(filename, "webp"),
             )
         except Exception:
-            return ProcessedMedia(content, "image/jpeg", filename, len(content), len(content), False)
+            return ProcessedMedia(content, "image/webp", filename, len(content), len(content), False)
+        finally:
+            input_path.unlink(missing_ok=True)
+            output_path.unlink(missing_ok=True)
 
     def process_video(self, content: bytes, filename: str | None = None) -> ProcessedMedia:
         input_suffix = _suffix_from_filename(filename) or ".mp4"

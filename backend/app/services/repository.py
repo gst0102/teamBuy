@@ -14,6 +14,7 @@ from app.models.domain import (
     Category,
     ImportBatch,
     ImportNotification,
+    LeadReminder,
     MediaRetryJob,
     RawMessage,
     RelayEntry,
@@ -105,6 +106,21 @@ class AppRepository(Protocol):
         ...
 
     def list_relay_entries_for_card(self, card_id: str, relay_status: str | None = "active") -> list[RelayEntry]:
+        ...
+
+    def list_lead_reminders(self, owner_user_id: str, status: str | None = None) -> list[LeadReminder]:
+        ...
+
+    def get_lead_reminder(self, reminder_id: str) -> LeadReminder | None:
+        ...
+
+    def get_lead_reminder_by_card_viewer(self, card_id: str, viewer_user_id: str) -> LeadReminder | None:
+        ...
+
+    def save_lead_reminder(self, reminder: LeadReminder) -> None:
+        ...
+
+    def delete_lead_reminder(self, reminder_id: str) -> None:
         ...
 
     def save_import_notification(self, notification: ImportNotification) -> None:
@@ -274,6 +290,7 @@ class JsonRepository:
         state.cards = [item for item in state.cards if item.id != card_id]
         state.view_events = [item for item in state.view_events if item.cardId != card_id]
         state.relay_entries = [item for item in state.relay_entries if item.cardId != card_id]
+        state.lead_reminders = [item for item in state.lead_reminders if item.cardId != card_id]
         self.save(state)
 
     def list_categories(self, owner_user_id: str | None = None) -> list[Category]:
@@ -323,6 +340,36 @@ class JsonRepository:
         if relay_status:
             relays = [item for item in relays if item.status == relay_status]
         return relays
+
+    def list_lead_reminders(self, owner_user_id: str, status: str | None = None) -> list[LeadReminder]:
+        reminders = [item for item in self.load().lead_reminders if item.ownerUserId == owner_user_id]
+        if status:
+            reminders = [item for item in reminders if item.status == status]
+        return sorted(reminders, key=lambda item: item.updatedAt, reverse=True)
+
+    def get_lead_reminder(self, reminder_id: str) -> LeadReminder | None:
+        return next((item for item in self.load().lead_reminders if item.id == reminder_id), None)
+
+    def get_lead_reminder_by_card_viewer(self, card_id: str, viewer_user_id: str) -> LeadReminder | None:
+        return next(
+            (
+                item
+                for item in self.load().lead_reminders
+                if item.cardId == card_id and item.viewerUserId == viewer_user_id
+            ),
+            None,
+        )
+
+    def save_lead_reminder(self, reminder: LeadReminder) -> None:
+        state = self.load()
+        state.lead_reminders = [item for item in state.lead_reminders if item.id != reminder.id]
+        state.lead_reminders.append(reminder)
+        self.save(state)
+
+    def delete_lead_reminder(self, reminder_id: str) -> None:
+        state = self.load()
+        state.lead_reminders = [item for item in state.lead_reminders if item.id != reminder_id]
+        self.save(state)
 
     def save_import_notification(self, notification: ImportNotification) -> None:
         state = self.load()
@@ -488,6 +535,7 @@ class PostgresRepository:
         "cards": "cards",
         "view_events": "view_events",
         "relay_entries": "relay_entries",
+        "lead_reminders": "lead_reminders",
         "categories": "categories",
         "import_notifications": "import_notifications",
         "sync_cursors": "sync_cursors",
@@ -544,6 +592,13 @@ class PostgresRepository:
             ("nickname", "text", "nickname"),
             ("status", "text", "status"),
             ("follow_up_status", "text", "followUpStatus"),
+        ],
+        "lead_reminders": [
+            ("owner_user_id", "text", "ownerUserId"),
+            ("card_id", "text", "cardId"),
+            ("viewer_user_id", "text", "viewerUserId"),
+            ("status", "text", "status"),
+            ("contacted_at", "timestamptz", "contactedAt"),
         ],
         "categories": [
             ("owner_user_id", "text", "ownerUserId"),
@@ -618,6 +673,10 @@ class PostgresRepository:
             ("idx_relay_entries_card_status", "card_id, status, created_at"),
             ("idx_relay_entries_card_follow_up", "card_id, follow_up_status"),
             ("idx_relay_entries_user", "user_id"),
+        ],
+        "lead_reminders": [
+            ("idx_lead_reminders_owner_status", "owner_user_id, status, updated_at"),
+            ("idx_lead_reminders_card_viewer", "card_id, viewer_user_id"),
         ],
         "sync_cursors": [
             ("idx_sync_cursors_open_kfid", "open_kfid"),
@@ -783,6 +842,7 @@ class PostgresRepository:
         with psycopg.connect(self.database_url) as conn:
             conn.execute("delete from relay_entries where card_id = %s", (card_id,))
             conn.execute("delete from view_events where card_id = %s", (card_id,))
+            conn.execute("delete from lead_reminders where card_id = %s", (card_id,))
             conn.execute("delete from cards where id = %s", (card_id,))
 
     def list_categories(self, owner_user_id: str | None = None) -> list[Category]:
@@ -833,6 +893,43 @@ class PostgresRepository:
 
     def save_relay_entry(self, relay: RelayEntry) -> None:
         self._save_model("relay_entries", relay)
+
+    def list_lead_reminders(self, owner_user_id: str, status: str | None = None) -> list[LeadReminder]:
+        if status:
+            rows = self._list_payloads(
+                "lead_reminders",
+                "owner_user_id = %s and status = %s",
+                (owner_user_id, status),
+                "updated_at desc, id desc",
+            )
+        else:
+            rows = self._list_payloads(
+                "lead_reminders",
+                "owner_user_id = %s",
+                (owner_user_id,),
+                "updated_at desc, id desc",
+            )
+        return [LeadReminder.model_validate(row) for row in rows]
+
+    def get_lead_reminder(self, reminder_id: str) -> LeadReminder | None:
+        payload = self.get_payload_by_id("lead_reminders", reminder_id)
+        return LeadReminder.model_validate(payload) if payload else None
+
+    def get_lead_reminder_by_card_viewer(self, card_id: str, viewer_user_id: str) -> LeadReminder | None:
+        rows = self._list_payloads(
+            "lead_reminders",
+            "card_id = %s and viewer_user_id = %s",
+            (card_id, viewer_user_id),
+            "updated_at desc, id desc",
+        )
+        return LeadReminder.model_validate(rows[0]) if rows else None
+
+    def save_lead_reminder(self, reminder: LeadReminder) -> None:
+        self._save_model("lead_reminders", reminder)
+
+    def delete_lead_reminder(self, reminder_id: str) -> None:
+        with psycopg.connect(self.database_url) as conn:
+            conn.execute("delete from lead_reminders where id = %s", (reminder_id,))
 
     def save_import_notification(self, notification: ImportNotification) -> None:
         self._save_model("import_notifications", notification)
@@ -1132,6 +1229,12 @@ class PostgresRepository:
                     """
                     create unique index if not exists uq_sync_cursors_open_kfid
                     on sync_cursors (open_kfid)
+                    """
+                )
+                conn.execute(
+                    """
+                    create unique index if not exists uq_lead_reminders_card_viewer
+                    on lead_reminders (card_id, viewer_user_id)
                     """
                 )
 

@@ -10,7 +10,8 @@
     "pages/tag-manage/index",
     "pages/card-edit/index",
     "pages/card-view/index",
-    "pages/manager/index"
+    "pages/manager/index",
+    "pages/leads/index"
   ],
   "window": {
     "navigationBarTitleText": "\u60a6\u4eab\u4e92\u52a8\u5b9d",
