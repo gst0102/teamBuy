@@ -9,6 +9,18 @@ const INTENT_FILTERS = [
   { key: "待判断", label: "待判断" }
 ];
 
+const PROFILE_FILTERS = [
+  { key: "all", label: "全部资料" },
+  { key: "phone", label: "有电话" },
+  { key: "wechat", label: "有微信" },
+  { key: "budget", label: "有预算" }
+];
+
+const SORT_OPTIONS = [
+  { key: "intent", label: "高意向优先" },
+  { key: "updated", label: "最近更新" }
+];
+
 function hasProfile(item) {
   return !!(item.customerPhone || item.customerWechat || item.budgetText || item.intentLevel);
 }
@@ -25,20 +37,34 @@ function matchesSearch(item, keyword) {
   return text.includes(keyword.toLowerCase());
 }
 
-function filterCustomers(customers, filter, keyword = "") {
+function matchesProfileFilter(item, filter) {
+  if (filter === "phone") return !!item.customerPhone;
+  if (filter === "wechat") return !!item.customerWechat;
+  if (filter === "budget") return !!item.budgetText;
+  return true;
+}
+
+function filterCustomers(customers, intentFilter, keyword = "", profileFilter = "all") {
   return customers.filter((item) => {
-    const intentMatched = filter === "all" || (item.intentLevel || "待判断") === filter;
-    return intentMatched && matchesSearch(item, keyword.trim());
+    const intentMatched = intentFilter === "all" || (item.intentLevel || "待判断") === intentFilter;
+    return intentMatched && matchesProfileFilter(item, profileFilter) && matchesSearch(item, keyword.trim());
   });
 }
 
-function sortCustomers(customers) {
+function sortCustomers(customers, sortMode = "intent") {
   const rank = { 高意向: 0, 中意向: 1, 待判断: 2, 低意向: 3 };
   return [...customers].sort((a, b) => {
+    if (sortMode === "updated") {
+      return String(b.updatedAt || "").localeCompare(String(a.updatedAt || ""));
+    }
     const intentDiff = (rank[a.intentLevel || "待判断"] ?? 9) - (rank[b.intentLevel || "待判断"] ?? 9);
     if (intentDiff !== 0) return intentDiff;
     return String(b.updatedAt || "").localeCompare(String(a.updatedAt || ""));
   });
+}
+
+function applyCustomerView(customers, intentFilter, profileFilter, keyword, sortMode) {
+  return sortCustomers(filterCustomers(customers, intentFilter, keyword, profileFilter), sortMode);
 }
 
 Page({
@@ -46,8 +72,12 @@ Page({
     customers: [],
     filteredCustomers: [],
     activeIntent: "all",
+    activeProfileFilter: "all",
+    activeSort: "intent",
     searchKeyword: "",
     intentFilters: INTENT_FILTERS,
+    profileFilters: PROFILE_FILTERS,
+    sortOptions: SORT_OPTIONS,
     summary: {
       total: 0,
       high: 0,
@@ -75,7 +105,13 @@ Page({
       })));
       this.setData({
         customers,
-        filteredCustomers: filterCustomers(customers, this.data.activeIntent, this.data.searchKeyword),
+        filteredCustomers: applyCustomerView(
+          customers,
+          this.data.activeIntent,
+          this.data.activeProfileFilter,
+          this.data.searchKeyword,
+          this.data.activeSort
+        ),
         summary: {
           total: customers.length,
           high: customers.filter((item) => item.intentLevel === "高意向").length,
@@ -91,20 +127,64 @@ Page({
     const activeIntent = event.currentTarget.dataset.filter;
     this.setData({
       activeIntent,
-      filteredCustomers: filterCustomers(this.data.customers, activeIntent, this.data.searchKeyword)
+      filteredCustomers: applyCustomerView(
+        this.data.customers,
+        activeIntent,
+        this.data.activeProfileFilter,
+        this.data.searchKeyword,
+        this.data.activeSort
+      )
+    });
+  },
+  handleProfileFilterChange(event) {
+    const activeProfileFilter = event.currentTarget.dataset.filter;
+    this.setData({
+      activeProfileFilter,
+      filteredCustomers: applyCustomerView(
+        this.data.customers,
+        this.data.activeIntent,
+        activeProfileFilter,
+        this.data.searchKeyword,
+        this.data.activeSort
+      )
+    });
+  },
+  handleSortChange(event) {
+    const activeSort = event.currentTarget.dataset.sort;
+    this.setData({
+      activeSort,
+      filteredCustomers: applyCustomerView(
+        this.data.customers,
+        this.data.activeIntent,
+        this.data.activeProfileFilter,
+        this.data.searchKeyword,
+        activeSort
+      )
     });
   },
   handleSearchChange(event) {
     const searchKeyword = event.detail.value;
     this.setData({
       searchKeyword,
-      filteredCustomers: filterCustomers(this.data.customers, this.data.activeIntent, searchKeyword)
+      filteredCustomers: applyCustomerView(
+        this.data.customers,
+        this.data.activeIntent,
+        this.data.activeProfileFilter,
+        searchKeyword,
+        this.data.activeSort
+      )
     });
   },
   handleClearSearch() {
     this.setData({
       searchKeyword: "",
-      filteredCustomers: filterCustomers(this.data.customers, this.data.activeIntent, "")
+      filteredCustomers: applyCustomerView(
+        this.data.customers,
+        this.data.activeIntent,
+        this.data.activeProfileFilter,
+        "",
+        this.data.activeSort
+      )
     });
   },
   handleCopyField(event) {

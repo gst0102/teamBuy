@@ -44,6 +44,16 @@
       <view class="intent-filter {{activeIntent === item.key ? 'active' : ''}}" data-filter="{{item.key}}" bindtap="handleIntentFilterChange">{{item.label}}</view>
     </block>
   </view>
+  <view class="intent-filter-row compact">
+    <block wx:for="{{profileFilters}}" wx:key="key">
+      <view class="intent-filter {{activeProfileFilter === item.key ? 'active' : ''}}" data-filter="{{item.key}}" bindtap="handleProfileFilterChange">{{item.label}}</view>
+    </block>
+  </view>
+  <view class="sort-row">
+    <block wx:for="{{sortOptions}}" wx:key="key">
+      <view class="sort-pill {{activeSort === item.key ? 'active' : ''}}" data-sort="{{item.key}}" bindtap="handleSortChange">{{item.label}}</view>
+    </block>
+  </view>
 
   <block wx:for="{{filteredCustomers}}" wx:key="id">
     <view class="panel customer-card">
