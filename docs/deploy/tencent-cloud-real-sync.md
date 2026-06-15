@@ -90,7 +90,7 @@ curl http://127.0.0.1:8000/api/wecom/config-check
 在企业微信客服后台把回调 URL 配成：
 
 ```text
-https://你的公网域名/api/wecom/callback
+https://你的公网域名/api/wecom/kf/teamBuy/callback
 ```
 
 Token 和 EncodingAESKey 必须与服务器 `backend/.env` 完全一致。

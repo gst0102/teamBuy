@@ -106,7 +106,7 @@ web-tool/
 
 | API | 方法 | 用途 | 优先级 |
 |---|---|---|---|
-| `/api/wecom/callback` | GET/POST | 企业微信回调验证和事件接收 | P0 |
+| `/api/wecom/kf/teamBuy/callback` | GET/POST | 企业微信回调验证和事件接收 | P0 |
 | `/api/imports/pending` | GET | 获取待认领导入记录 | P0 |
 | `/api/imports/{id}/claim` | POST | 认领导入记录 | P0 |
 | `/api/cards` | GET/POST | 卡片列表和创建 | P0 |

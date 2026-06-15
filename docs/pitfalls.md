@@ -641,3 +641,38 @@ from ip=81.70.84.35
 - teamBuy 当前客服使用 `/api/wecom/kf/teamBuy/callback`。
 - 后续新增客服或其他回调时继续拆分独立路径，例如 `/api/wecom/kf/{name}/callback` 或 `/api/wecom/oauth/{name}/callback`。
 - 企业微信后台、后端配置检查、部署文档和测试用例必须同步同一个回调路径。
+## 2026-06-10：企业微信回调 URL 验证不能返回 JSON 字符串
+
+问题：
+- 企业微信保存回调 URL 时，即使后端日志显示 `GET /callback?...` 返回 200，如果响应体不是原样纯文本 `echostr`，仍会提示 `openapi回调地址请求不通过`。
+- FastAPI 路由直接 `return "xxx"` 会返回 JSON 字符串，正文可能带引号，不符合企业微信 URL 验证预期。
+
+正确做法：
+- URL 验证 GET 接口使用 `PlainTextResponse`。
+- 加密验证场景下返回解密后的 `echostr` 明文；非加密测试场景下返回 query 里的 `echostr` 明文。
+- 排查时同时看 HTTP 状态码、`content-type` 和响应体原文，不能只看 200。
+
+## 2026-06-15：提交前不要把运行态、本地配置和换行符扰动混进业务修复
+
+问题：
+- `backend/mock/runtime-state.json` 会被本地手动测试大量改写，容易把 mock 运行态污染提交进去。
+- `docs/png/` 是页面参考图目录，体积较大，不属于业务修复。
+- `miniprogram/project.config.json` 和 `project.private.config.json` 是微信开发者工具本地配置，不应默认提交。
+- 大文档如果只有换行符或行尾空白变化，会制造几千行无意义 diff，掩盖真正的代码改动。
+
+正确做法：
+- 提交前先用 `git status --short --branch`、`git diff --stat` 和 `git diff --name-only` 拆分范围。
+- 只 stage 本轮业务修复相关文件；运行态、参考图、本地配置和未确认草稿保留在工作区但不提交。
+- 遇到测试失败、部署失败、配置误判或提交范围风险，必须写入 `docs/dev-log.md`、`docs/decisions.md`、`docs/pitfalls.md`、`docs/handoff-latest.md` 中对应位置。
+
+## 2026-06-15：本地后端测试不要依赖系统 Python 3.9 或不存在的 Pillow 版本
+
+问题：
+- 当前 shell 可能没有 `python` 和 `pytest` 命令，直接运行项目推荐命令会失败。
+- macOS 系统 `python3` 可能是 3.9，跑后端测试会在 `dataclass(slots=True)` 处失败；项目需要 Python 3.10+。
+- `Pillow==12.2.0` 当前包源不可安装，会导致新虚拟环境或镜像构建在安装依赖阶段失败。
+
+正确做法：
+- 本地验证优先使用 Codex 提供的 Python 3.12 运行时，或项目自建 Python 3.10+ 虚拟环境。
+- 依赖安装失败时先确认版本是否存在，不要把安装失败误判为业务测试失败。
+- 后端依赖固定为当前可安装版本 `Pillow==11.3.0`，后续升级需先确认包源可用再改。

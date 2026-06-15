@@ -190,7 +190,7 @@
 
 - 修复后端 `update_card()`：`payload.model_dump()` 后的 `relayConfig` 实际是 `dict`，旧代码继续调用 `value.model_dump()` 会触发 500。
 - 新增 `test_update_card_flow_accepts_relay_config_payload` 回归测试，覆盖资源编辑保存链路。
-- 删除首页、资源库、发给客服、访问记录、我的、登录页顶部重复出现的“悦享互动宝”品牌条；资源创建页导航标题改为“手动添加资源”。
+- 删除首页、资源库、发给客服、访问记录、我的、登录页顶部重复出现的“资料整理助手”品牌条；资源创建页导航标题改为“手动添加资源”。
 
 ### 资源库补充
 
@@ -299,7 +299,7 @@
 
 ### 本次目标
 
-完成「悦享互动宝」v0.1 UI 产品化改版收尾，接入 tabBar 图标，修正文案边界并准备提交。
+完成「资料整理助手」v0.1 UI 产品化改版收尾，接入 tabBar 图标，修正文案边界并准备提交。
 
 ### 完成内容
 
@@ -488,7 +488,7 @@
 
 ### 本次目标
 
-以 AI 测试官 / 验收官身份，对当前 teamBuy / 悦享互动宝 v0.1 MVP 开发结果执行验收与回归，并输出团队可直接使用的 Markdown 验收报告。
+以 AI 测试官 / 验收官身份，对当前 teamBuy / 资料整理助手 v0.1 MVP 开发结果执行验收与回归，并输出团队可直接使用的 Markdown 验收报告。
 
 ### 完成内容
 
@@ -808,6 +808,17 @@
 - `pytest backend\tests -q`：60 项通过。
 ## 2026-06-10
 
+### 生产回调联调部署
+
+- 已通过 MobaXterm 会话对应的 SSH key 登录 `ubuntu@81.70.84.35`。
+- 已将生产后端回调路由同步到服务器 `/home/ubuntu/teamBuy`，并重建/重启 `backend` 容器。
+- 生产公网新回调地址 `https://teambuy.lifelove.top/api/wecom/kf/teamBuy/callback?echostr=hello-teamBuy` 已返回 `"hello-teamBuy"`。
+- 生产 `/api/wecom/config-check` 已返回新 `callbackUrl`。
+- 生产 `backend/.env` 的 `WECOM_CALLBACK_TOKEN` 已同步为企业微信页面当前 Token；更新前已备份为 `backend/.env.callback-backup-20260610-1616`。
+- 若企业微信后台保存仍失败，下一步优先核对完整 43 位 `WECOM_ENCODING_AES_KEY` 是否与企业微信页面一致。
+
+## 2026-06-10
+
 ### 企业微信客服回调地址拆分
 
 - 后端企业微信客服回调从通用 `/api/wecom/callback` 调整为专用 `/api/wecom/kf/teamBuy/callback`。
@@ -820,3 +831,33 @@
 - `python -m compileall backend\app backend\tests`：通过。
 - `pytest backend\tests\test_app.py -q -k "wecom_callback or wecom_config_check"`：4 项通过。
 - `pytest backend\tests\test_app.py -q`：35 项通过，1 项失败；失败项为 `test_health_reports_database_configuration`，当前环境读取到 `DATABASE_BACKEND=postgresql`，测试期望 `postgres`，与本次回调路径改动无关。
+
+## 2026-06-10
+
+### 企业微信回调验证响应格式修复与生产保存
+
+- 修复 `GET /api/wecom/kf/teamBuy/callback` 的 URL 验证响应格式：成功验证时改为 `text/plain` 原样返回 `echostr`，避免 FastAPI 将字符串编码成 JSON 字符串。
+- 已更新本地测试，检查 `response.text == "hello-teamBuy"` 和 `content-type: text/plain`。
+- 已同步 `backend/app/api/routes_wecom.py` 到生产 `/home/ubuntu/teamBuy`，重建并重启 `backend` 容器。
+- 生产公网验证：`https://teambuy.lifelove.top/api/wecom/kf/teamBuy/callback?token=...&echostr=hello-teamBuy` 返回 `200 text/plain`，正文为 `hello-teamBuy`。
+- 已在企业微信后台 `API接收消息` 页面保存新 URL：`https://teambuy.lifelove.top/api/wecom/kf/teamBuy/callback`，页面提示“保存成功”。
+- 生产日志确认企业微信请求命中新路径 `/api/wecom/kf/teamBuy/callback?...` 并返回 200。
+
+### 验证结果
+
+- `python -m compileall backend\app backend\tests`：通过。
+- `pytest backend\tests\test_app.py -q -k "wecom_callback or wecom_config_check"`：4 项通过。
+
+## 2026-06-15
+
+### 企业微信回调修复提交前整理与产品名修正
+
+- 当前正式产品名按用户修正统一为“资料整理助手”，旧名不再作为当前产品名新增使用。
+- 小程序分享兜底标题从旧名资源改为“资料整理助手资源”。
+- 已整理当前未提交范围：企业微信回调新路径、`PlainTextResponse` 验证响应、测试和配套文档属于可提交范围。
+- 已明确排除 `backend/mock/runtime-state.json`、`docs/png/`、微信开发者工具本地配置、未确认验收草稿和疑似换行符扰动的大文档。
+- 验证时当前 shell 没有 `python` / `pytest` 命令；改用 Codex Python 3.12 运行时和临时虚拟环境完成测试。
+- 系统 Python 3.9 跑 pytest 会因 `dataclass(slots=True)` 报错，本项目测试需使用 Python 3.10+。
+- `backend/requirements.txt` 原 `Pillow==12.2.0` 在当前包源不可安装，已调整为可安装的 `Pillow==11.3.0`。
+- 验证结果：`python -m compileall backend/app backend/tests` 通过；`pytest backend/tests/test_app.py -q -k "wecom_callback or wecom_config_check"` 4 项通过；小程序 `.js` `node --check` 通过。
+- 本轮要求后续每次操作中遇到的错误、原因和修复迭代都写入 `docs/dev-log.md`、`docs/decisions.md`、`docs/pitfalls.md`、`docs/handoff-latest.md` 中对应位置，避免新会话重复犯错。

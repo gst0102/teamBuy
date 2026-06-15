@@ -201,7 +201,7 @@ Page({
   },
   onShareAppMessage() {
     const shareData = {
-      title: this.data.card ? this.data.card.title : "悦享互动宝资源",
+      title: this.data.card ? this.data.card.title : "资料整理助手资源",
       path: `/pages/card-view/index?id=${this.data.cardId}`
     };
     if (this.data.card && this.data.card.coverUrl) {

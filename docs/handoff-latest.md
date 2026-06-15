@@ -38,7 +38,7 @@
 
 ## 1. 项目背景与目标
 
-teamBuy 是一个面向微信私域场景的小程序工具。当前产品名和 UI 方向为“悦享互动宝”。
+teamBuy 是一个面向微信私域场景的小程序工具。当前产品名和 UI 方向为“资料整理助手”。
 
 项目核心目标不是做团购交易系统，也不是做支付、订单、库存、分账或完整 CRM，而是验证一条“微信内容资源助理”主链路：
 
@@ -546,3 +546,23 @@ rm -rf
 - README、企业微信客服配置清单、真实联调记录、MVP 测试清单和腾讯云部署文档已同步新路径。
 - 已验证：`python -m compileall backend\app backend\tests` 通过；`pytest backend\tests\test_app.py -q -k "wecom_callback or wecom_config_check"` 4 项通过。
 - 注意：整份 `pytest backend\tests\test_app.py -q` 当前仍有 1 个与本次无关的环境断言失败，原因是本机 `DATABASE_BACKEND` 读取为 `postgresql`，测试期望 `postgres`。
+- 生产补充：已 SSH 登录 `ubuntu@81.70.84.35`，同步生产后端路由文件并重建/重启 `backend` 容器。公网新地址已返回 `"hello-teamBuy"`，`config-check` 已返回新 callbackUrl。生产 `WECOM_CALLBACK_TOKEN` 已同步为企业微信页面当前 Token，原 `.env` 已备份到服务器 `backend/.env.callback-backup-20260610-1616`。若后台保存仍失败，优先核对完整 43 位 `WECOM_ENCODING_AES_KEY`。
+## 2026-06-10 补充：企业微信回调新地址已保存成功
+
+- 当前企业微信后台 `API接收消息` 已保存为：`https://teambuy.lifelove.top/api/wecom/kf/teamBuy/callback`。
+- 本次失败根因不是新路径不可达，而是 FastAPI GET 验证接口直接返回字符串时被编码为 JSON 字符串；企业微信要求纯文本原样返回 `echostr`。
+- 已修复 `backend/app/api/routes_wecom.py`：`GET /api/wecom/kf/teamBuy/callback` 使用 `PlainTextResponse` 返回验证明文。
+- 已部署生产并重启 backend 容器；公网验证返回 `200 text/plain`，正文为 `hello-teamBuy`。
+- 企业微信后台页面已由 Codex 操作点击保存，页面提示“保存成功”；生产日志确认企业微信请求命中新路径并返回 200。
+- 本地验证：`python -m compileall backend\app backend\tests` 通过；`pytest backend\tests\test_app.py -q -k "wecom_callback or wecom_config_check"` 4 项通过。
+
+## 2026-06-15 补充：提交前整理规则
+
+- 当前正式产品名已按用户修正为“资料整理助手”；小程序分享兜底标题也应使用“资料整理助手资源”。
+- 本轮可提交范围是企业微信客服回调新路径、`text/plain` 验证响应、测试和配套文档。
+- 默认不要提交 `backend/mock/runtime-state.json`、`docs/png/`、`miniprogram/project.config.json`、`miniprogram/project.private.config.json`、未确认验收报告草稿。
+- `docs/悦享互动宝 MVP 产品开发文档.md` 当前存在疑似换行符扰动，除非专门处理品牌文档，否则不要混入回调修复提交。
+- 本轮验证需注意：当前 shell 没有 `python` / `pytest` 命令；系统 `python3` 为 3.9，不适合跑本项目 pytest。使用 Python 3.12 临时环境验证通过。
+- `backend/requirements.txt` 已将不可安装的 `Pillow==12.2.0` 调整为当前可安装的 `Pillow==11.3.0`。
+- 最近验证：`python -m compileall backend/app backend/tests` 通过；`pytest backend/tests/test_app.py -q -k "wecom_callback or wecom_config_check"` 4 项通过；小程序 `.js` `node --check` 通过。
+- 后续每次遇到错误、失败验证或规避规则，都要同步写入长期记忆文档，避免只留在聊天记录里。

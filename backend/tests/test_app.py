@@ -45,16 +45,17 @@ class FakeSyncTaskQueue:
 
 def test_wecom_callback_get_verify(client):
     response = client.get(
-        "/api/wecom/callback",
+        "/api/wecom/kf/teamBuy/callback",
         params={"token": settings.wecom_callback_token, "echostr": "hello-teamBuy"},
     )
     assert response.status_code == 200
-    assert response.json() == "hello-teamBuy"
+    assert response.text == "hello-teamBuy"
+    assert response.headers["content-type"].startswith("text/plain")
 
 
 def test_wecom_callback_post_keeps_mock_fixture_import(client):
     response = client.post(
-        "/api/wecom/callback",
+        "/api/wecom/kf/teamBuy/callback",
         json={"fixture": "link", "externalUserId": "external_callback", "conversationId": "conv_callback"},
     )
 
@@ -95,7 +96,7 @@ def test_wecom_callback_post_triggers_real_sync_when_mock_disabled(client, monke
     client.app.dependency_overrides[get_wecom_client] = lambda: fake_client
     client.app.dependency_overrides[get_sync_task_queue] = lambda: fake_queue
 
-    response = client.post("/api/wecom/callback", json={"Event": "kf_msg_or_event"})
+    response = client.post("/api/wecom/kf/teamBuy/callback", json={"Event": "kf_msg_or_event"})
 
     assert response.status_code == 200
     payload = response.json()["data"]
@@ -126,12 +127,14 @@ def test_wecom_sync_task_logs_lists_background_queue_logs(client):
     assert response.json()["data"] == []
 
 
-def test_wecom_config_check_reports_missing_real_fields(client):
+def test_wecom_config_check_reports_missing_real_fields(client, monkeypatch):
+    monkeypatch.setattr(settings, "public_base_url", "https://teambuy.lifelove.top")
     response = client.get("/api/wecom/config-check")
     assert response.status_code == 200
     payload = response.json()
     assert isinstance(payload["success"], bool)
     assert isinstance(payload["data"]["missing"], list)
+    assert payload["data"]["callbackUrl"].endswith("/api/wecom/kf/teamBuy/callback")
 
 
 def test_real_sync_uses_mock_real_response_while_mock_enabled(client):

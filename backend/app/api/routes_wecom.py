@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
+from fastapi.responses import PlainTextResponse
 
 from app.api.dependencies import get_app_service, get_sync_task_queue, get_wecom_client, get_wecom_mock_service
 from app.core.config import settings
@@ -15,6 +16,7 @@ from app.services.wecom_mock_service import WecomMockService
 
 
 router = APIRouter(prefix="/api/wecom", tags=["wecom"])
+KF_CALLBACK_PATH = "/kf/teamBuy/callback"
 
 
 def _register_real_sync_task(sync_task_queue: SyncTaskQueue) -> None:
@@ -100,7 +102,7 @@ async def _retry_media_job(job: dict, client: WecomClient, service: AppService):
     )
 
 
-@router.get("/callback")
+@router.get(KF_CALLBACK_PATH, response_class=PlainTextResponse)
 def verify_callback(
     msg_signature: str | None = Query(default=None),
     timestamp: str | None = Query(default=None),
@@ -115,13 +117,13 @@ def verify_callback(
             raise HTTPException(status_code=403, detail="企业微信签名验证失败")
         if settings.wecom_encoding_aes_key and settings.wecom_corp_id:
             try:
-                return decrypt_aes_message(settings.wecom_encoding_aes_key, echostr, settings.wecom_corp_id)
+                return PlainTextResponse(decrypt_aes_message(settings.wecom_encoding_aes_key, echostr, settings.wecom_corp_id))
             except WecomCryptoError as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return echostr or "verified"
+    return PlainTextResponse(echostr or "verified")
 
 
-@router.post("/callback", response_model=ApiResponse[dict])
+@router.post(KF_CALLBACK_PATH, response_model=ApiResponse[dict])
 async def receive_callback(
     request: Request,
     service: AppService = Depends(get_app_service),
@@ -225,7 +227,7 @@ def config_check(client: WecomClient = Depends(get_wecom_client)):
         message="wecom config ready" if not missing else "wecom config incomplete",
         data={
             "useMock": settings.wecom_use_mock,
-            "callbackUrl": f"{settings.public_base_url.rstrip('/')}/api/wecom/callback" if settings.public_base_url else "",
+            "callbackUrl": f"{settings.public_base_url.rstrip('/')}/api/wecom{KF_CALLBACK_PATH}" if settings.public_base_url else "",
             "missing": missing,
             "configured": client.is_configured(),
         },
