@@ -15,7 +15,7 @@
 - 已验证：小程序 JS 静态检查通过，小程序 JSON 解析通过，`pytest backend\tests\test_app.py -q` 34 项通过。
 
 本轮改动：
-- 后端上传接口和企微媒体转存已接入媒体处理服务，图片通过 ffmpeg 转 WebP，视频通过 ffmpeg 转 H.264/AAC MP4。
+- 后端上传接口和企微媒体转存已接入媒体处理服务，图片通过 Pillow 转 WebP，视频通过 ffmpeg 转 H.264/AAC MP4。
 - 上传响应新增 `originalSize`、`storedSize`、`compressed`。
 - 小程序新增原生 `resource-store`，承担 Pinia 类似的资源集中管理职责。
 - 小程序新增媒体缓存工具，页面展示使用 `coverDisplayUrl` / `media[].displayUrl`，保存仍提交正式 URL。
@@ -566,3 +566,12 @@ rm -rf
 - `backend/requirements.txt` 已将不可安装的 `Pillow==12.2.0` 调整为当前可安装的 `Pillow==11.3.0`。
 - 最近验证：`python -m compileall backend/app backend/tests` 通过；`pytest backend/tests/test_app.py -q -k "wecom_callback or wecom_config_check"` 4 项通过；小程序 `.js` `node --check` 通过。
 - 后续每次遇到错误、失败验证或规避规则，都要同步写入长期记忆文档，避免只留在聊天记录里。
+
+## 2026-06-15 补充：企业微信资料归档接口前的媒体容错准备
+
+- 已补强真实 `sync_msg` 收档链路：图片/视频 `media_id` 下载失败时，写入 `media_retry_jobs`，但不再阻断同批文本、链接等内容生成待认领草稿。
+- 已关闭真实链路的 mock 媒体 fallback，避免下载失败时生成假的 `/mock-media/...` URL。
+- mock 链路仍保留 fallback，方便本地演示。
+- 图片压缩已改为 Pillow 转 WebP，视频继续使用 ffmpeg；避免本地或部署环境缺少 ffmpeg 图片编码能力时回退原图。
+- 最近验证：`python -m compileall backend/app backend/tests` 通过；`pytest backend/tests/test_app.py backend/tests/test_media_processing_service.py backend/tests/test_media_storage_service.py -q` 41 项通过。
+- 明天拿到企业微信资料归档接口权限后，优先用真实转发笔记验证：回调触发任务、`sync_msg` 拉取、文本成草稿、图片/视频转存、失败时补偿队列可见。

@@ -119,11 +119,21 @@ class AppService:
         sync_response: dict,
         fallback_open_kfid: str | None = None,
         media_url_by_id: dict[str, str] | None = None,
+        allow_media_storage_fallback: bool = True,
     ) -> dict:
         synced_messages = self.normalizer.normalize_sync_response(sync_response, fallback_open_kfid=fallback_open_kfid)
-        return self.import_synced_messages(synced_messages, media_url_by_id=media_url_by_id)
+        return self.import_synced_messages(
+            synced_messages,
+            media_url_by_id=media_url_by_id,
+            allow_media_storage_fallback=allow_media_storage_fallback,
+        )
 
-    def import_synced_messages(self, synced_messages: list[dict], media_url_by_id: dict[str, str] | None = None) -> dict:
+    def import_synced_messages(
+        self,
+        synced_messages: list[dict],
+        media_url_by_id: dict[str, str] | None = None,
+        allow_media_storage_fallback: bool = True,
+    ) -> dict:
         raw_messages: list[RawMessage] = []
         incoming_wecom_msg_ids = {item["wecomMsgId"] for item in synced_messages if item.get("wecomMsgId")}
         existing_wecom_msg_ids = self.repo.existing_wecom_msg_ids(incoming_wecom_msg_ids)
@@ -134,7 +144,7 @@ class AppService:
             media_id = item.get("mediaId")
             if media_id:
                 local_media_url = (media_url_by_id or {}).get(media_id)
-                if not local_media_url:
+                if not local_media_url and allow_media_storage_fallback:
                     local_media_url = self.media_storage_service.download_and_store(media_id, item["msgType"])
             raw_message = RawMessage(
                 id=new_id("msg"),

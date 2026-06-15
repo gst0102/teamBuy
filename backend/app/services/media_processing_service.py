@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from io import BytesIO
 import subprocess
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+
+from PIL import Image
 
 
 @dataclass(slots=True)
@@ -45,30 +48,17 @@ class MediaProcessingService:
         return ProcessedMedia(content, content_type, filename, len(content), len(content), False)
 
     def process_image(self, content: bytes, filename: str | None = None) -> ProcessedMedia:
-        input_suffix = _suffix_from_filename(filename) or ".img"
-        with tempfile.NamedTemporaryFile(suffix=input_suffix, delete=False) as input_file:
-            input_file.write(content)
-            input_path = Path(input_file.name)
-        with tempfile.NamedTemporaryFile(suffix=".webp", delete=False) as output_file:
-            output_path = Path(output_file.name)
         try:
-            command = [
-                self.ffmpeg_bin,
-                "-y",
-                "-i",
-                str(input_path),
-                "-vf",
-                f"scale='min({self.image_max_edge},iw)':'min({self.image_max_edge},ih)':force_original_aspect_ratio=decrease",
-                "-c:v",
-                "libwebp",
-                "-quality",
-                str(self.image_quality),
-                str(output_path),
-            ]
-            subprocess.run(command, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60)
-            processed = output_path.read_bytes()
+            image = Image.open(BytesIO(content))
+            image.load()
+            image.thumbnail((self.image_max_edge, self.image_max_edge))
+            if image.mode not in {"RGB", "RGBA"}:
+                image = image.convert("RGBA" if "A" in image.getbands() else "RGB")
+            output = BytesIO()
+            image.save(output, format="WEBP", quality=self.image_quality, method=6)
+            processed = output.getvalue()
             if not processed:
-                raise ValueError("ffmpeg produced empty image output")
+                raise ValueError("image processing produced empty output")
             return ProcessedMedia(
                 content=processed,
                 content_type="image/webp",
@@ -79,9 +69,6 @@ class MediaProcessingService:
             )
         except Exception:
             return ProcessedMedia(content, "image/webp", filename, len(content), len(content), False)
-        finally:
-            input_path.unlink(missing_ok=True)
-            output_path.unlink(missing_ok=True)
 
     def process_video(self, content: bytes, filename: str | None = None) -> ProcessedMedia:
         input_suffix = _suffix_from_filename(filename) or ".mp4"

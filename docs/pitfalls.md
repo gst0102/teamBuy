@@ -676,3 +676,25 @@ from ip=81.70.84.35
 - 本地验证优先使用 Codex 提供的 Python 3.12 运行时，或项目自建 Python 3.10+ 虚拟环境。
 - 依赖安装失败时先确认版本是否存在，不要把安装失败误判为业务测试失败。
 - 后端依赖固定为当前可安装版本 `Pillow==11.3.0`，后续升级需先确认包源可用再改。
+
+## 2026-06-15：真实媒体下载失败时不能生成 mock 媒体 URL
+
+问题：
+- 真实 `sync_msg` 拉到图片/视频后，如果企业微信 `media_id` 下载失败，旧逻辑会先记录补偿队列再抛错，导致整批导入失败。
+- 修复为继续导入后，又发现导入阶段会对缺失 URL 的 `media_id` 走 mock storage fallback，生成 `/mock-media/...`，容易让验收误以为真实媒体已转存成功。
+
+正确做法：
+- 真实链路中媒体下载失败只记录 `media_retry_jobs`，不阻断文本、链接、位置等内容生成待认领草稿。
+- 真实链路调用 `import_synced_messages()` 时必须关闭媒体存储 fallback；卡片只保存真实转存成功的媒体 URL。
+- mock 链路可以保留 fallback，便于本地演示，但不能把 mock 行为带到真实企业微信验收口径。
+
+## 2026-06-15：图片压缩不要完全依赖 ffmpeg
+
+问题：
+- 在当前本地测试环境中，图片处理完全依赖 ffmpeg 时会回退原图，导致 `contentType=image/webp` 但文件名仍是 `.png`、`compressed=false`。
+- 这种状态会让上传接口看起来返回了 WebP 类型，实际却没有稳定完成 WebP 转换。
+
+正确做法：
+- 图片压缩使用 Pillow 打开、缩放并保存为 WebP。
+- 视频转码继续使用 ffmpeg。
+- 图片压缩测试必须检查 `contentType=image/webp`、文件名 `.webp`、最大边限制和 `compressed=true`。

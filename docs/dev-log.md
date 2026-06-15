@@ -850,6 +850,17 @@
 
 ## 2026-06-15
 
+### 企业微信真实收档媒体失败容错
+
+- 为明天申请企业微信资料归档接口后的真实联调补强主链路：真实 `sync_msg` 中图片/视频 `media_id` 下载失败时，不再让整批 `real-sync` 返回 502。
+- 媒体下载失败会写入 `media_retry_jobs` 补偿队列，文本、链接和其他可处理内容仍继续生成待认领草稿。
+- 修复测试发现的二次问题：真实同步时如果 media 下载失败，导入阶段不能再走 mock 媒体存储兜底，否则会生成假的 `/mock-media/...` URL，让验收误判为转存成功。
+- 新增 `allow_media_storage_fallback` 控制：mock 链路继续允许兜底，真实 `sync_msg` 链路只使用真实下载并处理成功后的媒体 URL。
+- 更宽回归发现图片压缩在当前环境下不能依赖 ffmpeg，否则会回退原图并导致 WebP 压缩测试失败；已改为图片使用 Pillow 转 WebP，视频继续使用 ffmpeg。
+- 验证结果：`python -m compileall backend/app backend/tests` 通过；`pytest backend/tests/test_app.py backend/tests/test_media_processing_service.py backend/tests/test_media_storage_service.py -q` 41 项通过。
+
+## 2026-06-15
+
 ### 企业微信回调修复提交前整理与产品名修正
 
 - 当前正式产品名按用户修正统一为“资料整理助手”，旧名不再作为当前产品名新增使用。

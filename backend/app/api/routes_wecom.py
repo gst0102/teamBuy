@@ -81,7 +81,6 @@ async def _download_sync_media(
                 open_kfid=message.get("openKfid"),
                 error_message=str(exc),
             )
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
     return media_urls
 
 
@@ -290,7 +289,11 @@ async def _run_real_sync(
             media_url_by_id = {}
             if not settings.wecom_use_mock:
                 media_url_by_id = await _download_sync_media(synced_messages, client, service)
-            result = service.import_synced_messages(synced_messages, media_url_by_id=media_url_by_id)
+            result = service.import_synced_messages(
+                synced_messages,
+                media_url_by_id=media_url_by_id,
+                allow_media_storage_fallback=settings.wecom_use_mock,
+            )
             next_cursor = sync_response.get("next_cursor") or sync_response.get("cursor") or sync_response.get("token")
             has_more = _sync_response_has_more(sync_response.get("has_more"))
             sync_cursor = service.advance_sync_cursor(

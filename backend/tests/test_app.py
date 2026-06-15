@@ -284,7 +284,7 @@ def test_real_sync_downloads_and_stores_image_video_media(client, monkeypatch, t
     assert len(list(media_dir.iterdir())) == 2
 
 
-def test_real_sync_records_media_retry_job_on_download_failure(client, monkeypatch):
+def test_real_sync_records_media_retry_job_without_blocking_import(client, monkeypatch):
     class FailingWecomClient:
         async def sync_msg(self, cursor=None, token=None, limit=None):
             return {
@@ -293,6 +293,14 @@ def test_real_sync_records_media_retry_job_on_download_failure(client, monkeypat
                 "next_cursor": "cursor_media_failed",
                 "has_more": 0,
                 "msg_list": [
+                    {
+                        "msgid": "media_failed_text",
+                        "open_kfid": "wk_media_failed",
+                        "external_userid": "external_media_failed",
+                        "send_time": 1780847999,
+                        "msgtype": "text",
+                        "text": {"content": "导入文字仍应生成草稿"},
+                    },
                     {
                         "msgid": "media_failed_image",
                         "open_kfid": "wk_media_failed",
@@ -315,11 +323,17 @@ def test_real_sync_records_media_retry_job_on_download_failure(client, monkeypat
 
     response = client.post("/api/wecom/real-sync")
 
-    assert response.status_code == 502
+    assert response.status_code == 200
+    payload = response.json()["data"]
+    assert payload["importResult"]["importBatchIds"]
     retries = client.get("/api/wecom/media-retries").json()["data"]
     assert retries[-1]["mediaId"] == "media_failed_001"
     assert retries[-1]["status"] == "failed"
     assert retries[-1]["attempts"] == 1
+    pending = client.get("/api/imports/pending").json()["data"]
+    card = pending[-1]["generatedCard"]
+    assert card["title"] == "导入文字仍应生成草稿"
+    assert card["media"] == []
 
 
 def test_media_retry_success_is_reused_by_next_real_sync(client, monkeypatch, tmp_path):
