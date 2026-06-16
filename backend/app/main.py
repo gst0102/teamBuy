@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from app.api.routes_auth import router as auth_router
 from app.api.routes_cards import router as cards_router
 from app.api.routes_imports import router as imports_router
+from app.api.routes_skills import router as skills_router
 from app.api.routes_wecom import recover_persisted_sync_tasks, router as wecom_router
 from app.core.config import settings
 from app.core.database import DatabaseConfigError, check_postgres_connection, validate_database_settings
@@ -34,6 +35,7 @@ app.include_router(auth_router)
 app.include_router(imports_router)
 app.include_router(cards_router)
 app.include_router(wecom_router)
+app.include_router(skills_router)
 
 settings.media_storage_dir.mkdir(parents=True, exist_ok=True)
 app.mount(

@@ -575,3 +575,31 @@ rm -rf
 - 图片压缩已改为 Pillow 转 WebP，视频继续使用 ffmpeg；避免本地或部署环境缺少 ffmpeg 图片编码能力时回退原图。
 - 最近验证：`python -m compileall backend/app backend/tests` 通过；`pytest backend/tests/test_app.py backend/tests/test_media_processing_service.py backend/tests/test_media_storage_service.py -q` 41 项通过。
 - 明天拿到企业微信资料归档接口权限后，优先用真实转发笔记验证：回调触发任务、`sync_msg` 拉取、文本成草稿、图片/视频转存、失败时补偿队列可见。
+
+## 2026-06-17 补充：插件化架构 Phase 1 已落地
+
+- 当前正式架构方向已固定为“企业微信稳定基座 + 混合驱动 Skill + 小程序笔记与展示页”。
+- 完整架构文档已新增：`docs/stage2-docs/08-plugin-architecture.md`。
+- 后端已新增第一版无状态 `skill-router`：
+  - `GET /api/skills/commands`：返回快捷指令注册表。
+  - `POST /api/skills/route`：快捷指令优先、规则匹配其次，未知输入返回确认菜单。
+  - `POST /api/skills/content-to-note/run`：将 `ContentObject` 转为规则版 `UserNoteDraft`，暂不持久化。
+- 已确认文字类来源统一进入 `content-to-note`：微信笔记、聊天记录、链接文章、手动文字和后续 OCR 都由 Adapter 转成 `ContentObject`。
+- 已确认 `note-to-comic-image` 作为独立渲染型 Skill 保留；`showcase-builder` 是小程序可视化配置工具，不是 AI 自动全权生成。
+- 本轮补丁遇到一次依赖装配文件上下文不匹配，原因是 `backend/app/api/dependencies.py` 已采用新服务装配结构；已按当前结构修正。
+- 最近验证：
+  - `/tmp/teambuy-pytest-venv312/bin/python -m compileall backend/app backend/tests` 通过。
+  - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_skill_router.py -q`：6 项通过。
+  - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_skill_router.py backend/tests/test_app.py backend/tests/test_media_processing_service.py backend/tests/test_media_storage_service.py -q`：47 项通过。
+- 当前仍不要提交：
+  - `backend/mock/runtime-state.json`
+  - `docs/png/`
+  - `docs/qa/当前项目_验收报告m1.md`
+  - `miniprogram/project.config.json`
+  - `miniprogram/project.private.config.json`
+  - `docs/悦享互动宝 MVP 产品开发文档.md` 的疑似换行符扰动
+- 下一步建议：
+  1. 将现有企业微信 `sync_msg` 聚合结果接入 `ContentObject`，让真实导入和 Skill Router 共用同一条 `content-to-note` 入口。
+  2. 增加 `SkillRun` 持久化和失败日志。
+  3. 小程序新增“我的笔记”基础管理，再逐步承接展示页构建器。
+  4. 等企业微信资料归档接口权限到位后，继续做 `wecom-archive-core` 的会话内容存档接入。

@@ -872,3 +872,23 @@
 - `backend/requirements.txt` 原 `Pillow==12.2.0` 在当前包源不可安装，已调整为可安装的 `Pillow==11.3.0`。
 - 验证结果：`python -m compileall backend/app backend/tests` 通过；`pytest backend/tests/test_app.py -q -k "wecom_callback or wecom_config_check"` 4 项通过；小程序 `.js` `node --check` 通过。
 - 本轮要求后续每次操作中遇到的错误、原因和修复迭代都写入 `docs/dev-log.md`、`docs/decisions.md`、`docs/pitfalls.md`、`docs/handoff-latest.md` 中对应位置，避免新会话重复犯错。
+
+## 2026-06-17
+
+### 资料整理助手插件化架构 Phase 1 骨架
+
+- 按用户确认的完整架构计划，新增 `docs/stage2-docs/08-plugin-architecture.md`，固定“企业微信基座 + 混合驱动 Skill + 小程序笔记与展示页”的完整边界。
+- 后端新增 `skill-router` 第一版无状态骨架：
+  - `/api/skills/commands` 返回快捷指令注册表。
+  - `/api/skills/route` 先匹配快捷指令，再规则匹配，未知输入返回确认菜单。
+  - `/api/skills/content-to-note/run` 将 `ContentObject` 转为规则版 `UserNoteDraft`，本轮暂不持久化。
+- 新增统一内容类型和 Skill 类型：`ContentObject`、`SkillCommand`、`IntentResult`、`SkillRun`、`UserNoteDraft`。
+- 本轮明确不把微信笔记、聊天记录、链接文章拆成三个 Skill，而是统一进入 `content-to-note`，输入差异由 Adapter 处理。
+- 保留独立 `note-to-comic-image`，展示页使用 `showcase-builder` 可视化配置，不做 AI 全自动生成。
+- 遇到一次补丁失败：`backend/app/api/dependencies.py` 已在前轮开发中改成 `build_repository()` 和 `WecomClient/WecomMockService` 装配方式，旧预期的导入片段不匹配。已按当前文件实际结构重贴补丁并继续。
+
+### 验证结果
+
+- `/tmp/teambuy-pytest-venv312/bin/python -m compileall backend/app backend/tests`：通过。
+- `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_skill_router.py -q`：6 项通过。
+- `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_skill_router.py backend/tests/test_app.py backend/tests/test_media_processing_service.py backend/tests/test_media_storage_service.py -q`：47 项通过。

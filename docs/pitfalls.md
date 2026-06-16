@@ -698,3 +698,42 @@ from ip=81.70.84.35
 - 图片压缩使用 Pillow 打开、缩放并保存为 WebP。
 - 视频转码继续使用 ffmpeg。
 - 图片压缩测试必须检查 `contentType=image/webp`、文件名 `.webp`、最大边限制和 `compressed=true`。
+
+## 2026-06-17：插件化架构不要把文字整理拆成多个重复 Skill
+
+问题：
+
+- 微信笔记、聊天记录、链接文章从产品入口看不同，但核心都是“内容对象转用户笔记”。
+- 如果拆成 `wechat-note-to-card`、`chat-to-summary-note`、`link-to-summary-note`，会让路由、模板、测试和后续付费权益重复维护。
+
+正确做法：
+
+- 统一使用 `content-to-note`。
+- 来源差异放到 Input Adapter：`input.wecom-thread`、`input.chat-thread`、`input.link-article`、`input.manual-text`、后续 `input.image-ocr`。
+- 输出差异放到模板和字段开关，不在 Skill 层复制业务。
+
+## 2026-06-17：AI 意图识别不能直接执行业务动作
+
+问题：
+
+- 用户自由输入表达不稳定，AI 意图识别可能误判。
+- 如果 AI 一识别就直接调用 Skill、扣费、写库或发通知，错误成本会很高。
+
+正确做法：
+
+- 企业微信入口采用混合驱动：快捷指令优先，规则其次，AI 只兜底。
+- AI 输出必须固定枚举和结构化 JSON，并经过校验。
+- 低置信度、未知意图或非法输出都返回确认菜单，不执行 Skill。
+
+## 2026-06-17：接手代码时不要假设依赖装配文件仍是旧结构
+
+问题：
+
+- 本轮首次补丁失败，原因是 `backend/app/api/dependencies.py` 已经变成 `build_repository()`、`WecomClient(settings)` 和多服务注入的装配方式。
+- 继续按旧导入片段套补丁会找不到上下文。
+
+正确做法：
+
+- 修改核心装配文件前先读当前文件内容。
+- 补丁应贴合现有导入顺序、类名和服务初始化位置。
+- 遇到补丁失败要记录根因，并重新按当前代码结构小步补丁。

@@ -9,6 +9,7 @@ from app.services.media_storage_service import MediaStorageService
 from app.services.media_processing_service import MediaProcessingService
 from app.services.message_aggregator import MessageAggregator
 from app.services.repository import build_repository
+from app.services.skill_router_service import SkillRouterService
 from app.services.sync_task_queue import SyncTaskQueue
 from app.services.wecom_client import WecomClient
 from app.services.wecom_message_normalizer import WecomMessageNormalizer
@@ -50,6 +51,7 @@ _sync_task_queue = SyncTaskQueue(
     _repo,
     lock_timeout_seconds=settings.wecom_sync_lock_timeout_seconds,
 )
+_skill_router_service = SkillRouterService()
 
 
 def get_app_service() -> AppService:
@@ -66,3 +68,7 @@ def get_wecom_mock_service() -> WecomMockService:
 
 def get_sync_task_queue() -> SyncTaskQueue:
     return _sync_task_queue
+
+
+def get_skill_router_service() -> SkillRouterService:
+    return _skill_router_service
