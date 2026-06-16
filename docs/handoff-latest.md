@@ -630,3 +630,11 @@ rm -rf
 - 当前正式启动 P0 第一阶段：先把企业微信客服 `sync_msg` 作为过渡入口跑稳，不等待会话内容存档权限空转。
 - 会话内容存档开通后进入 P0 第三阶段，并行新增 `wecom-archive-core`，不替换企业微信客服入口。
 - 下一步优先做 `SkillRun` 持久化和导入失败日志，让 `content-to-note` 的每次执行可追踪、可排错、可计费。
+
+## 2026-06-17 补充：工作区清理规则已更新
+
+- 用户确认后续每次提交后尽量保持工作区干净。
+- `docs/png/`、`docs/qa/当前项目_验收报告m1.md`、`miniprogram/project.config.json` 作为项目资料/配置纳入版本库。
+- `miniprogram/project.private.config.json` 已加入 `.gitignore`，作为个人开发者工具配置保留本地。
+- `backend/mock/runtime-state.json` 本地运行态改动已恢复，不提交测试运行数据。
+- `docs/悦享互动宝 MVP 产品开发文档.md` 换行符扰动已恢复，不再污染后续 diff。

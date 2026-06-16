@@ -10,6 +10,7 @@ node_modules/
 miniprogram_npm/
 dist/
 build/
+miniprogram/project.private.config.json
 
 # Environment and secrets
 .env

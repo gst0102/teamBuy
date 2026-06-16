@@ -930,3 +930,15 @@
   - 第三阶段：用户开通企业微信会话内容存档后接入 `wecom-archive-core`。
 - 明确企业微信客服和会话内容存档不是简单换接口；二者可共用后续 `ContentObject -> content-to-note -> UserNote`，但入口权限、游标、媒体、审计和合规处理不同。
 - 下一步按 P0 第一阶段继续：优先补 `SkillRun` 持久化和导入失败日志。
+
+## 2026-06-17
+
+### 工作区脏文件归档与清理
+
+- 用户确认项目整体资料不要长期悬在工作区，后续每次提交后应尽量保持干净。
+- 已将 `docs/png/` 作为项目视觉参考资料准备纳入版本库归档。
+- 已将 `docs/qa/当前项目_验收报告m1.md` 作为验收资料准备纳入版本库，并修正当前产品名为“资料整理助手”。
+- 已将 `miniprogram/project.config.json` 作为小程序项目配置准备纳入版本库。
+- 已将 `miniprogram/project.private.config.json` 加入 `.gitignore`，避免个人微信开发者工具配置污染提交。
+- 已恢复 `backend/mock/runtime-state.json` 的本地运行态改动，避免把测试运行数据提交。
+- 已恢复 `docs/悦享互动宝 MVP 产品开发文档.md` 的换行符扰动，避免无意义大 diff。
