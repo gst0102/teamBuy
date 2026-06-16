@@ -81,4 +81,6 @@ teamBuy 是一个面向微信群私域场景的小程序工具，核心能力是
 开发文档：
 
 - `docs/stage2-docs/`
+- `docs/stage2-docs/08-plugin-architecture.md`
+- `docs/stage2-docs/09-p0-p2-roadmap.md`
 - `docs/qa/MVP_测试清单与验收标准.md`

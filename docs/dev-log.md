@@ -918,3 +918,15 @@
 - `/tmp/teambuy-pytest-venv312/bin/python -m compileall backend/app backend/tests`：通过。
 - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_app.py -q -k "mock_import or link_import or note_import or content_object or real_sync_records_media_retry or real_sync_downloads"`：7 项通过。
 - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_skill_router.py backend/tests/test_app.py backend/tests/test_media_processing_service.py backend/tests/test_media_storage_service.py -q`：48 项通过。
+
+## 2026-06-17
+
+### P0/P1/P2 路线图归档
+
+- 已新增 `docs/stage2-docs/09-p0-p2-roadmap.md`，将 P0/P1/P2 从聊天结论沉淀为项目路线图。
+- P0 拆成三阶段：
+  - 第一阶段：企业微信客服 `sync_msg` 过渡入口跑稳。
+  - 第二阶段：正式 `UserNote` 和小程序笔记库。
+  - 第三阶段：用户开通企业微信会话内容存档后接入 `wecom-archive-core`。
+- 明确企业微信客服和会话内容存档不是简单换接口；二者可共用后续 `ContentObject -> content-to-note -> UserNote`，但入口权限、游标、媒体、审计和合规处理不同。
+- 下一步按 P0 第一阶段继续：优先补 `SkillRun` 持久化和导入失败日志。
