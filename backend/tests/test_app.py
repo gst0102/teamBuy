@@ -504,6 +504,48 @@ def test_wecom_import_uses_content_object_to_note_pipeline(client, monkeypatch):
     assert any("联系人" in text or "看房" in text for text in seen["textBlocks"])
 
 
+def test_wecom_import_persists_successful_skill_run(client):
+    response = client.post(
+        "/api/wecom/mock-sync",
+        json={"externalUserId": "external_skill_run", "conversationId": "conv_skill_run", "fixture": "note"},
+    )
+
+    assert response.status_code == 200
+    runs = client.get("/api/skills/runs", params={"skillId": "content-to-note"}).json()["data"]
+    latest = runs[0]
+    assert latest["skillId"] == "content-to-note"
+    assert latest["status"] == "success"
+    assert latest["outputRef"].startswith("card_")
+    assert latest["inputSnapshot"]["importBatchId"] == response.json()["data"]["importBatchIds"][0]
+
+
+def test_wecom_import_failure_persists_failed_skill_run_and_notification(client, monkeypatch):
+    service = client.app.dependency_overrides[get_app_service]()
+
+    def fail_content_to_note(owner_user_id, content):
+        raise RuntimeError("content-to-note failed for test")
+
+    monkeypatch.setattr(service.skill_router_service, "run_content_to_note", fail_content_to_note)
+
+    response = client.post(
+        "/api/wecom/mock-sync",
+        json={"externalUserId": "external_skill_fail", "conversationId": "conv_skill_fail", "fixture": "note"},
+    )
+
+    assert response.status_code == 200
+    import_batch_id = response.json()["data"]["importBatchIds"][0]
+    failed_runs = client.get("/api/skills/runs", params={"status": "failed"}).json()["data"]
+    assert failed_runs[0]["skillId"] == "content-to-note"
+    assert failed_runs[0]["outputRef"] == import_batch_id
+    assert failed_runs[0]["inputSnapshot"]["importBatchId"] == import_batch_id
+    assert "content-to-note failed for test" in failed_runs[0]["errorMessage"]
+
+    failures = client.get("/api/wecom/import-failures").json()["data"]
+    assert failures["skillRuns"][0]["id"] == failed_runs[0]["id"]
+    assert failures["notifications"][0]["importBatchId"] == import_batch_id
+    assert failures["notifications"][0]["status"] == "failed"
+
+
 def test_mock_import_is_idempotent_for_repeated_wecom_messages(client):
     first = client.post(
         "/api/wecom/mock-sync",

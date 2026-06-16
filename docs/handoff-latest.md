@@ -638,3 +638,16 @@ rm -rf
 - `miniprogram/project.private.config.json` 已加入 `.gitignore`，作为个人开发者工具配置保留本地。
 - `backend/mock/runtime-state.json` 本地运行态改动已恢复，不提交测试运行数据。
 - `docs/悦享互动宝 MVP 产品开发文档.md` 换行符扰动已恢复，不再污染后续 diff。
+
+## 2026-06-17 补充：SkillRun 持久化和导入失败日志已完成
+
+- 已新增 `SkillRun` 领域模型和仓储持久化，JSON / PostgreSQL 都支持。
+- 企业微信导入成功时会保存 `content-to-note` 的成功 SkillRun，`outputRef` 指向当前兼容生成的 `Card`。
+- 企业微信导入失败时会保存 failed SkillRun、失败导入批次和失败通知，失败可查询。
+- 新增接口：
+  - `GET /api/skills/runs`
+  - `GET /api/wecom/import-failures`
+- 最近验证：
+  - `/tmp/teambuy-pytest-venv312/bin/python -m compileall backend/app backend/tests` 通过。
+  - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_skill_router.py backend/tests/test_app.py backend/tests/test_media_processing_service.py backend/tests/test_media_storage_service.py -q`：50 项通过。
+- 下一步建议：进入 P0 第二阶段前，先补强导入成功/失败通知口径和后台重试可视化；也可以直接开始正式 `UserNote` 模型和“我的笔记”基础接口。

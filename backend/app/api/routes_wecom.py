@@ -189,6 +189,14 @@ def list_media_retries(status: str | None = Query(default=None), service: AppSer
     return ApiResponse(data=service.list_media_retry_jobs(statuses))
 
 
+@router.get("/import-failures", response_model=ApiResponse[dict])
+def list_import_failures(
+    limit: int = Query(default=100, ge=1, le=500),
+    service: AppService = Depends(get_app_service),
+):
+    return ApiResponse(data=service.list_import_failures(limit=limit))
+
+
 @router.post("/media-retries/retry", response_model=ApiResponse[dict])
 async def retry_media_retries(
     media_id: str | None = Query(default=None),

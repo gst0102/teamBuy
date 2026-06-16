@@ -18,6 +18,7 @@ from app.models.domain import (
     MediaRetryJob,
     RawMessage,
     RelayEntry,
+    SkillRun,
     SyncCursor,
     SyncTask,
     SyncTaskLog,
@@ -186,6 +187,17 @@ class AppRepository(Protocol):
         ...
 
     def list_sync_task_logs(self, task_id: str | None = None, limit: int = 100) -> list[SyncTaskLog]:
+        ...
+
+    def save_skill_run(self, run: SkillRun) -> None:
+        ...
+
+    def list_skill_runs(
+        self,
+        status: str | None = None,
+        skill_id: str | None = None,
+        limit: int = 100,
+    ) -> list[SkillRun]:
         ...
 
 
@@ -526,6 +538,25 @@ class JsonRepository:
             logs = [item for item in logs if item.taskId == task_id]
         return sorted(logs, key=lambda item: item.createdAt, reverse=True)[:limit]
 
+    def save_skill_run(self, run: SkillRun) -> None:
+        state = self.load()
+        state.skill_runs = [item for item in state.skill_runs if item.id != run.id]
+        state.skill_runs.append(run)
+        self.save(state)
+
+    def list_skill_runs(
+        self,
+        status: str | None = None,
+        skill_id: str | None = None,
+        limit: int = 100,
+    ) -> list[SkillRun]:
+        runs = self.load().skill_runs
+        if status:
+            runs = [item for item in runs if item.status == status]
+        if skill_id:
+            runs = [item for item in runs if item.skillId == skill_id]
+        return sorted(runs, key=lambda item: item.startedAt, reverse=True)[:limit]
+
 
 class PostgresRepository:
     TABLES = {
@@ -542,6 +573,7 @@ class PostgresRepository:
         "media_retry_jobs": "media_retry_jobs",
         "sync_tasks": "sync_tasks",
         "sync_task_logs": "sync_task_logs",
+        "skill_runs": "skill_runs",
     }
     FIELD_COLUMNS = {
         "users": [
@@ -644,6 +676,14 @@ class PostgresRepository:
             ("task_id", "text", "taskId"),
             ("event", "text", "event"),
         ],
+        "skill_runs": [
+            ("skill_id", "text", "skillId"),
+            ("status", "text", "status"),
+            ("output_ref", "text", "outputRef"),
+            ("model_provider", "text", "modelProvider"),
+            ("started_at", "timestamptz", "startedAt"),
+            ("ended_at", "timestamptz", "endedAt"),
+        ],
     }
     INDEXES = {
         "import_batches": [
@@ -693,6 +733,11 @@ class PostgresRepository:
         ],
         "sync_task_logs": [
             ("idx_sync_task_logs_task_time", "task_id, created_at"),
+        ],
+        "skill_runs": [
+            ("idx_skill_runs_status_time", "status, started_at"),
+            ("idx_skill_runs_skill_time", "skill_id, started_at"),
+            ("idx_skill_runs_output_ref", "output_ref"),
         ],
     }
 
@@ -1196,6 +1241,31 @@ class PostgresRepository:
         else:
             rows = self._list_payloads("sync_task_logs", "true", (), "created_at desc, id desc limit %s" % int(limit))
         return [SyncTaskLog.model_validate(row) for row in rows]
+
+    def save_skill_run(self, run: SkillRun) -> None:
+        self._save_model("skill_runs", run)
+
+    def list_skill_runs(
+        self,
+        status: str | None = None,
+        skill_id: str | None = None,
+        limit: int = 100,
+    ) -> list[SkillRun]:
+        where_parts = ["true"]
+        params: list[str] = []
+        if status:
+            where_parts.append("status = %s")
+            params.append(status)
+        if skill_id:
+            where_parts.append("skill_id = %s")
+            params.append(skill_id)
+        rows = self._list_payloads(
+            "skill_runs",
+            " and ".join(where_parts),
+            tuple(params),
+            "started_at desc, id desc limit %s" % int(limit),
+        )
+        return [SkillRun.model_validate(row) for row in rows]
 
     def init_schema(self) -> None:
         with psycopg.connect(self.database_url) as conn:

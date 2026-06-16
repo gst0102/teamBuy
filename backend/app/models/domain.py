@@ -16,6 +16,7 @@ SourceType = Literal["wechat_note", "miniapp_link", "mp_link", "web_link", "unkn
 SyncStatus = Literal["idle", "running", "success", "failed"]
 MediaRetryStatus = Literal["pending", "success", "failed"]
 SyncTaskStatus = Literal["queued", "running", "success", "failed", "retrying", "skipped"]
+SkillRunStatus = Literal["pending", "success", "failed", "needs_confirm"]
 
 
 class User(BaseModel):
@@ -235,6 +236,19 @@ class SyncTaskLog(BaseModel):
     createdAt: str
 
 
+class SkillRun(BaseModel):
+    id: str
+    skillId: str
+    status: SkillRunStatus
+    inputSnapshot: dict = Field(default_factory=dict)
+    outputRef: str | None = None
+    modelProvider: str | None = None
+    errorMessage: str | None = None
+    cost: float = 0
+    startedAt: str
+    endedAt: str | None = None
+
+
 class AppState(BaseModel):
     users: list[User] = Field(default_factory=list)
     import_batches: list[ImportBatch] = Field(default_factory=list)
@@ -249,3 +263,4 @@ class AppState(BaseModel):
     media_retry_jobs: list[MediaRetryJob] = Field(default_factory=list)
     sync_tasks: list[SyncTask] = Field(default_factory=list)
     sync_task_logs: list[SyncTaskLog] = Field(default_factory=list)
+    skill_runs: list[SkillRun] = Field(default_factory=list)

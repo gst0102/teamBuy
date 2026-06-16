@@ -942,3 +942,32 @@
 - 已将 `miniprogram/project.private.config.json` 加入 `.gitignore`，避免个人微信开发者工具配置污染提交。
 - 已恢复 `backend/mock/runtime-state.json` 的本地运行态改动，避免把测试运行数据提交。
 - 已恢复 `docs/悦享互动宝 MVP 产品开发文档.md` 的换行符扰动，避免无意义大 diff。
+
+## 2026-06-17
+
+### P0 第一阶段：SkillRun 持久化和导入失败日志
+
+- 新增后端领域模型 `SkillRun`，并接入 JSON / PostgreSQL 仓储。
+- `AppState` 新增 `skill_runs`，PostgreSQL 自动创建 `skill_runs` payload 表和常用索引。
+- 企业微信导入成功时，`content-to-note` 的 `SkillRun` 会持久化，记录：
+  - `skillId`
+  - `status`
+  - `inputSnapshot`
+  - `outputRef`
+  - `modelProvider`
+  - `startedAt` / `endedAt`
+- 企业微信导入中 `content-to-note` 失败时，不再只抛异常或静默中断：
+  - 导入批次标记为 `failed`。
+  - 失败通知写入 `import_notifications`。
+  - 失败 `SkillRun` 写入 `skill_runs`。
+  - 失败日志可通过接口查询。
+- 新增查询接口：
+  - `GET /api/skills/runs`
+  - `GET /api/wecom/import-failures`
+- 新增回归测试覆盖成功 SkillRun 持久化、失败 SkillRun 持久化和失败通知。
+
+### 验证结果
+
+- `/tmp/teambuy-pytest-venv312/bin/python -m compileall backend/app backend/tests`：通过。
+- `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_app.py -q -k "skill_run or import_failure or content_object"`：3 项通过。
+- `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_skill_router.py backend/tests/test_app.py backend/tests/test_media_processing_service.py backend/tests/test_media_storage_service.py -q`：50 项通过。

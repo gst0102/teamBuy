@@ -5,7 +5,7 @@ from datetime import timedelta
 from uuid import uuid4
 from fastapi import HTTPException, status
 
-from app.models.domain import AppState, Card, CardMedia, Category, ImportBatch, LeadFollowUpLog, LeadReminder, MediaRetryJob, RawMessage, RelayConfig, RelayEntry, SyncCursor, User, ViewEvent
+from app.models.domain import AppState, Card, CardMedia, Category, ImportBatch, LeadFollowUpLog, LeadReminder, MediaRetryJob, RawMessage, RelayConfig, RelayEntry, SkillRun, SyncCursor, User, ViewEvent
 from app.schemas.auth import MockLoginRequest
 from app.schemas.categories import CategoryCreateRequest
 from app.schemas.cards import CardCreateRequest, CardUpdateRequest, CreateRelayRequest, LeadReminderUpdateRequest, LeadReminderUpsertRequest, RecordViewRequest
@@ -182,15 +182,48 @@ class AppService:
             batch_messages = [item for item in raw_messages if item.id in batch.rawMessageIds]
             for message in batch_messages:
                 message.importBatchId = batch.id
-            content_object = self.content_object_adapter.from_wecom_batch(batch, batch_messages)
-            note_result = self.skill_router_service.run_content_to_note("unclaimed", content_object)
-            card = self._build_card_from_note_draft(batch, note_result.noteDraft, content_object)
-            batch.generatedCardId = card.id
-            batch.status = "success" if card.title else "failed"
-            batch.errorMessage = None if card.title else "未能解析标题"
-            batch.updatedAt = now_iso()
-            notification = self.notification_service.build_notification(batch)
-            self.repo.save_import_artifacts(batch, batch_messages, card, notification)
+            try:
+                content_object = self.content_object_adapter.from_wecom_batch(batch, batch_messages)
+                note_result = self.skill_router_service.run_content_to_note("unclaimed", content_object)
+                card = self._build_card_from_note_draft(batch, note_result.noteDraft, content_object)
+                batch.generatedCardId = card.id
+                batch.status = "success" if card.title else "failed"
+                batch.errorMessage = None if card.title else "未能解析标题"
+                batch.updatedAt = now_iso()
+                skill_run = SkillRun.model_validate(note_result.skillRun.model_dump())
+                skill_run.outputRef = card.id
+                skill_run.inputSnapshot = {
+                    **skill_run.inputSnapshot,
+                    "importBatchId": batch.id,
+                    "rawMessageIds": batch.rawMessageIds,
+                }
+                notification = self.notification_service.build_notification(batch)
+                self.repo.save_import_artifacts(batch, batch_messages, card, notification)
+                self.repo.save_skill_run(skill_run)
+            except Exception as exc:
+                batch.status = "failed"
+                batch.errorMessage = str(exc)
+                batch.updatedAt = now_iso()
+                failed_run = SkillRun(
+                    id=new_id("skill_run"),
+                    skillId="content-to-note",
+                    status="failed",
+                    inputSnapshot={
+                        "importBatchId": batch.id,
+                        "rawMessageIds": batch.rawMessageIds,
+                        "messages": [message.model_dump(mode="json") for message in batch_messages],
+                    },
+                    outputRef=batch.id,
+                    modelProvider="rule",
+                    errorMessage=str(exc),
+                    startedAt=batch.createdAt,
+                    endedAt=now_iso(),
+                )
+                notification = self.notification_service.build_notification(batch)
+                self.repo.save_raw_messages(batch_messages)
+                self.repo.save_import_batch(batch)
+                self.repo.save_import_notification(notification)
+                self.repo.save_skill_run(failed_run)
 
         return {
             "message": notification.message,
@@ -241,6 +274,22 @@ class AppService:
             createdAt=created_at,
             updatedAt=created_at,
         )
+
+    def list_skill_runs(
+        self,
+        status: str | None = None,
+        skill_id: str | None = None,
+        limit: int = 100,
+    ) -> list[dict]:
+        return [item.model_dump() for item in self.repo.list_skill_runs(status=status, skill_id=skill_id, limit=limit)]
+
+    def list_import_failures(self, limit: int = 100) -> dict:
+        failed_runs = self.repo.list_skill_runs(status="failed", limit=limit)
+        failed_notifications = [item for item in self.repo.list_import_notifications() if item.status == "failed"]
+        return {
+            "skillRuns": [item.model_dump() for item in failed_runs],
+            "notifications": [item.model_dump() for item in failed_notifications[:limit]],
+        }
 
     def list_import_notifications(self) -> list[dict]:
         return [item.model_dump() for item in self.repo.list_import_notifications()]
