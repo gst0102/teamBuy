@@ -651,3 +651,18 @@ rm -rf
   - `/tmp/teambuy-pytest-venv312/bin/python -m compileall backend/app backend/tests` 通过。
   - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_skill_router.py backend/tests/test_app.py backend/tests/test_media_processing_service.py backend/tests/test_media_storage_service.py -q`：50 项通过。
 - 下一步建议：进入 P0 第二阶段前，先补强导入成功/失败通知口径和后台重试可视化；也可以直接开始正式 `UserNote` 模型和“我的笔记”基础接口。
+
+## 2026-06-17 补充：导入通知口径和后台重试可视化已完成
+
+- 导入通知文案已补强：
+  - 成功：提示已整理完成，可去小程序认领、编辑和分类。
+  - 成功但媒体未转存：提示媒体进入后台重试队列。
+  - 失败：包含具体失败原因。
+- 真实 `sync_msg` 导入通知 channel 使用 `wecom`，mock 导入继续使用 `mock`。
+- 新增后台重试看板接口：`GET /api/wecom/retry-dashboard`。
+- 新增失败导入重试接口：`POST /api/wecom/import-failures/retry?importBatchId=...`，需要 admin token。
+- 失败导入重试按 `importBatchId` 重跑内容整理；媒体失败仍走 `media-retries/retry`，两类失败不要混用。
+- 最近验证：
+  - `/tmp/teambuy-pytest-venv312/bin/python -m compileall backend/app backend/tests` 通过。
+  - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_skill_router.py backend/tests/test_app.py backend/tests/test_media_processing_service.py backend/tests/test_media_storage_service.py -q`：50 项通过。
+- P0 第一阶段后端基础已基本收尾。下一步可以进入 P0 第二阶段：正式 `UserNote` 模型和“我的笔记”基础接口。

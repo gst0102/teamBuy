@@ -115,7 +115,7 @@ class AppService:
 
     def trigger_mock_import(self, external_user_id: str, conversation_id: str, fixture: str) -> dict:
         synced_messages = self.wecom_mock_service.sync_messages(external_user_id, conversation_id, fixture)
-        return self.import_synced_messages(synced_messages)
+        return self.import_synced_messages(synced_messages, notification_channel="mock")
 
     def normalize_sync_response(self, sync_response: dict, fallback_open_kfid: str | None = None) -> list[dict]:
         return self.normalizer.normalize_sync_response(sync_response, fallback_open_kfid=fallback_open_kfid)
@@ -126,12 +126,14 @@ class AppService:
         fallback_open_kfid: str | None = None,
         media_url_by_id: dict[str, str] | None = None,
         allow_media_storage_fallback: bool = True,
+        notification_channel: str = "wecom",
     ) -> dict:
         synced_messages = self.normalizer.normalize_sync_response(sync_response, fallback_open_kfid=fallback_open_kfid)
         return self.import_synced_messages(
             synced_messages,
             media_url_by_id=media_url_by_id,
             allow_media_storage_fallback=allow_media_storage_fallback,
+            notification_channel=notification_channel,
         )
 
     def import_synced_messages(
@@ -139,6 +141,7 @@ class AppService:
         synced_messages: list[dict],
         media_url_by_id: dict[str, str] | None = None,
         allow_media_storage_fallback: bool = True,
+        notification_channel: str = "wecom",
     ) -> dict:
         raw_messages: list[RawMessage] = []
         incoming_wecom_msg_ids = {item["wecomMsgId"] for item in synced_messages if item.get("wecomMsgId")}
@@ -182,54 +185,75 @@ class AppService:
             batch_messages = [item for item in raw_messages if item.id in batch.rawMessageIds]
             for message in batch_messages:
                 message.importBatchId = batch.id
-            try:
-                content_object = self.content_object_adapter.from_wecom_batch(batch, batch_messages)
-                note_result = self.skill_router_service.run_content_to_note("unclaimed", content_object)
-                card = self._build_card_from_note_draft(batch, note_result.noteDraft, content_object)
-                batch.generatedCardId = card.id
-                batch.status = "success" if card.title else "failed"
-                batch.errorMessage = None if card.title else "未能解析标题"
-                batch.updatedAt = now_iso()
-                skill_run = SkillRun.model_validate(note_result.skillRun.model_dump())
-                skill_run.outputRef = card.id
-                skill_run.inputSnapshot = {
-                    **skill_run.inputSnapshot,
-                    "importBatchId": batch.id,
-                    "rawMessageIds": batch.rawMessageIds,
-                }
-                notification = self.notification_service.build_notification(batch)
-                self.repo.save_import_artifacts(batch, batch_messages, card, notification)
-                self.repo.save_skill_run(skill_run)
-            except Exception as exc:
-                batch.status = "failed"
-                batch.errorMessage = str(exc)
-                batch.updatedAt = now_iso()
-                failed_run = SkillRun(
-                    id=new_id("skill_run"),
-                    skillId="content-to-note",
-                    status="failed",
-                    inputSnapshot={
-                        "importBatchId": batch.id,
-                        "rawMessageIds": batch.rawMessageIds,
-                        "messages": [message.model_dump(mode="json") for message in batch_messages],
-                    },
-                    outputRef=batch.id,
-                    modelProvider="rule",
-                    errorMessage=str(exc),
-                    startedAt=batch.createdAt,
-                    endedAt=now_iso(),
-                )
-                notification = self.notification_service.build_notification(batch)
-                self.repo.save_raw_messages(batch_messages)
-                self.repo.save_import_batch(batch)
-                self.repo.save_import_notification(notification)
-                self.repo.save_skill_run(failed_run)
+            notification = self._process_import_batch(batch, batch_messages, notification_channel)
 
         return {
             "message": notification.message,
             "importBatchIds": [item.id for item in new_batches],
             "deduplicatedCount": len(existing_wecom_msg_ids),
         }
+
+    def _process_import_batch(
+        self,
+        batch: ImportBatch,
+        batch_messages: list[RawMessage],
+        notification_channel: str,
+    ):
+        media_warning_count = sum(
+            1
+            for message in batch_messages
+            if message.msgType in {"image", "video"} and message.mediaId and not message.localMediaUrl
+        )
+        try:
+            content_object = self.content_object_adapter.from_wecom_batch(batch, batch_messages)
+            note_result = self.skill_router_service.run_content_to_note("unclaimed", content_object)
+            card = self._build_card_from_note_draft(batch, note_result.noteDraft, content_object)
+            batch.generatedCardId = card.id
+            batch.status = "success" if card.title else "failed"
+            batch.errorMessage = None if card.title else "未能解析标题"
+            batch.updatedAt = now_iso()
+            skill_run = SkillRun.model_validate(note_result.skillRun.model_dump())
+            skill_run.outputRef = card.id if batch.status == "success" else batch.id
+            skill_run.inputSnapshot = {
+                **skill_run.inputSnapshot,
+                "importBatchId": batch.id,
+                "rawMessageIds": batch.rawMessageIds,
+                "mediaWarningCount": media_warning_count,
+            }
+            notification = self.notification_service.build_notification(
+                batch,
+                channel=notification_channel,
+                media_warning_count=media_warning_count,
+            )
+            self.repo.save_import_artifacts(batch, batch_messages, card, notification)
+            self.repo.save_skill_run(skill_run)
+            return notification
+        except Exception as exc:
+            batch.status = "failed"
+            batch.errorMessage = str(exc)
+            batch.updatedAt = now_iso()
+            failed_run = SkillRun(
+                id=new_id("skill_run"),
+                skillId="content-to-note",
+                status="failed",
+                inputSnapshot={
+                    "importBatchId": batch.id,
+                    "rawMessageIds": batch.rawMessageIds,
+                    "messages": [message.model_dump(mode="json") for message in batch_messages],
+                    "mediaWarningCount": media_warning_count,
+                },
+                outputRef=batch.id,
+                modelProvider="rule",
+                errorMessage=str(exc),
+                startedAt=batch.createdAt,
+                endedAt=now_iso(),
+            )
+            notification = self.notification_service.build_notification(batch, channel=notification_channel)
+            self.repo.save_raw_messages(batch_messages)
+            self.repo.save_import_batch(batch)
+            self.repo.save_import_notification(notification)
+            self.repo.save_skill_run(failed_run)
+            return notification
 
     def _build_card_from_note_draft(self, batch: ImportBatch, note_draft, content_object) -> Card:
         created_at = now_iso()
@@ -289,6 +313,42 @@ class AppService:
         return {
             "skillRuns": [item.model_dump() for item in failed_runs],
             "notifications": [item.model_dump() for item in failed_notifications[:limit]],
+        }
+
+    def retry_failed_import(self, import_batch_id: str, notification_channel: str = "wecom") -> dict:
+        batch = self.repo.get_import_batch(import_batch_id)
+        if not batch:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="导入批次不存在")
+        if batch.status != "failed":
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="只有失败导入批次可以重试")
+        batch_messages = self.repo.list_raw_messages_for_batch(import_batch_id)
+        if not batch_messages:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="导入批次原始消息不存在")
+        notification = self._process_import_batch(batch, batch_messages, notification_channel)
+        card = self.repo.get_card(batch.generatedCardId) if batch.generatedCardId else None
+        return {
+            "importBatch": batch.model_dump(),
+            "generatedCard": card.model_dump() if card else None,
+            "notification": notification.model_dump(),
+        }
+
+    def get_wecom_retry_dashboard(self, limit: int = 100) -> dict:
+        media_failed = self.repo.list_media_retry_jobs({"failed"})[:limit]
+        failed_runs = self.repo.list_skill_runs(status="failed", limit=limit)
+        failed_notifications = [item for item in self.repo.list_import_notifications() if item.status == "failed"][:limit]
+        return {
+            "summary": {
+                "failedMediaCount": len(media_failed),
+                "failedSkillRunCount": len(failed_runs),
+                "failedNotificationCount": len(failed_notifications),
+            },
+            "actions": {
+                "retryMedia": "/api/wecom/media-retries/retry",
+                "retryImport": "/api/wecom/import-failures/retry",
+            },
+            "mediaRetries": [item.model_dump() for item in media_failed],
+            "skillRuns": [item.model_dump() for item in failed_runs],
+            "notifications": [item.model_dump() for item in failed_notifications],
         }
 
     def list_import_notifications(self) -> list[dict]:

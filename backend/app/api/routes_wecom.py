@@ -197,6 +197,25 @@ def list_import_failures(
     return ApiResponse(data=service.list_import_failures(limit=limit))
 
 
+@router.get("/retry-dashboard", response_model=ApiResponse[dict])
+def get_retry_dashboard(
+    limit: int = Query(default=100, ge=1, le=500),
+    service: AppService = Depends(get_app_service),
+):
+    return ApiResponse(data=service.get_wecom_retry_dashboard(limit=limit))
+
+
+@router.post("/import-failures/retry", response_model=ApiResponse[dict])
+def retry_import_failure(
+    import_batch_id: str = Query(..., alias="importBatchId"),
+    admin_token: str | None = Query(default=None, alias="adminToken"),
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+):
+    _verify_admin_token(x_admin_token or admin_token)
+    return ApiResponse(data=service.retry_failed_import(import_batch_id, notification_channel="wecom"))
+
+
 @router.post("/media-retries/retry", response_model=ApiResponse[dict])
 async def retry_media_retries(
     media_id: str | None = Query(default=None),
@@ -301,6 +320,7 @@ async def _run_real_sync(
                 synced_messages,
                 media_url_by_id=media_url_by_id,
                 allow_media_storage_fallback=settings.wecom_use_mock,
+                notification_channel="mock" if settings.wecom_use_mock else "wecom",
             )
             next_cursor = sync_response.get("next_cursor") or sync_response.get("cursor") or sync_response.get("token")
             has_more = _sync_response_has_more(sync_response.get("has_more"))

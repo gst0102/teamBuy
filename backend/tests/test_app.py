@@ -475,7 +475,7 @@ def test_mock_import_creates_claimable_batch(client):
 
     notifications = client.get("/api/wecom/notifications").json()["data"]
     assert notifications[-1]["status"] == "success"
-    assert "导入成功" in notifications[-1]["message"]
+    assert "已整理完成" in notifications[-1]["message"]
 
 
 def test_wecom_import_uses_content_object_to_note_pipeline(client, monkeypatch):
@@ -521,6 +521,7 @@ def test_wecom_import_persists_successful_skill_run(client):
 
 def test_wecom_import_failure_persists_failed_skill_run_and_notification(client, monkeypatch):
     service = client.app.dependency_overrides[get_app_service]()
+    original_run = service.skill_router_service.run_content_to_note
 
     def fail_content_to_note(owner_user_id, content):
         raise RuntimeError("content-to-note failed for test")
@@ -544,6 +545,25 @@ def test_wecom_import_failure_persists_failed_skill_run_and_notification(client,
     assert failures["skillRuns"][0]["id"] == failed_runs[0]["id"]
     assert failures["notifications"][0]["importBatchId"] == import_batch_id
     assert failures["notifications"][0]["status"] == "failed"
+    assert "content-to-note failed for test" in failures["notifications"][0]["message"]
+
+    dashboard = client.get("/api/wecom/retry-dashboard").json()["data"]
+    assert dashboard["summary"]["failedSkillRunCount"] >= 1
+    assert dashboard["actions"]["retryImport"] == "/api/wecom/import-failures/retry"
+
+    monkeypatch.setattr(settings, "admin_token", "test-admin-token")
+    monkeypatch.setattr(service.skill_router_service, "run_content_to_note", original_run)
+    retry_response = client.post(
+        "/api/wecom/import-failures/retry",
+        params={"importBatchId": import_batch_id},
+        headers={"X-Admin-Token": "test-admin-token"},
+    )
+
+    assert retry_response.status_code == 200
+    retry_payload = retry_response.json()["data"]
+    assert retry_payload["importBatch"]["status"] == "success"
+    assert retry_payload["generatedCard"]["id"].startswith("card_")
+    assert retry_payload["notification"]["status"] == "success"
 
 
 def test_mock_import_is_idempotent_for_repeated_wecom_messages(client):

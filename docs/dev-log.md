@@ -971,3 +971,28 @@
 - `/tmp/teambuy-pytest-venv312/bin/python -m compileall backend/app backend/tests`：通过。
 - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_app.py -q -k "skill_run or import_failure or content_object"`：3 项通过。
 - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_skill_router.py backend/tests/test_app.py backend/tests/test_media_processing_service.py backend/tests/test_media_storage_service.py -q`：50 项通过。
+
+## 2026-06-17
+
+### P0 第一阶段：导入通知口径和后台重试可视化
+
+- 补强导入通知文案：
+  - 成功通知改为“已整理完成，请打开小程序认领、编辑和分类”。
+  - 成功但有媒体未转存时，会提示有媒体进入后台重试队列。
+  - 失败通知会带失败原因，避免只提示“检查内容后重试”。
+- 导入通知 channel 现在区分 `mock` 和 `wecom`，真实 `sync_msg` 导入使用 `wecom`。
+- 新增失败重试看板接口：`GET /api/wecom/retry-dashboard`。
+  - 汇总失败媒体数量、失败 SkillRun 数量、失败通知数量。
+  - 返回媒体失败列表、SkillRun 失败列表、失败通知列表和可用重试接口。
+- 新增失败导入重试接口：`POST /api/wecom/import-failures/retry?importBatchId=...`。
+  - 需要 admin token。
+  - 会读取失败批次原始消息，重新执行 `ContentObject -> content-to-note -> generatedCard`。
+  - 重试成功后会生成新的成功通知和卡片草稿。
+- 为 JSON / PostgreSQL 仓储补齐按导入批次读取原始消息能力，服务失败导入重试。
+- 本轮没有新增小程序页面，只先把后台可视化和重试所需接口打通，方便后续后台/小程序接入。
+
+### 验证结果
+
+- `/tmp/teambuy-pytest-venv312/bin/python -m compileall backend/app backend/tests`：通过。
+- `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_app.py -q -k "notification or import_failure or media_retry or mock_import"`：5 项通过。
+- `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_skill_router.py backend/tests/test_app.py backend/tests/test_media_processing_service.py backend/tests/test_media_storage_service.py -q`：50 项通过。

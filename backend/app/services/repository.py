@@ -55,6 +55,9 @@ class AppRepository(Protocol):
     def save_raw_messages(self, messages: list[RawMessage]) -> None:
         ...
 
+    def list_raw_messages_for_batch(self, import_batch_id: str) -> list[RawMessage]:
+        ...
+
     def existing_wecom_msg_ids(self, wecom_msg_ids: set[str]) -> set[str]:
         ...
 
@@ -249,6 +252,9 @@ class JsonRepository:
         state.raw_messages = [item for item in state.raw_messages if item.id not in message_ids]
         state.raw_messages.extend(messages)
         self.save(state)
+
+    def list_raw_messages_for_batch(self, import_batch_id: str) -> list[RawMessage]:
+        return [item for item in self.load().raw_messages if item.importBatchId == import_batch_id]
 
     def existing_wecom_msg_ids(self, wecom_msg_ids: set[str]) -> set[str]:
         if not wecom_msg_ids:
@@ -838,13 +844,14 @@ class PostgresRepository:
                 self._upsert_payload(conn, "cards", card.model_dump(mode="json"))
                 self._upsert_payload(conn, "import_notifications", notification.model_dump(mode="json"))
 
-    def list_raw_messages_for_batch(self, import_batch_id: str) -> list[dict]:
-        return self._list_payloads(
+    def list_raw_messages_for_batch(self, import_batch_id: str) -> list[RawMessage]:
+        rows = self._list_payloads(
             "raw_messages",
             "import_batch_id = %s",
             (import_batch_id,),
             "received_at asc, id asc",
         )
+        return [RawMessage.model_validate(row) for row in rows]
 
     def get_card(self, card_id: str) -> Card | None:
         payload = self.get_payload_by_id("cards", card_id)
