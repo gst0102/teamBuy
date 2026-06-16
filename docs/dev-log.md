@@ -892,3 +892,29 @@
 - `/tmp/teambuy-pytest-venv312/bin/python -m compileall backend/app backend/tests`：通过。
 - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_skill_router.py -q`：6 项通过。
 - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_skill_router.py backend/tests/test_app.py backend/tests/test_media_processing_service.py backend/tests/test_media_storage_service.py -q`：47 项通过。
+
+## 2026-06-17
+
+### 企业微信导入接入 ContentObject -> content-to-note
+
+- 已将长期架构规则补入 `AGENTS.md`，明确完整架构文档入口、混合驱动策略、文字类来源统一进 `content-to-note`、漫画图和展示页的边界。
+- 已更新 `docs/project-memory.md`，把“企业微信基座 + 混合驱动 Skill + 小程序笔记与展示页”作为长期项目记忆。
+- 新增 `ContentObjectAdapter`，将现有企业微信 `RawMessage` 批次转换为 `ContentObject`：
+  - 文本进入 `textBlocks`。
+  - 图片/视频/file 进入 `media`。
+  - 链接进入 `links`。
+  - 位置消息追加为结构化前缀文本，供规则版笔记草稿提取。
+- `import_synced_messages()` 已从旧的直接 `CardParserService.build_card_draft()` 改为：
+  - `RawMessage` 批次
+  - `ContentObject`
+  - `content-to-note`
+  - `UserNoteDraft`
+  - 兼容映射为现有 `Card` 草稿
+- 本轮保留旧 `generatedCard` 输出，不要求小程序立即改成正式 `UserNote`，避免破坏当前认领、编辑、发布链路。
+- 迭代中发现链接导入兼容问题：链接同时存在 `thumbUrl` 和转存媒体时，新逻辑优先选了转存媒体，导致旧测试期望的文章封面不一致。已修正为 `link_article` 优先使用链接 `coverUrl`，普通微信笔记仍优先使用转存图片。
+
+### 验证结果
+
+- `/tmp/teambuy-pytest-venv312/bin/python -m compileall backend/app backend/tests`：通过。
+- `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_app.py -q -k "mock_import or link_import or note_import or content_object or real_sync_records_media_retry or real_sync_downloads"`：7 项通过。
+- `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_skill_router.py backend/tests/test_app.py backend/tests/test_media_processing_service.py backend/tests/test_media_storage_service.py -q`：48 项通过。

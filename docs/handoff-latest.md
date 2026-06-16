@@ -603,3 +603,23 @@ rm -rf
   2. 增加 `SkillRun` 持久化和失败日志。
   3. 小程序新增“我的笔记”基础管理，再逐步承接展示页构建器。
   4. 等企业微信资料归档接口权限到位后，继续做 `wecom-archive-core` 的会话内容存档接入。
+
+## 2026-06-17 补充：企业微信导入已接入 content-to-note
+
+- `AGENTS.md` 已新增长期架构总纲，后续会话应优先遵守：
+  - 完整架构文档入口：`docs/stage2-docs/08-plugin-architecture.md`。
+  - 企业微信入口混合驱动：快捷指令优先、规则其次、AI 兜底。
+  - 文字类来源统一进 `ContentObject -> content-to-note`。
+  - 漫画图和展示页保持独立 Skill 边界。
+- 已新增 `backend/app/services/content_object_adapter.py`，负责把企业微信 `RawMessage` 批次转为 `ContentObject`。
+- `AppService.import_synced_messages()` 已改为先跑 `ContentObject -> content-to-note -> UserNoteDraft`，再兼容生成当前小程序依赖的 `Card` 草稿。
+- 当前仍保留 `generatedCard`，不是最终笔记库模型；这是为了不打断现有待认领、编辑、发布和分享链路。
+- 本轮发现并修复一个兼容问题：`link_article` 封面必须优先取链接 `coverUrl`，不能被企业微信媒体附件覆盖。
+- 最近验证：
+  - `/tmp/teambuy-pytest-venv312/bin/python -m compileall backend/app backend/tests` 通过。
+  - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_skill_router.py backend/tests/test_app.py backend/tests/test_media_processing_service.py backend/tests/test_media_storage_service.py -q`：48 项通过。
+- 下一步建议：
+  1. 为 `SkillRun` 做持久化，记录导入时的 skillId、inputSnapshot、输出引用和失败原因。
+  2. 为 `UserNote` / 笔记库建正式模型和接口。
+  3. 小程序新增“我的笔记”基础管理页。
+  4. 再把 `generatedCard` 逐步替换成 `UserNote` 到展示页/漫画图的后续流转。

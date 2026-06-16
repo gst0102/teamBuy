@@ -4,6 +4,7 @@ from app.core.config import BACKEND_DIR, settings
 from app.services.app_service import AppService
 from app.services.bootstrap import seed_runtime_state
 from app.services.card_parser_service import CardParserService
+from app.services.content_object_adapter import ContentObjectAdapter
 from app.services.import_notification_service import ImportNotificationService
 from app.services.media_storage_service import MediaStorageService
 from app.services.media_processing_service import MediaProcessingService
@@ -19,6 +20,7 @@ from app.services.wecom_mock_service import WecomMockService
 _repo = build_repository(settings.database_backend, settings.database_url, settings.data_file)
 seed_runtime_state(_repo, BACKEND_DIR / "mock")
 _wecom_mock_service = WecomMockService(BACKEND_DIR / "mock")
+_skill_router_service = SkillRouterService()
 _service = AppService(
     repo=_repo,
     wecom_mock_service=_wecom_mock_service,
@@ -38,6 +40,8 @@ _service = AppService(
     aggregator=MessageAggregator(),
     notification_service=ImportNotificationService(),
     normalizer=WecomMessageNormalizer(),
+    skill_router_service=_skill_router_service,
+    content_object_adapter=ContentObjectAdapter(),
     media_processing_service=MediaProcessingService(
         image_max_edge=settings.media_image_max_edge,
         image_quality=settings.media_image_quality,
@@ -51,7 +55,6 @@ _sync_task_queue = SyncTaskQueue(
     _repo,
     lock_timeout_seconds=settings.wecom_sync_lock_timeout_seconds,
 )
-_skill_router_service = SkillRouterService()
 
 
 def get_app_service() -> AppService:

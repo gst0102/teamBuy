@@ -170,8 +170,12 @@ class SkillRouterService:
         body = "\n\n".join(body_parts) or "暂无正文，可在小程序中继续编辑。"
         title = self._guess_title(content, body)
         summary = self._truncate(self._first_sentence(body), 120)
-        cover_url = next((media.url for media in content.media if media.type == "image" and media.url), None)
+        link_cover_url = next((link.coverUrl for link in content.links if link.coverUrl), None)
+        media_cover_url = next((media.url for media in content.media if media.type == "image" and media.url), None)
+        cover_url = link_cover_url if content.sourceType == "link_article" else media_cover_url
+        cover_url = cover_url or media_cover_url or link_cover_url
         phone_match = PHONE_PATTERN.search(body)
+        location_text = self._extract_prefixed_value(body, "位置：")
         return UserNoteDraftPayload(
             ownerUserId=owner_user_id,
             title=title,
@@ -180,6 +184,7 @@ class SkillRouterService:
             coverUrl=cover_url,
             media=content.media,
             phone=phone_match.group(0) if phone_match else None,
+            locationText=location_text,
             sourceRefs=content.sourceRefs or content.rawMessageIds,
             visibilityConfig={"showPhone": bool(phone_match), "showSource": True},
         )
@@ -196,6 +201,14 @@ class SkillRouterService:
     def _format_link(self, link) -> str:
         parts = [part for part in [link.title, link.description, link.url] if part]
         return "\n".join(parts)
+
+    def _extract_prefixed_value(self, text: str, prefix: str) -> str | None:
+        for line in text.splitlines():
+            if line.startswith(prefix):
+                value = line.removeprefix(prefix).strip()
+                if value:
+                    return value
+        return None
 
     def _first_sentence(self, text: str) -> str:
         for separator in ["。", "\n", ".", "！", "？"]:

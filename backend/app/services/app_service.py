@@ -5,17 +5,19 @@ from datetime import timedelta
 from uuid import uuid4
 from fastapi import HTTPException, status
 
-from app.models.domain import AppState, Card, CardMedia, Category, LeadFollowUpLog, LeadReminder, MediaRetryJob, RawMessage, RelayConfig, RelayEntry, SyncCursor, User, ViewEvent
+from app.models.domain import AppState, Card, CardMedia, Category, ImportBatch, LeadFollowUpLog, LeadReminder, MediaRetryJob, RawMessage, RelayConfig, RelayEntry, SyncCursor, User, ViewEvent
 from app.schemas.auth import MockLoginRequest
 from app.schemas.categories import CategoryCreateRequest
 from app.schemas.cards import CardCreateRequest, CardUpdateRequest, CreateRelayRequest, LeadReminderUpdateRequest, LeadReminderUpsertRequest, RecordViewRequest
 from app.services.card_parser_service import CardParserService
+from app.services.content_object_adapter import ContentObjectAdapter
 from app.services.helpers import mask_nickname, new_id
 from app.services.import_notification_service import ImportNotificationService
 from app.services.media_storage_service import MediaStorageService
 from app.services.media_processing_service import MediaProcessingService
 from app.services.message_aggregator import MessageAggregator
 from app.services.repository import AppRepository
+from app.services.skill_router_service import SkillRouterService
 from app.services.time_utils import SHANGHAI, date_key, now_iso, parse_iso
 from app.services.wecom_message_normalizer import WecomMessageNormalizer
 from app.services.wecom_mock_service import WecomMockService
@@ -36,6 +38,8 @@ class AppService:
         notification_service: ImportNotificationService,
         normalizer: WecomMessageNormalizer,
         media_processing_service: MediaProcessingService | None = None,
+        skill_router_service: SkillRouterService | None = None,
+        content_object_adapter: ContentObjectAdapter | None = None,
     ):
         self.repo = repo
         self.wecom_mock_service = wecom_mock_service
@@ -45,6 +49,8 @@ class AppService:
         self.aggregator = aggregator
         self.notification_service = notification_service
         self.normalizer = normalizer
+        self.skill_router_service = skill_router_service or SkillRouterService()
+        self.content_object_adapter = content_object_adapter or ContentObjectAdapter()
 
     def _load(self) -> AppState:
         return self.repo.load()
@@ -176,7 +182,9 @@ class AppService:
             batch_messages = [item for item in raw_messages if item.id in batch.rawMessageIds]
             for message in batch_messages:
                 message.importBatchId = batch.id
-            card = self.parser_service.build_card_draft(owner_user_id="unclaimed", batch=batch, messages=batch_messages)
+            content_object = self.content_object_adapter.from_wecom_batch(batch, batch_messages)
+            note_result = self.skill_router_service.run_content_to_note("unclaimed", content_object)
+            card = self._build_card_from_note_draft(batch, note_result.noteDraft, content_object)
             batch.generatedCardId = card.id
             batch.status = "success" if card.title else "failed"
             batch.errorMessage = None if card.title else "未能解析标题"
@@ -189,6 +197,50 @@ class AppService:
             "importBatchIds": [item.id for item in new_batches],
             "deduplicatedCount": len(existing_wecom_msg_ids),
         }
+
+    def _build_card_from_note_draft(self, batch: ImportBatch, note_draft, content_object) -> Card:
+        created_at = now_iso()
+        card_id = new_id("card")
+        media: list[CardMedia] = []
+        sort_order = 1
+        for item in note_draft.media:
+            if item.type not in {"image", "video"} or not item.url:
+                continue
+            media.append(
+                CardMedia(
+                    id=new_id("card_media"),
+                    cardId=card_id,
+                    type=item.type,
+                    url=item.url,
+                    sortOrder=sort_order,
+                    sourceMediaId=item.mediaId,
+                    createdAt=created_at,
+                )
+            )
+            sort_order += 1
+
+        source_url = next((link.url for link in content_object.links if link.url), None)
+        project_name = note_draft.summary[:30] if note_draft.summary else None
+        return Card(
+            id=card_id,
+            ownerUserId=note_draft.ownerUserId or "unclaimed",
+            importBatchId=batch.id,
+            status="draft",
+            title=note_draft.title or batch.titleCandidate or "未命名素材",
+            coverUrl=note_draft.coverUrl,
+            detailText=note_draft.body,
+            projectName=project_name,
+            locationText=note_draft.locationText,
+            phone=note_draft.phone,
+            relayNotice="感兴趣请实名接龙报名。",
+            sourceUrl=source_url,
+            enabledFields=["projectName", "locationText", "phone", "relayNotice", "sourceUrl"],
+            categoryIds=[],
+            media=media,
+            relayConfig=RelayConfig(enabled=True, requirePhone=False, requireAddress=False),
+            createdAt=created_at,
+            updatedAt=created_at,
+        )
 
     def list_import_notifications(self) -> list[dict]:
         return [item.model_dump() for item in self.repo.list_import_notifications()]

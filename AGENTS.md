@@ -48,6 +48,22 @@ docs/prompts/codex-start.md
 docs/prompts/codex-handoff.md
 ```
 
+## 0.1 长期架构总纲
+
+当前正式产品名是“资料整理助手”。完整架构计划固定保存在：
+
+```text
+docs/stage2-docs/08-plugin-architecture.md
+```
+
+后续架构设计和开发默认遵循以下规则：
+
+- 系统分为稳定基座和可插拔 Skill。稳定基座负责企业微信通信、会话内容存档、用户身份识别、会话管理、合规、支付、笔记库和展示页基础能力；Skill 只负责具体内容处理能力。
+- 企业微信入口默认采用混合驱动模式：快捷指令 / 菜单点按优先，规则匹配其次，AI 意图识别只做兜底。AI 只能返回固定枚举和置信度，不能直接写库、扣费、发通知或执行业务动作；低置信度和非法输出必须返回确认菜单。
+- 文字类来源统一抽象为 `ContentObject`，并统一进入 `content-to-note`。微信笔记、聊天记录、链接文章、手动文字和后续 OCR 只是不同 Input Adapter，不拆成多个重复的文字整理 Skill。
+- `note-to-comic-image` 是独立渲染型 Skill；`showcase-builder` 是小程序可视化配置工具，不是 AI 自动全权生成展示页。
+- 支付属于 `billing-core` 基座能力，只控制权益和额度，不和内容整理 Skill 耦合。
+
 ## 1. 禁止操作
 
 禁止批量删除文件或目录。

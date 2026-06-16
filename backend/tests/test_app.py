@@ -478,6 +478,32 @@ def test_mock_import_creates_claimable_batch(client):
     assert "导入成功" in notifications[-1]["message"]
 
 
+def test_wecom_import_uses_content_object_to_note_pipeline(client, monkeypatch):
+    service = client.app.dependency_overrides[get_app_service]()
+    seen = {}
+    original_run = service.skill_router_service.run_content_to_note
+
+    def spy_run_content_to_note(owner_user_id, content):
+        seen["ownerUserId"] = owner_user_id
+        seen["sourceType"] = content.sourceType
+        seen["rawMessageIds"] = content.rawMessageIds
+        seen["textBlocks"] = content.textBlocks
+        return original_run(owner_user_id, content)
+
+    monkeypatch.setattr(service.skill_router_service, "run_content_to_note", spy_run_content_to_note)
+
+    response = client.post(
+        "/api/wecom/mock-sync",
+        json={"externalUserId": "external_content_object", "conversationId": "conv_content_object", "fixture": "note"},
+    )
+
+    assert response.status_code == 200
+    assert seen["ownerUserId"] == "unclaimed"
+    assert seen["sourceType"] == "wecom_thread"
+    assert seen["rawMessageIds"]
+    assert any("联系人" in text or "看房" in text for text in seen["textBlocks"])
+
+
 def test_mock_import_is_idempotent_for_repeated_wecom_messages(client):
     first = client.post(
         "/api/wecom/mock-sync",
