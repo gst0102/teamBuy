@@ -996,3 +996,27 @@
 - `/tmp/teambuy-pytest-venv312/bin/python -m compileall backend/app backend/tests`：通过。
 - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_app.py -q -k "notification or import_failure or media_retry or mock_import"`：5 项通过。
 - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_skill_router.py backend/tests/test_app.py backend/tests/test_media_processing_service.py backend/tests/test_media_storage_service.py -q`：50 项通过。
+
+## 2026-06-17
+
+### P0 第二阶段：正式 UserNote 模型和“我的笔记”基础接口
+
+- 新增正式 `UserNote` 领域模型，并接入 JSON / PostgreSQL 仓储。
+- `ImportBatch` 新增 `generatedNoteId`，用于关联导入批次与正式笔记。
+- 企业微信导入成功后同时生成：
+  - `UserNote` 草稿，作为长期笔记库对象。
+  - 兼容 `Card` 草稿，继续服务现有小程序待认领、编辑、发布链路。
+- 认领导入时会同步把 `UserNote.ownerUserId` 改为认领用户，并把 note 状态从 `draft` 改为 `active`。
+- `SkillRun.outputRef` 的长期口径调整为指向 `UserNote` ID；兼容 card 仍通过 `ImportBatch.generatedCardId` 关联。
+- 新增“我的笔记”基础接口：
+  - `GET /api/notes`
+  - `GET /api/notes/{noteId}`
+  - `PUT /api/notes/{noteId}`
+  - `DELETE /api/notes/{noteId}`
+- 删除笔记采用软删除 `status=deleted`，不删除原始企业微信消息、导入批次或兼容卡片。
+
+### 验证结果
+
+- `/tmp/teambuy-pytest-venv312/bin/python -m compileall backend/app backend/tests`：通过。
+- `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_app.py -q -k "user_note or claim_import or note_crud"`：2 项通过。
+- `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_skill_router.py backend/tests/test_app.py backend/tests/test_media_processing_service.py backend/tests/test_media_storage_service.py -q`：51 项通过。

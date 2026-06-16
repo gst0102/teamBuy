@@ -919,3 +919,18 @@ teamBuy 首版定位为素材导入、卡片生成、查看统计、实名接龙
 
 - `importBatchId` 是当前导入批次、原始消息、通知、SkillRun 和生成卡片之间最稳定的关联键。
 - 导入失败和媒体转存失败是两类问题：前者重跑内容整理，后者重跑媒体下载/存储，不能混成一个重试动作。
+
+### 决策：正式 Skill 产物以 UserNote 为准，Card 暂作为兼容展示草稿
+
+选择：
+
+- 企业微信导入成功后生成正式 `UserNote`，同时继续生成兼容 `Card`。
+- `SkillRun.outputRef` 指向 `UserNote` ID。
+- `ImportBatch.generatedCardId` 继续保留，支持当前小程序旧链路。
+- `ImportBatch.generatedNoteId` 新增，用于正式笔记库和后续展示页 / 漫画图流转。
+
+原因：
+
+- 用户长期目标是“资料整理助手”的个人笔记库，而不是只生成一次性资源卡片。
+- 现有小程序页面仍依赖 `Card`，直接替换会扩大风险。
+- 先双写 `UserNote` 和 `Card`，可以在不打断旧链路的情况下启动 P0 第二阶段。

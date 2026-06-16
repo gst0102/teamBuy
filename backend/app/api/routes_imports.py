@@ -19,5 +19,10 @@ def list_pending_imports(service: AppService = Depends(get_app_service)):
 @router.post("/{import_id}/claim", response_model=ApiResponse[dict])
 def claim_import(import_id: str, payload: ClaimImportRequest, service: AppService = Depends(get_app_service)):
     result = service.claim_import(import_id, payload.userId)
-    return ApiResponse(data={"importBatch": result["importBatch"].model_dump(), "card": result["card"].model_dump()})
-
+    return ApiResponse(
+        data={
+            "importBatch": result["importBatch"].model_dump(),
+            "card": result["card"].model_dump(),
+            "note": result["note"].model_dump() if result.get("note") else None,
+        }
+    )

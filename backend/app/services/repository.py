@@ -23,6 +23,7 @@ from app.models.domain import (
     SyncTask,
     SyncTaskLog,
     User,
+    UserNote,
     ViewEvent,
 )
 
@@ -50,6 +51,21 @@ class AppRepository(Protocol):
         ...
 
     def save_import_batch(self, batch: ImportBatch) -> None:
+        ...
+
+    def list_user_notes(
+        self,
+        owner_user_id: str,
+        keyword: str | None = None,
+        category_id: str | None = None,
+        include_deleted: bool = False,
+    ) -> list[UserNote]:
+        ...
+
+    def get_user_note(self, note_id: str) -> UserNote | None:
+        ...
+
+    def save_user_note(self, note: UserNote) -> None:
         ...
 
     def save_raw_messages(self, messages: list[RawMessage]) -> None:
@@ -244,6 +260,32 @@ class JsonRepository:
         state = self.load()
         state.import_batches = [item for item in state.import_batches if item.id != batch.id]
         state.import_batches.append(batch)
+        self.save(state)
+
+    def list_user_notes(
+        self,
+        owner_user_id: str,
+        keyword: str | None = None,
+        category_id: str | None = None,
+        include_deleted: bool = False,
+    ) -> list[UserNote]:
+        notes = [item for item in self.load().user_notes if item.ownerUserId == owner_user_id]
+        if not include_deleted:
+            notes = [item for item in notes if item.status != "deleted"]
+        if keyword:
+            lowered = keyword.lower()
+            notes = [item for item in notes if lowered in item.title.lower() or lowered in item.summary.lower()]
+        if category_id:
+            notes = [item for item in notes if category_id in item.categoryIds]
+        return sorted(notes, key=lambda item: item.updatedAt, reverse=True)
+
+    def get_user_note(self, note_id: str) -> UserNote | None:
+        return next((item for item in self.load().user_notes if item.id == note_id), None)
+
+    def save_user_note(self, note: UserNote) -> None:
+        state = self.load()
+        state.user_notes = [item for item in state.user_notes if item.id != note.id]
+        state.user_notes.append(note)
         self.save(state)
 
     def save_raw_messages(self, messages: list[RawMessage]) -> None:
@@ -570,6 +612,7 @@ class PostgresRepository:
         "import_batches": "import_batches",
         "raw_messages": "raw_messages",
         "cards": "cards",
+        "user_notes": "user_notes",
         "view_events": "view_events",
         "relay_entries": "relay_entries",
         "lead_reminders": "lead_reminders",
@@ -594,6 +637,7 @@ class PostgresRepository:
             ("title_candidate", "text", "titleCandidate"),
             ("source_type", "text", "sourceType"),
             ("generated_card_id", "text", "generatedCardId"),
+            ("generated_note_id", "text", "generatedNoteId"),
             ("started_at", "timestamptz", "startedAt"),
             ("ended_at", "timestamptz", "endedAt"),
         ],
@@ -615,6 +659,13 @@ class PostgresRepository:
             ("status", "text", "status"),
             ("title", "text", "title"),
             ("published_at", "timestamptz", "publishedAt"),
+        ],
+        "user_notes": [
+            ("owner_user_id", "text", "ownerUserId"),
+            ("import_batch_id", "text", "importBatchId"),
+            ("source_card_id", "text", "sourceCardId"),
+            ("status", "text", "status"),
+            ("title", "text", "title"),
         ],
         "view_events": [
             ("card_id", "text", "cardId"),
@@ -708,6 +759,12 @@ class PostgresRepository:
             ("idx_cards_owner_status", "owner_user_id, status, updated_at"),
             ("idx_cards_import_batch", "import_batch_id"),
             ("idx_cards_source_card", "source_card_id"),
+        ],
+        "user_notes": [
+            ("idx_user_notes_owner_status", "owner_user_id, status, updated_at"),
+            ("idx_user_notes_import_batch", "import_batch_id"),
+            ("idx_user_notes_source_card", "source_card_id"),
+            ("idx_user_notes_title", "title"),
         ],
         "view_events": [
             ("idx_view_events_card_time", "card_id, viewed_at"),
@@ -812,6 +869,33 @@ class PostgresRepository:
 
     def save_import_batch(self, batch: ImportBatch) -> None:
         self._save_model("import_batches", batch)
+
+    def list_user_notes(
+        self,
+        owner_user_id: str,
+        keyword: str | None = None,
+        category_id: str | None = None,
+        include_deleted: bool = False,
+    ) -> list[UserNote]:
+        where_parts = ["owner_user_id = %s"]
+        params: list[str] = [owner_user_id]
+        if not include_deleted:
+            where_parts.append("status <> 'deleted'")
+        if keyword:
+            where_parts.append("(title ilike %s or payload->>'summary' ilike %s)")
+            params.extend([f"%{keyword}%", f"%{keyword}%"])
+        if category_id:
+            where_parts.append("payload->'categoryIds' ? %s")
+            params.append(category_id)
+        rows = self._list_payloads("user_notes", " and ".join(where_parts), tuple(params), "updated_at desc, id desc")
+        return [UserNote.model_validate(row) for row in rows]
+
+    def get_user_note(self, note_id: str) -> UserNote | None:
+        payload = self.get_payload_by_id("user_notes", note_id)
+        return UserNote.model_validate(payload) if payload else None
+
+    def save_user_note(self, note: UserNote) -> None:
+        self._save_model("user_notes", note)
 
     def save_raw_messages(self, messages: list[RawMessage]) -> None:
         with psycopg.connect(self.database_url) as conn:

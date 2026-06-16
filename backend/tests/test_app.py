@@ -515,7 +515,7 @@ def test_wecom_import_persists_successful_skill_run(client):
     latest = runs[0]
     assert latest["skillId"] == "content-to-note"
     assert latest["status"] == "success"
-    assert latest["outputRef"].startswith("card_")
+    assert latest["outputRef"].startswith("note_")
     assert latest["inputSnapshot"]["importBatchId"] == response.json()["data"]["importBatchIds"][0]
 
 
@@ -623,11 +623,67 @@ def test_claim_import_and_publish_flow(client):
     claim = client.post(f"/api/imports/{target['id']}/claim", json={"userId": login["id"]})
     assert claim.status_code == 200
     card = claim.json()["data"]["card"]
+    note = claim.json()["data"]["note"]
     assert card["ownerUserId"] == login["id"]
+    assert note["ownerUserId"] == login["id"]
+    assert note["status"] == "active"
 
     publish = client.post(f"/api/cards/{card['id']}/publish", json={"userId": login["id"]})
     assert publish.status_code == 200
     assert publish.json()["data"]["status"] == "published"
+
+
+def test_import_creates_claimable_user_note_and_note_crud(client):
+    login = client.post("/api/auth/mock-login", json={"nickname": "笔记用户"}).json()["data"]
+    client.post(
+        "/api/wecom/mock-sync",
+        json={"externalUserId": "external_note_crud", "conversationId": "conv_note_crud", "fixture": "note"},
+    )
+    pending = client.get("/api/imports/pending").json()["data"]
+    target = pending[-1]
+    assert target["generatedNote"]["ownerUserId"] == "unclaimed"
+    assert target["generatedNote"]["title"]
+
+    claim = client.post(f"/api/imports/{target['id']}/claim", json={"userId": login["id"]})
+    note = claim.json()["data"]["note"]
+
+    notes = client.get("/api/notes", params={"ownerUserId": login["id"]}).json()["data"]
+    assert any(item["id"] == note["id"] for item in notes)
+
+    detail = client.get(f"/api/notes/{note['id']}", params={"ownerUserId": login["id"]})
+    assert detail.status_code == 200
+    assert detail.json()["data"]["sourceCardId"] == claim.json()["data"]["card"]["id"]
+
+    updated = client.put(
+        f"/api/notes/{note['id']}",
+        json={
+            "ownerUserId": login["id"],
+            "title": "更新后的笔记",
+            "summary": "更新摘要",
+            "body": "更新正文 13800138000",
+            "categoryIds": ["cat_seed_sale"],
+            "phone": "13800138000",
+            "visibilityConfig": {"showPhone": True},
+        },
+    )
+    assert updated.status_code == 200
+    assert updated.json()["data"]["title"] == "更新后的笔记"
+    assert updated.json()["data"]["categoryIds"] == ["cat_seed_sale"]
+
+    filtered = client.get(
+        "/api/notes",
+        params={"ownerUserId": login["id"], "keyword": "更新", "categoryId": "cat_seed_sale"},
+    ).json()["data"]
+    assert [item["id"] for item in filtered] == [note["id"]]
+
+    deleted = client.delete(f"/api/notes/{note['id']}", params={"ownerUserId": login["id"]})
+    assert deleted.status_code == 200
+    assert client.get("/api/notes", params={"ownerUserId": login["id"]}).json()["data"] == []
+    deleted_visible = client.get(
+        "/api/notes",
+        params={"ownerUserId": login["id"], "includeDeleted": True},
+    ).json()["data"]
+    assert deleted_visible[0]["status"] == "deleted"
 
 
 def test_manual_create_card_flow(client):

@@ -5,10 +5,11 @@ from datetime import timedelta
 from uuid import uuid4
 from fastapi import HTTPException, status
 
-from app.models.domain import AppState, Card, CardMedia, Category, ImportBatch, LeadFollowUpLog, LeadReminder, MediaRetryJob, RawMessage, RelayConfig, RelayEntry, SkillRun, SyncCursor, User, ViewEvent
+from app.models.domain import AppState, Card, CardMedia, Category, ImportBatch, LeadFollowUpLog, LeadReminder, MediaRetryJob, RawMessage, RelayConfig, RelayEntry, SkillRun, SyncCursor, User, UserNote, ViewEvent
 from app.schemas.auth import MockLoginRequest
 from app.schemas.categories import CategoryCreateRequest
 from app.schemas.cards import CardCreateRequest, CardUpdateRequest, CreateRelayRequest, LeadReminderUpdateRequest, LeadReminderUpsertRequest, RecordViewRequest
+from app.schemas.notes import UserNoteUpdateRequest
 from app.services.card_parser_service import CardParserService
 from app.services.content_object_adapter import ContentObjectAdapter
 from app.services.helpers import mask_nickname, new_id
@@ -81,10 +82,12 @@ class AppService:
         result = []
         for batch in pending:
             card = self.repo.get_card(batch.generatedCardId) if batch.generatedCardId else None
+            note = self.repo.get_user_note(batch.generatedNoteId) if batch.generatedNoteId else None
             result.append(
                 {
                     **batch.model_dump(),
                     "generatedCard": card.model_dump() if card else None,
+                    "generatedNote": note.model_dump() if note else None,
                 }
             )
         return result
@@ -208,12 +211,14 @@ class AppService:
             content_object = self.content_object_adapter.from_wecom_batch(batch, batch_messages)
             note_result = self.skill_router_service.run_content_to_note("unclaimed", content_object)
             card = self._build_card_from_note_draft(batch, note_result.noteDraft, content_object)
+            note = self._build_user_note_from_draft(batch, note_result.noteDraft, card.id)
             batch.generatedCardId = card.id
+            batch.generatedNoteId = note.id
             batch.status = "success" if card.title else "failed"
             batch.errorMessage = None if card.title else "未能解析标题"
             batch.updatedAt = now_iso()
             skill_run = SkillRun.model_validate(note_result.skillRun.model_dump())
-            skill_run.outputRef = card.id if batch.status == "success" else batch.id
+            skill_run.outputRef = note.id if batch.status == "success" else batch.id
             skill_run.inputSnapshot = {
                 **skill_run.inputSnapshot,
                 "importBatchId": batch.id,
@@ -226,6 +231,7 @@ class AppService:
                 media_warning_count=media_warning_count,
             )
             self.repo.save_import_artifacts(batch, batch_messages, card, notification)
+            self.repo.save_user_note(note)
             self.repo.save_skill_run(skill_run)
             return notification
         except Exception as exc:
@@ -297,6 +303,28 @@ class AppService:
             relayConfig=RelayConfig(enabled=True, requirePhone=False, requireAddress=False),
             createdAt=created_at,
             updatedAt=created_at,
+        )
+
+    def _build_user_note_from_draft(self, batch: ImportBatch, note_draft, source_card_id: str | None = None) -> UserNote:
+        now = now_iso()
+        return UserNote(
+            id=new_id("note"),
+            ownerUserId=note_draft.ownerUserId or "unclaimed",
+            importBatchId=batch.id,
+            sourceCardId=source_card_id,
+            status="draft",
+            title=note_draft.title,
+            summary=note_draft.summary,
+            body=note_draft.body,
+            coverUrl=note_draft.coverUrl,
+            media=[item.model_dump() for item in note_draft.media],
+            categoryIds=note_draft.categoryIds,
+            phone=note_draft.phone,
+            locationText=note_draft.locationText,
+            sourceRefs=note_draft.sourceRefs,
+            visibilityConfig=note_draft.visibilityConfig,
+            createdAt=now,
+            updatedAt=now,
         )
 
     def list_skill_runs(
@@ -511,9 +539,68 @@ class AppService:
         batch.updatedAt = now
         card.ownerUserId = user_id
         card.updatedAt = now
+        if batch.generatedNoteId:
+            note = self.repo.get_user_note(batch.generatedNoteId)
+            if note:
+                note.ownerUserId = user_id
+                note.status = "active"
+                note.updatedAt = now
+                self.repo.save_user_note(note)
         self.repo.save_import_batch(batch)
         self.repo.save_card(card)
-        return {"importBatch": batch, "card": card}
+        return {"importBatch": batch, "card": card, "note": self.repo.get_user_note(batch.generatedNoteId) if batch.generatedNoteId else None}
+
+    def list_user_notes(
+        self,
+        owner_user_id: str,
+        keyword: str | None = None,
+        category_id: str | None = None,
+        include_deleted: bool = False,
+    ) -> list[dict]:
+        if not self.repo.get_user(owner_user_id):
+            raise HTTPException(status_code=404, detail="用户不存在")
+        return [
+            item.model_dump()
+            for item in self.repo.list_user_notes(
+                owner_user_id=owner_user_id,
+                keyword=keyword,
+                category_id=category_id,
+                include_deleted=include_deleted,
+            )
+        ]
+
+    def get_user_note(self, note_id: str, owner_user_id: str) -> UserNote:
+        note = self.repo.get_user_note(note_id)
+        if not note or note.status == "deleted":
+            raise HTTPException(status_code=404, detail="笔记不存在")
+        if note.ownerUserId != owner_user_id:
+            raise HTTPException(status_code=403, detail="仅笔记拥有者可查看")
+        return note
+
+    def update_user_note(self, note_id: str, payload: UserNoteUpdateRequest) -> UserNote:
+        note = self.get_user_note(note_id, payload.ownerUserId)
+        if not payload.title.strip():
+            raise HTTPException(status_code=400, detail="标题不能为空")
+        body = payload.body.strip()
+        note.title = payload.title.strip()
+        note.summary = (payload.summary or body[:120]).strip()
+        note.body = body
+        note.coverUrl = payload.coverUrl
+        note.media = [item.model_dump() for item in payload.media]
+        note.categoryIds = payload.categoryIds
+        note.phone = payload.phone
+        note.locationText = payload.locationText
+        note.visibilityConfig = payload.visibilityConfig
+        note.updatedAt = now_iso()
+        self.repo.save_user_note(note)
+        return note
+
+    def delete_user_note(self, note_id: str, owner_user_id: str) -> dict:
+        note = self.get_user_note(note_id, owner_user_id)
+        note.status = "deleted"
+        note.updatedAt = now_iso()
+        self.repo.save_user_note(note)
+        return {"deletedNoteId": note_id}
 
     def list_cards(self, owner_user_id: str | None = None, keyword: str | None = None, category_id: str | None = None) -> list[dict]:
         cards = self.repo.list_cards(owner_user_id=owner_user_id, keyword=keyword, category_id=category_id)

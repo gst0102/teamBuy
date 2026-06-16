@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 ImportStatus = Literal["pending", "success", "failed", "claimed"]
 CardStatus = Literal["draft", "published", "archived"]
+UserNoteStatus = Literal["draft", "active", "deleted"]
 ViewType = Literal["logged_in", "anonymous"]
 RelayStatus = Literal["active", "deleted"]
 FollowUpStatus = Literal["pending", "followed"]
@@ -41,6 +42,7 @@ class ImportBatch(BaseModel):
     errorMessage: str | None = None
     rawMessageIds: list[str] = Field(default_factory=list)
     generatedCardId: str | None = None
+    generatedNoteId: str | None = None
     startedAt: str
     endedAt: str | None = None
     createdAt: str
@@ -98,6 +100,26 @@ class Card(BaseModel):
     media: list[CardMedia] = Field(default_factory=list)
     relayConfig: RelayConfig = Field(default_factory=RelayConfig)
     publishedAt: str | None = None
+    createdAt: str
+    updatedAt: str
+
+
+class UserNote(BaseModel):
+    id: str
+    ownerUserId: str
+    importBatchId: str | None = None
+    sourceCardId: str | None = None
+    status: UserNoteStatus = "draft"
+    title: str
+    summary: str
+    body: str
+    coverUrl: str | None = None
+    media: list[dict] = Field(default_factory=list)
+    categoryIds: list[str] = Field(default_factory=list)
+    phone: str | None = None
+    locationText: str | None = None
+    sourceRefs: list[str] = Field(default_factory=list)
+    visibilityConfig: dict = Field(default_factory=dict)
     createdAt: str
     updatedAt: str
 
@@ -254,6 +276,7 @@ class AppState(BaseModel):
     import_batches: list[ImportBatch] = Field(default_factory=list)
     raw_messages: list[RawMessage] = Field(default_factory=list)
     cards: list[Card] = Field(default_factory=list)
+    user_notes: list[UserNote] = Field(default_factory=list)
     view_events: list[ViewEvent] = Field(default_factory=list)
     relay_entries: list[RelayEntry] = Field(default_factory=list)
     lead_reminders: list[LeadReminder] = Field(default_factory=list)

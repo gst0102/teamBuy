@@ -666,3 +666,23 @@ rm -rf
   - `/tmp/teambuy-pytest-venv312/bin/python -m compileall backend/app backend/tests` 通过。
   - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_skill_router.py backend/tests/test_app.py backend/tests/test_media_processing_service.py backend/tests/test_media_storage_service.py -q`：50 项通过。
 - P0 第一阶段后端基础已基本收尾。下一步可以进入 P0 第二阶段：正式 `UserNote` 模型和“我的笔记”基础接口。
+
+## 2026-06-17 补充：UserNote 模型和“我的笔记”基础接口已完成
+
+- 已新增正式 `UserNote` 模型和仓储持久化，JSON / PostgreSQL 都支持。
+- 企业微信导入成功后会双写：
+  - `UserNote`：正式笔记库对象。
+  - `Card`：当前小程序兼容草稿。
+- `ImportBatch` 新增 `generatedNoteId`。
+- `SkillRun.outputRef` 现在指向正式 `UserNote` ID。
+- 认领导入时，note owner 会同步改为认领用户，状态从 `draft` 改为 `active`。
+- 新增接口：
+  - `GET /api/notes`
+  - `GET /api/notes/{noteId}`
+  - `PUT /api/notes/{noteId}`
+  - `DELETE /api/notes/{noteId}`
+- 笔记删除为软删除，不删除原始消息、导入批次或兼容卡片。
+- 最近验证：
+  - `/tmp/teambuy-pytest-venv312/bin/python -m compileall backend/app backend/tests` 通过。
+  - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_skill_router.py backend/tests/test_app.py backend/tests/test_media_processing_service.py backend/tests/test_media_storage_service.py -q`：51 项通过。
+- 下一步建议：小程序新增“我的笔记”基础页面，接 `/api/notes` 完成列表、搜索、详情、编辑和删除。
