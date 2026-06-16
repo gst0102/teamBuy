@@ -1,0 +1,43 @@
+<view class="page-shell">
+  <custom-nav title="我的笔记" />
+
+  <view class="notes-header">
+    <view>
+      <view class="notes-title">我的笔记</view>
+      <view class="notes-subtitle">从企业微信和手动整理沉淀的资料</view>
+    </view>
+    <view class="notes-count">{{notes.length}}</view>
+  </view>
+
+  <view class="search-box">
+    <input class="search-input" placeholder="搜索标题 / 摘要 / 分类" value="{{keyword}}" bindinput="handleKeywordChange" confirm-type="search" bindconfirm="handleSearch" />
+    <button class="search-btn" bindtap="handleSearch">搜索</button>
+  </view>
+
+  <view class="note-list" wx:if="{{notes.length}}">
+    <block wx:for="{{notes}}" wx:key="id">
+      <view class="note-card">
+        <image wx:if="{{item.coverUrl}}" class="note-cover" src="{{item.coverDisplayUrl ? item.coverDisplayUrl : item.coverUrl}}" mode="aspectFill" data-id="{{item.id}}" bindtap="handleOpen"></image>
+        <view wx:else class="note-cover placeholder" data-id="{{item.id}}" bindtap="handleOpen">记</view>
+        <view class="note-main" data-id="{{item.id}}" bindtap="handleOpen">
+          <view class="note-title">{{item.title}}</view>
+          <view class="note-summary">{{item.summary ? item.summary : item.body}}</view>
+          <view class="note-meta">
+            <text>{{item.status === 'active' ? '已认领' : '草稿'}}</text>
+            <text wx:if="{{item.phone}}">电话</text>
+            <text wx:if="{{item.locationText}}">位置</text>
+          </view>
+        </view>
+        <view class="note-actions">
+          <text data-id="{{item.id}}" bindtap="handleOpen">编辑</text>
+          <text class="danger" data-id="{{item.id}}" bindtap="handleDelete">删除</text>
+        </view>
+      </view>
+    </block>
+  </view>
+
+  <view class="empty-state" wx:else>
+    <view>暂无笔记</view>
+    <view class="empty-sub">从企业微信导入并认领后，会出现在这里。</view>
+  </view>
+</view>

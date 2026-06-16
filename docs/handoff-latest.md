@@ -686,3 +686,20 @@ rm -rf
   - `/tmp/teambuy-pytest-venv312/bin/python -m compileall backend/app backend/tests` 通过。
   - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_skill_router.py backend/tests/test_app.py backend/tests/test_media_processing_service.py backend/tests/test_media_storage_service.py -q`：51 项通过。
 - 下一步建议：小程序新增“我的笔记”基础页面，接 `/api/notes` 完成列表、搜索、详情、编辑和删除。
+
+## 2026-06-17 补充：小程序“我的笔记”基础页面已完成
+
+- 新增页面：
+  - `miniprogram/pages/notes/index`
+  - `miniprogram/pages/note-edit/index`
+- 已接入 `/api/notes`：
+  - 列表和搜索。
+  - 详情查看。
+  - 编辑保存。
+  - 软删除。
+- “我的”页和资源库快捷区已增加“我的笔记”入口。
+- `services/api.js` 已支持 `fetchNotes`、`fetchNote`、`updateNote`、`deleteNote`，并归一化 note / generatedNote 媒体 URL。
+- 最近验证：
+  - 小程序所有 `.js` `node --check` 通过。
+  - 小程序所有 `.json` 解析通过。
+- 仍需微信开发者工具或真机人工验收页面渲染、输入、保存、删除和返回刷新。

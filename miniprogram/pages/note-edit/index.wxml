@@ -1,0 +1,40 @@
+<view class="page-shell">
+  <custom-nav title="笔记详情" />
+
+  <view class="form-panel">
+    <view class="field">
+      <view class="label">标题</view>
+      <input class="input" value="{{form.title}}" data-key="title" bindinput="handleInput" placeholder="请输入笔记标题" />
+    </view>
+
+    <view class="field">
+      <view class="label">摘要</view>
+      <textarea class="textarea small" value="{{form.summary}}" data-key="summary" bindinput="handleInput" placeholder="一句话概括这条资料"></textarea>
+    </view>
+
+    <view class="field">
+      <view class="label">正文</view>
+      <textarea class="textarea" value="{{form.body}}" data-key="body" bindinput="handleInput" placeholder="整理后的正文内容"></textarea>
+    </view>
+
+    <view class="field">
+      <view class="label">电话</view>
+      <input class="input" value="{{form.phone}}" data-key="phone" bindinput="handleInput" placeholder="可选" />
+    </view>
+
+    <view class="field">
+      <view class="label">位置</view>
+      <input class="input" value="{{form.locationText}}" data-key="locationText" bindinput="handleInput" placeholder="可选" />
+    </view>
+  </view>
+
+  <view class="media-panel" wx:if="{{form.coverUrl || form.media.length}}">
+    <image wx:if="{{form.coverUrl}}" class="cover" src="{{form.coverUrl}}" mode="aspectFill"></image>
+    <view class="media-count">素材 {{form.media.length}}</view>
+  </view>
+
+  <view class="bottom-actions">
+    <button class="delete-btn" bindtap="handleDelete">删除</button>
+    <button class="save-btn" loading="{{saving}}" bindtap="handleSave">保存</button>
+  </view>
+</view>

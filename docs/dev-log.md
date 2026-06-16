@@ -1020,3 +1020,27 @@
 - `/tmp/teambuy-pytest-venv312/bin/python -m compileall backend/app backend/tests`：通过。
 - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_app.py -q -k "user_note or claim_import or note_crud"`：2 项通过。
 - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_skill_router.py backend/tests/test_app.py backend/tests/test_media_processing_service.py backend/tests/test_media_storage_service.py -q`：51 项通过。
+
+## 2026-06-17
+
+### P0 第二阶段：小程序“我的笔记”基础页面
+
+- 新增小程序页面：
+  - `pages/notes/index`：我的笔记列表、搜索、打开编辑、删除。
+  - `pages/note-edit/index`：笔记详情、标题/摘要/正文/电话/位置编辑、保存、删除。
+- `services/api.js` 新增笔记接口：
+  - `fetchNotes`
+  - `fetchNote`
+  - `updateNote`
+  - `deleteNote`
+- 待认领导入前端 API 已同步归一化 `generatedNote`。
+- “我的”页新增“我的笔记”入口；资源库快捷区新增“我的笔记”入口。
+- 资源库快捷入口从 3 个增至 4 个后，已改为可换行的两列布局，避免移动端挤压。
+- `app.json` 已注册两个新页面，并将全局标题修正为“资料整理助手”。
+- WXML 展示兜底从 `||` 调整为三元表达式，降低小程序模板兼容风险。
+
+### 验证结果
+
+- 小程序所有 `.js` 执行 `node --check`：通过。
+- 小程序所有 `.json` 解析：通过。
+- 小程序内扫描 `悦享互动宝` / `悦享`：无残留。

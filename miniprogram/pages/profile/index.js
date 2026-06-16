@@ -43,6 +43,9 @@ Page({
   handleGoCustomers() {
     wx.navigateTo({ url: "/pages/customers/index" });
   },
+  handleGoNotes() {
+    wx.navigateTo({ url: "/pages/notes/index" });
+  },
   handleMemberPlaceholder() {
     wx.showToast({ title: "会员权益将在 v0.2 开放", icon: "none" });
   },

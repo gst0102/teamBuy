@@ -24,8 +24,26 @@ function normalizeCardPayload(card) {
   };
 }
 
+function normalizeNotePayload(note) {
+  if (!note || typeof note !== "object") return note;
+  return {
+    ...note,
+    coverUrl: toAbsoluteUrl(note.coverUrl),
+    media: Array.isArray(note.media)
+      ? note.media.map((item) => ({
+          ...item,
+          url: toAbsoluteUrl(item.url)
+        }))
+      : note.media
+  };
+}
+
 function normalizeAndCacheCard(card) {
   return withCachedMedia(normalizeCardPayload(card));
+}
+
+function normalizeAndCacheNote(note) {
+  return withCachedMedia(normalizeNotePayload(note));
 }
 
 function normalizeAndCacheCards(cards) {
@@ -48,7 +66,8 @@ function fetchPendingImports() {
     data: Array.isArray(res.data)
       ? await Promise.all(res.data.map(async (item) => ({
           ...item,
-          generatedCard: await normalizeAndCacheCard(item.generatedCard)
+          generatedCard: await normalizeAndCacheCard(item.generatedCard),
+          generatedNote: await normalizeAndCacheNote(item.generatedNote)
         })))
       : res.data
   }));
@@ -63,9 +82,52 @@ function claimImport(importId, userId) {
     ...res,
     data: {
       ...res.data,
-      card: await normalizeAndCacheCard(res.data && res.data.card)
+      card: await normalizeAndCacheCard(res.data && res.data.card),
+      note: await normalizeAndCacheNote(res.data && res.data.note)
     }
   }));
+}
+
+function fetchNotes(params = {}) {
+  const query = [];
+  if (params.ownerUserId) query.push(`ownerUserId=${params.ownerUserId}`);
+  if (params.keyword) query.push(`keyword=${encodeURIComponent(params.keyword)}`);
+  if (params.categoryId) query.push(`categoryId=${params.categoryId}`);
+  if (params.includeDeleted) query.push("includeDeleted=true");
+  const suffix = query.length ? `?${query.join("&")}` : "";
+  return request({
+    url: `/api/notes${suffix}`
+  }).then(async (res) => ({
+    ...res,
+    data: Array.isArray(res.data) ? await Promise.all(res.data.map(normalizeAndCacheNote)) : res.data
+  }));
+}
+
+function fetchNote(noteId, ownerUserId) {
+  return request({
+    url: `/api/notes/${noteId}?ownerUserId=${ownerUserId}`
+  }).then(async (res) => ({
+    ...res,
+    data: await normalizeAndCacheNote(res.data)
+  }));
+}
+
+function updateNote(noteId, payload) {
+  return request({
+    url: `/api/notes/${noteId}`,
+    method: "PUT",
+    data: payload
+  }).then(async (res) => ({
+    ...res,
+    data: await normalizeAndCacheNote(res.data)
+  }));
+}
+
+function deleteNote(noteId, ownerUserId) {
+  return request({
+    url: `/api/notes/${noteId}?ownerUserId=${ownerUserId}`,
+    method: "DELETE"
+  });
 }
 
 function fetchCards(params = {}) {
@@ -299,6 +361,10 @@ module.exports = {
   mockLogin,
   fetchPendingImports,
   claimImport,
+  fetchNotes,
+  fetchNote,
+  updateNote,
+  deleteNote,
   fetchCards,
   fetchCard,
   fetchCategories,

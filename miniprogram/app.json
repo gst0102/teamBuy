@@ -13,10 +13,12 @@
     "pages/manager/index",
     "pages/leads/index",
     "pages/lead-detail/index",
-    "pages/customers/index"
+    "pages/customers/index",
+    "pages/notes/index",
+    "pages/note-edit/index"
   ],
   "window": {
-    "navigationBarTitleText": "\u60a6\u4eab\u4e92\u52a8\u5b9d",
+    "navigationBarTitleText": "\u8d44\u6599\u6574\u7406\u52a9\u624b",
     "navigationBarBackgroundColor": "#eef6ff",
     "navigationBarTextStyle": "black",
     "backgroundColor": "#eef6ff",

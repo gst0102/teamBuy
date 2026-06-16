@@ -1,0 +1,88 @@
+.page-shell {
+  min-height: 100vh;
+  padding: 0 28rpx 48rpx;
+  background: #f6f8fb;
+  box-sizing: border-box;
+}
+
+.form-panel,
+.media-panel {
+  margin-top: 24rpx;
+  padding: 24rpx;
+  border-radius: 8rpx;
+  background: #fff;
+}
+
+.field + .field {
+  margin-top: 24rpx;
+}
+
+.label {
+  margin-bottom: 10rpx;
+  color: #172033;
+  font-size: 26rpx;
+  font-weight: 700;
+}
+
+.input,
+.textarea {
+  width: 100%;
+  border-radius: 8rpx;
+  background: #f6f8fb;
+  color: #172033;
+  font-size: 28rpx;
+  box-sizing: border-box;
+}
+
+.input {
+  height: 76rpx;
+  padding: 0 20rpx;
+}
+
+.textarea {
+  min-height: 300rpx;
+  padding: 18rpx 20rpx;
+  line-height: 1.55;
+}
+
+.textarea.small {
+  min-height: 132rpx;
+}
+
+.cover {
+  width: 100%;
+  height: 320rpx;
+  border-radius: 8rpx;
+  background: #e8eef7;
+}
+
+.media-count {
+  margin-top: 16rpx;
+  color: #6b7280;
+  font-size: 24rpx;
+}
+
+.bottom-actions {
+  display: grid;
+  grid-template-columns: 180rpx 1fr;
+  gap: 20rpx;
+  margin-top: 28rpx;
+}
+
+.delete-btn,
+.save-btn {
+  height: 84rpx;
+  line-height: 84rpx;
+  border-radius: 8rpx;
+  font-size: 30rpx;
+}
+
+.delete-btn {
+  background: #fff0f0;
+  color: #e5484d;
+}
+
+.save-btn {
+  background: #1677ff;
+  color: #fff;
+}

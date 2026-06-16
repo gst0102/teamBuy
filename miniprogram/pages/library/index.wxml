@@ -26,6 +26,10 @@
       <view class="quick-icon orange">签</view>
       <view>管理标签</view>
     </view>
+    <view class="quick-action" bindtap="handleOpenNotes">
+      <view class="quick-icon purple">记</view>
+      <view>我的笔记</view>
+    </view>
   </view>
 
   <view class="filter-title">分类筛选</view>

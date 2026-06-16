@@ -117,6 +117,9 @@ Page({
   handleOpenPendingImports() {
     wx.navigateTo({ url: "/pages/imports/index" });
   },
+  handleOpenNotes() {
+    wx.navigateTo({ url: "/pages/notes/index" });
+  },
   handleManualAdd() {
     wx.switchTab({ url: "/pages/resource-create/index" });
   },
