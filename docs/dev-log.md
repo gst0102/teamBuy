@@ -1291,3 +1291,15 @@
   - `errmsg=not allow to access from your ip`
   - 来源 IP：`81.70.84.35`
 - 当前无法从 API 侧确认当前 `WECOM_SECRET` 对应哪个 AgentId。需要在企业微信后台给对应自建应用加入可信 IP `81.70.84.35` 后，再查 `agent/get`。
+
+### 22:36 唯一文本归档验证
+
+- 用户反馈 2026-06-17 22:36 发送测试消息：“归档测试 2218 资料整理助手”。
+- 调用生产 `POST /api/wecom/archive/pull`：
+  - 返回 200。
+  - `rawCount=0`、`savedCount=0`。
+  - cursor 仍为 `seq=0`、`status=success`。
+- `GET /api/wecom/archive/messages?limit=100` 返回空数组。
+- 唯一文本“归档测试 2218 资料整理助手”命中数为 0。
+- `POST /api/wecom/archive/process` 返回 200，`processedCount=0`。
+- 当前结论进一步收敛：官方 SDK 调用成功但企业微信持续返回 0 条数据，问题不在后端保存/处理链路，优先回到企业微信后台确认会话存档是否已产生可拉取数据。
