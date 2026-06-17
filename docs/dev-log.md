@@ -1212,3 +1212,27 @@
 
 - 本机验证脚本第一次使用 `python`，当前环境没有该命令，返回 `zsh:1: command not found: python`；已改用 `python3`。
 - 第一次生产管理接口验证假设 token 名为 `ADMIN_TOKEN`，实际配置项是 `WECOM_ADMIN_TOKEN`；已按代码配置项修正，并在生产补齐。
+
+## 2026-06-17
+
+### 会话存档官方 SDK 已部署生产
+
+- 用户下载官方 Linux x86 v3.0 SDK：
+  - 本机路径：`/Users/yiyi/Downloads/sdk_x86_v3_20250205.tgz`
+  - 包内目标文件：`C_sdk/libWeWorkFinanceSdk_C.so`
+- 已确认 SDK 文件为 Linux x86-64 动态库。
+- 已上传到生产服务器：
+  - 宿主机路径：`/home/ubuntu/teamBuy/backend/secrets/libWeWorkFinanceSdk_C.so`
+  - 容器路径：`/app/secrets/libWeWorkFinanceSdk_C.so`
+- 已设置生产 `.env`：
+  - `WECOM_ARCHIVE_SDK_LIB_PATH=/app/secrets/libWeWorkFinanceSdk_C.so`
+- 初次配置后 `config-check` 仍显示 `sdkLibReadable=false`，原因是 `docker-compose.yml` 没有把宿主机 `backend/secrets` 挂进容器，容器只能看到镜像构建时的旧 `/app/secrets`。
+- 已修正 `docker-compose.yml`：
+  - 增加只读挂载 `./backend/secrets:/app/secrets:ro`
+- 重启 backend 后公网验证：
+  - `GET /api/wecom/archive/config-check`：`missing=[]`、`sdkLibReadable=true`、`sdkConfigured=true`。
+  - `POST /api/wecom/archive/pull`：返回 200，`rawCount=0`、`savedCount=0`，cursor 状态为 success。
+  - `POST /api/wecom/archive/process`：返回 200，`processedCount=0`、`failedCount=0`。
+- 结论：
+  - 官方 SDK、Secret、私钥和网络调用已经跑通。
+  - 当前企业微信没有新归档消息可拉取；下一步需要人工发一条真实会话消息，再执行 `pull -> process -> 小程序我的笔记` 验收。

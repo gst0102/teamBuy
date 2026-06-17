@@ -6,7 +6,8 @@
 
 - 企业微信后台页面：`https://work.weixin.qq.com/wework_admin/frame#financial/corpEncryptData`
 - 企业微信后台“接收事件服务器”已保存成功。
-- 生产后端 P0 拉取/处理接口已部署，当前 `sdkConfigured=false`，真实消息拉取等待配置官方 Linux SDK 动态库路径。
+- 生产后端 P0 拉取/处理接口已部署，官方 Linux x86 v3.0 SDK 已配置，当前 `sdkConfigured=true`。
+- 最新生产验证：`/api/wecom/archive/pull` 返回 200，当前 `rawCount=0`、`savedCount=0`，说明 SDK 调用已通但暂无新归档消息。
 - 本轮已生成会话内容存档 RSA 密钥对：
   - 私钥：`backend/secrets/wecom_archive_private.pem`
   - 公钥：`backend/secrets/wecom_archive_public.pem`
@@ -119,13 +120,9 @@ EncodingAESKey=backend/.env 里的 WECOM_ENCODING_AES_KEY
 
 ## P0 下一步
 
-1. 企业微信后台事件服务器已保存成功后，继续确认公钥和可信 IP。
-2. 将官方会话存档 Linux SDK 动态库放入生产容器可读路径。
-3. 设置生产 `WECOM_ARCHIVE_SDK_LIB_PATH` 为容器内绝对路径。
-4. 重启 backend，调用生产 `/api/wecom/archive/config-check`，确认 `missing=[]`、`sdkConfigured=true`。
-5. 让企业微信真实产生一条测试会话消息。
-6. 调用生产 `POST /api/wecom/archive/pull`：
+1. 让企业微信真实产生一条测试会话消息。
+2. 调用生产 `POST /api/wecom/archive/pull`：
    - 如果 `savedCount>0`，说明真实归档消息已入库。
    - 如果返回 502，优先看 `detail.error` 和 cursor 的 failed 原因。
-7. 调用生产 `POST /api/wecom/archive/process`，确认生成 `UserNote`。
-8. 在小程序“我的笔记”查看、编辑、删除这条笔记。
+3. 调用生产 `POST /api/wecom/archive/process`，确认生成 `UserNote`。
+4. 在小程序“我的笔记”查看、编辑、删除这条笔记。

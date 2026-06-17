@@ -820,3 +820,20 @@ rm -rf
   5. 确认 `sdkConfigured=true`。
   6. 发真实企业微信测试消息。
   7. 调用 `pull -> process -> 小程序我的笔记验收`。
+
+## 2026-06-17 补充：官方 SDK 已部署，真实拉取接口已跑通
+
+- 用户下载了官方 Linux x86 v3.0 SDK：`sdk_x86_v3_20250205.tgz`。
+- 已上传 `C_sdk/libWeWorkFinanceSdk_C.so` 到生产服务器 `backend/secrets/`。
+- 已配置生产：
+  - `WECOM_ARCHIVE_SDK_LIB_PATH=/app/secrets/libWeWorkFinanceSdk_C.so`
+- 已修正 `docker-compose.yml`，让 backend 容器只读挂载 `./backend/secrets:/app/secrets:ro`。
+- 生产公网验证：
+  - `/api/wecom/archive/config-check`：`sdkConfigured=true`。
+  - `/api/wecom/archive/pull`：返回 200，当前 `rawCount=0`、`savedCount=0`，说明 SDK 调用成功但没有新消息。
+  - `/api/wecom/archive/process`：返回 200，当前 `processedCount=0`。
+- 下一步人工验证只剩真实数据：
+  1. 用已开启会话存档的成员和外部联系人产生一条新会话。
+  2. 再调用 `/api/wecom/archive/pull`，预期 `rawCount` 或 `savedCount` 大于 0。
+  3. 调用 `/api/wecom/archive/process`，预期生成 `UserNote`。
+  4. 小程序“我的笔记”查看、编辑、删除该笔记。

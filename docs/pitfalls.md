@@ -1012,3 +1012,19 @@ from ip=81.70.84.35
 
 - 简单验证脚本用 `python3`。
 - 项目测试继续使用 `/tmp/teambuy-pytest-venv312/bin/python`，保证依赖环境一致。
+
+## 2026-06-17：SDK 文件上传到宿主机后还要确认容器可读
+
+问题：
+
+- 已把 `libWeWorkFinanceSdk_C.so` 上传到服务器 `backend/secrets/`。
+- 但生产 `config-check` 仍显示 `sdkLibReadable=false`。
+- 根因是 `docker-compose.yml` 原本只挂载了 `backend_media`，没有把宿主机 `./backend/secrets` 挂到容器 `/app/secrets`。
+- 容器内只能看到镜像构建时带进去的旧密钥文件，看不到后续上传的 SDK 动态库。
+
+正确做法：
+
+- `docker-compose.yml` 给 backend 增加只读挂载：
+  - `./backend/secrets:/app/secrets:ro`
+- 上传或替换生产密钥、SDK 后，必须从容器内确认文件可见。
+- 最终以公网 `/api/wecom/archive/config-check` 的 `sdkLibReadable=true` 和 `sdkConfigured=true` 为准。
