@@ -221,6 +221,7 @@ class SkillRouterService:
         description = (link.description or "").strip() if link else ""
         url = link.url if link else ""
         host = urlparse(url).netloc if url else ""
+        rule_tags = self._build_rule_tags(content, host)
         body_parts = [part for part in [description, url] if part]
         body = "\n".join(body_parts) or "已收藏，稍后可整理为笔记。"
         summary = description or "已收藏，待整理。"
@@ -234,7 +235,12 @@ class SkillRouterService:
             sourceRefs=content.sourceRefs or content.rawMessageIds,
             visibilityConfig={
                 "contentMode": "bookmark",
-                "tags": ["文章", "链接", "未整理"],
+                "sourceType": "link",
+                "systemCategory": "文章",
+                "tags": rule_tags,
+                "userTags": [],
+                "tagLevels": {"rule": rule_tags, "light": [], "deep": []},
+                "tagStatus": "rule_done",
                 "category": "文章收藏",
                 "showSource": True,
                 "canDeepOrganize": True,
@@ -242,8 +248,35 @@ class SkillRouterService:
                 "sourceName": host or "链接来源",
                 "sourceLabel": "公众号文章" if "mp.weixin.qq.com" in host else "网页链接",
                 "openAction": "official_account_article" if "mp.weixin.qq.com" in host else "copy_link",
+                "topicIds": [],
+                "topics": [],
             },
         )
+
+    def _build_rule_tags(self, content: ContentObjectPayload, host: str = "") -> list[str]:
+        haystack = "\n".join([content.title or "", *content.textBlocks, host, " ".join(link.url for link in content.links)]).lower()
+        tags: list[str] = []
+        if "mp.weixin.qq.com" in haystack:
+            tags.append("微信文章")
+        if host:
+            tags.append("链接")
+        keyword_tags = {
+            "房源": ["房产", "房源"],
+            "小区": ["房产"],
+            "团购": ["团购"],
+            "拼单": ["团购"],
+            "草莓": ["草莓", "水果"],
+            "露营": ["露营", "出行"],
+            "亲子": ["亲子"],
+            "装备": ["装备"],
+            "合同": ["合同"],
+            "python": ["Python"],
+        }
+        for keyword, values in keyword_tags.items():
+            if keyword in haystack:
+                tags.extend(values)
+        tags.append("待整理")
+        return list(dict.fromkeys(tags))
 
     def _guess_title(self, content: ContentObjectPayload, body: str) -> str:
         if content.title and content.title.strip():

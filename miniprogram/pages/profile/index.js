@@ -46,6 +46,9 @@ Page({
   handleGoNotes() {
     wx.navigateTo({ url: "/pages/notes/index" });
   },
+  handleGoTopics() {
+    wx.navigateTo({ url: "/pages/topics/index" });
+  },
   handleMemberPlaceholder() {
     wx.showToast({ title: "会员权益将在 v0.2 开放", icon: "none" });
   },

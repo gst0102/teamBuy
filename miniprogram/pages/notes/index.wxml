@@ -10,8 +10,37 @@
   </view>
 
   <view class="search-box">
-    <input class="search-input" placeholder="搜索标题 / 摘要 / 分类" value="{{keyword}}" bindinput="handleKeywordChange" confirm-type="search" bindconfirm="handleSearch" />
+    <input class="search-input" placeholder="搜索标题 / 摘要 / 来源 / 标签" value="{{keyword}}" bindinput="handleKeywordChange" confirm-type="search" bindconfirm="handleSearch" />
     <button class="search-btn" bindtap="handleSearch">搜索</button>
+  </view>
+
+  <scroll-view class="source-tabs" scroll-x>
+    <block wx:for="{{sourceFilters}}" wx:key="value">
+      <view class="source-tab {{activeSourceType === item.value ? 'active' : ''}}" data-value="{{item.value}}" bindtap="handleSourceFilter">{{item.label}}</view>
+    </block>
+  </scroll-view>
+
+  <view class="filter-row" wx:if="{{tagFilters.length}}">
+    <view class="filter-title">标签</view>
+    <scroll-view scroll-x class="filter-scroll">
+      <block wx:for="{{tagFilters}}" wx:key="name">
+        <text class="filter-chip {{activeTag === item.name ? 'active' : ''}}" data-tag="{{item.name}}" bindtap="handleTagFilter">{{item.name}} {{item.count}}</text>
+      </block>
+    </scroll-view>
+  </view>
+
+  <view class="filter-row" wx:if="{{topics.length}}">
+    <view class="filter-title">专题</view>
+    <scroll-view scroll-x class="filter-scroll">
+      <block wx:for="{{topics}}" wx:key="id">
+        <text class="filter-chip {{activeTopicId === item.id ? 'active' : ''}}" data-id="{{item.id}}" bindtap="handleTopicFilter">{{item.name}} {{item.noteCount}}</text>
+      </block>
+    </scroll-view>
+  </view>
+
+  <view class="list-meta">
+    <text>共 {{notes.length}} 条</text>
+    <text bindtap="handleSortToggle">{{sort === 'collected' ? '按收藏时间' : '按更新时间'}}</text>
   </view>
 
   <view class="note-list" wx:if="{{notes.length}}">
@@ -26,6 +55,11 @@
           <view class="bookmark-meta">
             <text>{{item.bookmarkCategory}}</text>
             <text wx:if="{{item.collectedAtText}}">{{item.collectedAtText}}</text>
+          </view>
+          <view class="bookmark-topics" wx:if="{{item.topicNames.length}}">
+            <block wx:for="{{item.topicNames}}" wx:for-item="topicName" wx:key="*this">
+              <text>{{topicName}}</text>
+            </block>
           </view>
           <view class="bookmark-tags" wx:if="{{item.bookmarkTags.length}}">
             <block wx:for="{{item.bookmarkTags}}" wx:for-item="tag" wx:key="*this">

@@ -1,0 +1,103 @@
+.page-shell {
+  min-height: 100vh;
+  padding: 0 28rpx 48rpx;
+  background: #f6f8fb;
+  box-sizing: border-box;
+}
+
+.header {
+  padding: 28rpx 0 20rpx;
+}
+
+.title {
+  color: #172033;
+  font-size: 40rpx;
+  font-weight: 900;
+}
+
+.subtitle {
+  margin-top: 8rpx;
+  color: #6f7d91;
+  font-size: 24rpx;
+}
+
+.create-panel {
+  display: grid;
+  grid-template-columns: 1fr 140rpx;
+  gap: 14rpx;
+  padding: 18rpx;
+  border-radius: 8rpx;
+  background: #fff;
+}
+
+.create-panel input {
+  height: 72rpx;
+  padding: 0 18rpx;
+  border-radius: 8rpx;
+  background: #f6f8fb;
+  font-size: 26rpx;
+  box-sizing: border-box;
+}
+
+.create-panel button {
+  height: 72rpx;
+  line-height: 72rpx;
+  padding: 0;
+  border-radius: 8rpx;
+  background: #11924d;
+  color: #fff;
+  font-size: 26rpx;
+}
+
+.topic-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+  margin-top: 22rpx;
+}
+
+.topic-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18rpx;
+  padding: 22rpx;
+  border-radius: 8rpx;
+  background: #fff;
+}
+
+.topic-name {
+  color: #172033;
+  font-size: 30rpx;
+  font-weight: 900;
+}
+
+.topic-desc {
+  margin-top: 8rpx;
+  color: #6f7d91;
+  font-size: 24rpx;
+}
+
+.topic-count {
+  min-width: 64rpx;
+  height: 64rpx;
+  border-radius: 32rpx;
+  background: #e8f7ef;
+  color: #11924d;
+  text-align: center;
+  line-height: 64rpx;
+  font-weight: 900;
+}
+
+.empty-state {
+  margin-top: 160rpx;
+  text-align: center;
+  color: #6b7280;
+  font-size: 30rpx;
+}
+
+.empty-sub {
+  margin-top: 12rpx;
+  color: #9aa4b2;
+  font-size: 24rpx;
+}

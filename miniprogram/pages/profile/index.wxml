@@ -52,6 +52,10 @@
       <text>我的笔记</text>
       <text class="menu-arrow">></text>
     </view>
+    <view class="menu-item" bindtap="handleGoTopics">
+      <text>专题</text>
+      <text class="menu-arrow">></text>
+    </view>
     <view class="menu-item" bindtap="handleGoVisits">
       <text>访问记录</text>
       <text class="menu-arrow">></text>

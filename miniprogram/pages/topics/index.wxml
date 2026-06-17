@@ -1,0 +1,32 @@
+<view class="page-shell">
+  <custom-nav title="专题" />
+
+  <view class="header">
+    <view>
+      <view class="title">专题</view>
+      <view class="subtitle">用专题承载场景集合，不再做多级文件夹。</view>
+    </view>
+  </view>
+
+  <view class="create-panel">
+    <input value="{{name}}" placeholder="例如：周末亲子露营 / 学习资料合集" bindinput="handleNameChange" />
+    <button bindtap="handleCreate">新建</button>
+  </view>
+
+  <view class="topic-list" wx:if="{{topics.length}}">
+    <block wx:for="{{topics}}" wx:key="id">
+      <view class="topic-card" data-id="{{item.id}}" bindtap="handleOpen">
+        <view>
+          <view class="topic-name">{{item.name}}</view>
+          <view class="topic-desc">{{item.description || '点击查看这个专题下的资料'}}</view>
+        </view>
+        <view class="topic-count">{{item.noteCount}}</view>
+      </view>
+    </block>
+  </view>
+
+  <view class="empty-state" wx:else>
+    <view>暂无专题</view>
+    <view class="empty-sub">先创建一个专题，再把收藏资料加入进去。</view>
+  </view>
+</view>

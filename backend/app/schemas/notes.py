@@ -16,3 +16,14 @@ class UserNoteUpdateRequest(BaseModel):
     phone: str | None = None
     locationText: str | None = None
     visibilityConfig: dict = Field(default_factory=dict)
+
+
+class TopicCreateRequest(BaseModel):
+    ownerUserId: str
+    name: str
+    description: str | None = None
+    color: str | None = None
+
+
+class TopicNoteRequest(BaseModel):
+    ownerUserId: str

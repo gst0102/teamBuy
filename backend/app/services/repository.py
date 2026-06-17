@@ -22,6 +22,7 @@ from app.models.domain import (
     SyncCursor,
     SyncTask,
     SyncTaskLog,
+    Topic,
     User,
     WecomIdentityBinding,
     UserNote,
@@ -120,6 +121,18 @@ class AppRepository(Protocol):
         ...
 
     def delete_category(self, category_id: str) -> None:
+        ...
+
+    def list_topics(self, owner_user_id: str) -> list[Topic]:
+        ...
+
+    def get_topic(self, topic_id: str) -> Topic | None:
+        ...
+
+    def save_topic(self, topic: Topic) -> None:
+        ...
+
+    def delete_topic(self, topic_id: str) -> None:
         ...
 
     def add_view_event(self, event: ViewEvent) -> None:
@@ -422,6 +435,31 @@ class JsonRepository:
         state.categories = [item for item in state.categories if item.id != category_id]
         self.save(state)
 
+    def list_topics(self, owner_user_id: str) -> list[Topic]:
+        topics = [item for item in self.load().topics if item.ownerUserId == owner_user_id]
+        return sorted(topics, key=lambda item: (item.updatedAt, item.id), reverse=True)
+
+    def get_topic(self, topic_id: str) -> Topic | None:
+        return next((item for item in self.load().topics if item.id == topic_id), None)
+
+    def save_topic(self, topic: Topic) -> None:
+        state = self.load()
+        state.topics = [item for item in state.topics if item.id != topic.id]
+        state.topics.append(topic)
+        self.save(state)
+
+    def delete_topic(self, topic_id: str) -> None:
+        state = self.load()
+        state.topics = [item for item in state.topics if item.id != topic_id]
+        for note in state.user_notes:
+            config = dict(note.visibilityConfig or {})
+            topic_ids = [item for item in config.get("topicIds", []) if item != topic_id]
+            topics = [item for item in config.get("topics", []) if item.get("id") != topic_id]
+            config["topicIds"] = topic_ids
+            config["topics"] = topics
+            note.visibilityConfig = config
+        self.save(state)
+
     def add_view_event(self, event: ViewEvent) -> None:
         state = self.load()
         state.view_events.append(event)
@@ -696,6 +734,7 @@ class PostgresRepository:
         "relay_entries": "relay_entries",
         "lead_reminders": "lead_reminders",
         "categories": "categories",
+        "topics": "topics",
         "import_notifications": "import_notifications",
         "sync_cursors": "sync_cursors",
         "media_retry_jobs": "media_retry_jobs",
@@ -779,6 +818,10 @@ class PostgresRepository:
             ("contacted_at", "timestamptz", "contactedAt"),
         ],
         "categories": [
+            ("owner_user_id", "text", "ownerUserId"),
+            ("name", "text", "name"),
+        ],
+        "topics": [
             ("owner_user_id", "text", "ownerUserId"),
             ("name", "text", "name"),
         ],
@@ -894,6 +937,9 @@ class PostgresRepository:
         "lead_reminders": [
             ("idx_lead_reminders_owner_status", "owner_user_id, status, updated_at"),
             ("idx_lead_reminders_card_viewer", "card_id, viewer_user_id"),
+        ],
+        "topics": [
+            ("idx_topics_owner_name", "owner_user_id, name"),
         ],
         "sync_cursors": [
             ("idx_sync_cursors_open_kfid", "open_kfid"),
@@ -1139,6 +1185,30 @@ class PostgresRepository:
     def delete_category(self, category_id: str) -> None:
         with psycopg.connect(self.database_url) as conn:
             conn.execute("delete from categories where id = %s", (category_id,))
+
+    def list_topics(self, owner_user_id: str) -> list[Topic]:
+        rows = self._list_payloads("topics", "owner_user_id = %s", (owner_user_id,), "updated_at desc, id desc")
+        return [Topic.model_validate(row) for row in rows]
+
+    def get_topic(self, topic_id: str) -> Topic | None:
+        payload = self.get_payload_by_id("topics", topic_id)
+        return Topic.model_validate(payload) if payload else None
+
+    def save_topic(self, topic: Topic) -> None:
+        self._save_model("topics", topic)
+
+    def delete_topic(self, topic_id: str) -> None:
+        with psycopg.connect(self.database_url) as conn:
+            with conn.transaction():
+                conn.execute("delete from topics where id = %s", (topic_id,))
+                rows = self._list_payloads("user_notes", "payload->'visibilityConfig'->'topicIds' ? %s", (topic_id,), "updated_at desc")
+                for payload in rows:
+                    note = UserNote.model_validate(payload)
+                    config = dict(note.visibilityConfig or {})
+                    config["topicIds"] = [item for item in config.get("topicIds", []) if item != topic_id]
+                    config["topics"] = [item for item in config.get("topics", []) if item.get("id") != topic_id]
+                    note.visibilityConfig = config
+                    self._upsert_payload(conn, "user_notes", note.model_dump(mode="json"))
 
     def list_view_events_for_card(self, card_id: str) -> list[dict]:
         rows = self._list_payloads(

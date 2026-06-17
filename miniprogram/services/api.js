@@ -93,6 +93,11 @@ function fetchNotes(params = {}) {
   if (params.ownerUserId) query.push(`ownerUserId=${params.ownerUserId}`);
   if (params.keyword) query.push(`keyword=${encodeURIComponent(params.keyword)}`);
   if (params.categoryId) query.push(`categoryId=${params.categoryId}`);
+  if (params.sourceType) query.push(`sourceType=${encodeURIComponent(params.sourceType)}`);
+  if (params.systemCategory) query.push(`systemCategory=${encodeURIComponent(params.systemCategory)}`);
+  if (params.tag) query.push(`tag=${encodeURIComponent(params.tag)}`);
+  if (params.topicId) query.push(`topicId=${encodeURIComponent(params.topicId)}`);
+  if (params.sort) query.push(`sort=${encodeURIComponent(params.sort)}`);
   if (params.includeDeleted) query.push("includeDeleted=true");
   const suffix = query.length ? `?${query.join("&")}` : "";
   return request({
@@ -100,6 +105,48 @@ function fetchNotes(params = {}) {
   }).then(async (res) => ({
     ...res,
     data: Array.isArray(res.data) ? await Promise.all(res.data.map(normalizeAndCacheNote)) : res.data
+  }));
+}
+
+function fetchTagSuggestions(params = {}) {
+  const query = [];
+  if (params.ownerUserId) query.push(`ownerUserId=${params.ownerUserId}`);
+  if (params.noteId) query.push(`noteId=${params.noteId}`);
+  if (params.text) query.push(`text=${encodeURIComponent(params.text)}`);
+  const suffix = query.length ? `?${query.join("&")}` : "";
+  return request({ url: `/api/notes/tag-suggestions${suffix}` });
+}
+
+function fetchTopics(ownerUserId) {
+  return request({ url: `/api/notes/topics?ownerUserId=${ownerUserId}` });
+}
+
+function createTopic(payload) {
+  return request({
+    url: "/api/notes/topics",
+    method: "POST",
+    data: payload
+  });
+}
+
+function addNoteToTopic(noteId, topicId, ownerUserId) {
+  return request({
+    url: `/api/notes/${noteId}/topics/${topicId}`,
+    method: "POST",
+    data: { ownerUserId }
+  }).then(async (res) => ({
+    ...res,
+    data: await normalizeAndCacheNote(res.data)
+  }));
+}
+
+function removeNoteFromTopic(noteId, topicId, ownerUserId) {
+  return request({
+    url: `/api/notes/${noteId}/topics/${topicId}?ownerUserId=${ownerUserId}`,
+    method: "DELETE"
+  }).then(async (res) => ({
+    ...res,
+    data: await normalizeAndCacheNote(res.data)
   }));
 }
 
@@ -372,6 +419,11 @@ module.exports = {
   fetchPendingImports,
   claimImport,
   fetchNotes,
+  fetchTagSuggestions,
+  fetchTopics,
+  createTopic,
+  addNoteToTopic,
+  removeNoteFromTopic,
   fetchNote,
   updateNote,
   organizeNote,

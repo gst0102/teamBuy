@@ -18,18 +18,43 @@ function decorateNote(note) {
     sourceUrl: config.sourceUrl || "",
     sourceName: config.sourceName || "链接来源",
     sourceLabel: config.sourceLabel || "网页链接",
-    bookmarkCategory: config.category || "文章收藏",
+    sourceType: config.sourceType || "note",
+    systemCategory: config.systemCategory || config.category || "待整理",
+    bookmarkCategory: config.systemCategory || config.category || "文章收藏",
     bookmarkTags: tags,
+    topicNames: Array.isArray(config.topics) ? config.topics.map((topic) => topic.name).filter(Boolean) : [],
     collectedAtText: formatDateTime(note.createdAt)
   };
 }
+
+const SOURCE_FILTERS = [
+  { label: "全部", value: "" },
+  { label: "笔记", value: "note" },
+  { label: "链接", value: "link" },
+  { label: "图片与视频", value: "media" },
+  { label: "语音", value: "voice" },
+  { label: "位置", value: "location" },
+  { label: "聊天记录", value: "chat" },
+  { label: "文件", value: "file" },
+  { label: "小程序", value: "miniapp" }
+];
 
 Page({
   data: {
     user: null,
     keyword: "",
     notes: [],
+    sourceFilters: SOURCE_FILTERS,
+    activeSourceType: "",
+    activeTag: "",
+    activeTopicId: "",
+    sort: "collected",
+    tagFilters: [],
+    topics: [],
     loading: false
+  },
+  onLoad(options) {
+    this.setData({ activeTopicId: options.topicId || "" });
   },
   onShow() {
     const user = getCurrentUser();
@@ -38,18 +63,27 @@ Page({
       return;
     }
     this.setData({ user });
+    this.loadTopics();
     this.loadNotes();
   },
   handleKeywordChange(event) {
     this.setData({ keyword: event.detail.value });
   },
   async loadNotes() {
-    const { user, keyword } = this.data;
+    const { user, keyword, activeSourceType, activeTag, activeTopicId, sort } = this.data;
     if (!user) return;
     this.setData({ loading: true });
     try {
-      const res = await api.fetchNotes({ ownerUserId: user.id, keyword: keyword.trim() });
-      this.setData({ notes: (res.data || []).map(decorateNote) });
+      const res = await api.fetchNotes({
+        ownerUserId: user.id,
+        keyword: keyword.trim(),
+        sourceType: activeSourceType,
+        tag: activeTag,
+        topicId: activeTopicId,
+        sort
+      });
+      const notes = (res.data || []).map(decorateNote);
+      this.setData({ notes, tagFilters: this.buildTagFilters(notes) });
     } catch (error) {
       wx.showToast({ title: error.detail || "笔记加载失败", icon: "none" });
     } finally {
@@ -57,6 +91,43 @@ Page({
     }
   },
   handleSearch() {
+    this.loadNotes();
+  },
+  async loadTopics() {
+    const { user } = this.data;
+    if (!user) return;
+    try {
+      const res = await api.fetchTopics(user.id);
+      this.setData({ topics: res.data || [] });
+    } catch (error) {
+      this.setData({ topics: [] });
+    }
+  },
+  buildTagFilters(notes) {
+    const counts = {};
+    notes.forEach((note) => {
+      (note.bookmarkTags || []).forEach((tag) => {
+        counts[tag] = (counts[tag] || 0) + 1;
+      });
+    });
+    return Object.keys(counts).sort().map((name) => ({ name, count: counts[name] }));
+  },
+  handleSourceFilter(event) {
+    this.setData({ activeSourceType: event.currentTarget.dataset.value || "", activeTag: "" });
+    this.loadNotes();
+  },
+  handleTagFilter(event) {
+    const tag = event.currentTarget.dataset.tag || "";
+    this.setData({ activeTag: this.data.activeTag === tag ? "" : tag });
+    this.loadNotes();
+  },
+  handleTopicFilter(event) {
+    const topicId = event.currentTarget.dataset.id || "";
+    this.setData({ activeTopicId: this.data.activeTopicId === topicId ? "" : topicId });
+    this.loadNotes();
+  },
+  handleSortToggle() {
+    this.setData({ sort: this.data.sort === "collected" ? "updated" : "collected" });
     this.loadNotes();
   },
   handleOpen(event) {

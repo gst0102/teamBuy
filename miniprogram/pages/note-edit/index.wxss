@@ -166,6 +166,64 @@
   font-weight: 900;
 }
 
+.section-title.spaced {
+  margin-top: 24rpx;
+}
+
+.option-row,
+.editable-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+}
+
+.option-chip,
+.editable-tags text {
+  padding: 10rpx 18rpx;
+  border-radius: 8rpx;
+  background: #f6f8fb;
+  color: #5f6d80;
+  font-size: 24rpx;
+}
+
+.option-chip.active {
+  background: #e8f7ef;
+  color: #11924d;
+  font-weight: 800;
+}
+
+.editable-tags text {
+  background: #fff4e6;
+  color: #a25800;
+  font-weight: 700;
+}
+
+.inline-input {
+  display: grid;
+  grid-template-columns: 1fr 128rpx;
+  gap: 14rpx;
+  margin-top: 18rpx;
+}
+
+.inline-input input {
+  height: 72rpx;
+  padding: 0 18rpx;
+  border-radius: 8rpx;
+  background: #f6f8fb;
+  font-size: 26rpx;
+  box-sizing: border-box;
+}
+
+.inline-input button {
+  height: 72rpx;
+  line-height: 72rpx;
+  padding: 0;
+  border-radius: 8rpx;
+  background: #11924d;
+  color: #fff;
+  font-size: 25rpx;
+}
+
 .label {
   margin-bottom: 10rpx;
   color: #172033;

@@ -16,6 +16,19 @@ const TEMPLATE_META = {
   }
 };
 
+const SOURCE_TYPES = [
+  { label: "笔记", value: "note" },
+  { label: "链接", value: "link" },
+  { label: "图片与视频", value: "media" },
+  { label: "语音", value: "voice" },
+  { label: "位置", value: "location" },
+  { label: "聊天记录", value: "chat" },
+  { label: "文件", value: "file" },
+  { label: "小程序", value: "miniapp" }
+];
+
+const SYSTEM_CATEGORIES = ["文章", "图片", "链接", "文件", "生活", "工作", "待整理"];
+
 function formatDateTime(value) {
   if (!value) return "";
   const date = new Date(value);
@@ -27,12 +40,17 @@ function formatDateTime(value) {
 function buildBookmark(note) {
   const config = note.visibilityConfig || {};
   const tags = Array.isArray(config.tags) ? config.tags : [];
+  const userTags = Array.isArray(config.userTags) ? config.userTags : [];
   return {
     sourceUrl: config.sourceUrl || "",
     sourceName: config.sourceName || "链接来源",
     sourceLabel: config.sourceLabel || "网页链接",
-    category: config.category || "文章收藏",
+    sourceType: config.sourceType || "link",
+    systemCategory: config.systemCategory || config.category || "文章",
+    category: config.systemCategory || config.category || "文章",
     tags,
+    userTags,
+    topics: Array.isArray(config.topics) ? config.topics : [],
     collectedAtText: formatDateTime(note.createdAt)
   };
 }
@@ -55,6 +73,11 @@ Page({
     },
     isBookmark: false,
     bookmark: {},
+    sourceTypes: SOURCE_TYPES,
+    systemCategories: SYSTEM_CATEGORIES,
+    topics: [],
+    tagDraft: "",
+    topicDraft: "",
     saving: false
   },
   onLoad(options) {
@@ -70,7 +93,18 @@ Page({
       return;
     }
     this.setData({ user });
+    this.loadTopics();
     this.loadNote();
+  },
+  async loadTopics() {
+    const { user } = this.data;
+    if (!user) return;
+    try {
+      const res = await api.fetchTopics(user.id);
+      this.setData({ topics: res.data || [] });
+    } catch (error) {
+      this.setData({ topics: [] });
+    }
   },
   async loadNote() {
     const { user, noteId } = this.data;
@@ -78,29 +112,112 @@ Page({
     try {
       const res = await api.fetchNote(noteId, user.id);
       const note = res.data || {};
-      const isBookmark = (note.visibilityConfig || {}).contentMode === "bookmark";
-      this.setData({
-        form: {
-          title: note.title || "",
-          summary: note.summary || "",
-          body: note.body || "",
-          coverUrl: note.coverUrl || "",
-          phone: note.phone || "",
-          locationText: note.locationText || "",
-          categoryIds: note.categoryIds || [],
-          media: note.media || [],
-          visibilityConfig: note.visibilityConfig || {}
-        },
-        isBookmark,
-        bookmark: isBookmark ? buildBookmark(note) : {}
-      });
+      this.applyLoadedNote(note);
     } catch (error) {
       wx.showToast({ title: error.detail || "笔记加载失败", icon: "none" });
     }
   },
+  applyLoadedNote(note) {
+    const isBookmark = (note.visibilityConfig || {}).contentMode === "bookmark";
+    this.setData({
+      form: {
+        title: note.title || "",
+        summary: note.summary || "",
+        body: note.body || "",
+        coverUrl: note.coverUrl || "",
+        phone: note.phone || "",
+        locationText: note.locationText || "",
+        categoryIds: note.categoryIds || [],
+        media: note.media || [],
+        visibilityConfig: note.visibilityConfig || {}
+      },
+      isBookmark,
+      bookmark: isBookmark ? buildBookmark(note) : {}
+    });
+  },
   handleInput(event) {
     const key = event.currentTarget.dataset.key;
     this.setData({ [`form.${key}`]: event.detail.value });
+  },
+  handleBookmarkField(event) {
+    const key = event.currentTarget.dataset.key;
+    const value = event.currentTarget.dataset.value || event.detail.value;
+    const config = { ...(this.data.form.visibilityConfig || {}), [key]: value };
+    this.setData({
+      "form.visibilityConfig": config,
+      [`bookmark.${key}`]: value
+    });
+  },
+  handleTagDraft(event) {
+    this.setData({ tagDraft: event.detail.value });
+  },
+  handleAddTag() {
+    const tag = this.data.tagDraft.trim();
+    if (!tag) return;
+    const config = { ...(this.data.form.visibilityConfig || {}) };
+    const userTags = Array.from(new Set([...(config.userTags || []), tag]));
+    const tags = Array.from(new Set([...(config.tags || []), tag]));
+    config.userTags = userTags;
+    config.tags = tags;
+    config.tagStatus = "user_updated";
+    this.setData({
+      "form.visibilityConfig": config,
+      "bookmark.userTags": userTags,
+      "bookmark.tags": tags,
+      tagDraft: ""
+    });
+  },
+  handleRemoveTag(event) {
+    const tag = event.currentTarget.dataset.tag;
+    const config = { ...(this.data.form.visibilityConfig || {}) };
+    config.userTags = (config.userTags || []).filter((item) => item !== tag);
+    config.tags = (config.tags || []).filter((item) => item !== tag);
+    config.tagStatus = "user_updated";
+    this.setData({
+      "form.visibilityConfig": config,
+      "bookmark.userTags": config.userTags,
+      "bookmark.tags": config.tags
+    });
+  },
+  handleTopicDraft(event) {
+    this.setData({ topicDraft: event.detail.value });
+  },
+  async handleCreateTopic() {
+    const name = this.data.topicDraft.trim();
+    const { user } = this.data;
+    if (!name || !user) return;
+    try {
+      const res = await api.createTopic({ ownerUserId: user.id, name });
+      this.setData({ topicDraft: "" });
+      await this.loadTopics();
+      await this.handleAddTopicById(res.data.id);
+    } catch (error) {
+      wx.showToast({ title: error.detail || "专题创建失败", icon: "none" });
+    }
+  },
+  async handleAddTopic(event) {
+    await this.handleAddTopicById(event.currentTarget.dataset.id);
+  },
+  async handleAddTopicById(topicId) {
+    const { user, noteId } = this.data;
+    if (!topicId || !user || !noteId) return;
+    try {
+      const res = await api.addNoteToTopic(noteId, topicId, user.id);
+      this.applyLoadedNote(res.data || {});
+    } catch (error) {
+      wx.showToast({ title: error.detail || "加入专题失败", icon: "none" });
+    }
+  },
+  async handleRemoveTopic(event) {
+    const { user, noteId } = this.data;
+    const topicId = event.currentTarget.dataset.id;
+    if (!topicId || !user || !noteId) return;
+    try {
+      const res = await api.removeNoteFromTopic(noteId, topicId, user.id);
+      this.applyLoadedNote(res.data || {});
+    } catch (error) {
+      wx.showToast({ title: error.detail || "移出专题失败", icon: "none" });
+    }
   },
   async handleSave() {
     const { user, noteId, form } = this.data;

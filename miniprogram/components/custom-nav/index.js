@@ -14,7 +14,8 @@ const ROUTE_TITLES = {
   "pages/manager/index": "线索管理",
   "pages/leads/index": "待联系",
   "pages/lead-detail/index": "线索详情",
-  "pages/customers/index": "客户资料库"
+  "pages/customers/index": "客户资料库",
+  "pages/topics/index": "专题"
 };
 
 Component({

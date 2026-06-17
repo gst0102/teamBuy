@@ -15,6 +15,7 @@
     "pages/lead-detail/index",
     "pages/customers/index",
     "pages/notes/index",
+    "pages/topics/index",
     "pages/note-edit/index"
   ],
   "window": {

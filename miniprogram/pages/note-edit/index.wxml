@@ -34,6 +34,53 @@
     </view>
   </view>
 
+  <view class="form-panel" wx:if="{{isBookmark}}">
+    <view class="section-title">来源类型</view>
+    <view class="option-row">
+      <block wx:for="{{sourceTypes}}" wx:key="value">
+        <text class="option-chip {{bookmark.sourceType === item.value ? 'active' : ''}}" data-key="sourceType" data-value="{{item.value}}" bindtap="handleBookmarkField">{{item.label}}</text>
+      </block>
+    </view>
+
+    <view class="section-title spaced">系统弱分类</view>
+    <view class="option-row">
+      <block wx:for="{{systemCategories}}" wx:key="*this">
+        <text class="option-chip {{bookmark.systemCategory === item ? 'active' : ''}}" data-key="systemCategory" data-value="{{item}}" bindtap="handleBookmarkField">{{item}}</text>
+      </block>
+    </view>
+  </view>
+
+  <view class="form-panel" wx:if="{{isBookmark}}">
+    <view class="section-title">用户标签</view>
+    <view class="editable-tags" wx:if="{{bookmark.userTags.length}}">
+      <block wx:for="{{bookmark.userTags}}" wx:key="*this">
+        <text data-tag="{{item}}" bindtap="handleRemoveTag">{{item}} ×</text>
+      </block>
+    </view>
+    <view class="inline-input">
+      <input value="{{tagDraft}}" placeholder="新增标签，例如：露营 / 亲子 / 装备" bindinput="handleTagDraft" />
+      <button bindtap="handleAddTag">添加</button>
+    </view>
+  </view>
+
+  <view class="form-panel" wx:if="{{isBookmark}}">
+    <view class="section-title">专题</view>
+    <view class="editable-tags" wx:if="{{bookmark.topics.length}}">
+      <block wx:for="{{bookmark.topics}}" wx:key="id">
+        <text data-id="{{item.id}}" bindtap="handleRemoveTopic">{{item.name}} ×</text>
+      </block>
+    </view>
+    <view class="option-row" wx:if="{{topics.length}}">
+      <block wx:for="{{topics}}" wx:key="id">
+        <text class="option-chip" data-id="{{item.id}}" bindtap="handleAddTopic">{{item.name}}</text>
+      </block>
+    </view>
+    <view class="inline-input">
+      <input value="{{topicDraft}}" placeholder="新建专题，例如：周末亲子露营" bindinput="handleTopicDraft" />
+      <button bindtap="handleCreateTopic">新建</button>
+    </view>
+  </view>
+
   <view class="template-bar" wx:if="{{!isBookmark}}">
     <view>
       <view class="template-label">{{template.label}}</view>

@@ -1601,3 +1601,27 @@
     - `sourceLabel=网页链接`
     - `openAction=copy_link`
   - 小程序文章卡片 UI 需要通过微信开发者工具重新预览/上传后才能看到。
+
+### 强标签、弱分类、专题聚合第一版
+
+- 新增架构文档：
+  - `docs/stage2-docs/11-tag-topic-search-architecture.md`
+- 后端实现：
+  - `UserNote.visibilityConfig` 兼容扩展 `sourceType/systemCategory/tags/userTags/tagLevels/topicIds/topics/tagStatus`。
+  - `link-bookmark` 入库时生成 L1 规则标签，不调用大模型，不阻塞收藏。
+  - 新增标签建议接口：`GET /api/notes/tag-suggestions`。
+  - 新增专题接口：`GET/POST /api/notes/topics`、`POST/DELETE /api/notes/{note_id}/topics/{topic_id}`。
+  - 笔记列表支持按 `sourceType/tag/topicId/sort` 筛选。
+- 小程序实现：
+  - “我的笔记”新增来源类型筛选、标签筛选、专题筛选和收藏时间/更新时间排序。
+  - 轻收藏编辑页支持调整来源类型、系统弱分类、用户标签和专题。
+  - 新增“专题”页面，可创建专题并按专题进入资料库。
+  - “我的”页面新增专题入口。
+- 验证：
+  - `/tmp/teambuy-pytest-venv312/bin/python -m compileall backend/app backend/tests`：通过。
+  - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_skill_router.py backend/tests/test_app.py backend/tests/test_media_processing_service.py backend/tests/test_media_storage_service.py -q`：70 项通过。
+  - `find miniprogram -name '*.js' -print0 | xargs -0 -n1 node --check`：通过。
+  - 小程序 JSON 解析检查：25 个文件通过。
+- 当前边界：
+  - L2 轻模型标签和 L3 大模型深度标签暂未接入。
+  - 专题关系第一版保存在 `UserNote.visibilityConfig.topicIds`，后续稳定后再拆 `topic_items`。

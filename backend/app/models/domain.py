@@ -203,6 +203,16 @@ class Category(BaseModel):
     createdAt: str
 
 
+class Topic(BaseModel):
+    id: str
+    ownerUserId: str
+    name: str
+    description: str | None = None
+    color: str | None = None
+    createdAt: str
+    updatedAt: str
+
+
 class ImportNotification(BaseModel):
     id: str
     importBatchId: str
@@ -330,6 +340,7 @@ class AppState(BaseModel):
     relay_entries: list[RelayEntry] = Field(default_factory=list)
     lead_reminders: list[LeadReminder] = Field(default_factory=list)
     categories: list[Category] = Field(default_factory=list)
+    topics: list[Topic] = Field(default_factory=list)
     import_notifications: list[ImportNotification] = Field(default_factory=list)
     sync_cursors: list[SyncCursor] = Field(default_factory=list)
     media_retry_jobs: list[MediaRetryJob] = Field(default_factory=list)

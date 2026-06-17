@@ -95,6 +95,15 @@ create table if not exists categories (
     updated_at timestamptz not null default now()
 );
 
+create table if not exists topics (
+    id text primary key,
+    payload jsonb not null,
+    owner_user_id text,
+    name text,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
 create table if not exists import_notifications (
     id text primary key,
     payload jsonb not null,

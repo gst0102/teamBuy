@@ -5,11 +5,11 @@ from datetime import datetime, timedelta
 from uuid import uuid4
 from fastapi import HTTPException, status
 
-from app.models.domain import AppState, Card, CardMedia, Category, ImportBatch, LeadFollowUpLog, LeadReminder, MediaRetryJob, RawMessage, RelayConfig, RelayEntry, SkillRun, SyncCursor, User, UserNote, ViewEvent, WecomArchiveCursor, WecomArchiveMessage, WecomIdentityBinding
+from app.models.domain import AppState, Card, CardMedia, Category, ImportBatch, LeadFollowUpLog, LeadReminder, MediaRetryJob, RawMessage, RelayConfig, RelayEntry, SkillRun, SyncCursor, Topic, User, UserNote, ViewEvent, WecomArchiveCursor, WecomArchiveMessage, WecomIdentityBinding
 from app.schemas.auth import MockLoginRequest
 from app.schemas.categories import CategoryCreateRequest
 from app.schemas.cards import CardCreateRequest, CardUpdateRequest, CreateRelayRequest, LeadReminderUpdateRequest, LeadReminderUpsertRequest, RecordViewRequest
-from app.schemas.notes import UserNoteUpdateRequest
+from app.schemas.notes import TopicCreateRequest, UserNoteUpdateRequest
 from app.schemas.skills import ContentObjectPayload
 from app.services.card_parser_service import CardParserService
 from app.services.content_object_adapter import ContentObjectAdapter
@@ -1064,19 +1064,73 @@ class AppService:
         owner_user_id: str,
         keyword: str | None = None,
         category_id: str | None = None,
+        source_type: str | None = None,
+        system_category: str | None = None,
+        tag: str | None = None,
+        topic_id: str | None = None,
+        sort: str = "updated",
         include_deleted: bool = False,
     ) -> list[dict]:
         if not self.repo.get_user(owner_user_id):
             raise HTTPException(status_code=404, detail="用户不存在")
-        return [
-            item.model_dump()
-            for item in self.repo.list_user_notes(
-                owner_user_id=owner_user_id,
-                keyword=keyword,
-                category_id=category_id,
-                include_deleted=include_deleted,
-            )
-        ]
+        notes = self.repo.list_user_notes(
+            owner_user_id=owner_user_id,
+            keyword=None,
+            category_id=category_id,
+            include_deleted=include_deleted,
+        )
+        filtered = self._filter_user_notes(notes, keyword, source_type, system_category, tag, topic_id)
+        if sort == "collected":
+            filtered = sorted(filtered, key=lambda item: item.createdAt, reverse=True)
+        else:
+            filtered = sorted(filtered, key=lambda item: item.updatedAt, reverse=True)
+        return [item.model_dump() for item in filtered]
+
+    def _filter_user_notes(
+        self,
+        notes: list[UserNote],
+        keyword: str | None,
+        source_type: str | None,
+        system_category: str | None,
+        tag: str | None,
+        topic_id: str | None,
+    ) -> list[UserNote]:
+        result = notes
+        if source_type:
+            result = [item for item in result if (item.visibilityConfig or {}).get("sourceType") == source_type]
+        if system_category:
+            result = [item for item in result if (item.visibilityConfig or {}).get("systemCategory") == system_category]
+        if tag:
+            result = [item for item in result if tag in self._note_tags(item)]
+        if topic_id:
+            result = [item for item in result if topic_id in (item.visibilityConfig or {}).get("topicIds", [])]
+        if keyword:
+            lowered = keyword.lower()
+            result = [
+                item
+                for item in result
+                if lowered in " ".join(
+                    [
+                        item.title,
+                        item.summary,
+                        item.body,
+                        (item.visibilityConfig or {}).get("sourceName", ""),
+                        (item.visibilityConfig or {}).get("systemCategory", ""),
+                        " ".join(self._note_tags(item)),
+                    ]
+                ).lower()
+            ]
+        return result
+
+    def _note_tags(self, note: UserNote) -> list[str]:
+        config = note.visibilityConfig or {}
+        tags: list[str] = []
+        for key in ("tags", "userTags"):
+            tags.extend([str(item).strip() for item in config.get(key, []) if str(item).strip()])
+        for values in (config.get("tagLevels") or {}).values():
+            if isinstance(values, list):
+                tags.extend([str(item).strip() for item in values if str(item).strip()])
+        return list(dict.fromkeys(tags))
 
     def get_user_note(self, note_id: str, owner_user_id: str) -> UserNote:
         note = self.repo.get_user_note(note_id)
@@ -1099,23 +1153,149 @@ class AppService:
         note.categoryIds = payload.categoryIds
         note.phone = payload.phone
         note.locationText = payload.locationText
-        note.visibilityConfig = payload.visibilityConfig
+        note.visibilityConfig = self._normalize_note_visibility_config(payload.visibilityConfig)
         note.updatedAt = now_iso()
         self.repo.save_user_note(note)
         return note
 
+    def _normalize_note_visibility_config(self, config: dict) -> dict:
+        normalized = dict(config or {})
+        tag_levels = normalized.get("tagLevels") or {}
+        if not isinstance(tag_levels, dict):
+            tag_levels = {}
+        for key in ("rule", "light", "deep"):
+            tag_levels[key] = self._unique_strings(tag_levels.get(key, []))
+        user_tags = self._unique_strings(normalized.get("userTags", []))
+        tags = self._unique_strings([*tag_levels["rule"], *tag_levels["light"], *tag_levels["deep"], *user_tags, *normalized.get("tags", [])])
+        normalized["tags"] = tags
+        normalized["userTags"] = user_tags
+        normalized["tagLevels"] = tag_levels
+        normalized["topicIds"] = self._unique_strings(normalized.get("topicIds", []))
+        normalized["topics"] = [item for item in normalized.get("topics", []) if isinstance(item, dict) and item.get("id")]
+        normalized.setdefault("tagStatus", "user_updated" if user_tags else "rule_done")
+        return normalized
+
+    def _unique_strings(self, values) -> list[str]:
+        result: list[str] = []
+        for value in values or []:
+            text = str(value).strip()
+            if text and text not in result:
+                result.append(text)
+        return result
+
     def organize_bookmark_note(self, note_id: str, owner_user_id: str) -> UserNote:
         note = self.get_user_note(note_id, owner_user_id)
         config = dict(note.visibilityConfig or {})
-        tags = [item for item in config.get("tags", []) if item != "未整理"]
+        tags = [item for item in config.get("tags", []) if item not in {"未整理", "待整理"}]
         if "已整理" not in tags:
             tags.append("已整理")
         config["contentMode"] = "deep_note"
         config["tags"] = tags
         config["canDeepOrganize"] = False
+        config["tagStatus"] = "deep_done"
         note.visibilityConfig = config
         if note.summary in {"已收藏，待整理。", "已收藏，待整理"}:
             note.summary = note.body[:120] if note.body else note.title
+        note.updatedAt = now_iso()
+        self.repo.save_user_note(note)
+        return note
+
+    def suggest_note_tags(self, owner_user_id: str, note_id: str | None = None, text: str | None = None) -> dict:
+        if note_id:
+            note = self.get_user_note(note_id, owner_user_id)
+            source_text = "\n".join([note.title, note.summary, note.body, (note.visibilityConfig or {}).get("sourceUrl", "")])
+            config = note.visibilityConfig or {}
+        else:
+            if not self.repo.get_user(owner_user_id):
+                raise HTTPException(status_code=404, detail="用户不存在")
+            source_text = text or ""
+            config = {}
+        rule_tags = self._generate_rule_tags(source_text, config)
+        return {
+            "tagStatus": "rule_done",
+            "tagLevels": {"rule": rule_tags, "light": [], "deep": []},
+            "suggestedTags": rule_tags,
+        }
+
+    def _generate_rule_tags(self, text: str, config: dict | None = None) -> list[str]:
+        source_url = (config or {}).get("sourceUrl", "")
+        haystack = f"{text}\n{source_url}".lower()
+        tags: list[str] = []
+        if "mp.weixin.qq.com" in haystack:
+            tags.append("微信文章")
+        if "http://" in haystack or "https://" in haystack:
+            tags.append("链接")
+        keyword_tags = {
+            "房源": ["房产", "房源"],
+            "小区": ["房产"],
+            "团购": ["团购"],
+            "拼单": ["团购"],
+            "草莓": ["草莓", "水果"],
+            "露营": ["露营", "出行"],
+            "亲子": ["亲子"],
+            "装备": ["装备"],
+            "合同": ["合同"],
+            "python": ["Python"],
+            "zip": ["文件"],
+        }
+        for keyword, values in keyword_tags.items():
+            if keyword in haystack:
+                tags.extend(values)
+        return self._unique_strings(tags or ["待整理"])
+
+    def list_topics(self, owner_user_id: str) -> list[dict]:
+        if not self.repo.get_user(owner_user_id):
+            raise HTTPException(status_code=404, detail="用户不存在")
+        notes = self.repo.list_user_notes(owner_user_id, include_deleted=False)
+        counts: dict[str, int] = {}
+        for note in notes:
+            for topic_id in (note.visibilityConfig or {}).get("topicIds", []):
+                counts[topic_id] = counts.get(topic_id, 0) + 1
+        return [{**topic.model_dump(), "noteCount": counts.get(topic.id, 0)} for topic in self.repo.list_topics(owner_user_id)]
+
+    def create_topic(self, payload: TopicCreateRequest) -> Topic:
+        if not self.repo.get_user(payload.ownerUserId):
+            raise HTTPException(status_code=404, detail="用户不存在")
+        name = payload.name.strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="专题名称不能为空")
+        if any(item.name == name for item in self.repo.list_topics(payload.ownerUserId)):
+            raise HTTPException(status_code=400, detail="专题已存在")
+        now = now_iso()
+        topic = Topic(
+            id=new_id("topic"),
+            ownerUserId=payload.ownerUserId,
+            name=name,
+            description=(payload.description or "").strip() or None,
+            color=(payload.color or "").strip() or None,
+            createdAt=now,
+            updatedAt=now,
+        )
+        self.repo.save_topic(topic)
+        return topic
+
+    def add_note_to_topic(self, note_id: str, topic_id: str, owner_user_id: str) -> UserNote:
+        note = self.get_user_note(note_id, owner_user_id)
+        topic = self.repo.get_topic(topic_id)
+        if not topic or topic.ownerUserId != owner_user_id:
+            raise HTTPException(status_code=404, detail="专题不存在")
+        config = self._normalize_note_visibility_config(note.visibilityConfig)
+        topic_ids = self._unique_strings([*config.get("topicIds", []), topic.id])
+        topics = [item for item in config.get("topics", []) if item.get("id") != topic.id]
+        topics.append({"id": topic.id, "name": topic.name})
+        config["topicIds"] = topic_ids
+        config["topics"] = topics
+        note.visibilityConfig = config
+        note.updatedAt = now_iso()
+        self.repo.save_user_note(note)
+        return note
+
+    def remove_note_from_topic(self, note_id: str, topic_id: str, owner_user_id: str) -> UserNote:
+        note = self.get_user_note(note_id, owner_user_id)
+        config = self._normalize_note_visibility_config(note.visibilityConfig)
+        config["topicIds"] = [item for item in config.get("topicIds", []) if item != topic_id]
+        config["topics"] = [item for item in config.get("topics", []) if item.get("id") != topic_id]
+        note.visibilityConfig = config
         note.updatedAt = now_iso()
         self.repo.save_user_note(note)
         return note

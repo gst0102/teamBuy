@@ -1248,7 +1248,11 @@ def test_link_import_uses_thumbnail_and_source_url(client):
     assert card["sourceUrl"] == "https://example.com/group-buy"
     assert card["coverUrl"] == "https://example.com/cover.jpg"
     assert note["visibilityConfig"]["contentMode"] == "bookmark"
-    assert note["visibilityConfig"]["tags"] == ["文章", "链接", "未整理"]
+    assert {"链接", "待整理"}.issubset(set(note["visibilityConfig"]["tags"]))
+    assert note["visibilityConfig"]["sourceType"] == "link"
+    assert note["visibilityConfig"]["systemCategory"] == "文章"
+    assert note["visibilityConfig"]["tagLevels"]["rule"] == note["visibilityConfig"]["tags"]
+    assert note["visibilityConfig"]["tagStatus"] == "rule_done"
     assert note["visibilityConfig"]["category"] == "文章收藏"
     assert note["visibilityConfig"]["sourceUrl"] == "https://example.com/group-buy"
     assert note["visibilityConfig"]["sourceName"] == "example.com"
@@ -1256,6 +1260,35 @@ def test_link_import_uses_thumbnail_and_source_url(client):
 
     claim = client.post(f"/api/imports/{latest['id']}/claim", json={"userId": login["id"]})
     note_id = claim.json()["data"]["note"]["id"]
+    updated = client.put(
+        f"/api/notes/{note_id}",
+        json={
+            **claim.json()["data"]["note"],
+            "ownerUserId": login["id"],
+            "visibilityConfig": {
+                **claim.json()["data"]["note"]["visibilityConfig"],
+                "userTags": ["露营"],
+                "tags": [*claim.json()["data"]["note"]["visibilityConfig"]["tags"], "露营"],
+            },
+        },
+    )
+    assert updated.status_code == 200
+    tagged = client.get("/api/notes", params={"ownerUserId": login["id"], "tag": "露营"}).json()["data"]
+    assert any(item["id"] == note_id for item in tagged)
+
+    topic = client.post("/api/notes/topics", json={"ownerUserId": login["id"], "name": "周末亲子露营"})
+    assert topic.status_code == 200
+    topic_id = topic.json()["data"]["id"]
+    added = client.post(f"/api/notes/{note_id}/topics/{topic_id}", json={"ownerUserId": login["id"]})
+    assert added.status_code == 200
+    assert topic_id in added.json()["data"]["visibilityConfig"]["topicIds"]
+    topic_notes = client.get("/api/notes", params={"ownerUserId": login["id"], "topicId": topic_id}).json()["data"]
+    assert [item["id"] for item in topic_notes] == [note_id]
+
+    suggestions = client.get("/api/notes/tag-suggestions", params={"ownerUserId": login["id"], "noteId": note_id})
+    assert suggestions.status_code == 200
+    assert "链接" in suggestions.json()["data"]["suggestedTags"]
+
     organized = client.post(f"/api/notes/{note_id}/organize", params={"ownerUserId": login["id"]})
 
     assert organized.status_code == 200
