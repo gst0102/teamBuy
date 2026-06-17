@@ -944,3 +944,46 @@ from ip=81.70.84.35
   - `WECOM_ARCHIVE_CALLBACK_TOKEN`
   - `WECOM_ARCHIVE_ENCODING_AES_KEY`
 - 写入后重启 backend，并用公网 `echostr` 验证成功后再让用户保存企业微信后台。
+
+## 2026-06-17：会话存档 SDK 未配置时不能伪装成功
+
+问题：
+
+- 企业微信后台事件服务器保存成功，只代表 URL 验证和事件回调配置可用。
+- 真正拉取会话内容还需要官方会话存档 SDK 动态库、`WECOM_ARCHIVE_SECRET`、RSA 私钥和可信 IP。
+- 如果 `/api/wecom/archive/pull` 在 SDK 缺失时返回成功，会误导人工验收，以为已经拿到真实聊天记录。
+
+正确做法：
+
+- `POST /api/wecom/archive/pull` 在 `WECOM_ARCHIVE_SDK_LIB_PATH` 缺失或文件不可读时必须返回 502。
+- 同时写入 `wecom_archive_cursors.status=failed` 和错误信息，后台可以看到失败原因。
+- `GET /api/wecom/archive/config-check` 要区分：
+  - `success=true`：基础会话存档配置和公钥/私钥可读。
+  - `sdkConfigured=true`：真实拉取 SDK 已具备。
+- 人工验收真实归档消息前，必须先确认 `sdkConfigured=true`。
+
+## 2026-06-17：会话存档消息处理必须幂等
+
+问题：
+
+- `/api/wecom/archive/process` 可能被后台任务、人工按钮或失败重试多次触发。
+- 如果不记录归档消息已生成的 `generatedNoteId`，同一条企业微信消息会重复生成多篇用户笔记。
+
+正确做法：
+
+- `WecomArchiveMessage` 保存 `generatedNoteId`、`generatedCardId`、`processedAt`、`processError`。
+- 处理入口只处理 `decryptedPayload` 存在且 `generatedNoteId` 为空的消息。
+- 成功后再保存原始归档消息的生成结果；再次调用应返回 `processedCount=0`。
+
+## 2026-06-17：会话存档 `encrypt_random_key` 按 base64 再 RSA 解密
+
+问题：
+
+- 接官方 SDK 时容易把 `encrypt_random_key` 当成普通字符串或 hex 文本直接交给 RSA 解密。
+- 这样本地配置检查和接口路由都能通过，但真实 `DecryptData` 前会失败。
+
+正确做法：
+
+- 先对 `encrypt_random_key` 做 base64 解码。
+- 再用本地 RSA 私钥做 `PKCS1_v1_5` 解密得到随机密钥。
+- 最后把随机密钥和 `encrypt_chat_msg` 交给官方 SDK `DecryptData`。

@@ -763,3 +763,39 @@ rm -rf
   - `WECOM_ARCHIVE_ENCODING_AES_KEY`
 - 重启后公网验证 `/api/wecom/archive/callback` 使用 archive 专用 token 返回 `archive-token-ok`。
 - 用户确认企业微信后台“接收事件服务器”已保存成功。
+
+## 2026-06-17 补充：P0 会话存档拉取与转笔记链路已实现
+
+- 已新增真实会话存档拉取入口：
+  - `POST /api/wecom/archive/pull`
+  - 需要 admin token。
+  - 从 `wecom_archive_cursors.seq` 继续拉取企业微信会话存档数据。
+  - 拉取成功后写入 `wecom_archive_messages` 并推进游标。
+  - SDK 或配置缺失时返回 502，并记录 failed 游标。
+- 已新增归档消息处理入口：
+  - `POST /api/wecom/archive/process`
+  - 需要 admin token。
+  - 将已解密归档消息转换为 `ContentObject -> content-to-note -> UserNote`。
+  - 成功后在归档消息上记录 `generatedNoteId`、`generatedCardId`、`processedAt`，重复调用不会重复生成笔记。
+  - 处理失败会写入 `processError`。
+- 已新增官方 SDK 封装：
+  - `backend/app/services/wecom_archive_client.py`
+  - 调用 `GetChatData`、RSA 解密 `encrypt_random_key`、调用 `DecryptData`。
+- 已补充配置项：
+  - `WECOM_ARCHIVE_SDK_LIB_PATH`
+  - `WECOM_ARCHIVE_PULL_LIMIT`
+  - `WECOM_ARCHIVE_SDK_TIMEOUT_SECONDS`
+  - `WECOM_ARCHIVE_PROXY`
+  - `WECOM_ARCHIVE_PROXY_PASSWORD`
+- 最近验证：
+  - `/tmp/teambuy-pytest-venv312/bin/python -m compileall backend/app backend/tests` 通过。
+  - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_app.py -q -k "wecom_archive"`：9 项通过。
+  - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_skill_router.py backend/tests/test_app.py backend/tests/test_media_processing_service.py backend/tests/test_media_storage_service.py -q`：60 项通过。
+- 仍需人工/生产验证：
+  1. 将企业微信官方会话存档 Linux SDK 动态库放到生产容器可读路径。
+  2. 设置生产 `WECOM_ARCHIVE_SDK_LIB_PATH` 为容器内绝对路径。
+  3. 重启 backend 后确认 `/api/wecom/archive/config-check` 返回 `sdkConfigured=true`。
+  4. 企业微信真实发一条测试消息。
+  5. 调用 `/api/wecom/archive/pull`，确认 `savedCount>0` 或明确看到无新消息。
+  6. 调用 `/api/wecom/archive/process`，确认生成 `UserNote`。
+  7. 在小程序“我的笔记”中查看、编辑、删除该笔记。

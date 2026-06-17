@@ -300,6 +300,10 @@ class WecomArchiveMessage(BaseModel):
     rawPayload: dict = Field(default_factory=dict)
     decryptedPayload: dict | None = None
     mediaRefs: list[dict] = Field(default_factory=list)
+    generatedNoteId: str | None = None
+    generatedCardId: str | None = None
+    processedAt: str | None = None
+    processError: str | None = None
     createdAt: str
 
 

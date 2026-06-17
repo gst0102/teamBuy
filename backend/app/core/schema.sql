@@ -185,6 +185,8 @@ create table if not exists wecom_archive_messages (
     room_id text,
     msg_time timestamptz,
     msg_type text,
+    generated_note_id text,
+    processed_at timestamptz,
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now()
 );
@@ -226,4 +228,5 @@ create unique index if not exists uq_wecom_archive_cursors_corp on wecom_archive
 create index if not exists idx_wecom_archive_messages_corp_seq on wecom_archive_messages (corp_id, seq);
 create index if not exists idx_wecom_archive_messages_msg_id on wecom_archive_messages (msg_id);
 create index if not exists idx_wecom_archive_messages_type_time on wecom_archive_messages (msg_type, msg_time);
+create index if not exists idx_wecom_archive_messages_generated_note on wecom_archive_messages (generated_note_id);
 create unique index if not exists uq_wecom_archive_messages_msg_id on wecom_archive_messages (msg_id) where msg_id is not null;

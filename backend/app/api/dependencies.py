@@ -12,6 +12,7 @@ from app.services.message_aggregator import MessageAggregator
 from app.services.repository import build_repository
 from app.services.skill_router_service import SkillRouterService
 from app.services.sync_task_queue import SyncTaskQueue
+from app.services.wecom_archive_client import WecomArchiveClient
 from app.services.wecom_client import WecomClient
 from app.services.wecom_message_normalizer import WecomMessageNormalizer
 from app.services.wecom_mock_service import WecomMockService
@@ -51,6 +52,15 @@ _service = AppService(
     ),
 )
 _wecom_client = WecomClient(settings)
+_wecom_archive_client = WecomArchiveClient(
+    corp_id=settings.wecom_corp_id,
+    secret=settings.wecom_archive_secret,
+    private_key_path=settings.wecom_archive_private_key_path,
+    sdk_lib_path=settings.wecom_archive_sdk_lib_path,
+    proxy=settings.wecom_archive_proxy,
+    proxy_password=settings.wecom_archive_proxy_password,
+    timeout_seconds=settings.wecom_archive_sdk_timeout_seconds,
+)
 _sync_task_queue = SyncTaskQueue(
     _repo,
     lock_timeout_seconds=settings.wecom_sync_lock_timeout_seconds,
@@ -63,6 +73,10 @@ def get_app_service() -> AppService:
 
 def get_wecom_client() -> WecomClient:
     return _wecom_client
+
+
+def get_wecom_archive_client() -> WecomArchiveClient:
+    return _wecom_archive_client
 
 
 def get_wecom_mock_service() -> WecomMockService:

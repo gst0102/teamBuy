@@ -48,6 +48,10 @@ WECOM_ARCHIVE_ENCODING_AES_KEY=
 WECOM_ARCHIVE_PRIVATE_KEY_PATH=backend/secrets/wecom_archive_private.pem
 WECOM_ARCHIVE_PUBLIC_KEY_PATH=backend/secrets/wecom_archive_public.pem
 WECOM_ARCHIVE_SDK_LIB_PATH=
+WECOM_ARCHIVE_PULL_LIMIT=100
+WECOM_ARCHIVE_SDK_TIMEOUT_SECONDS=30
+WECOM_ARCHIVE_PROXY=
+WECOM_ARCHIVE_PROXY_PASSWORD=
 ```
 
 注意：
@@ -56,7 +60,7 @@ WECOM_ARCHIVE_SDK_LIB_PATH=
 - `WECOM_ARCHIVE_SECRET` 不等于微信客服 `WECOM_SECRET`。
 - 私钥不能粘贴到企业微信后台，也不能写入文档正文。
 - 会话存档事件服务器当前可以先复用微信客服回调的 `WECOM_CALLBACK_TOKEN` 和 `WECOM_ENCODING_AES_KEY`；如后续拆独立密钥，再填写 `WECOM_ARCHIVE_CALLBACK_TOKEN` 和 `WECOM_ARCHIVE_ENCODING_AES_KEY`。
-- 后续接官方 SDK 时再填写 `WECOM_ARCHIVE_SDK_LIB_PATH`。
+- 接官方 SDK 时必须填写 `WECOM_ARCHIVE_SDK_LIB_PATH`。生产 Docker 环境要填容器内绝对路径，例如 `/app/secrets/libWeWorkFinanceSdk_C.so`。
 
 ## 事件服务器配置
 
@@ -75,6 +79,8 @@ EncodingAESKey=backend/.env 里的 WECOM_ENCODING_AES_KEY
 - `GET /api/wecom/archive/config-check`
   - 检查会话内容存档配置项、私钥/公钥文件是否可读。
   - 返回公钥，便于复制到企业微信后台。
+  - `success=true` 表示基础配置、公钥和私钥可读。
+  - `sdkConfigured=true` 才表示真实拉取 SDK 已具备。
 
 - `GET /api/wecom/archive/callback`
   - 企业微信后台事件服务器 URL 验证。
@@ -83,6 +89,18 @@ EncodingAESKey=backend/.env 里的 WECOM_ENCODING_AES_KEY
 - `POST /api/wecom/archive/callback`
   - 接收会话存档相关事件。
   - 当前先记录接收结果，后续接 SDK 拉取任务。
+
+- `POST /api/wecom/archive/pull`
+  - 需要 admin token。
+  - 调用官方会话存档 SDK 拉取并解密消息。
+  - 成功后写入 `wecom_archive_messages` 并推进 `wecom_archive_cursors.seq`。
+  - SDK 缺失或拉取失败时返回 502，并记录 failed 游标。
+
+- `POST /api/wecom/archive/process`
+  - 需要 admin token。
+  - 将已解密且未处理的归档消息转换为 `ContentObject -> content-to-note -> UserNote`。
+  - 成功后在原始归档消息上记录 `generatedNoteId`、`generatedCardId` 和 `processedAt`。
+  - 重复调用不会重复生成笔记。
 
 - `GET /api/wecom/archive/cursor`
   - 需要 admin token。
@@ -99,12 +117,13 @@ EncodingAESKey=backend/.env 里的 WECOM_ENCODING_AES_KEY
 
 ## P0 下一步
 
-1. 在企业微信后台保存事件服务器、公钥和可信 IP。
-2. 把后台生成的会话内容存档 Secret 写入生产 `backend/.env`。
-3. 调用生产 `/api/wecom/archive/config-check`，确认 `missing=[]` 且 `callbackUrl` 正确。
-4. 接入官方会话存档 SDK：
-   - 拉取加密消息。
-   - 使用本地私钥解密会话密钥。
-   - 解密消息体并写入 `wecom_archive_messages`。
-   - 推进 `wecom_archive_cursors.seq`。
-5. 将解密后的文字、链接、媒体引用转为 `ContentObject`，再进入 `content-to-note`。
+1. 企业微信后台事件服务器已保存成功后，继续确认公钥和可信 IP。
+2. 将官方会话存档 Linux SDK 动态库放入生产容器可读路径。
+3. 设置生产 `WECOM_ARCHIVE_SDK_LIB_PATH` 为容器内绝对路径。
+4. 重启 backend，调用生产 `/api/wecom/archive/config-check`，确认 `missing=[]`、`sdkConfigured=true`。
+5. 让企业微信真实产生一条测试会话消息。
+6. 调用生产 `POST /api/wecom/archive/pull`：
+   - 如果 `savedCount>0`，说明真实归档消息已入库。
+   - 如果返回 502，优先看 `detail.error` 和 cursor 的 failed 原因。
+7. 调用生产 `POST /api/wecom/archive/process`，确认生成 `UserNote`。
+8. 在小程序“我的笔记”查看、编辑、删除这条笔记。

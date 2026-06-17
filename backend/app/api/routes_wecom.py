@@ -3,12 +3,13 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse
 
-from app.api.dependencies import get_app_service, get_sync_task_queue, get_wecom_client, get_wecom_mock_service
+from app.api.dependencies import get_app_service, get_sync_task_queue, get_wecom_archive_client, get_wecom_client, get_wecom_mock_service
 from app.core.config import settings
 from app.schemas.common import ApiResponse
 from app.schemas.imports import MockImportRequest
 from app.services.app_service import AppService
 from app.services.sync_task_queue import SyncTaskQueue
+from app.services.wecom_archive_client import WecomArchiveClient
 from app.services.wecom_client import WecomClient, WecomClientError
 from app.services.wecom_crypto import WecomCryptoError, decrypt_aes_message, verify_signature
 from app.services.wecom_event_service import parse_callback_body
@@ -337,6 +338,8 @@ def archive_config_check():
             "publicKey": public_key,
             "sdkLibPath": _mask_path(settings.wecom_archive_sdk_lib_path),
             "sdkLibReadable": sdk_exists,
+            "sdkConfigured": sdk_exists and bool(settings.wecom_archive_secret and settings.wecom_archive_private_key_path),
+            "pullLimit": settings.wecom_archive_pull_limit,
             "missing": missing,
             "docs": {
                 "official": "https://developer.work.weixin.qq.com/document/path/91360",
@@ -344,6 +347,32 @@ def archive_config_check():
             },
         },
     )
+
+
+@router.post("/archive/pull", response_model=ApiResponse[dict])
+def pull_archive_messages(
+    limit: int | None = Query(default=None, ge=1, le=1000),
+    admin_token: str | None = Query(default=None, alias="adminToken"),
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+    archive_client: WecomArchiveClient = Depends(get_wecom_archive_client),
+):
+    _verify_admin_token(x_admin_token or admin_token)
+    return ApiResponse(
+        message="archive messages pulled",
+        data=service.pull_wecom_archive_messages(archive_client, limit or settings.wecom_archive_pull_limit),
+    )
+
+
+@router.post("/archive/process", response_model=ApiResponse[dict])
+def process_archive_messages(
+    limit: int = Query(default=100, ge=1, le=1000),
+    admin_token: str | None = Query(default=None, alias="adminToken"),
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+):
+    _verify_admin_token(x_admin_token or admin_token)
+    return ApiResponse(message="archive messages processed", data=service.process_wecom_archive_messages(limit=limit))
 
 
 @router.get("/archive/cursor", response_model=ApiResponse[dict | None])

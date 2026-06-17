@@ -1147,3 +1147,47 @@
   - `GET /api/wecom/archive/callback?token=...&echostr=archive-token-ok` 返回 `archive-token-ok`。
 - 容器重启瞬间 Nginx 曾短暂返回 502，等待后端启动完成后恢复正常。
 - 用户确认企业微信后台“接收事件服务器”已保存成功。
+
+## 2026-06-17
+
+### P0 会话存档真实拉取与 content-to-note 入口
+
+- 新增企业微信会话内容存档 SDK 客户端：
+  - `backend/app/services/wecom_archive_client.py`
+  - 支持检查 SDK 配置、调用 `GetChatData`、解密 `encrypt_random_key`、调用 `DecryptData`、输出解密后的消息对象。
+- 新增会话存档拉取接口：
+  - `POST /api/wecom/archive/pull`
+  - 需要 admin token。
+  - 从当前 `wecom_archive_cursors.seq` 开始拉取，写入 `wecom_archive_messages`，成功后推进游标。
+  - SDK 缺失或拉取失败时写入 failed 游标，并返回 502，不伪装成成功。
+- 新增会话存档处理接口：
+  - `POST /api/wecom/archive/process`
+  - 需要 admin token。
+  - 将已解密、未处理的 `WecomArchiveMessage` 转成 `ContentObject`，正式进入 `content-to-note`，生成 `ImportBatch`、`Card`、`UserNote` 和 `SkillRun`。
+  - 处理成功后在原始归档消息上记录 `generatedNoteId`、`generatedCardId`、`processedAt`，重复调用不会重复生成笔记。
+  - 处理失败时在原始归档消息上记录 `processError`，方便后台排查。
+- `ContentObjectAdapter` 新增 `from_wecom_archive_message`：
+  - `text` 进入文本块。
+  - `link` 进入链接对象。
+  - `image` / `video` / `file` 先保存媒体引用，当前提示“媒体稍后转存”。
+  - `location` 转为位置文本。
+- 配置检查接口补充：
+  - `sdkConfigured`
+  - `pullLimit`
+- `.env.example` 新增：
+  - `WECOM_ARCHIVE_PULL_LIMIT`
+  - `WECOM_ARCHIVE_SDK_TIMEOUT_SECONDS`
+  - `WECOM_ARCHIVE_PROXY`
+  - `WECOM_ARCHIVE_PROXY_PASSWORD`
+
+### 验证结果
+
+- `/tmp/teambuy-pytest-venv312/bin/python -m compileall backend/app backend/tests`：通过。
+- `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_app.py -q -k "wecom_archive"`：9 项通过。
+- `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_skill_router.py backend/tests/test_app.py backend/tests/test_media_processing_service.py backend/tests/test_media_storage_service.py -q`：60 项通过。
+
+### 本轮迭代和错误记录
+
+- 初始实现时需要确认 `encrypt_random_key` 的解码方式；最终按会话存档 SDK 返回值使用 base64 解码后再 RSA 私钥解密。
+- 这轮没有安装官方 Linux SDK `.so` 文件，因此本地测试用 fake client 覆盖拉取成功/失败分支；生产真实拉取仍依赖服务器配置 `WECOM_ARCHIVE_SDK_LIB_PATH`。
+- P0 当前代码链路已经完整，但真实企业微信数据验收必须等官方 SDK 库文件部署到服务器后执行。

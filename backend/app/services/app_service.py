@@ -411,6 +411,115 @@ class AppService:
     def list_wecom_archive_messages(self, limit: int = 100) -> list[dict]:
         return [item.model_dump() for item in self.repo.list_wecom_archive_messages(limit=limit)]
 
+    def pull_wecom_archive_messages(self, archive_client, limit: int = 100) -> dict:
+        corp_id = archive_client.corp_id or "default"
+        cursor = self.repo.get_wecom_archive_cursor(corp_id)
+        start_seq = cursor.seq if cursor else 0
+        try:
+            response = archive_client.pull_and_decrypt(start_seq, limit)
+            result = self.save_wecom_archive_messages(corp_id, response.get("messages") or [])
+            next_cursor = self.repo.get_wecom_archive_cursor(corp_id)
+            if not response.get("messages"):
+                next_cursor = self.advance_wecom_archive_cursor(
+                    corp_id,
+                    start_seq,
+                    {"rawCount": response.get("rawCount", 0), "message": "no new archive messages"},
+                    status="success",
+                )
+            return {
+                "corpId": corp_id,
+                "startSeq": start_seq,
+                "rawCount": response.get("rawCount", 0),
+                "savedCount": result.get("savedCount", 0),
+                "skippedDuplicateCount": result.get("skippedDuplicateCount", 0),
+                "cursor": next_cursor.model_dump() if next_cursor else None,
+            }
+        except Exception as exc:
+            failed = self.advance_wecom_archive_cursor(
+                corp_id,
+                start_seq,
+                {"limit": limit},
+                status="failed",
+                error_message=str(exc),
+            )
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail={
+                    "message": "会话内容存档拉取失败",
+                    "error": str(exc),
+                    "cursor": failed.model_dump(),
+                },
+            ) from exc
+
+    def process_wecom_archive_messages(self, limit: int = 100) -> dict:
+        messages = [
+            item
+            for item in self.repo.list_wecom_archive_messages(limit=limit)
+            if item.decryptedPayload and not item.generatedNoteId
+        ]
+        processed: list[dict] = []
+        failed: list[dict] = []
+        for message in sorted(messages, key=lambda item: item.seq):
+            try:
+                content_object = self.content_object_adapter.from_wecom_archive_message(message)
+                note_result = self.skill_router_service.run_content_to_note("unclaimed", content_object)
+                batch = self._build_archive_import_batch(message, note_result.noteDraft.title)
+                card = self._build_card_from_note_draft(batch, note_result.noteDraft, content_object)
+                note = self._build_user_note_from_draft(batch, note_result.noteDraft, card.id)
+                batch.generatedCardId = card.id
+                batch.generatedNoteId = note.id
+                skill_run = SkillRun.model_validate(note_result.skillRun.model_dump())
+                skill_run.outputRef = note.id
+                skill_run.inputSnapshot = {
+                    **skill_run.inputSnapshot,
+                    "wecomArchiveMessageId": message.id,
+                    "archiveSeq": message.seq,
+                    "archiveMsgId": message.msgId,
+                }
+                message.generatedNoteId = note.id
+                message.generatedCardId = card.id
+                message.processedAt = now_iso()
+                message.processError = None
+                self.repo.save_import_batch(batch)
+                self.repo.save_card(card)
+                self.repo.save_user_note(note)
+                self.repo.save_skill_run(skill_run)
+                self.repo.save_wecom_archive_messages([message])
+                processed.append(
+                    {
+                        "archiveMessageId": message.id,
+                        "seq": message.seq,
+                        "noteId": note.id,
+                        "cardId": card.id,
+                    }
+                )
+            except Exception as exc:
+                message.processError = str(exc)
+                self.repo.save_wecom_archive_messages([message])
+                failed.append({"archiveMessageId": message.id, "seq": message.seq, "error": str(exc)})
+        return {
+            "processedCount": len(processed),
+            "failedCount": len(failed),
+            "processed": processed,
+            "failed": failed,
+        }
+
+    def _build_archive_import_batch(self, message: WecomArchiveMessage, title: str) -> ImportBatch:
+        now = now_iso()
+        return ImportBatch(
+            id=new_id("import"),
+            externalUserId=message.fromUser or "archive_unknown",
+            conversationId=message.roomId or ",".join(message.toList) or message.msgId or message.id,
+            status="success",
+            titleCandidate=title or f"企业微信{message.msgType or '消息'}归档",
+            sourceType="wechat_note",
+            rawMessageIds=[message.id],
+            startedAt=message.msgTime or now,
+            endedAt=now,
+            createdAt=now,
+            updatedAt=now,
+        )
+
     def list_import_failures(self, limit: int = 100) -> dict:
         failed_runs = self.repo.list_skill_runs(status="failed", limit=limit)
         failed_notifications = [item for item in self.repo.list_import_notifications() if item.status == "failed"]

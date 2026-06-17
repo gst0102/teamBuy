@@ -962,3 +962,17 @@ teamBuy 首版定位为素材导入、卡片生成、查看统计、实名接龙
 - 会话内容存档属于合规归档基座，权限、Secret、RSA 密钥、SDK、游标和审计口径都不同于微信客服 `sync_msg`。
 - 两条入口后续可以共用 `ContentObject -> content-to-note -> UserNote`，但不应混用入口配置和存储游标。
 - 原始会话内容敏感度高，不能暴露给普通小程序用户接口。
+
+### 决策：会话存档 P0 拆成“拉取”和“处理”两步
+
+选择：
+
+- `POST /api/wecom/archive/pull` 只负责调用官方 SDK 拉取、解密并保存原始归档消息。
+- `POST /api/wecom/archive/process` 只负责把已解密消息转换为 `ContentObject -> content-to-note -> UserNote`。
+- 归档消息上保存 `generatedNoteId`、`generatedCardId`、`processedAt`、`processError`，确保处理幂等且可排查。
+
+原因：
+
+- 企业微信 SDK、可信 IP、Secret、RSA 解密和内容整理是两类问题，拆开后人工验收更容易定位失败环节。
+- 后续后台任务可以先定时 pull，再独立重试 process，不会因为内容整理失败阻塞归档游标推进。
+- 原始合规存档必须先可靠落库，用户笔记是业务产物，二者生命周期不同。

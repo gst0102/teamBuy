@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.api.dependencies import get_app_service, get_sync_task_queue, get_wecom_client
+from app.api.dependencies import get_app_service, get_sync_task_queue, get_wecom_archive_client, get_wecom_client
 from app.core.config import settings
 from app.services.media_storage_service import MediaStorageService
 from app.services.media_processing_service import MediaProcessingService
@@ -236,6 +236,111 @@ def test_wecom_archive_mock_messages_persist_cursor_and_dedupe(client, monkeypat
     assert messages.json()["data"][0]["msgId"] == "archive_msg_001"
     assert cursor.status_code == 200
     assert cursor.json()["data"]["seq"] == 101
+
+
+def test_wecom_archive_pull_reports_missing_sdk_config(client, monkeypatch):
+    class MissingArchiveClient:
+        corp_id = "ww_archive"
+
+        def pull_and_decrypt(self, seq, limit):
+            raise RuntimeError("会话内容存档 SDK 配置不完整: WECOM_ARCHIVE_SDK_LIB_PATH")
+
+    monkeypatch.setattr(settings, "admin_token", "archive-admin")
+    client.app.dependency_overrides[get_wecom_archive_client] = lambda: MissingArchiveClient()
+
+    response = client.post("/api/wecom/archive/pull", headers={"X-Admin-Token": "archive-admin"})
+
+    assert response.status_code == 502
+    detail = response.json()["detail"]
+    assert detail["message"] == "会话内容存档拉取失败"
+    assert "WECOM_ARCHIVE_SDK_LIB_PATH" in detail["error"]
+    assert detail["cursor"]["status"] == "failed"
+
+
+def test_wecom_archive_pull_saves_decrypted_messages(client, monkeypatch):
+    class FakeArchiveClient:
+        corp_id = "ww_archive"
+
+        def pull_and_decrypt(self, seq, limit):
+            assert seq == 0
+            assert limit == 20
+            return {
+                "rawCount": 1,
+                "messages": [
+                    {
+                        "seq": 201,
+                        "msgid": "archive_pull_msg_001",
+                        "action": "send",
+                        "from": "wm_customer",
+                        "tolist": ["user_sales"],
+                        "msgtime": "2026-06-17T18:30:00+08:00",
+                        "msgtype": "text",
+                        "decryptedPayload": {
+                            "msgid": "archive_pull_msg_001",
+                            "action": "send",
+                            "from": "wm_customer",
+                            "tolist": ["user_sales"],
+                            "msgtime": "2026-06-17T18:30:00+08:00",
+                            "msgtype": "text",
+                            "text": {"content": "客户想看三房，总价 300 万，电话 13800000000"},
+                        },
+                    }
+                ],
+            }
+
+    monkeypatch.setattr(settings, "admin_token", "archive-admin")
+    client.app.dependency_overrides[get_wecom_archive_client] = lambda: FakeArchiveClient()
+
+    response = client.post("/api/wecom/archive/pull", params={"limit": 20}, headers={"X-Admin-Token": "archive-admin"})
+    messages = client.get("/api/wecom/archive/messages", headers={"X-Admin-Token": "archive-admin"})
+
+    assert response.status_code == 200
+    assert response.json()["data"]["savedCount"] == 1
+    assert response.json()["data"]["cursor"]["seq"] == 201
+    assert messages.json()["data"][0]["msgId"] == "archive_pull_msg_001"
+
+
+def test_wecom_archive_process_creates_user_note_and_is_idempotent(client, monkeypatch):
+    monkeypatch.setattr(settings, "admin_token", "archive-admin")
+    payload = {
+        "corpId": "ww_archive",
+        "messages": [
+            {
+                "seq": 301,
+                "msgid": "archive_process_msg_001",
+                "action": "send",
+                "from": "wm_customer",
+                "tolist": ["user_sales"],
+                "msgtime": "2026-06-17T18:40:00+08:00",
+                "msgtype": "text",
+                "decryptedPayload": {
+                    "msgid": "archive_process_msg_001",
+                    "action": "send",
+                    "from": "wm_customer",
+                    "tolist": ["user_sales"],
+                    "msgtime": "2026-06-17T18:40:00+08:00",
+                    "msgtype": "text",
+                    "text": {"content": "客户要浦东两房，预算 500 万，电话 13900000000"},
+                },
+            }
+        ],
+    }
+    saved = client.post("/api/wecom/archive/mock-messages", json=payload, headers={"X-Admin-Token": "archive-admin"})
+    first = client.post("/api/wecom/archive/process", headers={"X-Admin-Token": "archive-admin"})
+    second = client.post("/api/wecom/archive/process", headers={"X-Admin-Token": "archive-admin"})
+    messages = client.get("/api/wecom/archive/messages", headers={"X-Admin-Token": "archive-admin"}).json()["data"]
+    pending = client.get("/api/imports/pending").json()["data"]
+
+    assert saved.status_code == 200
+    assert first.status_code == 200
+    assert first.json()["data"]["processedCount"] == 1
+    note_id = first.json()["data"]["processed"][0]["noteId"]
+    assert second.status_code == 200
+    assert second.json()["data"]["processedCount"] == 0
+    archive_message = next(item for item in messages if item["msgId"] == "archive_process_msg_001")
+    assert archive_message["generatedNoteId"] == note_id
+    generated = next(item for item in pending if item["generatedNote"] and item["generatedNote"]["id"] == note_id)
+    assert generated["generatedNote"] is not None
 
 
 def test_real_sync_uses_mock_real_response_while_mock_enabled(client):

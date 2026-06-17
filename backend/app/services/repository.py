@@ -807,6 +807,8 @@ class PostgresRepository:
             ("room_id", "text", "roomId"),
             ("msg_time", "timestamptz", "msgTime"),
             ("msg_type", "text", "msgType"),
+            ("generated_note_id", "text", "generatedNoteId"),
+            ("processed_at", "timestamptz", "processedAt"),
         ],
     }
     INDEXES = {
@@ -877,6 +879,7 @@ class PostgresRepository:
             ("idx_wecom_archive_messages_corp_seq", "corp_id, seq"),
             ("idx_wecom_archive_messages_msg_id", "msg_id"),
             ("idx_wecom_archive_messages_type_time", "msg_type, msg_time"),
+            ("idx_wecom_archive_messages_generated_note", "generated_note_id"),
         ],
     }
 
