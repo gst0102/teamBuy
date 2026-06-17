@@ -866,3 +866,22 @@ rm -rf
   - 后端客服通道配置已具备。
   - 企业微信后台客服 API 权限、可信 IP 或接收消息服务器配置仍需处理。
   - 现在还不能确认用户测试消息是否走了客服通道，因为客服 `sync_msg` 被企业微信拒绝。
+
+## 2026-06-17 补充：会话存档真实链路已跑通
+
+- 用户 23:41 发送测试消息后，企业微信会话存档开始返回真实数据。
+- 本轮修复：
+  - 修正 C SDK `DecryptData` ctypes 签名，多传 `sdk` 指针会导致 `10008`。
+  - 增加归档 `msgtime` 毫秒时间戳归一化，避免 Pydantic 字符串校验失败。
+- 生产验证结果：
+  - `/api/wecom/archive/pull`：`rawCount=1`、`savedCount=1`、cursor `seq=1`。
+  - 实际收到文本：`归档测试2218资料管理助手`。
+  - `/api/wecom/archive/process`：`processedCount=1`、`failedCount=0`。
+  - 生成笔记：`note_fc9f58783e`。
+  - 生成兼容卡片：`card_ec1e041dde`。
+- 当前结论：
+  - P0 主链路已跑通：企业微信外部联系人消息 -> 会话存档 SDK -> 原始归档消息 -> `ContentObject -> content-to-note -> UserNote`。
+- 下一步建议：
+  1. 小程序“我的笔记”人工查看 `note_fc9f58783e` 是否可见。
+  2. 验证编辑、删除、搜索。
+  3. 再发一条更接近业务场景的客户资料长文本，验证摘要质量。

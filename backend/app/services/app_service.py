@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import timedelta
+from datetime import datetime, timedelta
 from uuid import uuid4
 from fastapi import HTTPException, status
 
@@ -390,7 +390,9 @@ class AppService:
                     fromUser=item.get("from") or item.get("fromUser") or item.get("from_user"),
                     toList=item.get("tolist") or item.get("toList") or item.get("to_list") or [],
                     roomId=item.get("roomid") or item.get("roomId") or item.get("room_id"),
-                    msgTime=item.get("msgtime") or item.get("msgTime") or item.get("msg_time"),
+                    msgTime=self._normalize_archive_msg_time(
+                        item.get("msgtime") or item.get("msgTime") or item.get("msg_time")
+                    ),
                     msgType=item.get("msgtype") or item.get("msgType") or item.get("msg_type"),
                     rawPayload=item,
                     decryptedPayload=decrypted_payload if isinstance(decrypted_payload, dict) else None,
@@ -503,6 +505,16 @@ class AppService:
             "processed": processed,
             "failed": failed,
         }
+
+    def _normalize_archive_msg_time(self, value) -> str | None:
+        if value is None or value == "":
+            return None
+        if isinstance(value, (int, float)):
+            timestamp = float(value)
+            if timestamp > 10_000_000_000:
+                timestamp = timestamp / 1000
+            return datetime.fromtimestamp(timestamp, tz=SHANGHAI).isoformat()
+        return str(value)
 
     def _build_archive_import_batch(self, message: WecomArchiveMessage, title: str) -> ImportBatch:
         now = now_iso()

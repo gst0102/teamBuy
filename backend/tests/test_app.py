@@ -273,14 +273,14 @@ def test_wecom_archive_pull_saves_decrypted_messages(client, monkeypatch):
                         "action": "send",
                         "from": "wm_customer",
                         "tolist": ["user_sales"],
-                        "msgtime": "2026-06-17T18:30:00+08:00",
+                        "msgtime": 1781710904435,
                         "msgtype": "text",
                         "decryptedPayload": {
                             "msgid": "archive_pull_msg_001",
                             "action": "send",
                             "from": "wm_customer",
                             "tolist": ["user_sales"],
-                            "msgtime": "2026-06-17T18:30:00+08:00",
+                            "msgtime": 1781710904435,
                             "msgtype": "text",
                             "text": {"content": "客户想看三房，总价 300 万，电话 13800000000"},
                         },
@@ -298,6 +298,7 @@ def test_wecom_archive_pull_saves_decrypted_messages(client, monkeypatch):
     assert response.json()["data"]["savedCount"] == 1
     assert response.json()["data"]["cursor"]["seq"] == 201
     assert messages.json()["data"][0]["msgId"] == "archive_pull_msg_001"
+    assert messages.json()["data"][0]["msgTime"].endswith("+08:00")
 
 
 def test_wecom_archive_process_creates_user_note_and_is_idempotent(client, monkeypatch):

@@ -148,7 +148,7 @@ class _FinanceSdk:
             ctypes.c_void_p,
         ]
         self.lib.GetChatData.restype = ctypes.c_int
-        self.lib.DecryptData.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_void_p]
+        self.lib.DecryptData.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_void_p]
         self.lib.DecryptData.restype = ctypes.c_int
 
     def get_chat_data(self, seq: int, limit: int, proxy: str, proxy_password: str, timeout_seconds: int) -> str:
@@ -173,7 +173,6 @@ class _FinanceSdk:
         output = self.lib.NewSlice()
         try:
             ret = self.lib.DecryptData(
-                self.sdk,
                 random_key.encode("utf-8"),
                 encrypted_msg.encode("utf-8"),
                 output,

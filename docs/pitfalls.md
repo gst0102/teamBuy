@@ -1061,3 +1061,33 @@ from ip=81.70.84.35
 - 需要在企业微信后台对应自建应用配置可信 IP：`81.70.84.35`。
 - 再调用 `agent/get?agentid=...` 判断当前 Secret 是否能访问 `1000003` 或 `1000004`。
 - 生产 `.env` 后续建议增加非密钥配置 `WECOM_AGENT_ID`，避免只靠 Secret 反推 AgentId。
+
+## 2026-06-17：会话存档 C SDK 函数签名必须以头文件为准
+
+问题：
+
+- 初始 ctypes 绑定把 `DecryptData` 写成了带 `sdk` 指针的 4 参数调用。
+- 官方 `WeWorkFinanceSdk_C.h` 里实际签名是：
+  - `int DecryptData(const char *encrypt_key, const char *encrypt_msg, Slice_t *msg)`
+- 多传 `sdk` 指针后，企业微信返回数据时会出现 `Finance SDK DecryptData failed: 10008`。
+
+正确做法：
+
+- 绑定 C SDK 前必须核对当前下载版本的 `WeWorkFinanceSdk_C.h`。
+- `GetChatData` 需要 `sdk` 指针；`DecryptData` 不需要。
+- 遇到 `10008 encrypt_key`，除了检查公私钥，还要检查 ctypes 参数顺序和数量。
+
+## 2026-06-17：会话存档 `msgtime` 是毫秒时间戳整数
+
+问题：
+
+- 企业微信解密后的 `msgtime` 返回整数毫秒时间戳，例如 `1781710904435`。
+- `WecomArchiveMessage.msgTime` 模型使用字符串，直接落库会触发 Pydantic 校验错误。
+
+正确做法：
+
+- 保存归档消息前统一归一化 `msgtime`：
+  - 大于 `10_000_000_000` 按毫秒处理。
+  - 秒级时间戳按秒处理。
+  - 已有字符串保持字符串。
+- 归一化后使用上海时区 ISO 字符串保存。

@@ -1303,3 +1303,30 @@
 - 唯一文本“归档测试 2218 资料整理助手”命中数为 0。
 - `POST /api/wecom/archive/process` 返回 200，`processedCount=0`。
 - 当前结论进一步收敛：官方 SDK 调用成功但企业微信持续返回 0 条数据，问题不在后端保存/处理链路，优先回到企业微信后台确认会话存档是否已产生可拉取数据。
+
+### 23:41 归档消息拉取成功与修复记录
+
+- 用户反馈 2026-06-17 23:41 再次发送测试消息：“归档测试 2218 资料整理助手”。
+- 第一次拉取出现新错误：
+  - 企业微信 `GetChatData` 已返回 1 条数据。
+  - `DecryptData` 返回 `10008`。
+  - 根因：`backend/app/services/wecom_archive_client.py` 绑定官方 C SDK `DecryptData` 时错误传入了 `sdk` 指针。
+  - 官方头文件实际签名为 `int DecryptData(const char *encrypt_key, const char *encrypt_msg, Slice_t *msg)`。
+  - 已修正 ctypes 绑定和调用参数。
+- 修正后第二次拉取出现落库错误：
+  - 企业微信 `msgtime` 返回毫秒时间戳整数 `1781710904435`。
+  - `WecomArchiveMessage.msgTime` 模型要求字符串。
+  - 已在 `AppService.save_wecom_archive_messages` 增加 `_normalize_archive_msg_time`，兼容秒/毫秒时间戳和字符串。
+- 验证结果：
+  - `/tmp/teambuy-pytest-venv312/bin/python -m compileall backend/app backend/tests`：通过。
+  - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_app.py -q -k "wecom_archive"`：9 项通过。
+  - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_skill_router.py backend/tests/test_app.py backend/tests/test_media_processing_service.py backend/tests/test_media_storage_service.py -q`：60 项通过。
+- 生产重新部署后验证成功：
+  - `POST /api/wecom/archive/pull`：`rawCount=1`、`savedCount=1`、cursor 推进到 `seq=1`。
+  - 实际收到文本：`归档测试2218资料管理助手`。
+  - `msgTime` 归一化为 `2026-06-17T23:41:44.435000+08:00`。
+  - `POST /api/wecom/archive/process`：`processedCount=1`、`failedCount=0`。
+  - 生成 `UserNote`：`note_fc9f58783e`。
+  - 生成兼容 `Card`：`card_ec1e041dde`。
+- 结论：
+  - P0 会话内容存档真实链路已跑通：企业微信外部联系人消息 -> SDK 拉取解密 -> 原始归档入库 -> content-to-note -> UserNote。
