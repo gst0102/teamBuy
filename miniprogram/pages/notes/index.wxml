@@ -74,6 +74,52 @@
         </view>
       </view>
 
+      <view wx:elif="{{item.isProperty}}" class="typed-card property-card">
+        <image wx:if="{{item.coverUrl}}" class="typed-cover" src="{{item.coverDisplayUrl ? item.coverDisplayUrl : item.coverUrl}}" mode="aspectFill" data-id="{{item.id}}" bindtap="handleEdit"></image>
+        <view wx:else class="typed-cover placeholder" data-id="{{item.id}}" bindtap="handleEdit">房</view>
+        <view class="typed-main" data-id="{{item.id}}" bindtap="handleEdit">
+          <view class="typed-head">
+            <text>{{item.cardBadge}}</text>
+          </view>
+          <view class="typed-title">{{item.structuredData.community || item.title}}</view>
+          <view class="typed-primary">{{item.primaryValue}}</view>
+          <view class="typed-secondary">{{item.secondaryValue}}</view>
+          <view class="bookmark-tags" wx:if="{{item.bookmarkTags.length}}">
+            <block wx:for="{{item.bookmarkTags}}" wx:for-item="tag" wx:key="*this">
+              <text>{{tag}}</text>
+            </block>
+          </view>
+        </view>
+        <view class="typed-actions">
+          <text data-id="{{item.id}}" bindtap="handleEdit">编辑字段</text>
+          <text data-id="{{item.id}}" bindtap="handleEdit">{{item.cardAction}}</text>
+          <text class="danger" data-id="{{item.id}}" bindtap="handleDelete">删除</text>
+        </view>
+      </view>
+
+      <view wx:elif="{{item.isGroupbuy}}" class="typed-card groupbuy-card">
+        <image wx:if="{{item.coverUrl}}" class="typed-cover" src="{{item.coverDisplayUrl ? item.coverDisplayUrl : item.coverUrl}}" mode="aspectFill" data-id="{{item.id}}" bindtap="handleEdit"></image>
+        <view wx:else class="typed-cover placeholder orange" data-id="{{item.id}}" bindtap="handleEdit">团</view>
+        <view class="typed-main" data-id="{{item.id}}" bindtap="handleEdit">
+          <view class="typed-head groupbuy">
+            <text>{{item.cardBadge}}</text>
+          </view>
+          <view class="typed-title">{{item.structuredData.productName || item.title}}</view>
+          <view class="typed-primary price">{{item.primaryValue}}</view>
+          <view class="typed-secondary">{{item.secondaryValue}}</view>
+          <view class="bookmark-tags" wx:if="{{item.bookmarkTags.length}}">
+            <block wx:for="{{item.bookmarkTags}}" wx:for-item="tag" wx:key="*this">
+              <text>{{tag}}</text>
+            </block>
+          </view>
+        </view>
+        <view class="typed-actions">
+          <text data-id="{{item.id}}" bindtap="handleEdit">编辑商品</text>
+          <text data-id="{{item.id}}" bindtap="handleEdit">{{item.cardAction}}</text>
+          <text class="danger" data-id="{{item.id}}" bindtap="handleDelete">删除</text>
+        </view>
+      </view>
+
       <view wx:else class="note-card">
         <image wx:if="{{item.coverUrl}}" class="note-cover" src="{{item.coverDisplayUrl ? item.coverDisplayUrl : item.coverUrl}}" mode="aspectFill" data-id="{{item.id}}" bindtap="handleEdit"></image>
         <view wx:else class="note-cover placeholder" data-id="{{item.id}}" bindtap="handleEdit">记</view>

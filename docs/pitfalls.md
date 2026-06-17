@@ -1,5 +1,36 @@
 # Pitfalls
 
+## 2026-06-18：不要把房源/团购重新揉成普通笔记
+
+问题：
+- 房源、团购这类内容看起来也是文字，但本质是强结构业务信息。
+- 如果统一按普通 `text_note` 或文章摘要处理，用户只能在大正文里改内容，后续搜索、生成推广图、发群文案都会缺少稳定字段。
+
+规避方式：
+- 入库时先保底收藏，再通过规则识别 `cardType`。
+- 房源用 `property_listing` 和房源字段，团购用 `groupbuy_product` 和商品字段。
+- 第一版字段放在 `UserNote.visibilityConfig.structuredData`，不要为了短期 UI 方便复制到多个互相不一致的位置。
+
+## 2026-06-18：动态字段不要直接依赖 WXML 动态 key 渲染
+
+问题：
+- 小程序编辑页如果在 WXML 里直接写类似 `structuredData[item.key]`，不同运行环境下兼容性不够稳。
+
+规避方式：
+- 页面 JS 里先把字段定义和当前值合并成 `{ key, label, value }` 列表。
+- WXML 只渲染 `item.value`，输入时再用 `data-key` 写回 `structuredData`。
+
+## 2026-06-18：静态源码测试要对齐真实保存入口
+
+问题：
+- `test_import_flow_uses_single_import_artifact_transaction` 原先要求 `import_synced_messages` 方法本体直接出现 `save_import_artifacts`。
+- 当前实现已把成功导入保存收口到 `_process_import_batch`，外层方法只负责消息去重和分批，旧断言会误报。
+
+规避方式：
+- 静态源码测试应检查真实保存入口 `_process_import_batch` 的成功路径。
+- 不要为了满足字符串断言把业务逻辑重新塞回外层方法。
+- 失败路径目前仍因缺少可保存 Card 而走分散保存，后续如要完全事务化，需要先调整仓储接口支持失败导入 artifact。
+
 ## 2026-06-10：组件复用时不要依赖页面提前格式化接龙数据
 
 问题：

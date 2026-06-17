@@ -12,9 +12,15 @@ function formatDateTime(value) {
 function decorateNote(note) {
   const config = note.visibilityConfig || {};
   const tags = Array.isArray(config.tags) ? config.tags : [];
+  const cardType = config.cardType || (config.contentMode === "bookmark" ? "link" : "text_note");
+  const structuredData = config.structuredData || {};
   return {
     ...note,
-    isBookmark: config.contentMode === "bookmark",
+    cardType,
+    structuredData,
+    isBookmark: cardType === "link" && config.contentMode === "bookmark",
+    isProperty: cardType === "property_listing",
+    isGroupbuy: cardType === "groupbuy_product",
     sourceUrl: config.sourceUrl || "",
     sourceName: config.sourceName || "链接来源",
     sourceLabel: config.sourceLabel || "网页链接",
@@ -23,8 +29,51 @@ function decorateNote(note) {
     bookmarkCategory: config.systemCategory || config.category || "文章收藏",
     bookmarkTags: tags,
     topicNames: Array.isArray(config.topics) ? config.topics.map((topic) => topic.name).filter(Boolean) : [],
+    primaryValue: buildPrimaryValue(cardType, structuredData, note),
+    secondaryValue: buildSecondaryValue(cardType, structuredData, note),
+    cardBadge: buildCardBadge(cardType, config),
+    cardAction: buildCardAction(cardType),
     collectedAtText: formatDateTime(note.createdAt)
   };
+}
+
+function buildPrimaryValue(cardType, data, note) {
+  if (cardType === "property_listing") {
+    return [data.price, data.layout].filter(Boolean).join(" · ") || note.summary || "房源信息";
+  }
+  if (cardType === "groupbuy_product") {
+    return [data.price, data.spec].filter(Boolean).join(" · ") || note.summary || "团购商品";
+  }
+  return note.summary || note.body || "";
+}
+
+function buildSecondaryValue(cardType, data, note) {
+  if (cardType === "property_listing") {
+    return [data.businessArea, data.address, data.utilities].filter(Boolean).join(" · ") || data.remark || "";
+  }
+  if (cardType === "groupbuy_product") {
+    return [data.pickupMethod, data.pickupLocation, data.deadline].filter(Boolean).join(" · ") || data.remark || "";
+  }
+  return note.body || "";
+}
+
+function buildCardBadge(cardType, config) {
+  const state = config.cardState === "organized" ? "已整理" : "已收藏";
+  const labels = {
+    property_listing: "房源",
+    groupbuy_product: "团购",
+    image_ocr: "图片",
+    article: "文章",
+    link: "链接",
+    text_note: "笔记"
+  };
+  return `${labels[cardType] || "资料"} · ${state}`;
+}
+
+function buildCardAction(cardType) {
+  if (cardType === "property_listing") return "生成推广";
+  if (cardType === "groupbuy_product") return "生成海报";
+  return "整理 / 编辑";
 }
 
 const SOURCE_FILTERS = [

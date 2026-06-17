@@ -54,6 +54,7 @@ teamBuy 是一个面向微信群私域场景的小程序工具，核心能力是
 - Skill 架构：文字类来源统一进入 `ContentObject -> content-to-note -> UserNote`。微信笔记、聊天记录、链接文章、手动文字和后续 OCR 都是不同 Input Adapter，不拆成多个重复 Skill；`note-to-comic-image` 独立负责漫画图/宣传图/长图；`showcase-builder` 是小程序可视化展示页构建器。
 - 链接文章入口：普通 URL 默认先生成轻收藏 `link-bookmark`，第一层按文章收藏卡展示，只保存原始链接、标题、封面、来源、收藏时间、基础分类、基础标签和一句话摘要；用户点击卡片默认打开原文，普通网页受微信限制时降级复制链接；用户明确发送 `整理链接/文章总结/整理文章/做笔记` 或在小程序点击“整理为笔记”时，才升级为 `content-to-note` 深度整理。
 - 资料组织方式：采用“强标签、弱分类、专题聚合”，不做强制三级分类。分类只做系统基础视图，标签是搜索和召回核心，专题替代多级文件夹承载场景集合。架构文档见 `docs/stage2-docs/11-tag-topic-search-architecture.md`。
+- 多类型资料卡：资料整理助手不是单一笔记工具，而是多类型信息结构化系统。统一流程是“收藏 -> 编辑 -> 整理 -> 生成”，但 `cardType` 决定数据结构和行为能力。URL/公众号文章是链接卡/阅读卡，普通文字是文本卡，房源是字段卡，团购是商品卡，图片/截图后续是 OCR 卡。第一版不新建房源/团购表，继续用 `UserNote.visibilityConfig.cardType/cardState/structuredData/typeSuggestions` 兼容扩展；架构文档见 `docs/stage2-docs/12-typed-content-card-architecture.md`。
 - 企业微信会话内容存档 P0：事件服务器已保存成功；真实归档链路拆成 `/api/wecom/archive/pull` 和 `/api/wecom/archive/process`。`pull` 负责官方 SDK 拉取/解密/原始消息入库，`process` 负责 `ContentObject -> content-to-note -> UserNote`，重复处理通过 `generatedNoteId` 幂等保护。当前生产已配置官方 SDK 动态库，自动 worker 已开启。会话存档媒体下载转存已实现：`sdkfileid -> GetMediaData -> 服务端媒体处理/转存 -> UserNote.media.url`，小程序本地缓存不能替代正式存储；仍需生产真实图片消息验证。
 - identity-core P0 第一版已实现“认领后绑定”：用户第一次认领导入后，系统保存企业微信来源 `externalUserId -> ownerUserId`，后续同来源企业微信客服导入和会话存档导入会自动进入该用户笔记库，不再进入“新导入资料”。当前仍是 mock 登录用户 ID，不代表正式微信 openid/unionid 身份体系已经完成。
 - 当前 P0 真实联调允许使用生产环境，因为企业微信会话存档和小程序体验版依赖公网 HTTPS 与合法域名；后续进入更稳定阶段应拆出 staging/test 环境，避免生产试错扩大风险。

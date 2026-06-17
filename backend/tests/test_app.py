@@ -1415,11 +1415,44 @@ def test_import_creates_claimable_user_note_and_note_crud(client):
     assert updated.json()["data"]["title"] == "更新后的笔记"
     assert updated.json()["data"]["categoryIds"] == ["cat_seed_sale"]
 
+    structured = client.put(
+        f"/api/notes/{note['id']}",
+        json={
+            "ownerUserId": login["id"],
+            "title": "碧桂园城市之光1栋1210",
+            "summary": "房源字段卡",
+            "body": "小区：碧桂园城市之光1栋1210\n户型：公寓一房\n价格：1600元/月\n商圈：万家丽、高桥北",
+            "categoryIds": ["cat_seed_sale"],
+            "phone": "13800138000",
+            "visibilityConfig": {
+                "cardType": "property_listing",
+                "cardState": "collected",
+                "contentMode": "structured_card",
+                "systemCategory": "房源",
+                "tags": ["房产", "房源"],
+                "structuredData": {
+                    "community": "碧桂园城市之光1栋1210",
+                    "layout": "公寓一房",
+                    "price": "1600元/月",
+                    "businessArea": "万家丽、高桥北",
+                },
+            },
+        },
+    )
+    assert structured.status_code == 200
+    assert structured.json()["data"]["visibilityConfig"]["structuredData"]["businessArea"] == "万家丽、高桥北"
+
     filtered = client.get(
         "/api/notes",
-        params={"ownerUserId": login["id"], "keyword": "更新", "categoryId": "cat_seed_sale"},
+        params={"ownerUserId": login["id"], "keyword": "万家丽", "categoryId": "cat_seed_sale"},
     ).json()["data"]
     assert [item["id"] for item in filtered] == [note["id"]]
+
+    organized = client.post(f"/api/notes/{note['id']}/organize", params={"ownerUserId": login["id"]})
+    assert organized.status_code == 200
+    organized_config = organized.json()["data"]["visibilityConfig"]
+    assert organized_config["cardState"] == "organized"
+    assert organized_config["structuredData"]["organizeResult"]["generationOptions"] == ["房源推广图", "微信群文案", "客户话术", "对比表"]
 
     deleted = client.delete(f"/api/notes/{note['id']}", params={"ownerUserId": login["id"]})
     assert deleted.status_code == 200

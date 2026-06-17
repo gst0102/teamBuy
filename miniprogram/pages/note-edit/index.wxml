@@ -34,7 +34,15 @@
     </view>
   </view>
 
-  <view class="form-panel" wx:if="{{isBookmark}}">
+  <view class="type-summary" wx:if="{{!isBookmark}}">
+    <view>
+      <view class="type-label">{{cardTypeLabel}}</view>
+      <view class="type-desc">{{isProperty ? '字段化保存房源信息，后续可生成推广物料。' : isGroupbuy ? '字段化保存团购商品，后续可生成海报和发群文案。' : '先保存资料，再按需整理和生成。'}}</view>
+    </view>
+    <button class="organize-btn compact" loading="{{saving}}" bindtap="handleOrganize">整理</button>
+  </view>
+
+  <view class="form-panel">
     <view class="section-title">来源类型</view>
     <view class="option-row">
       <block wx:for="{{sourceTypes}}" wx:key="value">
@@ -50,7 +58,7 @@
     </view>
   </view>
 
-  <view class="form-panel" wx:if="{{isBookmark}}">
+  <view class="form-panel">
     <view class="section-title">用户标签</view>
     <view class="editable-tags" wx:if="{{bookmark.userTags.length}}">
       <block wx:for="{{bookmark.userTags}}" wx:key="*this">
@@ -63,7 +71,7 @@
     </view>
   </view>
 
-  <view class="form-panel" wx:if="{{isBookmark}}">
+  <view class="form-panel">
     <view class="section-title">专题</view>
     <view class="editable-tags" wx:if="{{bookmark.topics.length}}">
       <block wx:for="{{bookmark.topics}}" wx:key="id">
@@ -78,6 +86,34 @@
     <view class="inline-input">
       <input value="{{topicDraft}}" placeholder="新建专题，例如：周末亲子露营" bindinput="handleTopicDraft" />
       <button bindtap="handleCreateTopic">新建</button>
+    </view>
+  </view>
+
+  <view class="form-panel typed-form" wx:if="{{isProperty}}">
+    <view class="section-title">房源字段</view>
+    <block wx:for="{{propertyFields}}" wx:key="key">
+      <view class="field">
+        <view class="label">{{item.label}}</view>
+        <input class="input" value="{{item.value}}" data-key="{{item.key}}" bindinput="handleStructuredInput" placeholder="{{item.placeholder}}" />
+      </view>
+    </block>
+    <view class="field">
+      <view class="label">备注</view>
+      <textarea class="textarea small" value="{{structuredData.remark}}" data-key="remark" bindinput="handleStructuredInput" placeholder="补充房源亮点、服务费、看房说明等"></textarea>
+    </view>
+  </view>
+
+  <view class="form-panel typed-form" wx:if="{{isGroupbuy}}">
+    <view class="section-title">团购商品字段</view>
+    <block wx:for="{{groupbuyFields}}" wx:key="key">
+      <view class="field">
+        <view class="label">{{item.label}}</view>
+        <input class="input" value="{{item.value}}" data-key="{{item.key}}" bindinput="handleStructuredInput" placeholder="{{item.placeholder}}" />
+      </view>
+    </block>
+    <view class="field">
+      <view class="label">备注 / 卖点</view>
+      <textarea class="textarea small" value="{{structuredData.remark}}" data-key="remark" bindinput="handleStructuredInput" placeholder="补充商品卖点、售后、开团说明等"></textarea>
     </view>
   </view>
 

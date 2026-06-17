@@ -1,10 +1,35 @@
 # teamBuy 阶段性交接归档
 
-更新时间：2026-06-10  
-工作目录：`d:\Desktop\myprojects\teamBuy`  
+更新时间：2026-06-18
+工作目录：`/Users/yiyi/Desktop/Desktop/myprojects/teamBuy`
 当前分支：`main`  
-当前最新提交：`feat: persist lead reminders and webp media`  
-本地状态：`main` 领先 `origin/main` 多个提交，尚未推送。本轮线索持久化第二阶段和 WebP 压缩改动准备提交。
+当前最新提交：以 `git log -1 --oneline` 为准。
+本地状态：本轮已实现多类型资料卡第一版，尚未提交；仍需排除微信开发者工具自动改动 `miniprogram/project.config.json` 和未跟踪 PDF `企业微信客服服务须知.pdf`。
+
+最新完成：
+- 新增 `docs/stage2-docs/12-typed-content-card-architecture.md`。
+- 固定产品原则：统一流程是“收藏 -> 编辑 -> 整理 -> 生成”，但数据结构必须分型。
+- 后端 `content-to-note` 已支持规则识别 `property_listing` 房源字段卡、`groupbuy_product` 团购商品卡、`text_note` 文本卡、`link` 链接卡。
+- 第一版 typed card 数据继续放在 `UserNote.visibilityConfig.cardType/cardState/structuredData/typeSuggestions`，不新建房源/团购表。
+- 房源字段第一版：小区、户型、价格、水电物业、商圈、地址、服务费、备注、联系方式、图片。
+- 团购字段第一版：商品名、价格、规格、截止时间、自提/配送、取货地点、库存备注、联系方式、图片。
+- “整理”接口已按 `cardType` 分型：链接转文章/阅读卡口径，房源/团购补摘要和生成建议。
+- 搜索已覆盖 `structuredData`，可按小区、商圈、商品规格等字段命中。
+- 小程序“我的笔记”列表已分型展示链接卡、房源卡、团购卡、普通文本卡。
+- 小程序笔记编辑页已增加房源和团购字段表单，同时保留来源类型、弱分类、标签和专题编辑。
+- 静态测试 `test_import_flow_uses_single_import_artifact_transaction` 已校准为检查真实成功保存入口 `_process_import_batch`。
+
+最新验证：
+- `python -m compileall backend/app backend/tests`：通过。
+- `pytest backend/tests -q`：91 passed。
+- 小程序所有 `.js` `node --check`：通过。
+- 小程序所有 `.json` 解析：通过。
+
+当前注意：
+- 本轮为规则版，不调用大模型。
+- 低置信内容会保留为 `text_note` 并写入 `typeSuggestions`，但小程序“手动转换类型”还没做。
+- 生成房源推广图、团购海报、发群文案、客户话术仍是下一阶段 Skill 入口，不在本轮完成。
+- 失败导入路径仍因没有 Card artifact 而走分散保存，后续如要完全事务化，需要先调整仓储接口；已写入 `docs/pitfalls.md`。
 
 上一轮已提交修复：
 - `relay-list` 组件已增加接龙时间和跟进状态兜底格式化，资源详情页不再直接显示 ISO 时间或 `pending`。

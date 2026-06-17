@@ -127,6 +127,41 @@
   background: #fff;
 }
 
+.type-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18rpx;
+  margin-top: 24rpx;
+  padding: 22rpx;
+  border-radius: 8rpx;
+  background: #fff;
+}
+
+.type-label {
+  color: #172033;
+  font-size: 30rpx;
+  font-weight: 900;
+}
+
+.type-desc {
+  margin-top: 6rpx;
+  color: #6f7d91;
+  font-size: 23rpx;
+  line-height: 1.45;
+}
+
+.organize-btn.compact {
+  width: 156rpx;
+  flex-shrink: 0;
+  background: #11924d;
+  color: #fff;
+}
+
+.typed-form .field + .field {
+  margin-top: 20rpx;
+}
+
 .template-label {
   color: #172033;
   font-size: 28rpx;

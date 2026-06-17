@@ -37,8 +37,11 @@ def test_hot_paths_do_not_call_full_state_load_or_save():
 
 
 def test_import_flow_uses_single_import_artifact_transaction():
-    source = inspect.getsource(AppService.import_synced_messages)
-    assert "save_import_artifacts" in source
-    assert "save_raw_messages" not in source
-    assert "save_import_batch" not in source
-    assert "save_import_notification" not in source
+    import_source = inspect.getsource(AppService.import_synced_messages)
+    process_source = inspect.getsource(AppService._process_import_batch)
+    assert "save_import_artifacts" in process_source
+    success_process_source = process_source.split("except Exception", 1)[0]
+    combined_source = import_source + success_process_source
+    assert "save_raw_messages" not in combined_source
+    assert "save_import_batch" not in combined_source
+    assert "save_import_notification" not in combined_source

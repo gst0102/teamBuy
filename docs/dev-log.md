@@ -1,3 +1,46 @@
+# 2026-06-18
+
+## 本次目标
+
+实现“多类型资料卡与结构化业务信息”第一版：在现有 `UserNote` 上扩展 typed card，不把房源 / 团购继续当普通笔记处理。
+
+## 完成内容
+
+- 新增 `docs/stage2-docs/12-typed-content-card-architecture.md`，固定“统一流程、结构分型”的资料卡架构。
+- `content-to-note` 规则版新增资料类型识别：
+  - 普通 URL 仍默认进入链接卡。
+  - 房源文本识别为 `property_listing`，提取小区、户型、价格、水电物业、商圈、地址、服务费、备注、联系方式、图片。
+  - 团购文本识别为 `groupbuy_product`，提取商品名、价格、规格、截止时间、自提/配送、取货地点、库存备注、联系方式、图片。
+  - 低置信内容保留为文本卡并写入 `typeSuggestions`。
+- `UserNote.visibilityConfig` 兼容扩展 `cardType`、`cardState`、`structuredData`、`typeSuggestions`。
+- “整理”动作按 `cardType` 分型：
+  - 链接卡整理后进入文章/阅读卡口径。
+  - 房源卡整理后补房源摘要和生成建议。
+  - 团购卡整理后补商品摘要和生成建议。
+- 笔记搜索现在会检索 `structuredData`，可以命中小区、商圈、商品规格等结构化字段。
+- 小程序“我的笔记”列表按 `cardType` 展示链接卡、房源字段卡、团购商品卡和普通文本卡。
+- 小程序笔记编辑页新增房源字段表单和团购商品字段表单，并保留来源类型、弱分类、用户标签、专题编辑。
+- 校准 `test_import_flow_uses_single_import_artifact_transaction`：成功导入事务保存入口已在 `_process_import_batch`，静态测试不再误判外层方法。
+
+## 迭代与错误记录
+
+- 本机没有裸 `python` / `pytest` 命令，改用 Codex 工作区 Python；该运行时缺 pytest，于是安装 `backend/requirements.txt` 和 pytest 到运行时，不改仓库文件。
+- 完整后端测试首次失败在旧静态断言：测试要求 `import_synced_messages` 直接包含 `save_import_artifacts`，但实际保存入口已委托到 `_process_import_batch`。已调整测试检查真实成功路径，并在 `docs/pitfalls.md` 记录。
+- 小程序动态字段最初计划在 WXML 中直接用动态 key 读取，考虑兼容性后改为 JS 预计算字段列表，WXML 只渲染 `item.value`。
+
+## 验证结果
+
+- `python -m compileall backend/app backend/tests`：通过。
+- `pytest backend/tests -q`：91 项通过。
+- 小程序所有 `.js` 执行 `node --check`：通过。
+- 小程序所有 `.json` 解析检查：通过。
+
+## 下一步
+
+- 用真实企业微信消息测试房源文本和团购文本入库，确认小程序列表和编辑页展示符合预期。
+- 下一阶段可做“类型转换”：低置信文本卡允许用户手动转成房源卡或团购卡。
+- 后续再接房源推广图、团购海报、微信群文案、客户话术等生成型 Skill。
+
 # 2026-06-10
 
 ## 本次目标

@@ -29,6 +29,37 @@ const SOURCE_TYPES = [
 
 const SYSTEM_CATEGORIES = ["文章", "图片", "链接", "文件", "生活", "工作", "待整理"];
 
+const CARD_TYPES = {
+  link: "链接卡",
+  article: "阅读卡",
+  text_note: "文本卡",
+  property_listing: "房源字段卡",
+  groupbuy_product: "团购商品卡",
+  image_ocr: "图片 OCR 卡"
+};
+
+const PROPERTY_FIELDS = [
+  { key: "community", label: "小区 / 标题", placeholder: "例如：碧桂园城市之光1栋1210" },
+  { key: "layout", label: "户型", placeholder: "例如：公寓一房" },
+  { key: "price", label: "价格 / 租金", placeholder: "例如：1600元/月" },
+  { key: "utilities", label: "水电物业", placeholder: "例如：自缴" },
+  { key: "businessArea", label: "商圈 / 区域", placeholder: "例如：万家丽、高桥北" },
+  { key: "address", label: "地址 / 位置", placeholder: "可选" },
+  { key: "serviceFee", label: "服务费", placeholder: "例如：服务费200" },
+  { key: "contact", label: "联系方式", placeholder: "可选" }
+];
+
+const GROUPBUY_FIELDS = [
+  { key: "productName", label: "商品名", placeholder: "例如：丹东草莓" },
+  { key: "price", label: "价格", placeholder: "例如：39.9元" },
+  { key: "spec", label: "规格", placeholder: "例如：3斤装" },
+  { key: "deadline", label: "截止时间", placeholder: "例如：今晚22点" },
+  { key: "pickupMethod", label: "自提 / 配送", placeholder: "例如：包邮到家 / 小区自提" },
+  { key: "pickupLocation", label: "取货地点", placeholder: "可选" },
+  { key: "stockNote", label: "库存 / 数量", placeholder: "可选" },
+  { key: "contact", label: "联系方式", placeholder: "可选" }
+];
+
 function formatDateTime(value) {
   if (!value) return "";
   const date = new Date(value);
@@ -51,8 +82,17 @@ function buildBookmark(note) {
     tags,
     userTags,
     topics: Array.isArray(config.topics) ? config.topics : [],
+    cardType: config.cardType || (config.contentMode === "bookmark" ? "link" : "text_note"),
+    cardState: config.cardState || "collected",
     collectedAtText: formatDateTime(note.createdAt)
   };
+}
+
+function hydrateFields(fields, data) {
+  return fields.map((field) => ({
+    ...field,
+    value: data && data[field.key] ? data[field.key] : ""
+  }));
 }
 
 Page({
@@ -75,6 +115,12 @@ Page({
     bookmark: {},
     sourceTypes: SOURCE_TYPES,
     systemCategories: SYSTEM_CATEGORIES,
+    cardTypeLabel: CARD_TYPES.text_note,
+    isProperty: false,
+    isGroupbuy: false,
+    structuredData: {},
+    propertyFields: hydrateFields(PROPERTY_FIELDS, {}),
+    groupbuyFields: hydrateFields(GROUPBUY_FIELDS, {}),
     topics: [],
     tagDraft: "",
     topicDraft: "",
@@ -118,7 +164,10 @@ Page({
     }
   },
   applyLoadedNote(note) {
-    const isBookmark = (note.visibilityConfig || {}).contentMode === "bookmark";
+    const config = note.visibilityConfig || {};
+    const cardType = config.cardType || (config.contentMode === "bookmark" ? "link" : "text_note");
+    const isBookmark = cardType === "link" && config.contentMode === "bookmark";
+    const structuredData = config.structuredData || {};
     this.setData({
       form: {
         title: note.title || "",
@@ -129,10 +178,16 @@ Page({
         locationText: note.locationText || "",
         categoryIds: note.categoryIds || [],
         media: note.media || [],
-        visibilityConfig: note.visibilityConfig || {}
+        visibilityConfig: config
       },
       isBookmark,
-      bookmark: isBookmark ? buildBookmark(note) : {}
+      isProperty: cardType === "property_listing",
+      isGroupbuy: cardType === "groupbuy_product",
+      cardTypeLabel: CARD_TYPES[cardType] || "资料卡",
+      structuredData,
+      propertyFields: hydrateFields(PROPERTY_FIELDS, structuredData),
+      groupbuyFields: hydrateFields(GROUPBUY_FIELDS, structuredData),
+      bookmark: buildBookmark(note)
     });
   },
   handleInput(event) {
@@ -146,6 +201,18 @@ Page({
     this.setData({
       "form.visibilityConfig": config,
       [`bookmark.${key}`]: value
+    });
+  },
+  handleStructuredInput(event) {
+    const key = event.currentTarget.dataset.key;
+    const value = event.detail.value;
+    const structuredData = { ...(this.data.structuredData || {}), [key]: value };
+    const config = { ...(this.data.form.visibilityConfig || {}), structuredData };
+    this.setData({
+      structuredData,
+      propertyFields: hydrateFields(PROPERTY_FIELDS, structuredData),
+      groupbuyFields: hydrateFields(GROUPBUY_FIELDS, structuredData),
+      "form.visibilityConfig": config
     });
   },
   handleTagDraft(event) {
@@ -248,21 +315,7 @@ Page({
     try {
       const res = await api.organizeNote(noteId, user.id);
       const note = res.data || {};
-      this.setData({
-        form: {
-          title: note.title || "",
-          summary: note.summary || "",
-          body: note.body || "",
-          coverUrl: note.coverUrl || "",
-          phone: note.phone || "",
-          locationText: note.locationText || "",
-          categoryIds: note.categoryIds || [],
-          media: note.media || [],
-          visibilityConfig: note.visibilityConfig || {}
-        },
-        isBookmark: false,
-        bookmark: {}
-      });
+      this.applyLoadedNote(note);
       wx.showToast({ title: "已整理", icon: "success" });
     } catch (error) {
       wx.showToast({ title: error.detail || "整理失败", icon: "none" });

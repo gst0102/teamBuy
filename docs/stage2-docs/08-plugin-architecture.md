@@ -61,6 +61,16 @@ AI 意图枚举固定为：
 
 输入差异由 Adapter 处理，输出差异由模板处理。
 
+注意：`content-to-note` 的统一入口不代表所有输出都是同一种普通笔记。资料卡第一版采用多类型结构，详见 `docs/stage2-docs/12-typed-content-card-architecture.md`：
+
+- URL / 公众号文章：链接卡 / 阅读卡。
+- 普通文字：文本卡。
+- 房源：字段卡。
+- 团购：商品卡。
+- 图片 / 截图：后续 OCR 卡。
+
+统一的是“收藏 -> 编辑 -> 整理 -> 生成”流程；分型的是 `cardType`、`structuredData` 和后续 Skill 行为。
+
 ## 核心模块
 
 - `wecom-archive-core`：企业微信会话内容存档，保存消息、媒体、会话、外部联系人、游标和审计日志。

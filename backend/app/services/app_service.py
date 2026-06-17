@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections import defaultdict
 from datetime import datetime, timedelta
 from uuid import uuid4
@@ -1116,6 +1117,8 @@ class AppService:
                         item.body,
                         (item.visibilityConfig or {}).get("sourceName", ""),
                         (item.visibilityConfig or {}).get("systemCategory", ""),
+                        (item.visibilityConfig or {}).get("cardType", ""),
+                        json.dumps((item.visibilityConfig or {}).get("structuredData", {}), ensure_ascii=False),
                         " ".join(self._note_tags(item)),
                     ]
                 ).lower()
@@ -1160,6 +1163,12 @@ class AppService:
 
     def _normalize_note_visibility_config(self, config: dict) -> dict:
         normalized = dict(config or {})
+        normalized.setdefault("cardType", "link" if normalized.get("contentMode") == "bookmark" else "text_note")
+        normalized.setdefault("cardState", "collected")
+        structured_data = normalized.get("structuredData")
+        normalized["structuredData"] = structured_data if isinstance(structured_data, dict) else {}
+        type_suggestions = normalized.get("typeSuggestions")
+        normalized["typeSuggestions"] = type_suggestions if isinstance(type_suggestions, list) else []
         tag_levels = normalized.get("tagLevels") or {}
         if not isinstance(tag_levels, dict):
             tag_levels = {}
@@ -1186,19 +1195,60 @@ class AppService:
     def organize_bookmark_note(self, note_id: str, owner_user_id: str) -> UserNote:
         note = self.get_user_note(note_id, owner_user_id)
         config = dict(note.visibilityConfig or {})
+        card_type = config.get("cardType") or ("link" if config.get("contentMode") == "bookmark" else "text_note")
         tags = [item for item in config.get("tags", []) if item not in {"未整理", "待整理"}]
         if "已整理" not in tags:
             tags.append("已整理")
-        config["contentMode"] = "deep_note"
+        config["cardState"] = "organized"
         config["tags"] = tags
         config["canDeepOrganize"] = False
         config["tagStatus"] = "deep_done"
+        structured_data = dict(config.get("structuredData") or {})
+        if card_type == "property_listing":
+            config["contentMode"] = "structured_card"
+            structured_data["organizeResult"] = {
+                "summary": self._property_summary(structured_data, note),
+                "generationOptions": ["房源推广图", "微信群文案", "客户话术", "对比表"],
+            }
+            config["structuredData"] = structured_data
+            note.summary = structured_data["organizeResult"]["summary"]
+        elif card_type == "groupbuy_product":
+            config["contentMode"] = "structured_card"
+            structured_data["organizeResult"] = {
+                "summary": self._groupbuy_summary(structured_data, note),
+                "generationOptions": ["团购海报", "发群文案", "接龙格式", "商品卖点"],
+            }
+            config["structuredData"] = structured_data
+            note.summary = structured_data["organizeResult"]["summary"]
+        else:
+            config["contentMode"] = "deep_note"
+            config["cardType"] = "article" if card_type == "link" else card_type
         note.visibilityConfig = config
         if note.summary in {"已收藏，待整理。", "已收藏，待整理"}:
             note.summary = note.body[:120] if note.body else note.title
         note.updatedAt = now_iso()
         self.repo.save_user_note(note)
         return note
+
+    def _property_summary(self, data: dict, note: UserNote) -> str:
+        parts = [
+            data.get("community") or note.title,
+            data.get("price"),
+            data.get("layout"),
+            data.get("businessArea"),
+        ]
+        summary = " · ".join(str(item).strip() for item in parts if str(item or "").strip())
+        return summary or note.summary or "已整理为房源字段卡。"
+
+    def _groupbuy_summary(self, data: dict, note: UserNote) -> str:
+        parts = [
+            data.get("productName") or note.title,
+            data.get("price"),
+            data.get("spec"),
+            data.get("pickupMethod"),
+        ]
+        summary = " · ".join(str(item).strip() for item in parts if str(item or "").strip())
+        return summary or note.summary or "已整理为团购商品卡。"
 
     def suggest_note_tags(self, owner_user_id: str, note_id: str | None = None, text: str | None = None) -> dict:
         if note_id:

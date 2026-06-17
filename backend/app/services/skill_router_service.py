@@ -17,6 +17,33 @@ from app.services.helpers import new_id
 
 URL_PATTERN = re.compile(r"https?://[^\s]+", re.IGNORECASE)
 PHONE_PATTERN = re.compile(r"1[3-9]\d{9}")
+PRICE_PATTERN = re.compile(r"(?:¥|￥)?\s*\d+(?:\.\d+)?\s*(?:元|块|/月|每月|包邮)?")
+FIELD_LINE_PATTERN = re.compile(r"^\s*([^:：\s]{1,8})\s*[:：]\s*(.+?)\s*$")
+
+
+PROPERTY_FIELD_ALIASES = {
+    "community": ["小区", "楼盘", "项目", "房源", "社区"],
+    "layout": ["户型", "房型", "格局"],
+    "price": ["价格", "租金", "房租", "售价", "总价"],
+    "utilities": ["水电", "水电物业", "物业", "物业费"],
+    "businessArea": ["商圈", "区域", "板块"],
+    "address": ["地址", "位置"],
+    "serviceFee": ["服务费", "中介费"],
+    "remark": ["备注", "描述", "亮点"],
+    "contact": ["电话", "联系电话", "联系方式", "联系人"],
+}
+
+GROUPBUY_FIELD_ALIASES = {
+    "productName": ["商品", "商品名", "品名", "名称", "产品"],
+    "price": ["价格", "团购价", "售价"],
+    "spec": ["规格", "数量", "份量", "重量"],
+    "deadline": ["截止", "截止时间", "结束时间"],
+    "pickupMethod": ["自提", "取货", "提货", "配送", "发货"],
+    "pickupLocation": ["取货地点", "自提点", "地址", "位置"],
+    "stockNote": ["库存", "余量", "限量"],
+    "remark": ["备注", "描述", "卖点"],
+    "contact": ["电话", "联系电话", "联系方式", "联系人"],
+}
 
 
 class SkillRouterService:
@@ -202,6 +229,7 @@ class SkillRouterService:
         cover_url = cover_url or media_cover_url or link_cover_url
         phone_match = PHONE_PATTERN.search(body)
         location_text = self._extract_prefixed_value(body, "位置：")
+        typed_config = self._build_typed_note_config(content, title, body)
         return UserNoteDraftPayload(
             ownerUserId=owner_user_id,
             title=title,
@@ -212,7 +240,11 @@ class SkillRouterService:
             phone=phone_match.group(0) if phone_match else None,
             locationText=location_text,
             sourceRefs=content.sourceRefs or content.rawMessageIds,
-            visibilityConfig={"showPhone": bool(phone_match), "showSource": True},
+            visibilityConfig={
+                **typed_config,
+                "showPhone": bool(phone_match),
+                "showSource": True,
+            },
         )
 
     def _build_link_bookmark_draft(self, owner_user_id: str | None, content: ContentObjectPayload) -> UserNoteDraftPayload:
@@ -235,6 +267,17 @@ class SkillRouterService:
             sourceRefs=content.sourceRefs or content.rawMessageIds,
             visibilityConfig={
                 "contentMode": "bookmark",
+                "cardType": "link",
+                "cardState": "collected",
+                "structuredData": {
+                    "url": url,
+                    "domain": host,
+                    "title": title,
+                    "description": description,
+                    "coverUrl": link.coverUrl if link else None,
+                    "parseStatus": "meta_done" if link else "pending",
+                },
+                "typeSuggestions": [],
                 "sourceType": "link",
                 "systemCategory": "文章",
                 "tags": rule_tags,
@@ -252,6 +295,141 @@ class SkillRouterService:
                 "topics": [],
             },
         )
+
+    def _build_typed_note_config(self, content: ContentObjectPayload, title: str, body: str) -> dict:
+        detection = self._detect_card_type(title, body, content)
+        rule_tags = self._build_rule_tags(content)
+        for tag in detection["tags"]:
+            if tag not in rule_tags:
+                rule_tags.insert(max(len(rule_tags) - 1, 0), tag)
+        return {
+            "contentMode": "structured_card" if detection["cardType"] in {"property_listing", "groupbuy_product"} else "note",
+            "cardType": detection["cardType"],
+            "cardState": "collected",
+            "structuredData": detection["structuredData"],
+            "typeSuggestions": detection["typeSuggestions"],
+            "sourceType": self._note_source_type(content),
+            "systemCategory": detection["systemCategory"],
+            "tags": rule_tags,
+            "userTags": [],
+            "tagLevels": {"rule": rule_tags, "light": [], "deep": []},
+            "tagStatus": "rule_done",
+            "canDeepOrganize": True,
+            "topicIds": [],
+            "topics": [],
+        }
+
+    def _detect_card_type(self, title: str, body: str, content: ContentObjectPayload) -> dict:
+        property_fields = self._extract_fields(body, PROPERTY_FIELD_ALIASES)
+        groupbuy_fields = self._extract_fields(body, GROUPBUY_FIELD_ALIASES)
+        property_score = self._score_property(body, property_fields)
+        groupbuy_score = self._score_groupbuy(body, groupbuy_fields)
+        images = [media.url for media in content.media if media.type == "image" and media.url]
+
+        if property_score >= 3 and property_score >= groupbuy_score:
+            data = self._build_property_data(title, body, property_fields, images)
+            return {
+                "cardType": "property_listing",
+                "systemCategory": "房源",
+                "structuredData": data,
+                "typeSuggestions": [],
+                "tags": ["房产", "房源"],
+            }
+        if groupbuy_score >= 3 and groupbuy_score > property_score:
+            data = self._build_groupbuy_data(title, body, groupbuy_fields, images)
+            return {
+                "cardType": "groupbuy_product",
+                "systemCategory": "团购",
+                "structuredData": data,
+                "typeSuggestions": [],
+                "tags": ["团购", "商品"],
+            }
+
+        suggestions = []
+        if property_score >= 2:
+            suggestions.append({"cardType": "property_listing", "label": "可能是房源信息", "confidence": min(property_score / 5, 0.8)})
+        if groupbuy_score >= 2:
+            suggestions.append({"cardType": "groupbuy_product", "label": "可能是团购商品", "confidence": min(groupbuy_score / 5, 0.8)})
+        card_type = "image_ocr" if content.media and not body.strip() else "text_note"
+        return {
+            "cardType": card_type,
+            "systemCategory": "图片" if card_type == "image_ocr" else "待整理",
+            "structuredData": {"rawText": body, "images": images},
+            "typeSuggestions": suggestions,
+            "tags": [],
+        }
+
+    def _extract_fields(self, text: str, aliases: dict[str, list[str]]) -> dict:
+        alias_to_key = {alias: key for key, names in aliases.items() for alias in names}
+        fields: dict[str, str] = {}
+        for line in text.splitlines():
+            match = FIELD_LINE_PATTERN.match(line)
+            if not match:
+                continue
+            label, value = match.groups()
+            key = alias_to_key.get(label.strip())
+            if key and value.strip():
+                fields[key] = value.strip()
+        return fields
+
+    def _score_property(self, text: str, fields: dict) -> int:
+        score = len(fields)
+        keywords = ["小区", "户型", "租金", "水电", "物业", "商圈", "房源", "公寓", "一房", "两房", "三房"]
+        score += sum(1 for keyword in keywords if keyword in text)
+        if "price" in fields or re.search(r"\d+\s*(?:元/月|/月|每月|万|元)", text):
+            score += 1
+        return score
+
+    def _score_groupbuy(self, text: str, fields: dict) -> int:
+        score = len(fields)
+        keywords = ["团购", "拼单", "包邮", "自提", "接龙", "截止", "取货", "现摘", "现发", "规格"]
+        score += sum(1 for keyword in keywords if keyword in text)
+        if "price" in fields or PRICE_PATTERN.search(text):
+            score += 1
+        return score
+
+    def _build_property_data(self, title: str, body: str, fields: dict, images: list[str]) -> dict:
+        return {
+            "community": fields.get("community") or title,
+            "layout": fields.get("layout", ""),
+            "price": fields.get("price") or self._first_price(body),
+            "utilities": fields.get("utilities", ""),
+            "businessArea": fields.get("businessArea", ""),
+            "address": fields.get("address", ""),
+            "serviceFee": fields.get("serviceFee", ""),
+            "remark": fields.get("remark") or self._truncate(body, 160),
+            "contact": fields.get("contact") or (PHONE_PATTERN.search(body).group(0) if PHONE_PATTERN.search(body) else ""),
+            "images": images,
+            "rawText": body,
+        }
+
+    def _build_groupbuy_data(self, title: str, body: str, fields: dict, images: list[str]) -> dict:
+        return {
+            "productName": fields.get("productName") or title,
+            "price": fields.get("price") or self._first_price(body),
+            "spec": fields.get("spec", ""),
+            "deadline": fields.get("deadline", ""),
+            "pickupMethod": fields.get("pickupMethod", ""),
+            "pickupLocation": fields.get("pickupLocation", ""),
+            "stockNote": fields.get("stockNote", ""),
+            "remark": fields.get("remark") or self._truncate(body, 160),
+            "contact": fields.get("contact") or (PHONE_PATTERN.search(body).group(0) if PHONE_PATTERN.search(body) else ""),
+            "images": images,
+            "rawText": body,
+        }
+
+    def _first_price(self, text: str) -> str:
+        match = PRICE_PATTERN.search(text)
+        return match.group(0).strip() if match else ""
+
+    def _note_source_type(self, content: ContentObjectPayload) -> str:
+        if content.media and not content.textBlocks and not content.links:
+            return "media"
+        if content.sourceType == "chat_thread":
+            return "chat"
+        if content.sourceType == "image_ocr":
+            return "media"
+        return "note"
 
     def _build_rule_tags(self, content: ContentObjectPayload, host: str = "") -> list[str]:
         haystack = "\n".join([content.title or "", *content.textBlocks, host, " ".join(link.url for link in content.links)]).lower()

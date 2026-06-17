@@ -91,6 +91,67 @@ def test_run_content_to_note_builds_rule_based_note_draft():
     assert "偏好地铁附近" in data["noteDraft"]["body"]
 
 
+def test_run_content_to_note_detects_property_listing_card():
+    response = client.post(
+        "/api/skills/content-to-note/run",
+        json={
+            "ownerUserId": "user_001",
+            "content": {
+                "sourceType": "wecom_thread",
+                "title": "碧桂园城市之光租房",
+                "textBlocks": [
+                    "小区：碧桂园城市之光1栋1210\n户型：公寓一房\n价格：1600元/月\n水电物业：自缴\n商圈：万家丽、高桥北\n备注：服务费200"
+                ],
+                "media": [{"type": "image", "url": "https://example.com/house.webp"}],
+                "sourceRefs": ["wecom_msg_property"],
+                "rawMessageIds": ["raw_property"],
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    note = response.json()["data"]["noteDraft"]
+    config = note["visibilityConfig"]
+    assert config["cardType"] == "property_listing"
+    assert config["contentMode"] == "structured_card"
+    assert config["systemCategory"] == "房源"
+    assert {"房产", "房源"}.issubset(set(config["tags"]))
+    assert config["structuredData"]["community"] == "碧桂园城市之光1栋1210"
+    assert config["structuredData"]["layout"] == "公寓一房"
+    assert config["structuredData"]["price"] == "1600元/月"
+    assert config["structuredData"]["businessArea"] == "万家丽、高桥北"
+    assert config["structuredData"]["images"] == ["https://example.com/house.webp"]
+
+
+def test_run_content_to_note_detects_groupbuy_product_card():
+    response = client.post(
+        "/api/skills/content-to-note/run",
+        json={
+            "ownerUserId": "user_001",
+            "content": {
+                "sourceType": "wecom_thread",
+                "title": "丹东草莓团购",
+                "textBlocks": ["商品：丹东草莓\n价格：39.9元\n规格：3斤装\n取货：包邮到家\n截止：今晚22点\n备注：现摘现发"],
+                "media": [{"type": "image", "url": "https://example.com/strawberry.webp"}],
+                "sourceRefs": ["wecom_msg_groupbuy"],
+                "rawMessageIds": ["raw_groupbuy"],
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    note = response.json()["data"]["noteDraft"]
+    config = note["visibilityConfig"]
+    assert config["cardType"] == "groupbuy_product"
+    assert config["contentMode"] == "structured_card"
+    assert config["systemCategory"] == "团购"
+    assert {"团购", "商品"}.issubset(set(config["tags"]))
+    assert config["structuredData"]["productName"] == "丹东草莓"
+    assert config["structuredData"]["price"] == "39.9元"
+    assert config["structuredData"]["spec"] == "3斤装"
+    assert config["structuredData"]["pickupMethod"] == "包邮到家"
+
+
 def test_commands_include_showcase_and_billing_entries():
     response = client.get("/api/skills/commands")
 

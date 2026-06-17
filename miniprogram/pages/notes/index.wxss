@@ -240,6 +240,111 @@
   background: #fff;
 }
 
+.typed-card {
+  display: grid;
+  grid-template-columns: 156rpx 1fr;
+  gap: 18rpx;
+  padding: 20rpx;
+  border-radius: 8rpx;
+  background: #fff;
+}
+
+.typed-cover {
+  width: 156rpx;
+  height: 156rpx;
+  border-radius: 8rpx;
+  background: #e8eef7;
+}
+
+.typed-cover.placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #e8f7ef;
+  color: #11924d;
+  font-size: 46rpx;
+  font-weight: 900;
+}
+
+.typed-cover.placeholder.orange {
+  background: #fff4e6;
+  color: #c05a00;
+}
+
+.typed-head {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+}
+
+.typed-head text {
+  padding: 4rpx 12rpx;
+  border-radius: 6rpx;
+  background: #e8f7ef;
+  color: #11924d;
+  font-size: 22rpx;
+  font-weight: 800;
+}
+
+.typed-head.groupbuy text {
+  background: #fff4e6;
+  color: #a25800;
+}
+
+.typed-title {
+  margin-top: 8rpx;
+  color: #172033;
+  font-size: 32rpx;
+  font-weight: 900;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.typed-primary {
+  margin-top: 8rpx;
+  color: #172033;
+  font-size: 27rpx;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.typed-primary.price {
+  color: #e5484d;
+}
+
+.typed-secondary {
+  margin-top: 8rpx;
+  color: #5f6d80;
+  font-size: 24rpx;
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.typed-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 28rpx;
+  padding-top: 12rpx;
+  border-top: 1rpx solid #edf0f5;
+  color: #11924d;
+  font-size: 26rpx;
+}
+
+.groupbuy-card .typed-actions {
+  color: #a25800;
+}
+
+.typed-actions .danger {
+  color: #e5484d;
+}
+
 .note-cover {
   width: 128rpx;
   height: 128rpx;
