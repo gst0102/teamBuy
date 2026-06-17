@@ -1279,3 +1279,18 @@ from ip=81.70.84.35
 - 远程单行 SQL 尽量用简单查询，减少嵌套引号：
   - `select count(*) from information_schema.tables where table_schema='public' and table_name='wecom_identity_bindings';`
 - 或者把 SQL 放进 heredoc，避免多层 shell 转义。
+
+## 2026-06-18：不要把所有 URL 都自动深度整理
+
+问题：
+
+- 产品已确认普通文章 URL 默认是“轻收藏”，不是立刻抓全文、摘要、结构化成深度笔记。
+- 如果路由测试或导入逻辑仍把任意 URL 当作 `content-to-note`，用户随手收藏一篇文章时会变成重处理流程。
+- 但 `整理链接` 这类明确指令又必须保持深度整理，不能因为轻收藏策略误伤快捷命令。
+
+正确做法：
+
+- 路由顺序保持：精确指令优先，其次规则识别 URL 轻收藏，AI 兜底最后。
+- 普通 URL 返回 `link_bookmark` / `link-bookmark`，输入适配器仍是 `input.link-article`。
+- 明确命令 `整理链接` 等继续返回 `content_to_note` / `content-to-note`。
+- 后端导入时只在无深度整理关键词的链接内容上走轻收藏；小程序再提供“整理为笔记”的升级动作。

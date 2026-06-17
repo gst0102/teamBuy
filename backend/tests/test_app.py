@@ -1233,6 +1233,7 @@ def test_mock_import_is_idempotent_for_repeated_wecom_messages(client):
 
 
 def test_link_import_uses_thumbnail_and_source_url(client):
+    login = client.post("/api/auth/mock-login", json={"nickname": "收藏用户"}).json()["data"]
     response = client.post(
         "/api/wecom/mock-sync",
         json={"externalUserId": "external_link", "conversationId": "conv_link", "fixture": "link"},
@@ -1242,9 +1243,57 @@ def test_link_import_uses_thumbnail_and_source_url(client):
     pending = client.get("/api/imports/pending").json()["data"]
     latest = pending[-1]
     card = latest["generatedCard"]
+    note = latest["generatedNote"]
     assert latest["sourceType"] == "web_link"
     assert card["sourceUrl"] == "https://example.com/group-buy"
     assert card["coverUrl"] == "https://example.com/cover.jpg"
+    assert note["visibilityConfig"]["contentMode"] == "bookmark"
+    assert note["visibilityConfig"]["tags"] == ["文章", "链接", "未整理"]
+
+    claim = client.post(f"/api/imports/{latest['id']}/claim", json={"userId": login["id"]})
+    note_id = claim.json()["data"]["note"]["id"]
+    organized = client.post(f"/api/notes/{note_id}/organize", params={"ownerUserId": login["id"]})
+
+    assert organized.status_code == 200
+    organized_note = organized.json()["data"]
+    assert organized_note["visibilityConfig"]["contentMode"] == "deep_note"
+    assert "未整理" not in organized_note["visibilityConfig"]["tags"]
+    assert "已整理" in organized_note["visibilityConfig"]["tags"]
+
+
+def test_explicit_link_organize_command_uses_deep_note(client):
+    service = client.app.dependency_overrides[get_app_service]()
+    sync_response = {
+        "next_cursor": "cursor_deep_link",
+        "msg_list": [
+            {
+                "msgid": "deep_link_text_001",
+                "external_userid": "external_deep_link",
+                "send_time": 1780848000,
+                "msgtype": "text",
+                "text": {"content": "整理链接"},
+            },
+            {
+                "msgid": "deep_link_msg_001",
+                "external_userid": "external_deep_link",
+                "send_time": 1780848001,
+                "msgtype": "link",
+                "link": {
+                    "title": "值得整理的文章",
+                    "description": "需要提炼重点",
+                    "url": "https://example.com/deep-link",
+                    "picurl": "https://example.com/deep-cover.jpg",
+                },
+            },
+        ]
+    }
+
+    result = service.trigger_sync_response_import(sync_response, fallback_open_kfid="wk_deep_link")
+    pending = client.get("/api/imports/pending").json()["data"]
+    generated = next(item for item in pending if item["id"] == result["importBatchIds"][0])
+
+    assert generated["generatedNote"]["visibilityConfig"].get("contentMode") != "bookmark"
+    assert "整理链接" in generated["generatedNote"]["body"]
 
 
 def test_note_import_preserves_video_media(client):

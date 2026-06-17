@@ -39,6 +39,11 @@ def update_note(note_id: str, payload: UserNoteUpdateRequest, service: AppServic
     return ApiResponse(data=service.update_user_note(note_id, payload).model_dump())
 
 
+@router.post("/{note_id}/organize", response_model=ApiResponse[dict])
+def organize_note(note_id: str, ownerUserId: str = Query(...), service: AppService = Depends(get_app_service)):
+    return ApiResponse(data=service.organize_bookmark_note(note_id, ownerUserId).model_dump())
+
+
 @router.delete("/{note_id}", response_model=ApiResponse[dict])
 def delete_note(note_id: str, ownerUserId: str = Query(...), service: AppService = Depends(get_app_service)):
     return ApiResponse(data=service.delete_user_note(note_id, ownerUserId))

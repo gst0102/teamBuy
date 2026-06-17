@@ -92,9 +92,9 @@ class SkillRouterService:
             )
 
         if content and content.sourceType == "link_article":
-            return self._rule_result("content_to_note", "content-to-note", 0.92, "input.link-article")
+            return self._rule_result("link_bookmark", "link-bookmark", 0.92, "input.link-article")
         if URL_PATTERN.search(normalized):
-            return self._rule_result("content_to_note", "content-to-note", 0.9, "input.link-article")
+            return self._rule_result("link_bookmark", "link-bookmark", 0.9, "input.link-article")
         if self._contains_any(normalized, ["漫画", "长图", "宣传图", "海报"]):
             return self._rule_result("note_to_comic_image", "note-to-comic-image", 0.86, "input.user-note")
         if self._contains_any(normalized, ["展示页", "店铺", "橱窗", "主页"]):
@@ -130,6 +130,31 @@ class SkillRouterService:
         run = SkillRunPayload(
             id=new_id("skill_run"),
             skillId="content-to-note",
+            status="success",
+            inputSnapshot=content.model_dump(),
+            outputRef=None,
+            modelProvider="rule",
+            startedAt=now,
+            endedAt=now,
+        )
+        return RunContentToNoteResponse(intent=intent, skillRun=run, noteDraft=note)
+
+    def run_link_bookmark(
+        self,
+        owner_user_id: str | None,
+        content: ContentObjectPayload,
+    ) -> RunContentToNoteResponse:
+        intent = self._rule_result(
+            "link_bookmark",
+            "link-bookmark",
+            1,
+            "input.link-article",
+        )
+        note = self._build_link_bookmark_draft(owner_user_id, content)
+        now = self._now()
+        run = SkillRunPayload(
+            id=new_id("skill_run"),
+            skillId="link-bookmark",
             status="success",
             inputSnapshot=content.model_dump(),
             outputRef=None,
@@ -187,6 +212,31 @@ class SkillRouterService:
             locationText=location_text,
             sourceRefs=content.sourceRefs or content.rawMessageIds,
             visibilityConfig={"showPhone": bool(phone_match), "showSource": True},
+        )
+
+    def _build_link_bookmark_draft(self, owner_user_id: str | None, content: ContentObjectPayload) -> UserNoteDraftPayload:
+        link = next((item for item in content.links if item.url), None)
+        title = self._guess_title(content, link.title if link else "已收藏链接") if link else self._guess_title(content, "已收藏链接")
+        description = (link.description or "").strip() if link else ""
+        url = link.url if link else ""
+        body_parts = [part for part in [description, url] if part]
+        body = "\n".join(body_parts) or "已收藏，稍后可整理为笔记。"
+        summary = description or "已收藏，待整理。"
+        return UserNoteDraftPayload(
+            ownerUserId=owner_user_id,
+            title=title,
+            summary=self._truncate(summary, 120),
+            body=body,
+            coverUrl=link.coverUrl if link else None,
+            media=content.media,
+            sourceRefs=content.sourceRefs or content.rawMessageIds,
+            visibilityConfig={
+                "contentMode": "bookmark",
+                "tags": ["文章", "链接", "未整理"],
+                "showSource": True,
+                "canDeepOrganize": True,
+                "sourceUrl": url,
+            },
         )
 
     def _guess_title(self, content: ContentObjectPayload, body: str) -> str:

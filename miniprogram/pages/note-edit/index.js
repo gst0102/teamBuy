@@ -32,6 +32,7 @@ Page({
       media: [],
       visibilityConfig: {}
     },
+    isBookmark: false,
     saving: false
   },
   onLoad(options) {
@@ -66,7 +67,8 @@ Page({
           categoryIds: note.categoryIds || [],
           media: note.media || [],
           visibilityConfig: note.visibilityConfig || {}
-        }
+        },
+        isBookmark: (note.visibilityConfig || {}).contentMode === "bookmark"
       });
     } catch (error) {
       wx.showToast({ title: error.detail || "笔记加载失败", icon: "none" });
@@ -94,6 +96,34 @@ Page({
       setTimeout(() => wx.navigateBack(), 350);
     } catch (error) {
       wx.showToast({ title: error.detail || "保存失败", icon: "none" });
+    } finally {
+      this.setData({ saving: false });
+    }
+  },
+  async handleOrganize() {
+    const { user, noteId } = this.data;
+    if (!user || !noteId) return;
+    this.setData({ saving: true });
+    try {
+      const res = await api.organizeNote(noteId, user.id);
+      const note = res.data || {};
+      this.setData({
+        form: {
+          title: note.title || "",
+          summary: note.summary || "",
+          body: note.body || "",
+          coverUrl: note.coverUrl || "",
+          phone: note.phone || "",
+          locationText: note.locationText || "",
+          categoryIds: note.categoryIds || [],
+          media: note.media || [],
+          visibilityConfig: note.visibilityConfig || {}
+        },
+        isBookmark: false
+      });
+      wx.showToast({ title: "已整理", icon: "success" });
+    } catch (error) {
+      wx.showToast({ title: error.detail || "整理失败", icon: "none" });
     } finally {
       this.setData({ saving: false });
     }

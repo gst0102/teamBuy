@@ -212,7 +212,7 @@ class AppService:
         try:
             content_object = self.content_object_adapter.from_wecom_batch(batch, batch_messages)
             owner_user_id = self._resolve_owner_user_id_for_external(batch.externalUserId)
-            note_result = self.skill_router_service.run_content_to_note(owner_user_id, content_object)
+            note_result = self._run_import_skill(owner_user_id, content_object)
             card = self._build_card_from_note_draft(batch, note_result.noteDraft, content_object)
             note = self._build_user_note_from_draft(batch, note_result.noteDraft, card.id)
             self._apply_resolved_owner(batch, card, note, owner_user_id)
@@ -473,7 +473,7 @@ class AppService:
                 content_object = self._build_archive_content_object(group_messages)
                 media_result = self._download_and_attach_archive_media(content_object, archive_client)
                 owner_user_id = self._resolve_owner_user_id_for_external(primary.fromUser)
-                note_result = self.skill_router_service.run_content_to_note(owner_user_id, content_object)
+                note_result = self._run_import_skill(owner_user_id, content_object)
                 batch = self._build_archive_import_batch(primary, note_result.noteDraft.title, group_messages)
                 card = self._build_card_from_note_draft(batch, note_result.noteDraft, content_object)
                 note = self._build_user_note_from_draft(batch, note_result.noteDraft, card.id)
@@ -777,6 +777,18 @@ class AppService:
             createdAt=now,
             updatedAt=now,
         )
+
+    def _run_import_skill(self, owner_user_id: str, content_object: ContentObjectPayload):
+        if self._should_light_bookmark(content_object):
+            return self.skill_router_service.run_link_bookmark(owner_user_id, content_object)
+        return self.skill_router_service.run_content_to_note(owner_user_id, content_object)
+
+    def _should_light_bookmark(self, content_object: ContentObjectPayload) -> bool:
+        if content_object.sourceType != "link_article" or not content_object.links:
+            return False
+        text = "\n".join(content_object.textBlocks)
+        deep_keywords = ["整理链接", "链接总结", "文章总结", "整理文章", "总结文章", "提炼", "做笔记"]
+        return not any(keyword in text for keyword in deep_keywords)
 
     def _resolve_owner_user_id_for_external(self, external_user_id: str | None) -> str:
         if not external_user_id or external_user_id == "archive_unknown":
@@ -1088,6 +1100,22 @@ class AppService:
         note.phone = payload.phone
         note.locationText = payload.locationText
         note.visibilityConfig = payload.visibilityConfig
+        note.updatedAt = now_iso()
+        self.repo.save_user_note(note)
+        return note
+
+    def organize_bookmark_note(self, note_id: str, owner_user_id: str) -> UserNote:
+        note = self.get_user_note(note_id, owner_user_id)
+        config = dict(note.visibilityConfig or {})
+        tags = [item for item in config.get("tags", []) if item != "未整理"]
+        if "已整理" not in tags:
+            tags.append("已整理")
+        config["contentMode"] = "deep_note"
+        config["tags"] = tags
+        config["canDeepOrganize"] = False
+        note.visibilityConfig = config
+        if note.summary in {"已收藏，待整理。", "已收藏，待整理"}:
+            note.summary = note.body[:120] if note.body else note.title
         note.updatedAt = now_iso()
         self.repo.save_user_note(note)
         return note

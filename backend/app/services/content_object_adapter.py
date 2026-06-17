@@ -105,7 +105,7 @@ class ContentObjectAdapter:
 
         title = self._archive_title(payload, msg_type, text_blocks, links)
         return ContentObjectPayload(
-            sourceType="wecom_thread",
+            sourceType="link_article" if msg_type == "link" else "wecom_thread",
             title=title,
             textBlocks=[item for item in text_blocks if item],
             media=media,

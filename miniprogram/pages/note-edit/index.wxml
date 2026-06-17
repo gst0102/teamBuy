@@ -13,6 +13,14 @@
     </view>
   </view>
 
+  <view class="bookmark-panel" wx:if="{{isBookmark}}">
+    <view>
+      <view class="bookmark-title">已收藏链接</view>
+      <view class="bookmark-desc">可先保存标题和标签，需要时再整理成笔记。</view>
+    </view>
+    <button class="organize-btn" loading="{{saving}}" bindtap="handleOrganize">整理为笔记</button>
+  </view>
+
   <view class="form-panel">
     <view class="field">
       <view class="label">标题</view>

@@ -48,6 +48,39 @@
   font-weight: 700;
 }
 
+.bookmark-panel {
+  display: grid;
+  grid-template-columns: 1fr 180rpx;
+  gap: 18rpx;
+  align-items: center;
+  margin-top: 24rpx;
+  padding: 22rpx;
+  border-radius: 8rpx;
+  background: #fff7e8;
+}
+
+.bookmark-title {
+  color: #6d3d00;
+  font-size: 28rpx;
+  font-weight: 900;
+}
+
+.bookmark-desc {
+  margin-top: 6rpx;
+  color: #8a642c;
+  font-size: 22rpx;
+}
+
+.organize-btn {
+  height: 68rpx;
+  line-height: 68rpx;
+  border-radius: 8rpx;
+  background: #ff8a1f;
+  color: #fff;
+  font-size: 24rpx;
+  font-weight: 800;
+}
+
 .field + .field {
   margin-top: 24rpx;
 }

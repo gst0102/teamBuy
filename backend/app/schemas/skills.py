@@ -5,7 +5,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
-IntentName = Literal["content_to_note", "note_to_comic_image", "showcase_builder", "billing", "help", "unknown"]
+IntentName = Literal["link_bookmark", "content_to_note", "note_to_comic_image", "showcase_builder", "billing", "help", "unknown"]
 RouteSource = Literal["exact_command", "rule", "ai_fallback", "confirm_menu"]
 SkillRunStatus = Literal["pending", "success", "failed", "needs_confirm"]
 

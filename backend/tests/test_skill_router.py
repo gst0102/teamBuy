@@ -20,14 +20,25 @@ def test_exact_command_routes_without_ai_fallback():
     assert data["inputAdapter"] == "input.wecom-thread"
 
 
-def test_link_text_routes_to_content_to_note_adapter():
-    response = client.post("/api/skills/route", json={"text": "帮我整理 https://example.com/a"})
+def test_link_text_routes_to_bookmark_adapter_by_default():
+    response = client.post("/api/skills/route", json={"text": "我收藏一下 https://example.com/a"})
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["intent"] == "link_bookmark"
+    assert data["skillId"] == "link-bookmark"
+    assert data["source"] == "rule"
+    assert data["inputAdapter"] == "input.link-article"
+
+
+def test_explicit_link_command_routes_to_content_to_note_adapter():
+    response = client.post("/api/skills/route", json={"text": "整理链接"})
 
     assert response.status_code == 200
     data = response.json()["data"]
     assert data["intent"] == "content_to_note"
     assert data["skillId"] == "content-to-note"
-    assert data["source"] == "rule"
+    assert data["source"] == "exact_command"
     assert data["inputAdapter"] == "input.link-article"
 
 

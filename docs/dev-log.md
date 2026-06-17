@@ -1544,3 +1544,23 @@
   - `/health` 返回 ok。
   - PostgreSQL 已确认存在 `wecom_identity_bindings` 表。
   - 首次查表时 shell/SQL 引号写复杂导致 `syntax error`，已改用简单 `information_schema.tables` 查询确认。
+
+### URL 轻收藏与深度整理升级入口
+
+- 已按最新产品口径实现：
+  - 普通文章 URL 默认生成轻收藏笔记。
+  - 轻收藏标记 `visibilityConfig.contentMode=bookmark`，默认标签为“文章 / 链接 / 未整理”。
+  - 企业微信明确指令 `整理链接` 仍走 `content-to-note` 深度整理，不进入轻收藏。
+  - 小程序笔记编辑页在轻收藏状态下展示“整理为笔记”，用户点击后升级为深度笔记状态。
+- 后端改动：
+  - Skill Router 新增 `link_bookmark` 意图和 `link-bookmark` 轻收藏运行路径。
+  - 企业微信客服导入和会话存档导入统一通过路由判断，避免绕过轻收藏策略。
+  - `POST /api/notes/{note_id}/organize` 支持把轻收藏升级为深度笔记状态。
+- 小程序改动：
+  - 笔记编辑页识别轻收藏状态，并提供“整理为笔记”操作。
+- 验证：
+  - `/tmp/teambuy-pytest-venv312/bin/python -m compileall backend/app backend/tests`：通过。
+  - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_skill_router.py backend/tests/test_app.py backend/tests/test_media_processing_service.py backend/tests/test_media_storage_service.py -q`：70 项通过。
+  - `find miniprogram -name '*.js' -print0 | xargs -0 -n1 node --check`：通过。
+- 迭代记录：
+  - 初次回归时旧测试仍断言“URL 文本必须路由到 content-to-note”，已改为“普通 URL 默认 link-bookmark，明确整理指令才 content-to-note”。
