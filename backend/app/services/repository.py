@@ -23,6 +23,7 @@ from app.models.domain import (
     SyncTask,
     SyncTaskLog,
     User,
+    WecomIdentityBinding,
     UserNote,
     ViewEvent,
     WecomArchiveCursor,
@@ -44,6 +45,12 @@ class AppRepository(Protocol):
         ...
 
     def save_user(self, user: User) -> None:
+        ...
+
+    def get_wecom_identity_binding(self, source_type: str, external_user_id: str) -> WecomIdentityBinding | None:
+        ...
+
+    def save_wecom_identity_binding(self, binding: WecomIdentityBinding) -> None:
         ...
 
     def list_import_batches(self, statuses: set[str] | None = None) -> list[ImportBatch]:
@@ -267,6 +274,22 @@ class JsonRepository:
         state = self.load()
         state.users = [item for item in state.users if item.id != user.id]
         state.users.append(user)
+        self.save(state)
+
+    def get_wecom_identity_binding(self, source_type: str, external_user_id: str) -> WecomIdentityBinding | None:
+        return next(
+            (
+                item
+                for item in self.load().wecom_identity_bindings
+                if item.sourceType == source_type and item.externalUserId == external_user_id
+            ),
+            None,
+        )
+
+    def save_wecom_identity_binding(self, binding: WecomIdentityBinding) -> None:
+        state = self.load()
+        state.wecom_identity_bindings = [item for item in state.wecom_identity_bindings if item.id != binding.id]
+        state.wecom_identity_bindings.append(binding)
         self.save(state)
 
     def list_import_batches(self, statuses: set[str] | None = None) -> list[ImportBatch]:
@@ -664,6 +687,7 @@ class JsonRepository:
 class PostgresRepository:
     TABLES = {
         "users": "users",
+        "wecom_identity_bindings": "wecom_identity_bindings",
         "import_batches": "import_batches",
         "raw_messages": "raw_messages",
         "cards": "cards",
@@ -685,6 +709,14 @@ class PostgresRepository:
         "users": [
             ("openid", "text", "openid"),
             ("nickname", "text", "nickname"),
+        ],
+        "wecom_identity_bindings": [
+            ("source_type", "text", "sourceType"),
+            ("external_user_id", "text", "externalUserId"),
+            ("owner_user_id", "text", "ownerUserId"),
+            ("bind_source", "text", "bindSource"),
+            ("first_import_batch_id", "text", "firstImportBatchId"),
+            ("last_import_batch_id", "text", "lastImportBatchId"),
         ],
         "import_batches": [
             ("external_user_id", "text", "externalUserId"),
@@ -826,6 +858,10 @@ class PostgresRepository:
             ("idx_import_batches_conversation", "external_user_id, conversation_id, started_at"),
             ("idx_import_batches_claimed_by", "claimed_by_user_id"),
         ],
+        "wecom_identity_bindings": [
+            ("idx_wecom_identity_bindings_source_external", "source_type, external_user_id"),
+            ("idx_wecom_identity_bindings_owner", "owner_user_id, updated_at"),
+        ],
         "raw_messages": [
             ("idx_raw_messages_wecom_msg_id", "wecom_msg_id"),
             ("idx_raw_messages_open_kfid_token", "open_kfid, wecom_token"),
@@ -938,6 +974,18 @@ class PostgresRepository:
 
     def save_user(self, user: User) -> None:
         self._save_model("users", user)
+
+    def get_wecom_identity_binding(self, source_type: str, external_user_id: str) -> WecomIdentityBinding | None:
+        rows = self._list_payloads(
+            "wecom_identity_bindings",
+            "source_type = %s and external_user_id = %s",
+            (source_type, external_user_id),
+            "updated_at desc, id desc",
+        )
+        return WecomIdentityBinding.model_validate(rows[0]) if rows else None
+
+    def save_wecom_identity_binding(self, binding: WecomIdentityBinding) -> None:
+        self._save_model("wecom_identity_bindings", binding)
 
     def list_import_batches(self, statuses: set[str] | None = None) -> list[ImportBatch]:
         if statuses:

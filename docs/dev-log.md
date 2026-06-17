@@ -1516,3 +1516,26 @@
   - `checkedNoteCount=2`。
   - `downloadedCount=2`、`failedCount=0`。
   - 成功回填 `note_f6cfe62264`、`note_866ce69346`，并更新对应兼容卡片。
+
+### identity-core 第一版：认领后自动绑定归属
+
+- 新增身份绑定模型和仓储：
+  - `WecomIdentityBinding`
+  - PostgreSQL 表：`wecom_identity_bindings`
+  - 绑定键：`sourceType=wecom_external_user` + `externalUserId`
+- 认领流程增强：
+  - 用户认领导入后，保存企业微信来源身份与小程序用户的绑定。
+  - `/api/imports/{id}/claim` 返回 `identityBinding`。
+- 后续导入自动归属：
+  - 企业微信客服 `sync_msg` 导入处理时先查绑定。
+  - 企业微信会话存档 `process` 处理时先查绑定。
+  - 命中绑定后，`UserNote.ownerUserId` 和兼容 `Card.ownerUserId` 直接指向该用户。
+  - `ImportBatch.status=claimed`，不会再进入“新导入资料/待认领”列表。
+- 当前边界：
+  - 仍是 mock 登录用户 ID，不是正式微信 code/openid/unionid 绑定。
+  - 未做企业微信成员和小程序用户的管理后台绑定。
+- 验证：
+  - `/tmp/teambuy-pytest-venv312/bin/python -m compileall backend/app backend/tests`：通过。
+  - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_app.py -q -k "claim_import or wecom_archive_process_auto_assigns_bound_external_user"`：2 项通过。
+  - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_app.py -q -k "wecom_archive"`：16 项通过。
+  - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_skill_router.py backend/tests/test_app.py backend/tests/test_media_processing_service.py backend/tests/test_media_storage_service.py -q`：68 项通过。

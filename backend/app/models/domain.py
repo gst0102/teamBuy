@@ -32,6 +32,18 @@ class User(BaseModel):
     updatedAt: str
 
 
+class WecomIdentityBinding(BaseModel):
+    id: str
+    sourceType: str = "wecom_archive"
+    externalUserId: str
+    ownerUserId: str
+    bindSource: str = "claim_import"
+    firstImportBatchId: str | None = None
+    lastImportBatchId: str | None = None
+    createdAt: str
+    updatedAt: str
+
+
 class ImportBatch(BaseModel):
     id: str
     externalUserId: str
@@ -309,6 +321,7 @@ class WecomArchiveMessage(BaseModel):
 
 class AppState(BaseModel):
     users: list[User] = Field(default_factory=list)
+    wecom_identity_bindings: list[WecomIdentityBinding] = Field(default_factory=list)
     import_batches: list[ImportBatch] = Field(default_factory=list)
     raw_messages: list[RawMessage] = Field(default_factory=list)
     cards: list[Card] = Field(default_factory=list)

@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from uuid import uuid4
 from fastapi import HTTPException, status
 
-from app.models.domain import AppState, Card, CardMedia, Category, ImportBatch, LeadFollowUpLog, LeadReminder, MediaRetryJob, RawMessage, RelayConfig, RelayEntry, SkillRun, SyncCursor, User, UserNote, ViewEvent, WecomArchiveCursor, WecomArchiveMessage
+from app.models.domain import AppState, Card, CardMedia, Category, ImportBatch, LeadFollowUpLog, LeadReminder, MediaRetryJob, RawMessage, RelayConfig, RelayEntry, SkillRun, SyncCursor, User, UserNote, ViewEvent, WecomArchiveCursor, WecomArchiveMessage, WecomIdentityBinding
 from app.schemas.auth import MockLoginRequest
 from app.schemas.categories import CategoryCreateRequest
 from app.schemas.cards import CardCreateRequest, CardUpdateRequest, CreateRelayRequest, LeadReminderUpdateRequest, LeadReminderUpsertRequest, RecordViewRequest
@@ -27,6 +27,7 @@ from app.services.wecom_mock_service import WecomMockService
 
 LEAD_REMINDER_STATUSES = {"pending", "contacted", "invalid", "paused", "completed"}
 LEAD_CLOSED_STATUSES = {"invalid", "paused", "completed"}
+WECOM_EXTERNAL_BINDING_SOURCE = "wecom_external_user"
 
 
 class AppService:
@@ -210,16 +211,19 @@ class AppService:
         )
         try:
             content_object = self.content_object_adapter.from_wecom_batch(batch, batch_messages)
-            note_result = self.skill_router_service.run_content_to_note("unclaimed", content_object)
+            owner_user_id = self._resolve_owner_user_id_for_external(batch.externalUserId)
+            note_result = self.skill_router_service.run_content_to_note(owner_user_id, content_object)
             card = self._build_card_from_note_draft(batch, note_result.noteDraft, content_object)
             note = self._build_user_note_from_draft(batch, note_result.noteDraft, card.id)
+            self._apply_resolved_owner(batch, card, note, owner_user_id)
             batch.generatedCardId = card.id
             batch.generatedNoteId = note.id
-            batch.status = "success" if card.title else "failed"
+            batch.status = ("claimed" if owner_user_id != "unclaimed" else "success") if card.title else "failed"
+            batch.claimedByUserId = owner_user_id if owner_user_id != "unclaimed" and card.title else batch.claimedByUserId
             batch.errorMessage = None if card.title else "未能解析标题"
             batch.updatedAt = now_iso()
             skill_run = SkillRun.model_validate(note_result.skillRun.model_dump())
-            skill_run.outputRef = note.id if batch.status == "success" else batch.id
+            skill_run.outputRef = note.id if batch.status in {"success", "claimed"} else batch.id
             skill_run.inputSnapshot = {
                 **skill_run.inputSnapshot,
                 "importBatchId": batch.id,
@@ -468,7 +472,8 @@ class AppService:
             try:
                 content_object = self._build_archive_content_object(group_messages)
                 media_result = self._download_and_attach_archive_media(content_object, archive_client)
-                note_result = self.skill_router_service.run_content_to_note("unclaimed", content_object)
+                owner_user_id = self._resolve_owner_user_id_for_external(primary.fromUser)
+                note_result = self.skill_router_service.run_content_to_note(owner_user_id, content_object)
                 batch = self._build_archive_import_batch(primary, note_result.noteDraft.title, group_messages)
                 card = self._build_card_from_note_draft(batch, note_result.noteDraft, content_object)
                 note = self._build_user_note_from_draft(batch, note_result.noteDraft, card.id)
@@ -483,6 +488,9 @@ class AppService:
                     "archiveMsgIds": [item.msgId for item in group_messages],
                     "archiveMedia": media_result,
                 }
+                self._apply_resolved_owner(batch, card, note, owner_user_id)
+                batch.status = "claimed" if owner_user_id != "unclaimed" else batch.status
+                batch.claimedByUserId = owner_user_id if owner_user_id != "unclaimed" else batch.claimedByUserId
                 processed_at = now_iso()
                 for message in group_messages:
                     message.generatedNoteId = note.id
@@ -770,6 +778,49 @@ class AppService:
             updatedAt=now,
         )
 
+    def _resolve_owner_user_id_for_external(self, external_user_id: str | None) -> str:
+        if not external_user_id or external_user_id == "archive_unknown":
+            return "unclaimed"
+        binding = self.repo.get_wecom_identity_binding(WECOM_EXTERNAL_BINDING_SOURCE, external_user_id)
+        if not binding:
+            return "unclaimed"
+        if not self.repo.get_user(binding.ownerUserId):
+            return "unclaimed"
+        return binding.ownerUserId
+
+    def _apply_resolved_owner(self, batch: ImportBatch, card: Card, note: UserNote, owner_user_id: str) -> None:
+        if owner_user_id == "unclaimed":
+            return
+        card.ownerUserId = owner_user_id
+        note.ownerUserId = owner_user_id
+        note.status = "active"
+        batch.claimedByUserId = owner_user_id
+
+    def _save_wecom_identity_binding(
+        self,
+        external_user_id: str | None,
+        owner_user_id: str,
+        import_batch_id: str | None,
+        bind_source: str,
+    ) -> WecomIdentityBinding | None:
+        if not external_user_id or external_user_id == "archive_unknown":
+            return None
+        now = now_iso()
+        existing = self.repo.get_wecom_identity_binding(WECOM_EXTERNAL_BINDING_SOURCE, external_user_id)
+        binding = WecomIdentityBinding(
+            id=existing.id if existing else f"wecom_identity_{new_id('bind')}",
+            sourceType=WECOM_EXTERNAL_BINDING_SOURCE,
+            externalUserId=external_user_id,
+            ownerUserId=owner_user_id,
+            bindSource=bind_source,
+            firstImportBatchId=existing.firstImportBatchId if existing else import_batch_id,
+            lastImportBatchId=import_batch_id or (existing.lastImportBatchId if existing else None),
+            createdAt=existing.createdAt if existing else now,
+            updatedAt=now,
+        )
+        self.repo.save_wecom_identity_binding(binding)
+        return binding
+
     def list_import_failures(self, limit: int = 100) -> dict:
         failed_runs = self.repo.list_skill_runs(status="failed", limit=limit)
         failed_notifications = [item for item in self.repo.list_import_notifications() if item.status == "failed"]
@@ -981,9 +1032,20 @@ class AppService:
                 note.status = "active"
                 note.updatedAt = now
                 self.repo.save_user_note(note)
+        binding = self._save_wecom_identity_binding(
+            external_user_id=batch.externalUserId,
+            owner_user_id=user_id,
+            import_batch_id=batch.id,
+            bind_source="claim_import",
+        )
         self.repo.save_import_batch(batch)
         self.repo.save_card(card)
-        return {"importBatch": batch, "card": card, "note": self.repo.get_user_note(batch.generatedNoteId) if batch.generatedNoteId else None}
+        return {
+            "importBatch": batch,
+            "card": card,
+            "note": self.repo.get_user_note(batch.generatedNoteId) if batch.generatedNoteId else None,
+            "identityBinding": binding,
+        }
 
     def list_user_notes(
         self,

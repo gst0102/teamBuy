@@ -998,3 +998,23 @@ rm -rf
   - 成功回填 `note_f6cfe62264` 和 `note_866ce69346`。
   - `downloadedCount=2`、`failedCount=0`。
   - 当前已知历史无 URL 图片笔记已补齐。
+
+## 2026-06-18 补充：identity-core 第一版已实现
+
+- 已新增“认领后绑定”：
+  - 用户第一次认领导入后，保存 `wecom_external_user + externalUserId -> ownerUserId`。
+  - 后续同来源企业微信客服导入和会话存档导入，会自动归属到该小程序用户。
+  - 自动归属的 `ImportBatch.status=claimed`，不再进入“新导入资料/待认领”列表。
+  - `UserNote.ownerUserId` 和兼容 `Card.ownerUserId` 会直接写成绑定用户。
+- 新增模型/表：
+  - `WecomIdentityBinding`
+  - `wecom_identity_bindings`
+- 已验证：
+  - 认领后绑定。
+  - 企业微信客服 mock 后续导入自动归属。
+  - 会话存档后续导入自动归属。
+  - 相关后端测试 68 passed。
+- 当前边界：
+  - 仍然是 mock 登录用户 ID。
+  - 不是正式微信 code/openid/unionid 绑定。
+  - 上线前仍需补正式微信登录和更清晰的绑定管理/解绑能力。

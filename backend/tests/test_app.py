@@ -384,6 +384,54 @@ def test_wecom_archive_process_creates_user_note_and_is_idempotent(client, monke
     assert generated["generatedNote"] is not None
 
 
+def test_wecom_archive_process_auto_assigns_bound_external_user(client, monkeypatch):
+    login = client.post("/api/auth/mock-login", json={"nickname": "自动归属用户"}).json()["data"]
+    client.post(
+        "/api/wecom/mock-sync",
+        json={"externalUserId": "wm_bound_customer", "conversationId": "conv_bound_claim", "fixture": "note"},
+    )
+    pending = client.get("/api/imports/pending").json()["data"]
+    target = pending[-1]
+    client.post(f"/api/imports/{target['id']}/claim", json={"userId": login["id"]})
+    monkeypatch.setattr(settings, "admin_token", "archive-admin")
+    payload = {
+        "corpId": "ww_archive_bound",
+        "messages": [
+            {
+                "seq": 303,
+                "msgid": "archive_bound_msg_001",
+                "action": "send",
+                "from": "wm_bound_customer",
+                "tolist": ["user_sales"],
+                "msgtime": "2026-06-17T18:45:00+08:00",
+                "msgtype": "text",
+                "decryptedPayload": {
+                    "msgid": "archive_bound_msg_001",
+                    "action": "send",
+                    "from": "wm_bound_customer",
+                    "tolist": ["user_sales"],
+                    "msgtime": "2026-06-17T18:45:00+08:00",
+                    "msgtype": "text",
+                    "text": {"content": "绑定后自动进入我的笔记"},
+                },
+            }
+        ],
+    }
+
+    saved = client.post("/api/wecom/archive/mock-messages", json=payload, headers={"X-Admin-Token": "archive-admin"})
+    processed = client.post("/api/wecom/archive/process", headers={"X-Admin-Token": "archive-admin"})
+    notes = client.get("/api/notes", params={"ownerUserId": login["id"]}).json()["data"]
+    pending_after = client.get("/api/imports/pending").json()["data"]
+
+    assert saved.status_code == 200
+    assert processed.status_code == 200
+    result = processed.json()["data"]
+    assert result["processedCount"] == 1
+    note_id = result["processed"][0]["noteId"]
+    assert any(item["id"] == note_id and item["ownerUserId"] == login["id"] for item in notes)
+    assert not any(item["generatedNote"] and item["generatedNote"]["id"] == note_id for item in pending_after)
+
+
 def test_wecom_archive_process_parses_note_items(client, monkeypatch):
     monkeypatch.setattr(settings, "admin_token", "archive-admin")
     payload = {
@@ -1227,10 +1275,21 @@ def test_claim_import_and_publish_flow(client):
     assert card["ownerUserId"] == login["id"]
     assert note["ownerUserId"] == login["id"]
     assert note["status"] == "active"
+    assert claim.json()["data"]["identityBinding"]["externalUserId"] == "external_claim"
+    assert claim.json()["data"]["identityBinding"]["ownerUserId"] == login["id"]
 
     publish = client.post(f"/api/cards/{card['id']}/publish", json={"userId": login["id"]})
     assert publish.status_code == 200
     assert publish.json()["data"]["status"] == "published"
+
+    client.post(
+        "/api/wecom/mock-sync",
+        json={"externalUserId": "external_claim", "conversationId": "conv_claim_followup", "fixture": "link"},
+    )
+    notes = client.get("/api/notes", params={"ownerUserId": login["id"]}).json()["data"]
+    pending_after = client.get("/api/imports/pending").json()["data"]
+    assert len(notes) >= 2
+    assert not any(item["externalUserId"] == "external_claim" and item["status"] != "claimed" for item in pending_after)
 
 
 def test_import_creates_claimable_user_note_and_note_crud(client):

@@ -5,6 +5,19 @@ create table if not exists users (
     updated_at timestamptz not null default now()
 );
 
+create table if not exists wecom_identity_bindings (
+    id text primary key,
+    payload jsonb not null,
+    source_type text,
+    external_user_id text,
+    owner_user_id text,
+    bind_source text,
+    first_import_batch_id text,
+    last_import_batch_id text,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
 create table if not exists import_batches (
     id text primary key,
     payload jsonb not null,
@@ -192,6 +205,9 @@ create table if not exists wecom_archive_messages (
 );
 
 create index if not exists idx_import_batches_status on import_batches (status);
+create index if not exists idx_wecom_identity_bindings_source_external on wecom_identity_bindings (source_type, external_user_id);
+create index if not exists idx_wecom_identity_bindings_owner on wecom_identity_bindings (owner_user_id, updated_at);
+create unique index if not exists uq_wecom_identity_bindings_source_external on wecom_identity_bindings (source_type, external_user_id);
 create index if not exists idx_import_batches_conversation on import_batches (external_user_id, conversation_id, started_at);
 create index if not exists idx_import_batches_claimed_by on import_batches (claimed_by_user_id);
 create index if not exists idx_raw_messages_batch on raw_messages (import_batch_id);

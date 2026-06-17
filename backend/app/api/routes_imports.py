@@ -24,5 +24,6 @@ def claim_import(import_id: str, payload: ClaimImportRequest, service: AppServic
             "importBatch": result["importBatch"].model_dump(),
             "card": result["card"].model_dump(),
             "note": result["note"].model_dump() if result.get("note") else None,
+            "identityBinding": result["identityBinding"].model_dump() if result.get("identityBinding") else None,
         }
     )
