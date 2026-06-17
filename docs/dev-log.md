@@ -1080,3 +1080,24 @@
 - `/tmp/teambuy-pytest-venv312/bin/python -m compileall backend/app backend/tests`：通过。
 - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_app.py -q -k "wecom_archive or wecom_config_check"`：4 项通过。
 - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_skill_router.py backend/tests/test_app.py backend/tests/test_media_processing_service.py backend/tests/test_media_storage_service.py -q`：54 项通过。
+
+## 2026-06-17
+
+### P0 第三阶段：会话存档事件服务器回调补齐
+
+- 新增专用会话存档事件服务器接口：
+  - `GET /api/wecom/archive/callback`
+  - `POST /api/wecom/archive/callback`
+- `GET` 验证成功时使用 `PlainTextResponse` 原样返回 `echostr`，用于企业微信后台保存 URL。
+- archive callback 默认复用现有 `WECOM_CALLBACK_TOKEN` 和 `WECOM_ENCODING_AES_KEY`。
+- 后续如需拆独立配置，可设置：
+  - `WECOM_ARCHIVE_CALLBACK_TOKEN`
+  - `WECOM_ARCHIVE_ENCODING_AES_KEY`
+- `GET /api/wecom/archive/config-check` 已返回 `callbackUrl`、callback token 配置状态和 AESKey 配置状态。
+- 用户曾把真实 `WECOM_ARCHIVE_SECRET` 写入配置文档；已从 `docs/stage2-docs/10-wecom-archive-config.md` 移除，保留占位符。真实 Secret 只能放 `.env`，不得写入 Git 文档。
+
+### 验证结果
+
+- `/tmp/teambuy-pytest-venv312/bin/python -m compileall backend/app backend/tests`：通过。
+- `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_app.py -q -k "wecom_archive or wecom_config_check"`：7 项通过。
+- `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_skill_router.py backend/tests/test_app.py backend/tests/test_media_processing_service.py backend/tests/test_media_storage_service.py -q`：57 项通过。

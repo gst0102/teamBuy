@@ -724,19 +724,23 @@ rm -rf
   - `wecom_archive_cursors`
   - `wecom_archive_messages`
 - 新增接口：
+  - `GET /api/wecom/archive/callback`
+  - `POST /api/wecom/archive/callback`
   - `GET /api/wecom/archive/config-check`
   - `GET /api/wecom/archive/cursor`
   - `GET /api/wecom/archive/messages`
   - `POST /api/wecom/archive/mock-messages`
+- 会话存档事件服务器当前默认复用 `WECOM_CALLBACK_TOKEN` 和 `WECOM_ENCODING_AES_KEY`；如后续拆独立配置，使用 `WECOM_ARCHIVE_CALLBACK_TOKEN` 和 `WECOM_ARCHIVE_ENCODING_AES_KEY`。
 - 原始会话存档消息查询和样例写入需要 admin token。
 - Codex 内置浏览器读取企业微信后台页面时，DOM/截图连续超时；本轮没有自动点击保存后台配置。后续应按配置文档人工粘贴公钥并保存，保存前确认页面是“会话内容存档”而不是“微信客服 API 接收消息”。
 - 最近验证：
   - `/tmp/teambuy-pytest-venv312/bin/python -m compileall backend/app backend/tests` 通过。
-  - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_app.py -q -k "wecom_archive or wecom_config_check"`：4 项通过。
-  - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_skill_router.py backend/tests/test_app.py backend/tests/test_media_processing_service.py backend/tests/test_media_storage_service.py -q`：54 项通过。
+  - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_app.py -q -k "wecom_archive or wecom_config_check"`：7 项通过。
+  - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_skill_router.py backend/tests/test_app.py backend/tests/test_media_processing_service.py backend/tests/test_media_storage_service.py -q`：57 项通过。
 - 下一步建议：
-  1. 在企业微信后台会话内容存档页粘贴 `docs/stage2-docs/10-wecom-archive-config.md` 里的公钥并保存。
-  2. 把后台会话内容存档 Secret 写入生产 `backend/.env` 的 `WECOM_ARCHIVE_SECRET`。
-  3. 生产调用 `/api/wecom/archive/config-check`，确认 `missing=[]`。
-  4. 接官方会话内容存档 SDK，拉取加密消息、解密、写入 `wecom_archive_messages` 并推进 `wecom_archive_cursors.seq`。
-  5. 把解密消息 Adapter 到 `ContentObject -> content-to-note -> UserNote`。
+  1. 部署生产后，企业微信后台“设置接收事件服务器”填写 `https://teambuy.lifelove.top/api/wecom/archive/callback`，Token / EncodingAESKey 先填生产 `backend/.env` 里的 `WECOM_CALLBACK_TOKEN` / `WECOM_ENCODING_AES_KEY`。
+  2. 在企业微信后台会话内容存档页粘贴 `docs/stage2-docs/10-wecom-archive-config.md` 里的公钥并保存。
+  3. 确认生产 `backend/.env` 已写入 `WECOM_ARCHIVE_SECRET`，但不要写入任何 Git 文档。
+  4. 生产调用 `/api/wecom/archive/config-check`，确认 `missing=[]` 且 `callbackUrl` 正确。
+  5. 接官方会话内容存档 SDK，拉取加密消息、解密、写入 `wecom_archive_messages` 并推进 `wecom_archive_cursors.seq`。
+  6. 把解密消息 Adapter 到 `ContentObject -> content-to-note -> UserNote`。

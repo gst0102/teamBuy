@@ -874,3 +874,16 @@ from ip=81.70.84.35
 - 不在超时后盲目点击或保存后台配置。
 - 优先用后端生成公钥和本地配置清单，让用户在后台粘贴确认。
 - 如果必须继续浏览器操作，改用截图/小范围字段读取，并在保存前让用户确认。
+
+## 2026-06-17：真实 Secret 不能写入项目文档
+
+问题：
+
+- `docs/stage2-docs/10-wecom-archive-config.md` 是会提交 Git 的配置清单。
+- 如果把真实 `WECOM_ARCHIVE_SECRET` 写进该文档，即使 `.env` 被忽略，Secret 仍会通过文档泄露。
+
+正确做法：
+
+- 真实 Secret 只写入 `backend/.env` 或服务器环境变量。
+- 文档和 `.env.example` 只能保留占位符。
+- 提交前用搜索确认真实 Secret 没有出现在 `docs/`、`backend/app/`、`backend/tests/` 或 `.env.example`。

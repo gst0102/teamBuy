@@ -17,6 +17,7 @@ from app.services.wecom_mock_service import WecomMockService
 
 router = APIRouter(prefix="/api/wecom", tags=["wecom"])
 KF_CALLBACK_PATH = "/kf/teamBuy/callback"
+ARCHIVE_CALLBACK_PATH = "/archive/callback"
 
 
 def _register_real_sync_task(sync_task_queue: SyncTaskQueue) -> None:
@@ -169,6 +170,50 @@ async def receive_callback(
     )
 
 
+@router.get(ARCHIVE_CALLBACK_PATH, response_class=PlainTextResponse)
+def verify_archive_callback(
+    msg_signature: str | None = Query(default=None),
+    timestamp: str | None = Query(default=None),
+    nonce: str | None = Query(default=None),
+    echostr: str | None = Query(default=None),
+    token: str | None = Query(default=None),
+):
+    callback_token = settings.wecom_archive_callback_token or settings.wecom_callback_token
+    callback_aes_key = settings.wecom_archive_encoding_aes_key or settings.wecom_encoding_aes_key
+    if token is not None and token != callback_token:
+        raise HTTPException(status_code=403, detail="token 验证失败")
+    if echostr and msg_signature and timestamp and nonce:
+        if not verify_signature(callback_token, timestamp, nonce, echostr, msg_signature):
+            raise HTTPException(status_code=403, detail="企业微信签名验证失败")
+        if callback_aes_key and settings.wecom_corp_id:
+            try:
+                return PlainTextResponse(decrypt_aes_message(callback_aes_key, echostr, settings.wecom_corp_id))
+            except WecomCryptoError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return PlainTextResponse(echostr or "verified")
+
+
+@router.post(ARCHIVE_CALLBACK_PATH, response_model=ApiResponse[dict])
+async def receive_archive_callback(request: Request):
+    raw_body = await request.body()
+    try:
+        payload = parse_callback_body(
+            raw_body,
+            request.headers.get("content-type", ""),
+            settings,
+            {
+                "msg_signature": request.query_params.get("msg_signature"),
+                "timestamp": request.query_params.get("timestamp"),
+                "nonce": request.query_params.get("nonce"),
+            },
+            token=settings.wecom_archive_callback_token or settings.wecom_callback_token,
+            encoding_aes_key=settings.wecom_archive_encoding_aes_key or settings.wecom_encoding_aes_key,
+        )
+    except (ValueError, WecomCryptoError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return ApiResponse(message="archive callback received", data={"callback": payload})
+
+
 @router.post("/mock-sync", response_model=ApiResponse[dict])
 def mock_sync(payload: MockImportRequest, service: AppService = Depends(get_app_service)):
     result = service.trigger_mock_import(payload.externalUserId, payload.conversationId, payload.fixture)
@@ -281,6 +326,9 @@ def archive_config_check():
         message="wecom archive config ready" if not missing else "wecom archive config incomplete",
         data={
             "enabled": settings.wecom_archive_enabled,
+            "callbackUrl": f"{settings.public_base_url.rstrip('/')}/api/wecom{ARCHIVE_CALLBACK_PATH}" if settings.public_base_url else "",
+            "callbackTokenConfigured": bool(settings.wecom_archive_callback_token or settings.wecom_callback_token),
+            "callbackAesKeyConfigured": bool(settings.wecom_archive_encoding_aes_key or settings.wecom_encoding_aes_key),
             "corpIdConfigured": bool(settings.wecom_corp_id),
             "archiveSecretConfigured": bool(settings.wecom_archive_secret),
             "privateKeyPath": _mask_path(settings.wecom_archive_private_key_path),

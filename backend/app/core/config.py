@@ -53,6 +53,8 @@ class Settings:
     wecom_use_mock: bool = env_value("WECOM_USE_MOCK", "true").lower() in {"1", "true", "yes"}
     wecom_archive_enabled: bool = env_value("WECOM_ARCHIVE_ENABLED", "false").lower() in {"1", "true", "yes"}
     wecom_archive_secret: str = env_value("WECOM_ARCHIVE_SECRET", "")
+    wecom_archive_callback_token: str = env_value("WECOM_ARCHIVE_CALLBACK_TOKEN", wecom_callback_token)
+    wecom_archive_encoding_aes_key: str = env_value("WECOM_ARCHIVE_ENCODING_AES_KEY", wecom_encoding_aes_key)
     wecom_archive_private_key_path: Path | None = env_path("WECOM_ARCHIVE_PRIVATE_KEY_PATH", "backend/secrets/wecom_archive_private.pem")
     wecom_archive_public_key_path: Path | None = env_path("WECOM_ARCHIVE_PUBLIC_KEY_PATH", "backend/secrets/wecom_archive_public.pem")
     wecom_archive_sdk_lib_path: Path | None = env_path("WECOM_ARCHIVE_SDK_LIB_PATH", "")

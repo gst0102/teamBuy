@@ -137,6 +137,39 @@ def test_wecom_config_check_reports_missing_real_fields(client, monkeypatch):
     assert payload["data"]["callbackUrl"].endswith("/api/wecom/kf/teamBuy/callback")
 
 
+def test_wecom_archive_callback_get_verify_reuses_callback_token(client, monkeypatch):
+    monkeypatch.setattr(settings, "wecom_callback_token", "shared-token")
+    monkeypatch.setattr(settings, "wecom_archive_callback_token", "shared-token")
+
+    response = client.get(
+        "/api/wecom/archive/callback",
+        params={"token": "shared-token", "echostr": "hello-archive"},
+    )
+
+    assert response.status_code == 200
+    assert response.text == "hello-archive"
+    assert response.headers["content-type"].startswith("text/plain")
+
+
+def test_wecom_archive_callback_rejects_wrong_token(client, monkeypatch):
+    monkeypatch.setattr(settings, "wecom_callback_token", "shared-token")
+    monkeypatch.setattr(settings, "wecom_archive_callback_token", "shared-token")
+
+    response = client.get(
+        "/api/wecom/archive/callback",
+        params={"token": "wrong-token", "echostr": "hello-archive"},
+    )
+
+    assert response.status_code == 403
+
+
+def test_wecom_archive_callback_post_accepts_event(client):
+    response = client.post("/api/wecom/archive/callback", json={"Event": "archive_event"})
+
+    assert response.status_code == 200
+    assert response.json()["data"]["callback"]["Event"] == "archive_event"
+
+
 def test_wecom_archive_config_check_reports_key_status(client, monkeypatch, tmp_path):
     private_key = tmp_path / "archive_private.pem"
     public_key = tmp_path / "archive_public.pem"
@@ -157,6 +190,8 @@ def test_wecom_archive_config_check_reports_key_status(client, monkeypatch, tmp_
     assert payload["data"]["enabled"] is True
     assert payload["data"]["privateKeyReadable"] is True
     assert payload["data"]["publicKey"] == "PUBLIC KEY"
+    assert payload["data"]["callbackUrl"].endswith("/api/wecom/archive/callback")
+    assert payload["data"]["callbackTokenConfigured"] is True
     assert payload["data"]["missing"] == []
 
 
