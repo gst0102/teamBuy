@@ -1539,3 +1539,8 @@
   - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_app.py -q -k "claim_import or wecom_archive_process_auto_assigns_bound_external_user"`：2 项通过。
   - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_app.py -q -k "wecom_archive"`：16 项通过。
   - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_skill_router.py backend/tests/test_app.py backend/tests/test_media_processing_service.py backend/tests/test_media_storage_service.py -q`：68 项通过。
+- 生产部署：
+  - 已同步后端代码并重建/重启 backend。
+  - `/health` 返回 ok。
+  - PostgreSQL 已确认存在 `wecom_identity_bindings` 表。
+  - 首次查表时 shell/SQL 引号写复杂导致 `syntax error`，已改用简单 `information_schema.tables` 查询确认。

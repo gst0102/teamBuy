@@ -1266,3 +1266,16 @@ from ip=81.70.84.35
 - 文档和验收中必须明确：
   - 这是“认领后补绑定”，不是正式微信登录身份打通。
   - 后续仍需接正式微信登录、unionid 或企业微信客户绑定管理。
+
+## 2026-06-18：远程 SQL 检查少写嵌套转义
+
+问题：
+
+- 通过 SSH 在远程 shell 里再调用 `psql -c "select to_regclass('public.table')"` 时，嵌套引号和反斜杠很容易被 shell 改坏。
+- 本轮首次检查 `wecom_identity_bindings` 表时 SQL 变成了非法的 `to_regclass(\public...)`。
+
+正确做法：
+
+- 远程单行 SQL 尽量用简单查询，减少嵌套引号：
+  - `select count(*) from information_schema.tables where table_schema='public' and table_name='wecom_identity_bindings';`
+- 或者把 SQL 放进 heredoc，避免多层 shell 转义。

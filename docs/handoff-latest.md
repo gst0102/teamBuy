@@ -1018,3 +1018,8 @@ rm -rf
   - 仍然是 mock 登录用户 ID。
   - 不是正式微信 code/openid/unionid 绑定。
   - 上线前仍需补正式微信登录和更清晰的绑定管理/解绑能力。
+- 生产状态：
+  - 已部署生产。
+  - `/health` 正常。
+  - PostgreSQL `wecom_identity_bindings` 表已确认存在。
+  - 下一次用户从小程序认领某个来源后，同来源后续新消息应自动进入其笔记库。
