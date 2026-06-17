@@ -757,3 +757,8 @@ rm -rf
 - 生产验证：
   - `/api/wecom/archive/config-check`：`success=true`，`missing=[]`。
   - `/api/wecom/archive/callback`：用生产 token 验证返回 `hello-archive`。
+- 用户企业微信后台截图里填写的是本地 `backend/.env` 的 Token/AESKey；生产原 `WECOM_CALLBACK_TOKEN` / `WECOM_ENCODING_AES_KEY` 与本地不同。
+- 为避免影响已跑通的微信客服回调，已将本地这组值写入生产 archive 专用配置：
+  - `WECOM_ARCHIVE_CALLBACK_TOKEN`
+  - `WECOM_ARCHIVE_ENCODING_AES_KEY`
+- 重启后公网验证 `/api/wecom/archive/callback` 使用 archive 专用 token 返回 `archive-token-ok`。

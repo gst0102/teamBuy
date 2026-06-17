@@ -928,3 +928,19 @@ from ip=81.70.84.35
 
 - 远程临时 Python 脚本优先用普通字符串拼接。
 - 打印环境变量时只打印 `SET/MISSING` 和长度，不打印真实 Secret。
+
+## 2026-06-17：本地 `.env` 和生产 `.env` 可能不是同一组值
+
+问题：
+
+- 用户按本地 `backend/.env` 填写企业微信会话存档事件服务器 Token / EncodingAESKey。
+- 生产服务器 `backend/.env` 仍是另一组旧的 `WECOM_CALLBACK_TOKEN` / `WECOM_ENCODING_AES_KEY`，导致后台验证不通过。
+
+正确做法：
+
+- 排查企业微信后台验证失败时，要同时对比本地和生产 `.env`，只输出 mask 和长度，不输出完整密钥。
+- 不要为了 archive callback 直接覆盖已跑通的客服回调 Token/AESKey。
+- 若 archive 页面使用了新的一组值，写入生产：
+  - `WECOM_ARCHIVE_CALLBACK_TOKEN`
+  - `WECOM_ARCHIVE_ENCODING_AES_KEY`
+- 写入后重启 backend，并用公网 `echostr` 验证成功后再让用户保存企业微信后台。

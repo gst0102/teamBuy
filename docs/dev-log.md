@@ -1132,3 +1132,17 @@
   - `GET https://teambuy.lifelove.top/api/wecom/archive/config-check` 返回 `success=true` 且 `missing=[]`。
   - `GET https://teambuy.lifelove.top/api/wecom/archive/callback?token=...&echostr=hello-archive` 返回 `hello-archive`。
 - 操作中遇到一次脚本错误：远程 Python 状态打印脚本因 shell 引号和 f-string 嵌套导致 `NameError: name 'SET' is not defined`。已改为普通字符串拼接后验证通过。
+
+### 生产 archive callback Token 修正
+
+- 用户截图中填写的是本地 `backend/.env` 的 `WECOM_CALLBACK_TOKEN` / `WECOM_ENCODING_AES_KEY` 实际值。
+- 核对发现本地 `.env` 与生产服务器 `.env` 中这两项不一致：
+  - 本地 Token mask：`MB4rf...1ygTu`
+  - 生产旧 Token mask：`mHJCN...FuUhL`
+- 为避免破坏已跑通的微信客服回调，没有覆盖生产原 `WECOM_CALLBACK_TOKEN` / `WECOM_ENCODING_AES_KEY`。
+- 已把本地这组值写入生产 archive 专用配置：
+  - `WECOM_ARCHIVE_CALLBACK_TOKEN`
+  - `WECOM_ARCHIVE_ENCODING_AES_KEY`
+- 重启 backend 后，公网验证：
+  - `GET /api/wecom/archive/callback?token=...&echostr=archive-token-ok` 返回 `archive-token-ok`。
+- 容器重启瞬间 Nginx 曾短暂返回 502，等待后端启动完成后恢复正常。
