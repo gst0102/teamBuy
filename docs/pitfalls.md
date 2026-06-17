@@ -887,3 +887,17 @@ from ip=81.70.84.35
 - 真实 Secret 只写入 `backend/.env` 或服务器环境变量。
 - 文档和 `.env.example` 只能保留占位符。
 - 提交前用搜索确认真实 Secret 没有出现在 `docs/`、`backend/app/`、`backend/tests/` 或 `.env.example`。
+
+## 2026-06-17：推送 GitHub 不等于生产已部署
+
+问题：
+
+- `feat: add wecom archive callback` 已推送到 GitHub，但当前 Codex 本机 SSH 到 `ubuntu@81.70.84.35` 返回 `Permission denied (publickey)`。
+- 公网访问 `/api/wecom/archive/callback` 和 `/api/wecom/archive/config-check` 仍返回 404。
+- 如果只看到 Git 推送成功就让用户去企业微信后台保存 URL，会导致后台验证失败。
+
+正确做法：
+
+- 部署前后都要用公网 URL 验证新路由。
+- SSH 权限不可用时，明确告知“生产未部署”，并让用户提供服务器权限或手动执行部署命令。
+- 企业微信后台保存前必须看到公网 `GET /api/wecom/archive/callback?...` 能返回明文 `echostr`。

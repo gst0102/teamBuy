@@ -1101,3 +1101,12 @@
 - `/tmp/teambuy-pytest-venv312/bin/python -m compileall backend/app backend/tests`：通过。
 - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_app.py -q -k "wecom_archive or wecom_config_check"`：7 项通过。
 - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_skill_router.py backend/tests/test_app.py backend/tests/test_media_processing_service.py backend/tests/test_media_storage_service.py -q`：57 项通过。
+
+### 部署结果
+
+- 已提交并推送：`1b9cf52 feat: add wecom archive callback`。
+- 尝试 SSH 部署生产：`ubuntu@81.70.84.35` 返回 `Permission denied (publickey)`，当前 Codex 本机没有可用服务器 SSH 权限。
+- 公网验证：
+  - `GET https://teambuy.lifelove.top/api/wecom/archive/callback?...` 当前返回 404。
+  - `GET https://teambuy.lifelove.top/api/wecom/archive/config-check` 当前返回 404。
+- 结论：代码已到 GitHub，生产尚未部署。需要提供服务器 SSH 权限，或在服务器手动执行部署命令。
