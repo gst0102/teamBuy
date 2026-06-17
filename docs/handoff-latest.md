@@ -739,7 +739,7 @@ rm -rf
   - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_skill_router.py backend/tests/test_app.py backend/tests/test_media_processing_service.py backend/tests/test_media_storage_service.py -q`：57 项通过。
 - 下一步建议：
   1. 生产已部署完成。公网 `/api/wecom/archive/config-check` 返回 `success=true`、`missing=[]`，公网 `/api/wecom/archive/callback?token=...&echostr=hello-archive` 返回 `hello-archive`。
-  2. 企业微信后台“设置接收事件服务器”现在可以填写 `https://teambuy.lifelove.top/api/wecom/archive/callback`，Token / EncodingAESKey 填生产 `backend/.env` 里的 `WECOM_CALLBACK_TOKEN` / `WECOM_ENCODING_AES_KEY`。
+  2. 企业微信后台“设置接收事件服务器”已保存成功。当前生产 archive 专用 Token / EncodingAESKey 已写入 `WECOM_ARCHIVE_CALLBACK_TOKEN` / `WECOM_ARCHIVE_ENCODING_AES_KEY`。
   3. 在企业微信后台会话内容存档页粘贴 `docs/stage2-docs/10-wecom-archive-config.md` 里的公钥并保存。
   4. 不要把真实 `WECOM_ARCHIVE_SECRET` 写入任何 Git 文档；真实值只留在生产 `backend/.env`。
   5. 接官方会话内容存档 SDK，拉取加密消息、解密、写入 `wecom_archive_messages` 并推进 `wecom_archive_cursors.seq`。
@@ -762,3 +762,4 @@ rm -rf
   - `WECOM_ARCHIVE_CALLBACK_TOKEN`
   - `WECOM_ARCHIVE_ENCODING_AES_KEY`
 - 重启后公网验证 `/api/wecom/archive/callback` 使用 archive 专用 token 返回 `archive-token-ok`。
+- 用户确认企业微信后台“接收事件服务器”已保存成功。

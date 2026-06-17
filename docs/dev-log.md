@@ -1146,3 +1146,4 @@
 - 重启 backend 后，公网验证：
   - `GET /api/wecom/archive/callback?token=...&echostr=archive-token-ok` 返回 `archive-token-ok`。
 - 容器重启瞬间 Nginx 曾短暂返回 502，等待后端启动完成后恢复正常。
+- 用户确认企业微信后台“接收事件服务器”已保存成功。
