@@ -1234,3 +1234,18 @@ from ip=81.70.84.35
   - 分别结合 `GetDataLen()`、`GetIndexLen()` 用 `ctypes.string_at(ptr, len)` 读取。
 - 每次调用后必须 `FreeMediaData(media_data)`。
 - 下载失败只记录 `media_retry_jobs`，不能让文字笔记入库失败。
+
+## 2026-06-18：sdkfileid 不能原样拼进媒体文件名
+
+问题：
+
+- 企业微信会话存档的 `sdkfileid` 可能非常长。
+- 历史媒体回填时，旧文件名规则把完整 `sdkfileid` 拼进本地文件名，生产报错：
+  - `[Errno 36] File name too long`
+- 这会导致媒体已经下载成功，但保存到 `/media` 时失败。
+
+正确做法：
+
+- `build_media_file_name()` 对清洗后的媒体 ID 做长度限制。
+- 超过 80 字符时保留短前缀，并追加 `sha256(media_id)` 的短 hash。
+- 文件名既可追溯一部分来源，又不会超过常见文件系统单文件名长度限制。

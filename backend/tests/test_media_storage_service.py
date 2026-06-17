@@ -32,6 +32,18 @@ def test_media_storage_local_backend_writes_file(tmp_path):
     assert stored_files[0].read_bytes() == b"image"
 
 
+def test_media_storage_truncates_very_long_media_id(tmp_path):
+    service = MediaStorageService(storage_mode="local", storage_dir=tmp_path, public_url_prefix="/media")
+    long_media_id = "CoME" + ("abcdef1234567890" * 40)
+
+    url = service.store_bytes(long_media_id, "image", b"image", "image/webp")
+
+    stored_files = list(tmp_path.iterdir())
+    assert len(stored_files) == 1
+    assert len(stored_files[0].name) < 120
+    assert url.endswith(".webp")
+
+
 def test_media_storage_object_backend_uploads_to_s3_compatible_client():
     fake_client = FakeObjectClient()
     service = MediaStorageService(

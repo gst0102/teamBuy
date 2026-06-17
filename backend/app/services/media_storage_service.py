@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import hashlib
 from pathlib import Path
 from typing import Protocol
 
@@ -204,6 +205,9 @@ class MediaStorageService:
 def build_media_file_name(media_id: str, media_type: str, content_type: str | None, filename: str | None) -> str:
     extension = resolve_extension(media_type, content_type, filename)
     safe_media_id = re.sub(r"[^A-Za-z0-9_.-]+", "_", media_id).strip("_") or "media"
+    if len(safe_media_id) > 80:
+        digest = hashlib.sha256(media_id.encode("utf-8")).hexdigest()[:16]
+        safe_media_id = f"{safe_media_id[:48]}-{digest}"
     return f"{new_id('media')}-{safe_media_id}.{extension}"
 
 

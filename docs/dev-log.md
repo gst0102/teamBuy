@@ -1504,3 +1504,11 @@
   - `/tmp/teambuy-pytest-venv312/bin/python -m compileall backend/app backend/tests`：通过。
   - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_app.py -q -k "wecom_archive"`：15 项通过。
   - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_skill_router.py backend/tests/test_app.py backend/tests/test_media_processing_service.py backend/tests/test_media_storage_service.py -q`：66 项通过。
+- 生产首次回填结果：
+  - `checkedNoteCount=3`。
+  - `downloadedCount=5`，成功回填 `note_da48e67e5e` 的 5 张图并更新兼容卡片。
+  - `failedCount=2`，失败原因是超长 `sdkfileid` 原样拼进文件名导致 `[Errno 36] File name too long`。
+- 已迭代修复：
+  - 媒体文件名生成对超长 media ID 做截断并追加 `sha256` 短 hash。
+  - 新增超长 media ID 存储测试。
+  - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_skill_router.py backend/tests/test_app.py backend/tests/test_media_processing_service.py backend/tests/test_media_storage_service.py -q`：67 项通过。
