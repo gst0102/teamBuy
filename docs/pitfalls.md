@@ -1135,3 +1135,17 @@ from ip=81.70.84.35
 - 多文件同步目标必须是明确目录，并以 `/` 结尾。
 - 部署前优先同步整个 `backend/app/` 到 `/home/ubuntu/teamBuy/backend/app/`。
 - 如果误建目录，只能先确认目录内容，再逐个删除明确文件，最后移除空目录。
+
+## 2026-06-18：会话存档多消息排查要按 seq 完整倒序列出
+
+问题：
+
+- 用户一次发送多条消息时，worker 可能分批拉取和处理。
+- 本轮 03:30 图片测试中，第一次只看到了 `seq=3/4` 图片和 `seq=2` 旧文本，误以为“今天天气很好啊”没有进入。
+- 补查最近 50 条并按 seq 倒序列出后，确认文本在 `seq=5`，已生成 `note_8bbadcfa3d`。
+
+正确做法：
+
+- 排查“某句话是否进入”时，不只看当前拉取返回的 `rawCount`。
+- 必须查询 `/api/wecom/archive/messages?limit=50`，按 `seq` 倒序列出 `msgType/msgTime/text/generatedNoteId`。
+- 多条图片/文字混发时，以 cursor seq 和消息列表为最终判断依据。

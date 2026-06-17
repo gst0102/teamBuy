@@ -1406,3 +1406,15 @@
 - 当前结论：
   - 自动 worker 已能拉取并处理图片消息。
   - 会话存档图片本体下载/转存尚未实现，当前只保存 `sdkfileid` 引用，下一步应实现 `GetMediaData -> storage -> media.url`。
+
+### 03:31 文本归档补查
+
+- 用户纠正 03:30 左右发送的文本为“今天天气很好啊”。
+- 手动补查生产 `/api/wecom/archive/messages?limit=50` 后确认：
+  - `seq=5`
+  - `msgType=text`
+  - `msgTime=2026-06-18T03:31:36.779+08:00`
+  - `text=今天天气很好啊`
+  - `generatedNoteId=note_8bbadcfa3d`
+- cursor 已推进到 `seq=5`。
+- 本轮前一次排查只看到了 `seq=3/4` 图片和 `seq=2` 旧文本，漏看了后续 `seq=5` 文本。后续排查多消息场景时，必须先按 seq 倒序完整列出最近消息，再下结论。
