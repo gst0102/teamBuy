@@ -1247,3 +1247,14 @@
 - `GET /api/wecom/archive/messages?limit=20` 返回空数组。
 - 后端容器日志显示接口调用均为 200，没有 SDK 错误。
 - 当前判断：后端 SDK 调用链路正常，但企业微信尚未返回该测试消息。下一步优先核对发送消息的成员是否在会话存档开启范围内、消息对象是否属于会话存档支持的外部联系人会话，以及是否需要等待企业微信归档延迟。
+
+### 22:11 真实消息拉取验证
+
+- 用户反馈 2026-06-17 22:11 发送测试消息：“今天天气怎么样”。
+- 22:13 调用生产 `POST /api/wecom/archive/pull`：
+  - 返回 200。
+  - `rawCount=0`、`savedCount=0`。
+  - cursor 仍为 `seq=0`、`status=success`。
+- `GET /api/wecom/archive/messages?limit=50` 仍为空数组。
+- `POST /api/wecom/archive/process` 返回 200，`processedCount=0`。
+- 当前判断保持不变：SDK 调用链路通，但企业微信没有返回测试会话数据。优先排查会话存档开启范围、成员服务版生效状态、聊天对象是否为外部联系人，以及是否使用了企业微信客服通道而非普通外部联系人会话。
