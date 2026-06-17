@@ -2,7 +2,7 @@ const { cacheButtonPosition } = require("./utils/nav");
 
 App({
   globalData: {
-    apiBaseUrl: "http://127.0.0.1:8000",
+    apiBaseUrl: "https://teambuy.lifelove.top",
     currentUser: null,
     buttonPosition: null
   },

@@ -1330,3 +1330,19 @@
   - 生成兼容 `Card`：`card_ec1e041dde`。
 - 结论：
   - P0 会话内容存档真实链路已跑通：企业微信外部联系人消息 -> SDK 拉取解密 -> 原始归档入库 -> content-to-note -> UserNote。
+
+## 2026-06-18
+
+### 小程序上传 sitemap 修复
+
+- 用户在微信开发者工具点击“上传”时报错：
+  - `Error: 系统错误，错误码：-80055`
+  - `Invalid SiteMap, sitemap错误，缺少rules字段`
+- 检查发现 `miniprogram/sitemap.json` 原本为 `{"rules":[]}`。
+- 部分微信开发者工具版本会把空 `rules` 视为无效 sitemap。
+- 已改为明确允许所有页面：
+  - `{"action":"allow","page":"*"}`
+- 同时临时将小程序 `apiBaseUrl` 指向生产后端，方便测试真实会话存档生成的笔记。
+- 验证：
+  - 小程序 JS `node --check` 通过。
+  - `app.json`、`project.config.json`、`sitemap.json` JSON 校验通过。

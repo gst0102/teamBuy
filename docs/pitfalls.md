@@ -1091,3 +1091,18 @@ from ip=81.70.84.35
   - 秒级时间戳按秒处理。
   - 已有字符串保持字符串。
 - 归一化后使用上海时区 ISO 字符串保存。
+
+## 2026-06-18：微信开发者工具上传要求 sitemap rules 非空
+
+问题：
+
+- `miniprogram/sitemap.json` 写成 `{"rules":[]}` 时，部分微信开发者工具版本上传会报：
+  - `-80055 Invalid SiteMap`
+  - `缺少rules字段`
+- 这不是 mock 数据问题，也不是后端接口问题。
+
+正确做法：
+
+- 使用明确规则：
+  - `{"action":"allow","page":"*"}`
+- 上传前用 JSON 校验确认 `sitemap.json` 语法正确。
