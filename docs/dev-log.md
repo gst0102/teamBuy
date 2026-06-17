@@ -1276,3 +1276,18 @@
 - 当前判断：
   - 客服通道在本系统侧配置项齐全。
   - 但企业微信客服 API 权限/可信 IP/后台接收服务器配置尚未完全打通，当前不能通过客服 `sync_msg` 验证用户消息是否进入客服通道。
+
+### AgentId 对应关系排查
+
+- 用户反馈企业微信后台有两个自建应用：
+  - `AgentId=1000003`
+  - `AgentId=1000004`
+- 当前生产 `.env` 没有保存 `WECOM_AGENT_ID`，只有 `WECOM_SECRET`、`WECOM_ARCHIVE_SECRET`、`WECOM_OPEN_KFID`。
+- 使用生产 `WECOM_SECRET` 调用 `gettoken` 成功：
+  - `errcode=0`
+  - `errmsg=ok`
+- 继续调用 `agent/get` 查询 `1000003` 和 `1000004` 均失败：
+  - `errcode=60020`
+  - `errmsg=not allow to access from your ip`
+  - 来源 IP：`81.70.84.35`
+- 当前无法从 API 侧确认当前 `WECOM_SECRET` 对应哪个 AgentId。需要在企业微信后台给对应自建应用加入可信 IP `81.70.84.35` 后，再查 `agent/get`。

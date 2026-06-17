@@ -1046,3 +1046,18 @@ from ip=81.70.84.35
   - 生产 `POST /api/wecom/real-sync` 能返回 200，且不是 mock。
   - 后端日志能看到 `/api/wecom/kf/teamBuy/callback` 或 `sync_msg` 成功数据。
 - 遇到 `48002 api forbidden`，先查企业微信后台权限、可信 IP、客服 API 能力开通状态，不要优先改代码。
+
+## 2026-06-17：能 gettoken 不代表能查询自建应用 Agent
+
+问题：
+
+- 使用 `WECOM_SECRET` 调用 `gettoken` 可以成功。
+- 但继续调用 `agent/get` 查询自建应用时，企业微信返回 `errcode=60020 not allow to access from your ip`。
+- 本轮来源 IP 为 `81.70.84.35`。
+- 如果只看 `gettoken` 成功，会误以为该 Secret 对应的自建应用权限已经完全可用。
+
+正确做法：
+
+- 需要在企业微信后台对应自建应用配置可信 IP：`81.70.84.35`。
+- 再调用 `agent/get?agentid=...` 判断当前 Secret 是否能访问 `1000003` 或 `1000004`。
+- 生产 `.env` 后续建议增加非密钥配置 `WECOM_AGENT_ID`，避免只靠 Secret 反推 AgentId。
