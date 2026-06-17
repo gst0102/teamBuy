@@ -1389,3 +1389,20 @@
 - 本轮部署中出现一次 rsync 目标路径错误：
   - 误把文件同步到服务器 `/home/ubuntu/teamBuy/backend/app/PLACEHOLDER/`。
   - 已逐个删除误建的 `config.py`、`main.py`，再移除空目录。
+
+### 03:30 图片归档 worker 验证
+
+- 用户反馈 2026-06-18 03:30 左右发送两个图片和一条文字。
+- 生产 worker 状态：
+  - `workerEnabled=true`
+  - `workerIntervalSeconds=60`
+  - cursor 已推进到 `seq=4`
+  - `lastSyncedAt=2026-06-18T03:31:40+08:00`
+- 归档消息结果：
+  - `seq=3`：`msgType=image`，`msgTime=2026-06-18T03:31:26.537+08:00`，包含 `sdkfileid`、`md5sum`、`filesize`，已生成 `note_f6cfe62264`。
+  - `seq=4`：`msgType=image`，`msgTime=2026-06-18T03:31:27.713+08:00`，包含 `sdkfileid`、`md5sum`、`filesize`，已生成 `note_866ce69346`。
+  - 03:30 附近未看到新文本消息；最近文本是 `seq=2`，内容为“高士图 13024199490  明天出去玩”，时间 `2026-06-18T03:04:41+08:00`。
+- 两条图片目前进入“新导入资料”，标题/正文为“收到image素材，媒体稍后转存。”，各自 `noteMediaCount=1`。
+- 当前结论：
+  - 自动 worker 已能拉取并处理图片消息。
+  - 会话存档图片本体下载/转存尚未实现，当前只保存 `sdkfileid` 引用，下一步应实现 `GetMediaData -> storage -> media.url`。
