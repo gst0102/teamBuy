@@ -1564,3 +1564,10 @@
   - `find miniprogram -name '*.js' -print0 | xargs -0 -n1 node --check`：通过。
 - 迭代记录：
   - 初次回归时旧测试仍断言“URL 文本必须路由到 content-to-note”，已改为“普通 URL 默认 link-bookmark，明确整理指令才 content-to-note”。
+- 生产部署：
+  - 已同步后端代码到服务器并重建/重启 backend 容器。
+  - `https://teambuy.lifelove.top/health` 返回 ok。
+  - 生产 `POST /api/skills/route` 验证：
+    - `我收藏一下 https://example.com/a` 返回 `intent=link_bookmark`、`skillId=link-bookmark`。
+    - `整理链接` 返回 `intent=content_to_note`、`skillId=content-to-note`、`source=exact_command`。
+  - 小程序端“整理为笔记”按钮需要通过微信开发者工具重新上传/预览后才能在体验版看到。
