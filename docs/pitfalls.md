@@ -1217,3 +1217,20 @@ from ip=81.70.84.35
   - 微信客服消息，等待客服通道权限打通后通知外部联系人。
   - 小程序订阅消息，等待小程序用户绑定后通知用户。
 - 通知失败只记录失败和重试，不回滚已生成的 `UserNote`。
+
+## 2026-06-18：会话存档 GetMediaData 读取二进制不能按字符串处理
+
+问题：
+
+- 官方 C SDK 的 `GetMediaData` 返回 `MediaData_t`，包含 `data` 指针和 `data_len`。
+- 图片、视频是二进制内容，如果把 `GetData()` 结果当 `c_char_p` 或按 C 字符串读取，可能遇到 `\0` 截断，导致图片损坏。
+- `outindexbuf` 也必须按 SDK 返回的长度传给下一次调用，直到 `IsMediaDataFinish()` 为真。
+
+正确做法：
+
+- ctypes 绑定时：
+  - `GetData.restype = c_void_p`
+  - `GetOutIndexBuf.restype = c_void_p`
+  - 分别结合 `GetDataLen()`、`GetIndexLen()` 用 `ctypes.string_at(ptr, len)` 读取。
+- 每次调用后必须 `FreeMediaData(media_data)`。
+- 下载失败只记录 `media_retry_jobs`，不能让文字笔记入库失败。

@@ -1467,3 +1467,18 @@
   - 当前 P0 真实企业微信链路允许生产小范围联调，但 P1/P2 前应拆 staging/test 环境。
   - 会话存档不能直接回复用户“已完成”，通知后续独立走企业微信应用消息、微信客服消息或小程序订阅消息。
 - 本轮未改业务代码，仅更新长期记忆文档。
+
+### 会话存档媒体下载转存实现
+
+- 已实现 `sdkfileid -> GetMediaData -> 媒体处理/转存 -> UserNote.media.url`：
+  - `WecomArchiveClient.download_media()` 调用官方 C SDK `GetMediaData`。
+  - `_FinanceSdk.get_media_data()` 按 `outindexbuf/is_finish` 循环下载分片，并用长度读取二进制数据。
+  - `process_wecom_archive_messages()` 在生成 `content-to-note` 前先补齐媒体 URL。
+  - 下载成功后复用现有 `MediaProcessingService` 和 `MediaStorageService`，图片会转 WebP 并存到 `/media`。
+  - 成功 URL 写入 `UserNote.media.url`，并通过现有草稿构建同步进入兼容 `Card.coverUrl/Card.media.url`。
+  - 下载失败不阻断文字笔记生成，会写入 `media_retry_jobs`，处理结果返回 `failedCount`。
+- 后台 worker 和手动 `POST /api/wecom/archive/process` 都已传入 archive client，因此自动处理和手动处理都会尝试下载媒体。
+- 验证：
+  - `/tmp/teambuy-pytest-venv312/bin/python -m compileall backend/app backend/tests`：通过。
+  - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_app.py -q -k "wecom_archive"`：14 项通过。
+  - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_skill_router.py backend/tests/test_app.py backend/tests/test_media_processing_service.py backend/tests/test_media_storage_service.py -q`：65 项通过。

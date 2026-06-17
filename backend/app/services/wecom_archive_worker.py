@@ -55,7 +55,11 @@ class WecomArchiveWorker:
             self.archive_client,
             self.pull_limit,
         )
-        process_result = await asyncio.to_thread(self.service.process_wecom_archive_messages, self.pull_limit)
+        process_result = await asyncio.to_thread(
+            self.service.process_wecom_archive_messages,
+            self.pull_limit,
+            self.archive_client,
+        )
         return {"pull": pull_result, "process": process_result}
 
     async def _run(self) -> None:

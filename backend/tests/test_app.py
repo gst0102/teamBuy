@@ -45,6 +45,13 @@ class FakeSyncTaskQueue:
         return []
 
 
+def make_test_image_bytes() -> bytes:
+    image = Image.new("RGB", (80, 60), (200, 60, 60))
+    output = BytesIO()
+    image.save(output, format="PNG")
+    return output.getvalue()
+
+
 def test_wecom_archive_worker_run_once_pulls_then_processes():
     class FakeService:
         def __init__(self):
@@ -54,8 +61,8 @@ def test_wecom_archive_worker_run_once_pulls_then_processes():
             self.calls.append(("pull", archive_client, limit))
             return {"savedCount": 1}
 
-        def process_wecom_archive_messages(self, limit):
-            self.calls.append(("process", limit))
+        def process_wecom_archive_messages(self, limit, archive_client=None):
+            self.calls.append(("process", limit, archive_client))
             return {"processedCount": 1}
 
     fake_service = FakeService()
@@ -71,7 +78,7 @@ def test_wecom_archive_worker_run_once_pulls_then_processes():
     result = asyncio.run(worker.run_once())
 
     assert result == {"pull": {"savedCount": 1}, "process": {"processedCount": 1}}
-    assert fake_service.calls == [("pull", fake_client, 20), ("process", 20)]
+    assert fake_service.calls == [("pull", fake_client, 20), ("process", 20, fake_client)]
 
 
 def test_wecom_callback_get_verify(client):
@@ -491,6 +498,152 @@ def test_wecom_archive_process_groups_nearby_messages(client, monkeypatch):
     assert len(generated["rawMessageIds"]) == 2
     assert "房源：碧桂园一房" in generated["generatedNote"]["body"]
     assert generated["generatedNote"]["media"][0]["mediaId"] == "image-sdk-file"
+
+
+def test_wecom_archive_process_downloads_and_attaches_image_media(client, monkeypatch, tmp_path):
+    class FakeArchiveClient:
+        def __init__(self):
+            self.downloaded_media_ids = []
+
+        def download_media(self, media_id):
+            self.downloaded_media_ids.append(media_id)
+            return DownloadedMedia(make_test_image_bytes(), "image/png", "archive-cover.png")
+
+    monkeypatch.setattr(settings, "admin_token", "archive-admin")
+    service = client.app.dependency_overrides[get_app_service]()
+    media_dir = tmp_path / "archive-media"
+    service.media_storage_service = MediaStorageService("local", media_dir, "/media")
+    fake_archive_client = FakeArchiveClient()
+    client.app.dependency_overrides[get_wecom_archive_client] = lambda: fake_archive_client
+    payload = {
+        "corpId": "ww_archive_media",
+        "messages": [
+            {
+                "seq": 501,
+                "msgid": "archive_media_text_001",
+                "action": "send",
+                "from": "wm_customer",
+                "tolist": ["user_sales"],
+                "msgtime": 1781725300000,
+                "msgtype": "text",
+                "decryptedPayload": {
+                    "msgid": "archive_media_text_001",
+                    "action": "send",
+                    "from": "wm_customer",
+                    "tolist": ["user_sales"],
+                    "msgtime": 1781725300000,
+                    "msgtype": "text",
+                    "text": {"content": "带图房源：碧桂园一房"},
+                },
+            },
+            {
+                "seq": 502,
+                "msgid": "archive_media_image_001",
+                "action": "send",
+                "from": "wm_customer",
+                "tolist": ["user_sales"],
+                "msgtime": 1781725302000,
+                "msgtype": "image",
+                "decryptedPayload": {
+                    "msgid": "archive_media_image_001",
+                    "action": "send",
+                    "from": "wm_customer",
+                    "tolist": ["user_sales"],
+                    "msgtime": 1781725302000,
+                    "msgtype": "image",
+                    "image": {"sdkfileid": "archive-image-sdk-001", "md5sum": "image-md5", "filesize": 1024},
+                },
+            },
+        ],
+    }
+
+    saved = client.post("/api/wecom/archive/mock-messages", json=payload, headers={"X-Admin-Token": "archive-admin"})
+    processed = client.post("/api/wecom/archive/process", headers={"X-Admin-Token": "archive-admin"})
+    pending = client.get("/api/imports/pending").json()["data"]
+
+    assert saved.status_code == 200
+    assert processed.status_code == 200
+    result = processed.json()["data"]
+    assert result["processedCount"] == 1
+    assert result["processed"][0]["media"]["downloadedCount"] == 1
+    assert fake_archive_client.downloaded_media_ids == ["archive-image-sdk-001"]
+    note_id = result["processed"][0]["noteId"]
+    generated = next(item for item in pending if item["generatedNote"] and item["generatedNote"]["id"] == note_id)
+    note = generated["generatedNote"]
+    card = generated["generatedCard"]
+    assert note["media"][0]["url"].startswith("/media/")
+    assert note["media"][0]["url"].endswith(".webp")
+    assert card["coverUrl"] == note["media"][0]["url"]
+    assert card["media"][0]["url"] == note["media"][0]["url"]
+    assert len(list(media_dir.iterdir())) == 1
+
+
+def test_wecom_archive_media_download_failure_keeps_note_and_records_retry(client, monkeypatch):
+    class FailingArchiveClient:
+        def download_media(self, media_id):
+            raise RuntimeError("temporary archive media failure")
+
+    monkeypatch.setattr(settings, "admin_token", "archive-admin")
+    client.app.dependency_overrides[get_wecom_archive_client] = lambda: FailingArchiveClient()
+    payload = {
+        "corpId": "ww_archive_media_failed",
+        "messages": [
+            {
+                "seq": 511,
+                "msgid": "archive_media_failed_text_001",
+                "action": "send",
+                "from": "wm_customer",
+                "tolist": ["user_sales"],
+                "msgtime": 1781725400000,
+                "msgtype": "text",
+                "decryptedPayload": {
+                    "msgid": "archive_media_failed_text_001",
+                    "action": "send",
+                    "from": "wm_customer",
+                    "tolist": ["user_sales"],
+                    "msgtime": 1781725400000,
+                    "msgtype": "text",
+                    "text": {"content": "图片先失败，文字仍要入库"},
+                },
+            },
+            {
+                "seq": 512,
+                "msgid": "archive_media_failed_image_001",
+                "action": "send",
+                "from": "wm_customer",
+                "tolist": ["user_sales"],
+                "msgtime": 1781725401000,
+                "msgtype": "image",
+                "decryptedPayload": {
+                    "msgid": "archive_media_failed_image_001",
+                    "action": "send",
+                    "from": "wm_customer",
+                    "tolist": ["user_sales"],
+                    "msgtime": 1781725401000,
+                    "msgtype": "image",
+                    "image": {"sdkfileid": "archive-image-sdk-failed", "md5sum": "image-md5", "filesize": 1024},
+                },
+            },
+        ],
+    }
+
+    saved = client.post("/api/wecom/archive/mock-messages", json=payload, headers={"X-Admin-Token": "archive-admin"})
+    processed = client.post("/api/wecom/archive/process", headers={"X-Admin-Token": "archive-admin"})
+    pending = client.get("/api/imports/pending").json()["data"]
+    retries = client.get("/api/wecom/media-retries", headers={"X-Admin-Token": "archive-admin"}).json()["data"]
+
+    assert saved.status_code == 200
+    assert processed.status_code == 200
+    result = processed.json()["data"]
+    assert result["processedCount"] == 1
+    assert result["processed"][0]["media"]["failedCount"] == 1
+    note_id = result["processed"][0]["noteId"]
+    generated = next(item for item in pending if item["generatedNote"] and item["generatedNote"]["id"] == note_id)
+    assert "图片先失败" in generated["generatedNote"]["body"]
+    assert generated["generatedNote"]["media"][0]["mediaId"] == "archive-image-sdk-failed"
+    assert generated["generatedNote"]["media"][0]["url"] is None
+    assert retries[-1]["mediaId"] == "archive-image-sdk-failed"
+    assert retries[-1]["status"] == "failed"
 
 
 def test_real_sync_uses_mock_real_response_while_mock_enabled(client):

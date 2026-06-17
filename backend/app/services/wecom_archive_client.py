@@ -8,6 +8,8 @@ from pathlib import Path
 from Crypto.Cipher import PKCS1_v1_5
 from Crypto.PublicKey import RSA
 
+from app.services.wecom_client import DownloadedMedia
+
 
 class WecomArchiveClientError(RuntimeError):
     pass
@@ -86,6 +88,22 @@ class WecomArchiveClient:
         finally:
             sdk.close()
 
+    def download_media(self, sdk_file_id: str) -> DownloadedMedia:
+        missing = self.missing_fields()
+        if missing:
+            raise WecomArchiveClientError("会话内容存档 SDK 配置不完整: " + ", ".join(missing))
+        sdk = _FinanceSdk(self.sdk_lib_path, self.corp_id, self.secret)
+        try:
+            content = sdk.get_media_data(
+                sdk_file_id=sdk_file_id,
+                proxy=self.proxy,
+                proxy_password=self.proxy_password,
+                timeout_seconds=self.timeout_seconds,
+            )
+        finally:
+            sdk.close()
+        return DownloadedMedia(content=content, content_type=None, filename=None)
+
     def _decrypt_item(self, sdk: "_FinanceSdk", item: dict) -> dict:
         encrypt_random_key = item.get("encrypt_random_key") or item.get("encryptRandomKey")
         encrypt_chat_msg = item.get("encrypt_chat_msg") or item.get("encryptChatMsg")
@@ -150,6 +168,28 @@ class _FinanceSdk:
         self.lib.GetChatData.restype = ctypes.c_int
         self.lib.DecryptData.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_void_p]
         self.lib.DecryptData.restype = ctypes.c_int
+        self.lib.GetMediaData.argtypes = [
+            ctypes.c_void_p,
+            ctypes.c_char_p,
+            ctypes.c_char_p,
+            ctypes.c_char_p,
+            ctypes.c_char_p,
+            ctypes.c_int,
+            ctypes.c_void_p,
+        ]
+        self.lib.GetMediaData.restype = ctypes.c_int
+        self.lib.NewMediaData.restype = ctypes.c_void_p
+        self.lib.FreeMediaData.argtypes = [ctypes.c_void_p]
+        self.lib.GetOutIndexBuf.argtypes = [ctypes.c_void_p]
+        self.lib.GetOutIndexBuf.restype = ctypes.c_void_p
+        self.lib.GetData.argtypes = [ctypes.c_void_p]
+        self.lib.GetData.restype = ctypes.c_void_p
+        self.lib.GetIndexLen.argtypes = [ctypes.c_void_p]
+        self.lib.GetIndexLen.restype = ctypes.c_int
+        self.lib.GetDataLen.argtypes = [ctypes.c_void_p]
+        self.lib.GetDataLen.restype = ctypes.c_int
+        self.lib.IsMediaDataFinish.argtypes = [ctypes.c_void_p]
+        self.lib.IsMediaDataFinish.restype = ctypes.c_int
 
     def get_chat_data(self, seq: int, limit: int, proxy: str, proxy_password: str, timeout_seconds: int) -> str:
         output = self.lib.NewSlice()
@@ -182,6 +222,39 @@ class _FinanceSdk:
             return self._slice_text(output)
         finally:
             self.lib.FreeSlice(output)
+
+    def get_media_data(self, sdk_file_id: str, proxy: str, proxy_password: str, timeout_seconds: int) -> bytes:
+        index_buf = b""
+        chunks: list[bytes] = []
+        for _ in range(10000):
+            media_data = self.lib.NewMediaData()
+            try:
+                ret = self.lib.GetMediaData(
+                    self.sdk,
+                    index_buf,
+                    sdk_file_id.encode("utf-8"),
+                    proxy.encode("utf-8"),
+                    proxy_password.encode("utf-8"),
+                    timeout_seconds,
+                    media_data,
+                )
+                if ret != 0:
+                    raise WecomArchiveClientError(f"Finance SDK GetMediaData failed: {ret}")
+                data_len = self.lib.GetDataLen(media_data)
+                if data_len > 0:
+                    data_ptr = self.lib.GetData(media_data)
+                    if data_ptr:
+                        chunks.append(ctypes.string_at(data_ptr, data_len))
+                if self.lib.IsMediaDataFinish(media_data):
+                    return b"".join(chunks)
+                index_len = self.lib.GetIndexLen(media_data)
+                index_ptr = self.lib.GetOutIndexBuf(media_data)
+                index_buf = ctypes.string_at(index_ptr, index_len) if index_ptr and index_len > 0 else b""
+                if not index_buf:
+                    raise WecomArchiveClientError("Finance SDK GetMediaData missing next index buffer")
+            finally:
+                self.lib.FreeMediaData(media_data)
+        raise WecomArchiveClientError("Finance SDK GetMediaData exceeded max chunks")
 
     def _slice_text(self, value) -> str:
         content = self.lib.GetContentFromSlice(value)

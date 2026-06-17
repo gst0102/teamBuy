@@ -946,3 +946,26 @@ rm -rf
   - 小程序本地缓存只是展示优化，不能作为资料库正式图片存储。
   - 会话存档不负责回复用户；处理完成通知要后续单独接企业微信应用消息、微信客服消息或小程序订阅消息。
   - P0 阶段可继续在生产小范围联调，P1/P2 前建议拆 staging/test 环境。
+
+## 2026-06-18 补充：会话存档媒体下载转存已实现
+
+- 已实现会话存档媒体本体下载：
+  - `backend/app/services/wecom_archive_client.py` 新增 `download_media()`。
+  - 官方 SDK `GetMediaData` 按 `outindexbuf` 分片循环下载，直到 `is_finish`。
+  - 二进制数据通过 `GetDataLen/GetData` 长度读取，避免字符串截断。
+- 已接入归档处理：
+  - `process_wecom_archive_messages(limit, archive_client)` 会在生成 `content-to-note` 前补齐 media URL。
+  - 成功下载的图片进入现有媒体处理链路，转 WebP 后保存到 `/media`。
+  - `UserNote.media.url`、兼容 `Card.coverUrl` 和 `Card.media.url` 会拿到正式媒体地址。
+  - 下载失败不阻断文字笔记，会记录 `media_retry_jobs`，结果里返回 `media.failedCount`。
+- worker 和手动接口都已传 archive client：
+  - 自动 worker 每轮 `pull -> process` 会尝试下载媒体。
+  - `POST /api/wecom/archive/process` 手动触发也会尝试下载媒体。
+- 已验证：
+  - compileall 通过。
+  - `pytest backend/tests/test_app.py -q -k "wecom_archive"`：14 passed。
+  - 相关后端测试：65 passed。
+- 下一步建议：
+  1. 部署生产。
+  2. 用用户新发的“图片 + 文字 + 微信笔记”真实验证 `media.downloadedCount` 和小程序图片展示。
+  3. 对已经生成但没有 URL 的旧图片笔记，后续可以补一个“历史媒体补下载/回填”脚本或后台按钮。

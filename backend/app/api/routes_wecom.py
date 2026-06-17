@@ -372,9 +372,13 @@ def process_archive_messages(
     admin_token: str | None = Query(default=None, alias="adminToken"),
     x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
     service: AppService = Depends(get_app_service),
+    archive_client: WecomArchiveClient = Depends(get_wecom_archive_client),
 ):
     _verify_admin_token(x_admin_token or admin_token)
-    return ApiResponse(message="archive messages processed", data=service.process_wecom_archive_messages(limit=limit))
+    return ApiResponse(
+        message="archive messages processed",
+        data=service.process_wecom_archive_messages(limit=limit, archive_client=archive_client),
+    )
 
 
 @router.get("/archive/cursor", response_model=ApiResponse[dict | None])

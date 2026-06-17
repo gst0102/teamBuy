@@ -454,7 +454,7 @@ class AppService:
                 },
             ) from exc
 
-    def process_wecom_archive_messages(self, limit: int = 100) -> dict:
+    def process_wecom_archive_messages(self, limit: int = 100, archive_client=None) -> dict:
         messages = [
             item
             for item in self.repo.list_wecom_archive_messages(limit=limit)
@@ -467,6 +467,7 @@ class AppService:
             primary = group_messages[0]
             try:
                 content_object = self._build_archive_content_object(group_messages)
+                media_result = self._download_and_attach_archive_media(content_object, archive_client)
                 note_result = self.skill_router_service.run_content_to_note("unclaimed", content_object)
                 batch = self._build_archive_import_batch(primary, note_result.noteDraft.title, group_messages)
                 card = self._build_card_from_note_draft(batch, note_result.noteDraft, content_object)
@@ -480,6 +481,7 @@ class AppService:
                     "wecomArchiveMessageIds": [item.id for item in group_messages],
                     "archiveSeqs": [item.seq for item in group_messages],
                     "archiveMsgIds": [item.msgId for item in group_messages],
+                    "archiveMedia": media_result,
                 }
                 processed_at = now_iso()
                 for message in group_messages:
@@ -500,6 +502,7 @@ class AppService:
                         "seqs": [item.seq for item in group_messages],
                         "noteId": note.id,
                         "cardId": card.id,
+                        "media": media_result,
                     }
                 )
             except Exception as exc:
@@ -521,6 +524,60 @@ class AppService:
             "processed": processed,
             "failed": failed,
         }
+
+    def _download_and_attach_archive_media(self, content_object: ContentObjectPayload, archive_client=None) -> dict:
+        result = {"downloadedCount": 0, "reusedCount": 0, "failedCount": 0, "skippedCount": 0}
+        if not content_object.media:
+            return result
+        for item in content_object.media:
+            media_id = item.mediaId
+            media_type = item.type if item.type in {"image", "video", "file"} else "file"
+            if not media_id:
+                result["skippedCount"] += 1
+                continue
+            existing_url = self.get_successful_media_url(media_id)
+            if existing_url:
+                item.url = existing_url
+                result["reusedCount"] += 1
+                continue
+            if item.url:
+                result["skippedCount"] += 1
+                continue
+            if archive_client is None:
+                self.save_media_retry_failure(
+                    media_id=media_id,
+                    media_type=media_type,
+                    open_kfid="wecom_archive",
+                    error_message="archive media client not configured",
+                )
+                result["failedCount"] += 1
+                continue
+            try:
+                downloaded = archive_client.download_media(media_id)
+                url = self.process_and_store_media(
+                    media_id=media_id,
+                    media_type=media_type,
+                    content=downloaded.content,
+                    content_type=downloaded.content_type,
+                    filename=downloaded.filename,
+                )
+                item.url = url
+                self.save_media_retry_success(
+                    media_id=media_id,
+                    media_type=media_type,
+                    open_kfid="wecom_archive",
+                    local_media_url=url,
+                )
+                result["downloadedCount"] += 1
+            except Exception as exc:
+                self.save_media_retry_failure(
+                    media_id=media_id,
+                    media_type=media_type,
+                    open_kfid="wecom_archive",
+                    error_message=str(exc),
+                )
+                result["failedCount"] += 1
+        return result
 
     def _normalize_archive_msg_time(self, value) -> str | None:
         if value is None or value == "":
