@@ -1590,3 +1590,14 @@
   - `find miniprogram -name '*.js' -print0 | xargs -0 -n1 node --check`：通过。
 - 迭代记录：
   - “轻收藏”不能只作为 `UserNote` 的一个状态塞进通用编辑页；它需要独立的文章收藏卡展示形态。
+  - 生产验证时首次误打 `content-to-note/run` 深度整理接口，该接口不会返回轻收藏字段；已改用容器内 `run_link_bookmark()` 做无写库验证。
+- 生产部署：
+  - 已同步后端代码到服务器并重建/重启 backend 容器。
+  - `https://teambuy.lifelove.top/health` 返回 ok。
+  - 生产容器内验证 `run_link_bookmark()` 返回：
+    - `intent=link_bookmark`
+    - `category=文章收藏`
+    - `sourceName=example.com`
+    - `sourceLabel=网页链接`
+    - `openAction=copy_link`
+  - 小程序文章卡片 UI 需要通过微信开发者工具重新预览/上传后才能看到。

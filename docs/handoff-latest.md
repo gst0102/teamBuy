@@ -1046,6 +1046,7 @@ rm -rf
   - 小程序 JS 静态检查通过。
   - 生产 `/health` 正常。
   - 生产路由验证：普通 URL 返回 `link_bookmark`，`整理链接` 返回 `content_to_note`。
+  - 生产容器内 `run_link_bookmark()` 验证轻收藏字段已包含 `category/sourceName/sourceLabel/openAction/sourceUrl`。
 - 当前边界：
   - 轻收藏第一版不抓取全文，只保存来源链接、标题、封面和简短描述。
   - 非公众号普通外链在微信小程序内不能保证直接打开，当前降级为复制链接。
