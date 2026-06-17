@@ -16,6 +16,27 @@ const TEMPLATE_META = {
   }
 };
 
+function formatDateTime(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (num) => `${num}`.padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function buildBookmark(note) {
+  const config = note.visibilityConfig || {};
+  const tags = Array.isArray(config.tags) ? config.tags : [];
+  return {
+    sourceUrl: config.sourceUrl || "",
+    sourceName: config.sourceName || "链接来源",
+    sourceLabel: config.sourceLabel || "网页链接",
+    category: config.category || "文章收藏",
+    tags,
+    collectedAtText: formatDateTime(note.createdAt)
+  };
+}
+
 Page({
   data: {
     user: null,
@@ -33,6 +54,7 @@ Page({
       visibilityConfig: {}
     },
     isBookmark: false,
+    bookmark: {},
     saving: false
   },
   onLoad(options) {
@@ -56,6 +78,7 @@ Page({
     try {
       const res = await api.fetchNote(noteId, user.id);
       const note = res.data || {};
+      const isBookmark = (note.visibilityConfig || {}).contentMode === "bookmark";
       this.setData({
         form: {
           title: note.title || "",
@@ -68,7 +91,8 @@ Page({
           media: note.media || [],
           visibilityConfig: note.visibilityConfig || {}
         },
-        isBookmark: (note.visibilityConfig || {}).contentMode === "bookmark"
+        isBookmark,
+        bookmark: isBookmark ? buildBookmark(note) : {}
       });
     } catch (error) {
       wx.showToast({ title: error.detail || "笔记加载失败", icon: "none" });
@@ -119,7 +143,8 @@ Page({
           media: note.media || [],
           visibilityConfig: note.visibilityConfig || {}
         },
-        isBookmark: false
+        isBookmark: false,
+        bookmark: {}
       });
       wx.showToast({ title: "已整理", icon: "success" });
     } catch (error) {
@@ -127,6 +152,28 @@ Page({
     } finally {
       this.setData({ saving: false });
     }
+  },
+  handleOpenSource() {
+    const { sourceUrl } = this.data.bookmark || {};
+    if (!sourceUrl) {
+      wx.showToast({ title: "没有原文链接", icon: "none" });
+      return;
+    }
+    if (/mp\.weixin\.qq\.com/i.test(sourceUrl) && typeof wx.openOfficialAccountArticle === "function") {
+      wx.openOfficialAccountArticle({
+        url: sourceUrl,
+        fail: () => this.copySourceUrl(sourceUrl)
+      });
+      return;
+    }
+    this.copySourceUrl(sourceUrl);
+  },
+  copySourceUrl(url) {
+    wx.setClipboardData({
+      data: url,
+      success: () => wx.showToast({ title: "链接已复制", icon: "success" }),
+      fail: () => wx.showToast({ title: "复制失败", icon: "none" })
+    });
   },
   handleDelete() {
     const { user, noteId } = this.data;

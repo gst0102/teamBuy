@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from urllib.parse import urlparse
 from datetime import datetime, timezone
 
 from app.schemas.skills import (
@@ -219,6 +220,7 @@ class SkillRouterService:
         title = self._guess_title(content, link.title if link else "已收藏链接") if link else self._guess_title(content, "已收藏链接")
         description = (link.description or "").strip() if link else ""
         url = link.url if link else ""
+        host = urlparse(url).netloc if url else ""
         body_parts = [part for part in [description, url] if part]
         body = "\n".join(body_parts) or "已收藏，稍后可整理为笔记。"
         summary = description or "已收藏，待整理。"
@@ -233,9 +235,13 @@ class SkillRouterService:
             visibilityConfig={
                 "contentMode": "bookmark",
                 "tags": ["文章", "链接", "未整理"],
+                "category": "文章收藏",
                 "showSource": True,
                 "canDeepOrganize": True,
                 "sourceUrl": url,
+                "sourceName": host or "链接来源",
+                "sourceLabel": "公众号文章" if "mp.weixin.qq.com" in host else "网页链接",
+                "openAction": "official_account_article" if "mp.weixin.qq.com" in host else "copy_link",
             },
         )
 

@@ -1249,6 +1249,10 @@ def test_link_import_uses_thumbnail_and_source_url(client):
     assert card["coverUrl"] == "https://example.com/cover.jpg"
     assert note["visibilityConfig"]["contentMode"] == "bookmark"
     assert note["visibilityConfig"]["tags"] == ["文章", "链接", "未整理"]
+    assert note["visibilityConfig"]["category"] == "文章收藏"
+    assert note["visibilityConfig"]["sourceUrl"] == "https://example.com/group-buy"
+    assert note["visibilityConfig"]["sourceName"] == "example.com"
+    assert note["visibilityConfig"]["sourceLabel"] == "网页链接"
 
     claim = client.post(f"/api/imports/{latest['id']}/claim", json={"userId": login["id"]})
     note_id = claim.json()["data"]["note"]["id"]

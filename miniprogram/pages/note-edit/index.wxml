@@ -1,7 +1,40 @@
 <view class="page-shell">
   <custom-nav title="笔记详情" />
 
-  <view class="template-bar">
+  <view class="bookmark-article" wx:if="{{isBookmark}}">
+    <image wx:if="{{form.coverUrl}}" class="bookmark-cover" src="{{form.coverUrl}}" mode="aspectFill"></image>
+    <view wx:else class="bookmark-cover placeholder">文</view>
+    <view class="bookmark-main">
+      <view class="bookmark-source">{{bookmark.sourceLabel}} · {{bookmark.sourceName}}</view>
+      <view class="bookmark-title">{{form.title}}</view>
+      <view class="bookmark-summary">{{form.summary || '已收藏，待整理。'}}</view>
+    </view>
+    <view class="bookmark-info">
+      <view>
+        <text>分类</text>
+        <text>{{bookmark.category}}</text>
+      </view>
+      <view>
+        <text>收藏时间</text>
+        <text>{{bookmark.collectedAtText || '刚刚'}}</text>
+      </view>
+      <view>
+        <text>来源</text>
+        <text>{{bookmark.sourceName}}</text>
+      </view>
+    </view>
+    <view class="bookmark-tags" wx:if="{{bookmark.tags.length}}">
+      <block wx:for="{{bookmark.tags}}" wx:key="*this">
+        <text>{{item}}</text>
+      </block>
+    </view>
+    <view class="bookmark-buttons">
+      <button class="open-btn" bindtap="handleOpenSource">打开原文</button>
+      <button class="organize-btn" loading="{{saving}}" bindtap="handleOrganize">整理为笔记</button>
+    </view>
+  </view>
+
+  <view class="template-bar" wx:if="{{!isBookmark}}">
     <view>
       <view class="template-label">{{template.label}}</view>
       <view class="template-desc">按这些字段补充，会更方便后续展示。</view>
@@ -13,15 +46,8 @@
     </view>
   </view>
 
-  <view class="bookmark-panel" wx:if="{{isBookmark}}">
-    <view>
-      <view class="bookmark-title">已收藏链接</view>
-      <view class="bookmark-desc">可先保存标题和标签，需要时再整理成笔记。</view>
-    </view>
-    <button class="organize-btn" loading="{{saving}}" bindtap="handleOrganize">整理为笔记</button>
-  </view>
-
   <view class="form-panel">
+    <view class="section-title" wx:if="{{isBookmark}}">基础信息</view>
     <view class="field">
       <view class="label">标题</view>
       <input class="input" value="{{form.title}}" data-key="title" bindinput="handleInput" placeholder="请输入笔记标题" />
@@ -32,23 +58,23 @@
       <textarea class="textarea small" value="{{form.summary}}" data-key="summary" bindinput="handleInput" placeholder="一句话概括这条资料"></textarea>
     </view>
 
-    <view class="field">
+    <view class="field" wx:if="{{!isBookmark}}">
       <view class="label">正文</view>
       <textarea class="textarea" value="{{form.body}}" data-key="body" bindinput="handleInput" placeholder="整理后的正文内容"></textarea>
     </view>
 
-    <view class="field">
+    <view class="field" wx:if="{{!isBookmark}}">
       <view class="label">电话</view>
       <input class="input" value="{{form.phone}}" data-key="phone" bindinput="handleInput" placeholder="可选" />
     </view>
 
-    <view class="field">
+    <view class="field" wx:if="{{!isBookmark}}">
       <view class="label">位置</view>
       <input class="input" value="{{form.locationText}}" data-key="locationText" bindinput="handleInput" placeholder="可选" />
     </view>
   </view>
 
-  <view class="media-panel" wx:if="{{form.coverUrl || form.media.length}}">
+  <view class="media-panel" wx:if="{{!isBookmark && (form.coverUrl || form.media.length)}}">
     <image wx:if="{{form.coverUrl}}" class="cover" src="{{form.coverUrl}}" mode="aspectFill"></image>
     <view class="media-count">素材 {{form.media.length}}</view>
   </view>

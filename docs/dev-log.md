@@ -1571,3 +1571,22 @@
     - `我收藏一下 https://example.com/a` 返回 `intent=link_bookmark`、`skillId=link-bookmark`。
     - `整理链接` 返回 `intent=content_to_note`、`skillId=content-to-note`、`source=exact_command`。
   - 小程序端“整理为笔记”按钮需要通过微信开发者工具重新上传/预览后才能在体验版看到。
+
+### URL 轻收藏 UI 修正：从通用笔记改为文章收藏卡
+
+- 用户反馈：
+  - 上一版轻收藏点进去仍像通用模板，不符合“轻收藏”的第一层体验。
+  - 轻收藏应像微信公众号文章卡：标题、封面、来源、收藏时间、分类、标签、一句话摘要和原始链接。
+- 已修正：
+  - 后端 `link-bookmark` 增加 `visibilityConfig.category/sourceName/sourceLabel/openAction`。
+  - 小程序“我的笔记”列表中，轻收藏显示为文章收藏卡。
+  - 点击轻收藏卡片默认打开原文；公众号文章优先尝试 `wx.openOfficialAccountArticle`，普通网页按微信限制降级复制链接。
+  - “整理 / 编辑”和“删除”变成卡片底部次级动作。
+  - 轻收藏详情页先展示文章卡、来源、收藏时间、基础分类和标签，不再先显示通用资料模板。
+  - 轻收藏详情页只暴露标题和一句话摘要基础编辑，点击“整理为笔记”后再进入深度笔记字段。
+- 验证：
+  - `/tmp/teambuy-pytest-venv312/bin/python -m compileall backend/app backend/tests`：通过。
+  - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_skill_router.py backend/tests/test_app.py backend/tests/test_media_processing_service.py backend/tests/test_media_storage_service.py -q`：70 项通过。
+  - `find miniprogram -name '*.js' -print0 | xargs -0 -n1 node --check`：通过。
+- 迭代记录：
+  - “轻收藏”不能只作为 `UserNote` 的一个状态塞进通用编辑页；它需要独立的文章收藏卡展示形态。

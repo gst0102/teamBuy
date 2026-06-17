@@ -16,10 +16,34 @@
 
   <view class="note-list" wx:if="{{notes.length}}">
     <block wx:for="{{notes}}" wx:key="id">
-      <view class="note-card">
-        <image wx:if="{{item.coverUrl}}" class="note-cover" src="{{item.coverDisplayUrl ? item.coverDisplayUrl : item.coverUrl}}" mode="aspectFill" data-id="{{item.id}}" bindtap="handleOpen"></image>
-        <view wx:else class="note-cover placeholder" data-id="{{item.id}}" bindtap="handleOpen">记</view>
-        <view class="note-main" data-id="{{item.id}}" bindtap="handleOpen">
+      <view wx:if="{{item.isBookmark}}" class="bookmark-card" data-id="{{item.id}}" data-bookmark="{{true}}" data-url="{{item.sourceUrl}}" data-title="{{item.title}}" bindtap="handleOpen">
+        <image wx:if="{{item.coverUrl}}" class="bookmark-cover" src="{{item.coverDisplayUrl ? item.coverDisplayUrl : item.coverUrl}}" mode="aspectFill"></image>
+        <view wx:else class="bookmark-cover placeholder">文</view>
+        <view class="bookmark-body">
+          <view class="bookmark-source">{{item.sourceLabel}} · {{item.sourceName}}</view>
+          <view class="bookmark-title">{{item.title}}</view>
+          <view class="bookmark-summary">{{item.summary ? item.summary : '已收藏，待整理。'}}</view>
+          <view class="bookmark-meta">
+            <text>{{item.bookmarkCategory}}</text>
+            <text wx:if="{{item.collectedAtText}}">{{item.collectedAtText}}</text>
+          </view>
+          <view class="bookmark-tags" wx:if="{{item.bookmarkTags.length}}">
+            <block wx:for="{{item.bookmarkTags}}" wx:for-item="tag" wx:key="*this">
+              <text>{{tag}}</text>
+            </block>
+          </view>
+        </view>
+        <view class="bookmark-actions">
+          <text>打开原文</text>
+          <text data-id="{{item.id}}" catchtap="handleEdit">整理 / 编辑</text>
+          <text class="danger" data-id="{{item.id}}" catchtap="handleDelete">删除</text>
+        </view>
+      </view>
+
+      <view wx:else class="note-card">
+        <image wx:if="{{item.coverUrl}}" class="note-cover" src="{{item.coverDisplayUrl ? item.coverDisplayUrl : item.coverUrl}}" mode="aspectFill" data-id="{{item.id}}" bindtap="handleEdit"></image>
+        <view wx:else class="note-cover placeholder" data-id="{{item.id}}" bindtap="handleEdit">记</view>
+        <view class="note-main" data-id="{{item.id}}" bindtap="handleEdit">
           <view class="note-title">{{item.title}}</view>
           <view class="note-summary">{{item.summary ? item.summary : item.body}}</view>
           <view class="note-meta">
@@ -29,7 +53,7 @@
           </view>
         </view>
         <view class="note-actions">
-          <text data-id="{{item.id}}" bindtap="handleOpen">编辑</text>
+          <text data-id="{{item.id}}" bindtap="handleEdit">编辑</text>
           <text class="danger" data-id="{{item.id}}" bindtap="handleDelete">删除</text>
         </view>
       </view>
