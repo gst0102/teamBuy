@@ -965,7 +965,10 @@ rm -rf
   - compileall 通过。
   - `pytest backend/tests/test_app.py -q -k "wecom_archive"`：14 passed。
   - 相关后端测试：65 passed。
+- 生产状态：
+  - 已部署到 `https://teambuy.lifelove.top`。
+  - `/api/wecom/archive/config-check` 确认 `sdkConfigured=true`、`workerEnabled=true`、`missing=[]`。
+  - 手动 `/api/wecom/archive/process?limit=20` 返回 `processedCount=0`，当前没有未处理的新归档消息。
 - 下一步建议：
-  1. 部署生产。
-  2. 用用户新发的“图片 + 文字 + 微信笔记”真实验证 `media.downloadedCount` 和小程序图片展示。
-  3. 对已经生成但没有 URL 的旧图片笔记，后续可以补一个“历史媒体补下载/回填”脚本或后台按钮。
+  1. 用用户新发的“图片 + 文字 + 微信笔记”真实验证 `media.downloadedCount` 和小程序图片展示。
+  2. 对已经生成但没有 URL 的旧图片笔记，后续可以补一个“历史媒体补下载/回填”脚本或后台按钮。

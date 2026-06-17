@@ -1482,3 +1482,8 @@
   - `/tmp/teambuy-pytest-venv312/bin/python -m compileall backend/app backend/tests`：通过。
   - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_app.py -q -k "wecom_archive"`：14 项通过。
   - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_skill_router.py backend/tests/test_app.py backend/tests/test_media_processing_service.py backend/tests/test_media_storage_service.py -q`：65 项通过。
+- 生产部署：
+  - 已同步后端代码到服务器并重建/重启 backend 容器。
+  - 公网 `/api/wecom/archive/config-check` 确认 `sdkConfigured=true`、`workerEnabled=true`、`missing=[]`。
+  - 手动 `POST /api/wecom/archive/process?limit=20` 返回 200，当前 `processedCount=0`，表示没有未处理的新归档消息。
+  - 真实图片本体下载仍需用户重新发送一条新图片/微信笔记触发验证；已处理过的旧图片不会自动重跑。
