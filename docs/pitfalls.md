@@ -1028,3 +1028,21 @@ from ip=81.70.84.35
   - `./backend/secrets:/app/secrets:ro`
 - 上传或替换生产密钥、SDK 后，必须从容器内确认文件可见。
 - 最终以公网 `/api/wecom/archive/config-check` 的 `sdkLibReadable=true` 和 `sdkConfigured=true` 为准。
+
+## 2026-06-17：客服配置完整不代表 `sync_msg` 权限已开通
+
+问题：
+
+- 生产 `/api/wecom/config-check` 可以显示 `missing=[]`、`configured=true`。
+- 但调用企业微信客服 `sync_msg` 仍可能返回 `errcode=48002 api forbidden`。
+- 本轮错误里企业微信还提示来源 IP 为 `81.70.84.35`。
+- 如果只看本地配置完整，会误以为客服通道已经可用。
+
+正确做法：
+
+- 客服通道验收必须同时满足：
+  - 企业微信客服后台配置接收消息服务器 URL。
+  - 企业微信后台允许服务器 IP 或开放对应 API 权限。
+  - 生产 `POST /api/wecom/real-sync` 能返回 200，且不是 mock。
+  - 后端日志能看到 `/api/wecom/kf/teamBuy/callback` 或 `sync_msg` 成功数据。
+- 遇到 `48002 api forbidden`，先查企业微信后台权限、可信 IP、客服 API 能力开通状态，不要优先改代码。

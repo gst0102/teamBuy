@@ -849,3 +849,20 @@ rm -rf
   2. 确认这条消息是企业微信成员与微信外部联系人的会话，而不是普通内部会话、自己给自己发、或未纳入服务版范围的场景。
   3. 等待企业微信归档延迟后再拉取。
   4. 若持续为 0，再查看企业微信后台是否有“待同意/未授权/未生效”的范围提示。
+
+## 2026-06-17 补充：客服通道目前被企业微信拒绝
+
+- 生产客服配置检查通过：
+  - `useMock=false`
+  - `missing=[]`
+  - `configured=true`
+  - callback URL：`https://teambuy.lifelove.top/api/wecom/kf/teamBuy/callback`
+- 手动触发生产 `/api/wecom/real-sync` 时，企业微信返回：
+  - `errcode=48002`
+  - `errmsg=api forbidden`
+  - 来源 IP：`81.70.84.35`
+- 最近后端日志没有看到企业微信访问 `/api/wecom/kf/teamBuy/callback`。
+- 当前结论：
+  - 后端客服通道配置已具备。
+  - 企业微信后台客服 API 权限、可信 IP 或接收消息服务器配置仍需处理。
+  - 现在还不能确认用户测试消息是否走了客服通道，因为客服 `sync_msg` 被企业微信拒绝。

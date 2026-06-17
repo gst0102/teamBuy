@@ -1258,3 +1258,21 @@
 - `GET /api/wecom/archive/messages?limit=50` 仍为空数组。
 - `POST /api/wecom/archive/process` 返回 200，`processedCount=0`。
 - 当前判断保持不变：SDK 调用链路通，但企业微信没有返回测试会话数据。优先排查会话存档开启范围、成员服务版生效状态、聊天对象是否为外部联系人，以及是否使用了企业微信客服通道而非普通外部联系人会话。
+
+### 企业微信客服通道排查
+
+- 用户确认会话存档开启范围、外部联系人会话和服务版生效状态无明显问题，要求排查是否走了企业微信客服通道。
+- 生产 `GET /api/wecom/config-check`：
+  - `useMock=false`
+  - `missing=[]`
+  - `configured=true`
+  - callback URL 为 `https://teambuy.lifelove.top/api/wecom/kf/teamBuy/callback`
+- 生产 `POST /api/wecom/real-sync` 调用企业微信客服 `sync_msg` 失败：
+  - HTTP 502
+  - 企业微信返回 `errcode=48002`
+  - `errmsg=api forbidden`
+  - 提示来源 IP：`81.70.84.35`
+- 最近后端日志未看到企业微信访问 `/api/wecom/kf/teamBuy/callback`，只看到手动触发 `/api/wecom/real-sync` 后返回 502。
+- 当前判断：
+  - 客服通道在本系统侧配置项齐全。
+  - 但企业微信客服 API 权限/可信 IP/后台接收服务器配置尚未完全打通，当前不能通过客服 `sync_msg` 验证用户消息是否进入客服通道。
