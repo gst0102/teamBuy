@@ -1,6 +1,18 @@
 <view class="page-shell">
   <custom-nav title="笔记详情" />
 
+  <view class="template-bar">
+    <view>
+      <view class="template-label">{{template.label}}</view>
+      <view class="template-desc">按这些字段补充，会更方便后续展示。</view>
+    </view>
+    <view class="template-tags">
+      <block wx:for="{{template.fields}}" wx:key="*this">
+        <text class="template-tag">{{item}}</text>
+      </block>
+    </view>
+  </view>
+
   <view class="form-panel">
     <view class="field">
       <view class="label">标题</view>

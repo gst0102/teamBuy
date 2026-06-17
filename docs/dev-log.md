@@ -1355,3 +1355,37 @@
 - 验证：
   - 小程序 JS `node --check` 通过。
   - `app.json`、`project.config.json`、`sitemap.json` JSON 校验通过。
+
+### 自动归档 worker 与新导入页简化
+
+- 后端新增轻量自动归档 worker：
+  - `backend/app/services/wecom_archive_worker.py`
+  - 启动后循环执行 `pull_wecom_archive_messages -> process_wecom_archive_messages`。
+  - worker 默认关闭，通过 `WECOM_ARCHIVE_WORKER_ENABLED=true` 开启。
+  - 间隔由 `WECOM_ARCHIVE_WORKER_INTERVAL_SECONDS` 控制，生产当前为 60 秒。
+- `GET /api/wecom/archive/config-check` 新增：
+  - `workerEnabled`
+  - `workerIntervalSeconds`
+- 生产已打开：
+  - `WECOM_ARCHIVE_WORKER_ENABLED=true`
+  - `WECOM_ARCHIVE_WORKER_INTERVAL_SECONDS=60`
+- 生产公网验证：
+  - `sdkConfigured=true`
+  - `workerEnabled=true`
+  - `workerIntervalSeconds=60`
+  - `missing=[]`
+- 小程序“待认领”页改为“新导入资料”：
+  - 默认只展示标题、内容和来源信息。
+  - 增加模板按钮：通用 / 中介 / 团购。
+  - 选择模板后展示建议补充字段。
+  - 认领后优先进入笔记编辑页，不再进入旧卡片编辑页。
+  - 笔记编辑页顶部显示当前模板字段提示。
+- 验证：
+  - `/tmp/teambuy-pytest-venv312/bin/python -m compileall backend/app backend/tests`：通过。
+  - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_app.py -q -k "wecom_archive or worker"`：10 项通过。
+  - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_skill_router.py backend/tests/test_app.py backend/tests/test_media_processing_service.py backend/tests/test_media_storage_service.py -q`：61 项通过。
+  - 小程序 JS `node --check` 通过。
+  - 小程序 JSON 校验通过。
+- 本轮部署中出现一次 rsync 目标路径错误：
+  - 误把文件同步到服务器 `/home/ubuntu/teamBuy/backend/app/PLACEHOLDER/`。
+  - 已逐个删除误建的 `config.py`、`main.py`，再移除空目录。

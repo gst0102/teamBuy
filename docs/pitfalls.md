@@ -1106,3 +1106,32 @@ from ip=81.70.84.35
 - 使用明确规则：
   - `{"action":"allow","page":"*"}`
 - 上传前用 JSON 校验确认 `sitemap.json` 语法正确。
+
+## 2026-06-18：自动归档 worker 生产打开，本地默认关闭
+
+问题：
+
+- 会话存档自动拉取会真实调用企业微信 SDK。
+- 如果本地测试默认打开 worker，会在开发/测试进程启动时误打企业微信接口。
+
+正确做法：
+
+- `.env.example` 中 `WECOM_ARCHIVE_WORKER_ENABLED=false`。
+- 生产环境单独设置 `WECOM_ARCHIVE_WORKER_ENABLED=true`。
+- 用 `/api/wecom/archive/config-check` 查看：
+  - `workerEnabled`
+  - `workerIntervalSeconds`
+- 后端测试不要依赖真实 worker 循环，只测试 `run_once` 顺序。
+
+## 2026-06-18：rsync 多文件同步必须指向目录
+
+问题：
+
+- 本轮曾把多个文件 rsync 到服务器目标 `/home/ubuntu/teamBuy/backend/app/PLACEHOLDER`。
+- rsync 因目标不存在而创建了 `PLACEHOLDER/` 目录，并放入 `config.py`、`main.py`。
+
+正确做法：
+
+- 多文件同步目标必须是明确目录，并以 `/` 结尾。
+- 部署前优先同步整个 `backend/app/` 到 `/home/ubuntu/teamBuy/backend/app/`。
+- 如果误建目录，只能先确认目录内容，再逐个删除明确文件，最后移除空目录。

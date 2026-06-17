@@ -4,9 +4,11 @@ from app.api.dependencies import get_app_service, get_sync_task_queue, get_wecom
 from app.core.config import settings
 from app.services.media_storage_service import MediaStorageService
 from app.services.media_processing_service import MediaProcessingService
+from app.services.wecom_archive_worker import WecomArchiveWorker
 from app.services.wecom_client import DownloadedMedia
 from io import BytesIO
 from PIL import Image
+import asyncio
 
 
 class FakeSyncTask:
@@ -41,6 +43,35 @@ class FakeSyncTaskQueue:
 
     def list_logs(self, task_id=None):
         return []
+
+
+def test_wecom_archive_worker_run_once_pulls_then_processes():
+    class FakeService:
+        def __init__(self):
+            self.calls = []
+
+        def pull_wecom_archive_messages(self, archive_client, limit):
+            self.calls.append(("pull", archive_client, limit))
+            return {"savedCount": 1}
+
+        def process_wecom_archive_messages(self, limit):
+            self.calls.append(("process", limit))
+            return {"processedCount": 1}
+
+    fake_service = FakeService()
+    fake_client = object()
+    worker = WecomArchiveWorker(
+        fake_service,
+        fake_client,
+        enabled=True,
+        interval_seconds=60,
+        pull_limit=20,
+    )
+
+    result = asyncio.run(worker.run_once())
+
+    assert result == {"pull": {"savedCount": 1}, "process": {"processedCount": 1}}
+    assert fake_service.calls == [("pull", fake_client, 20), ("process", 20)]
 
 
 def test_wecom_callback_get_verify(client):
@@ -192,6 +223,8 @@ def test_wecom_archive_config_check_reports_key_status(client, monkeypatch, tmp_
     assert payload["data"]["publicKey"] == "PUBLIC KEY"
     assert payload["data"]["callbackUrl"].endswith("/api/wecom/archive/callback")
     assert payload["data"]["callbackTokenConfigured"] is True
+    assert isinstance(payload["data"]["workerEnabled"], bool)
+    assert isinstance(payload["data"]["workerIntervalSeconds"], int)
     assert payload["data"]["missing"] == []
 
 

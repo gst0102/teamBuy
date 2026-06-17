@@ -885,3 +885,25 @@ rm -rf
   1. 小程序“我的笔记”人工查看 `note_fc9f58783e` 是否可见。
   2. 验证编辑、删除、搜索。
   3. 再发一条更接近业务场景的客户资料长文本，验证摘要质量。
+
+## 2026-06-18 补充：自动归档 worker 与新导入页已完成
+
+- 后端自动归档 worker 已实现并部署生产。
+- 生产配置：
+  - `WECOM_ARCHIVE_WORKER_ENABLED=true`
+  - `WECOM_ARCHIVE_WORKER_INTERVAL_SECONDS=60`
+- 生产公网 `/api/wecom/archive/config-check` 已确认：
+  - `sdkConfigured=true`
+  - `workerEnabled=true`
+  - `workerIntervalSeconds=60`
+  - `missing=[]`
+- 当前企业微信新消息会由 worker 自动执行 `pull -> process`，不再需要 Codex 手动调用。
+- 小程序“待认领”页已改为“新导入资料”：
+  - 默认展示标题和内容。
+  - 支持通用 / 中介 / 团购模板按钮。
+  - 认领后优先进入笔记编辑页。
+  - 笔记编辑页显示模板字段提示。
+- 仍然保留待认领原因：
+  - `identity-core` 尚未实现。
+  - 企业微信外部联系人和小程序用户还不能自动绑定。
+  - 上线前应把“待认领”改成弱入口或异常入口。

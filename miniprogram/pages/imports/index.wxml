@@ -1,34 +1,5 @@
 <view class="page-shell">
-  <custom-nav showBack="{{true}}" />
-  <view class="imports-hero">
-    <view>
-      <view class="hero-title">待认领导入</view>
-      <view class="hero-subtitle">外部导入生成的资料草稿会出现在这里，认领后可继续编辑和管理。</view>
-    </view>
-    <view class="imports-visual">认领</view>
-  </view>
-
-  <view class="panel">
-    <view class="section-head">
-      <view class="section-title">导入处理</view>
-      <view class="section-link">待认领</view>
-    </view>
-    <view class="step-row">
-      <view class="step-item">
-        <view class="step-dot">1</view>
-        <view>外部内容导入</view>
-      </view>
-      <view class="step-item">
-        <view class="step-dot">2</view>
-        <view>自动生成资源草稿</view>
-      </view>
-      <view class="step-item">
-        <view class="step-dot">3</view>
-        <view>认领编辑并分享</view>
-      </view>
-    </view>
-    <button class="ghost-btn" bindtap="handleOpenLibrary">进入我的资源库</button>
-  </view>
+  <custom-nav title="新导入资料" showBack="{{true}}" />
 
   <view class="panel" wx:if="{{notifications.length}}">
     <view class="section-title">导入结果</view>
@@ -40,18 +11,51 @@
     </block>
   </view>
 
-  <view class="section-head">
-    <view class="section-title">待认领导入</view>
-    <view class="section-link" bindtap="handleOpenVisits">查看访问 ></view>
+  <view class="imports-head">
+    <view>
+      <view class="imports-title">新导入资料</view>
+      <view class="imports-subtitle">先确认标题和内容，再选择模板细分编辑。</view>
+    </view>
+    <view class="imports-count">{{imports.length}}</view>
   </view>
+
   <block wx:for="{{imports}}" wx:key="id">
     <view class="import-card">
-      <view class="import-main">
-        <view class="import-title">{{item.titleCandidate}}</view>
-        <view class="muted">状态：{{item.status}} ｜ 来源：{{item.sourceType}}</view>
+      <view class="import-section">
+        <view class="field-label">标题</view>
+        <view class="import-title">{{item.displayTitle}}</view>
       </view>
-      <button class="ghost-btn" data-id="{{item.id}}" bindtap="handleClaim">认领并编辑</button>
+
+      <view class="import-section">
+        <view class="field-label">内容</view>
+        <view class="import-body">{{item.displayBody}}</view>
+      </view>
+
+      <view class="template-row">
+        <block wx:for="{{templates}}" wx:for-item="template" wx:key="id">
+          <button
+            class="template-chip {{item.selectedTemplate === template.id ? 'active' : ''}}"
+            data-id="{{item.id}}"
+            data-template="{{template.id}}"
+            bindtap="handleSelectTemplate"
+          >{{template.label}}</button>
+        </block>
+      </view>
+
+      <view class="template-panel">
+        <view class="template-hint">{{item.template.hint}}</view>
+        <view class="field-tags">
+          <block wx:for="{{item.template.fields}}" wx:key="*this">
+            <text class="field-tag">{{item}}</text>
+          </block>
+        </view>
+      </view>
+
+      <view class="import-footer">
+        <view class="import-meta">{{item.displayMeta}}</view>
+        <button class="claim-btn" data-id="{{item.id}}" bindtap="handleClaim">认领并编辑</button>
+      </view>
     </view>
   </block>
-  <view class="empty-state" wx:if="{{!imports.length && !loading}}">暂无待认领内容。外部导入成功后，资料草稿会出现在这里。</view>
+  <view class="empty-state" wx:if="{{!imports.length && !loading}}">暂无新导入资料。</view>
 </view>

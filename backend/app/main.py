@@ -12,6 +12,7 @@ from app.api.routes_imports import router as imports_router
 from app.api.routes_notes import router as notes_router
 from app.api.routes_skills import router as skills_router
 from app.api.routes_wecom import recover_persisted_sync_tasks, router as wecom_router
+from app.api.dependencies import get_wecom_archive_worker
 from app.core.config import settings
 from app.core.database import DatabaseConfigError, check_postgres_connection, validate_database_settings
 
@@ -19,7 +20,12 @@ from app.core.database import DatabaseConfigError, check_postgres_connection, va
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await recover_persisted_sync_tasks()
-    yield
+    archive_worker = get_wecom_archive_worker()
+    archive_worker.start()
+    try:
+        yield
+    finally:
+        await archive_worker.stop()
 
 
 app = FastAPI(title="teamBuy MVP API", version="0.1.0", lifespan=lifespan)

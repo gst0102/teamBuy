@@ -62,6 +62,8 @@ class Settings:
     wecom_archive_sdk_timeout_seconds: int = env_int("WECOM_ARCHIVE_SDK_TIMEOUT_SECONDS", 30)
     wecom_archive_proxy: str = env_value("WECOM_ARCHIVE_PROXY", "")
     wecom_archive_proxy_password: str = env_value("WECOM_ARCHIVE_PROXY_PASSWORD", "")
+    wecom_archive_worker_enabled: bool = env_value("WECOM_ARCHIVE_WORKER_ENABLED", "false").lower() in {"1", "true", "yes"}
+    wecom_archive_worker_interval_seconds: int = env_int("WECOM_ARCHIVE_WORKER_INTERVAL_SECONDS", 60)
     storage_mode: str = env_value("STORAGE_MODE", "mock")
     media_storage_dir: Path = ROOT_DIR / env_value("MEDIA_STORAGE_DIR", "backend/mock/media")
     media_public_url_prefix: str = env_value("MEDIA_PUBLIC_URL_PREFIX", "/media")

@@ -1,10 +1,26 @@
 const api = require("../../services/api");
 const { getCurrentUser } = require("../../utils/dashboard");
 
+const TEMPLATE_META = {
+  general: {
+    label: "通用资料",
+    fields: ["标题", "摘要", "正文"]
+  },
+  realtor: {
+    label: "中介信息",
+    fields: ["电话", "位置", "预算/价格", "客户需求"]
+  },
+  groupbuy: {
+    label: "团购信息",
+    fields: ["价格", "截止时间", "取货方式", "联系方式"]
+  }
+};
+
 Page({
   data: {
     user: null,
     noteId: "",
+    template: TEMPLATE_META.general,
     form: {
       title: "",
       summary: "",
@@ -19,7 +35,10 @@ Page({
     saving: false
   },
   onLoad(options) {
-    this.setData({ noteId: options.id || "" });
+    this.setData({
+      noteId: options.id || "",
+      template: TEMPLATE_META[options.template] || TEMPLATE_META.general
+    });
   },
   onShow() {
     const user = getCurrentUser();

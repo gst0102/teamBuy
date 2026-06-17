@@ -55,6 +55,8 @@ WECOM_ARCHIVE_PULL_LIMIT=100
 WECOM_ARCHIVE_SDK_TIMEOUT_SECONDS=30
 WECOM_ARCHIVE_PROXY=
 WECOM_ARCHIVE_PROXY_PASSWORD=
+WECOM_ARCHIVE_WORKER_ENABLED=false
+WECOM_ARCHIVE_WORKER_INTERVAL_SECONDS=60
 ```
 
 注意：
@@ -104,6 +106,12 @@ EncodingAESKey=backend/.env 里的 WECOM_ENCODING_AES_KEY
   - 将已解密且未处理的归档消息转换为 `ContentObject -> content-to-note -> UserNote`。
   - 成功后在原始归档消息上记录 `generatedNoteId`、`generatedCardId` 和 `processedAt`。
   - 重复调用不会重复生成笔记。
+
+- 自动归档 worker
+  - 生产可设置 `WECOM_ARCHIVE_WORKER_ENABLED=true`。
+  - 当前生产间隔为 `WECOM_ARCHIVE_WORKER_INTERVAL_SECONDS=60`。
+  - worker 循环执行 `pull -> process`。
+  - 可通过 `GET /api/wecom/archive/config-check` 查看 `workerEnabled` 和 `workerIntervalSeconds`。
 
 - `GET /api/wecom/archive/cursor`
   - 需要 admin token。

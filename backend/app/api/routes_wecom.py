@@ -340,6 +340,8 @@ def archive_config_check():
             "sdkLibReadable": sdk_exists,
             "sdkConfigured": sdk_exists and bool(settings.wecom_archive_secret and settings.wecom_archive_private_key_path),
             "pullLimit": settings.wecom_archive_pull_limit,
+            "workerEnabled": settings.wecom_archive_worker_enabled,
+            "workerIntervalSeconds": settings.wecom_archive_worker_interval_seconds,
             "missing": missing,
             "docs": {
                 "official": "https://developer.work.weixin.qq.com/document/path/91360",

@@ -13,6 +13,7 @@ from app.services.repository import build_repository
 from app.services.skill_router_service import SkillRouterService
 from app.services.sync_task_queue import SyncTaskQueue
 from app.services.wecom_archive_client import WecomArchiveClient
+from app.services.wecom_archive_worker import WecomArchiveWorker
 from app.services.wecom_client import WecomClient
 from app.services.wecom_message_normalizer import WecomMessageNormalizer
 from app.services.wecom_mock_service import WecomMockService
@@ -65,6 +66,13 @@ _sync_task_queue = SyncTaskQueue(
     _repo,
     lock_timeout_seconds=settings.wecom_sync_lock_timeout_seconds,
 )
+_wecom_archive_worker = WecomArchiveWorker(
+    _service,
+    _wecom_archive_client,
+    enabled=settings.wecom_archive_worker_enabled,
+    interval_seconds=settings.wecom_archive_worker_interval_seconds,
+    pull_limit=settings.wecom_archive_pull_limit,
+)
 
 
 def get_app_service() -> AppService:
@@ -85,6 +93,10 @@ def get_wecom_mock_service() -> WecomMockService:
 
 def get_sync_task_queue() -> SyncTaskQueue:
     return _sync_task_queue
+
+
+def get_wecom_archive_worker() -> WecomArchiveWorker:
+    return _wecom_archive_worker
 
 
 def get_skill_router_service() -> SkillRouterService:
