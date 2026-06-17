@@ -35,6 +35,9 @@ Page({
   handleQuickAdd() {
     wx.switchTab({ url: "/pages/resource-create/index" });
   },
+  handleGoImports() {
+    wx.navigateTo({ url: "/pages/imports/index" });
+  },
   handleGoLibrary() {
     wx.switchTab({ url: "/pages/library/index" });
   },

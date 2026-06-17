@@ -135,13 +135,18 @@
   background: linear-gradient(135deg, #8b7cff, #6845f5);
 }
 
+.shortcut-icon.red {
+  background: linear-gradient(135deg, #ff6b6b, #e5484d);
+}
+
 .shortcut-panel {
   display: flex;
+  flex-wrap: wrap;
   gap: 16rpx;
 }
 
 .shortcut-item {
-  flex: 1;
+  flex: 0 0 calc((100% - 32rpx) / 3);
   text-align: center;
 }
 

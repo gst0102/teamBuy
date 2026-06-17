@@ -1346,3 +1346,12 @@
 - 验证：
   - 小程序 JS `node --check` 通过。
   - `app.json`、`project.config.json`、`sitemap.json` JSON 校验通过。
+
+### 小程序首页补充待认领入口
+
+- 用户登录后首页没有“导入/待认领”入口，导致真实企业微信归档生成的 `import_f077fcf5a3` 无法被自然发现。
+- 已在首页快捷区新增“待认领”入口，跳转到 `/pages/imports/index`。
+- 快捷区改为可换行三列布局，避免 5 个入口挤在一行。
+- 验证：
+  - 小程序 JS `node --check` 通过。
+  - `app.json`、`project.config.json`、`sitemap.json` JSON 校验通过。

@@ -53,6 +53,11 @@
   </view>
 
   <view class="panel shortcut-panel">
+    <view class="shortcut-item" bindtap="handleGoImports">
+      <view class="shortcut-icon red">领</view>
+      <view class="shortcut-title">待认领</view>
+      <view class="shortcut-desc">认领企微导入</view>
+    </view>
     <view class="shortcut-item" bindtap="handleQuickAdd">
       <view class="shortcut-icon blue">房</view>
       <view class="shortcut-title">房源发布</view>
