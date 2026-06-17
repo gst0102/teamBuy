@@ -64,6 +64,9 @@ class AppRepository(Protocol):
     ) -> list[UserNote]:
         ...
 
+    def list_all_user_notes(self, include_deleted: bool = False) -> list[UserNote]:
+        ...
+
     def get_user_note(self, note_id: str) -> UserNote | None:
         ...
 
@@ -294,6 +297,12 @@ class JsonRepository:
             notes = [item for item in notes if lowered in item.title.lower() or lowered in item.summary.lower()]
         if category_id:
             notes = [item for item in notes if category_id in item.categoryIds]
+        return sorted(notes, key=lambda item: item.updatedAt, reverse=True)
+
+    def list_all_user_notes(self, include_deleted: bool = False) -> list[UserNote]:
+        notes = self.load().user_notes
+        if not include_deleted:
+            notes = [item for item in notes if item.status != "deleted"]
         return sorted(notes, key=lambda item: item.updatedAt, reverse=True)
 
     def get_user_note(self, note_id: str) -> UserNote | None:
@@ -967,6 +976,11 @@ class PostgresRepository:
             where_parts.append("payload->'categoryIds' ? %s")
             params.append(category_id)
         rows = self._list_payloads("user_notes", " and ".join(where_parts), tuple(params), "updated_at desc, id desc")
+        return [UserNote.model_validate(row) for row in rows]
+
+    def list_all_user_notes(self, include_deleted: bool = False) -> list[UserNote]:
+        where = "true" if include_deleted else "status <> 'deleted'"
+        rows = self._list_payloads("user_notes", where, (), "updated_at desc, id desc")
         return [UserNote.model_validate(row) for row in rows]
 
     def get_user_note(self, note_id: str) -> UserNote | None:

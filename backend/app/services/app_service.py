@@ -535,49 +535,154 @@ class AppService:
             if not media_id:
                 result["skippedCount"] += 1
                 continue
-            existing_url = self.get_successful_media_url(media_id)
-            if existing_url:
-                item.url = existing_url
-                result["reusedCount"] += 1
-                continue
             if item.url:
                 result["skippedCount"] += 1
                 continue
-            if archive_client is None:
-                self.save_media_retry_failure(
-                    media_id=media_id,
-                    media_type=media_type,
-                    open_kfid="wecom_archive",
-                    error_message="archive media client not configured",
-                )
-                result["failedCount"] += 1
-                continue
-            try:
-                downloaded = archive_client.download_media(media_id)
-                url = self.process_and_store_media(
-                    media_id=media_id,
-                    media_type=media_type,
-                    content=downloaded.content,
-                    content_type=downloaded.content_type,
-                    filename=downloaded.filename,
-                )
+            status, url = self._download_archive_media_url(media_id, media_type, archive_client)
+            if url:
                 item.url = url
-                self.save_media_retry_success(
-                    media_id=media_id,
-                    media_type=media_type,
-                    open_kfid="wecom_archive",
-                    local_media_url=url,
-                )
-                result["downloadedCount"] += 1
-            except Exception as exc:
-                self.save_media_retry_failure(
-                    media_id=media_id,
-                    media_type=media_type,
-                    open_kfid="wecom_archive",
-                    error_message=str(exc),
-                )
-                result["failedCount"] += 1
+            result[f"{status}Count"] += 1
         return result
+
+    def backfill_wecom_archive_media(self, archive_client=None, limit: int = 100) -> dict:
+        result = {
+            "checkedNoteCount": 0,
+            "updatedNoteCount": 0,
+            "updatedCardCount": 0,
+            "downloadedCount": 0,
+            "reusedCount": 0,
+            "failedCount": 0,
+            "skippedCount": 0,
+            "remainingCount": 0,
+            "notes": [],
+        }
+        handled_media = 0
+        for note in self.repo.list_all_user_notes(include_deleted=False):
+            note_has_missing = any(item.get("mediaId") and not item.get("url") for item in note.media if isinstance(item, dict))
+            if not note_has_missing:
+                continue
+            result["checkedNoteCount"] += 1
+            note_changed = False
+            note_media_updates: list[dict] = []
+            for item in note.media:
+                if not isinstance(item, dict):
+                    continue
+                media_id = item.get("mediaId")
+                media_type = item.get("type") if item.get("type") in {"image", "video", "file"} else "file"
+                if not media_id or item.get("url"):
+                    result["skippedCount"] += 1
+                    continue
+                if handled_media >= limit:
+                    result["remainingCount"] += 1
+                    continue
+                status, url = self._download_archive_media_url(media_id, media_type, archive_client)
+                result[f"{status}Count"] += 1
+                handled_media += 1
+                if not url:
+                    continue
+                item["url"] = url
+                if media_type == "image" and not note.coverUrl:
+                    note.coverUrl = url
+                note_changed = True
+                note_media_updates.append({"mediaId": media_id, "type": media_type, "url": url})
+            if not note_changed:
+                continue
+            note.updatedAt = now_iso()
+            self.repo.save_user_note(note)
+            result["updatedNoteCount"] += 1
+            card_updated = self._backfill_card_media_from_note(note)
+            if card_updated:
+                result["updatedCardCount"] += 1
+            result["notes"].append(
+                {
+                    "noteId": note.id,
+                    "sourceCardId": note.sourceCardId,
+                    "media": note_media_updates,
+                    "cardUpdated": card_updated,
+                }
+            )
+        return result
+
+    def _download_archive_media_url(self, media_id: str, media_type: str, archive_client=None) -> tuple[str, str | None]:
+        existing_url = self.get_successful_media_url(media_id)
+        if existing_url:
+            return "reused", existing_url
+        if archive_client is None:
+            self.save_media_retry_failure(
+                media_id=media_id,
+                media_type=media_type,
+                open_kfid="wecom_archive",
+                error_message="archive media client not configured",
+            )
+            return "failed", None
+        try:
+            downloaded = archive_client.download_media(media_id)
+            url = self.process_and_store_media(
+                media_id=media_id,
+                media_type=media_type,
+                content=downloaded.content,
+                content_type=downloaded.content_type,
+                filename=downloaded.filename,
+            )
+            self.save_media_retry_success(
+                media_id=media_id,
+                media_type=media_type,
+                open_kfid="wecom_archive",
+                local_media_url=url,
+            )
+            return "downloaded", url
+        except Exception as exc:
+            self.save_media_retry_failure(
+                media_id=media_id,
+                media_type=media_type,
+                open_kfid="wecom_archive",
+                error_message=str(exc),
+            )
+            return "failed", None
+
+    def _backfill_card_media_from_note(self, note: UserNote) -> bool:
+        if not note.sourceCardId:
+            return False
+        card = self.repo.get_card(note.sourceCardId)
+        if not card:
+            return False
+        changed = False
+        existing_by_media_id = {item.sourceMediaId: item for item in card.media if item.sourceMediaId}
+        max_sort_order = max((item.sortOrder for item in card.media), default=0)
+        for item in note.media:
+            if not isinstance(item, dict):
+                continue
+            media_id = item.get("mediaId")
+            media_type = item.get("type")
+            url = item.get("url")
+            if media_type not in {"image", "video"} or not url:
+                continue
+            if media_id and media_id in existing_by_media_id:
+                card_media = existing_by_media_id[media_id]
+                if card_media.url != url:
+                    card_media.url = url
+                    changed = True
+            else:
+                max_sort_order += 1
+                card.media.append(
+                    CardMedia(
+                        id=new_id("card_media"),
+                        cardId=card.id,
+                        type=media_type,
+                        url=url,
+                        sortOrder=max_sort_order,
+                        sourceMediaId=media_id,
+                        createdAt=now_iso(),
+                    )
+                )
+                changed = True
+            if media_type == "image" and not card.coverUrl:
+                card.coverUrl = url
+                changed = True
+        if changed:
+            card.updatedAt = now_iso()
+            self.repo.save_card(card)
+        return changed
 
     def _normalize_archive_msg_time(self, value) -> str | None:
         if value is None or value == "":

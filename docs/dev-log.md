@@ -1487,3 +1487,20 @@
   - 公网 `/api/wecom/archive/config-check` 确认 `sdkConfigured=true`、`workerEnabled=true`、`missing=[]`。
   - 手动 `POST /api/wecom/archive/process?limit=20` 返回 200，当前 `processedCount=0`，表示没有未处理的新归档消息。
   - 真实图片本体下载仍需用户重新发送一条新图片/微信笔记触发验证；已处理过的旧图片不会自动重跑。
+
+### 历史会话存档媒体补下载/回填
+
+- 已新增后台接口：
+  - `POST /api/wecom/archive/media-backfill`
+  - 需要 `X-Admin-Token`。
+  - 参数 `limit` 控制本次最多处理多少个缺失 URL 的媒体。
+- 回填规则：
+  - 扫描已有 `UserNote`，只处理 `mediaId` 存在且 `url` 为空的媒体。
+  - 优先复用已经成功下载过的媒体 URL。
+  - 无成功记录时通过会话存档 SDK `GetMediaData` 下载，再进入现有媒体压缩/存储链路。
+  - 成功后回写 `UserNote.media.url`，并同步补齐兼容 `Card.coverUrl` / `Card.media`。
+  - 下载失败继续写入 `media_retry_jobs`，不影响其他历史笔记回填。
+- 验证：
+  - `/tmp/teambuy-pytest-venv312/bin/python -m compileall backend/app backend/tests`：通过。
+  - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_app.py -q -k "wecom_archive"`：15 项通过。
+  - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_skill_router.py backend/tests/test_app.py backend/tests/test_media_processing_service.py backend/tests/test_media_storage_service.py -q`：66 项通过。

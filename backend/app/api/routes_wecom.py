@@ -381,6 +381,21 @@ def process_archive_messages(
     )
 
 
+@router.post("/archive/media-backfill", response_model=ApiResponse[dict])
+def backfill_archive_media(
+    limit: int = Query(default=100, ge=1, le=1000),
+    admin_token: str | None = Query(default=None, alias="adminToken"),
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+    archive_client: WecomArchiveClient = Depends(get_wecom_archive_client),
+):
+    _verify_admin_token(x_admin_token or admin_token)
+    return ApiResponse(
+        message="archive media backfilled",
+        data=service.backfill_wecom_archive_media(archive_client=archive_client, limit=limit),
+    )
+
+
 @router.get("/archive/cursor", response_model=ApiResponse[dict | None])
 def get_archive_cursor(
     admin_token: str | None = Query(default=None, alias="adminToken"),

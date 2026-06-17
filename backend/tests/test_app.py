@@ -646,6 +646,97 @@ def test_wecom_archive_media_download_failure_keeps_note_and_records_retry(clien
     assert retries[-1]["status"] == "failed"
 
 
+def test_wecom_archive_media_backfill_updates_existing_note_and_card(client, monkeypatch, tmp_path):
+    class FailingArchiveClient:
+        def download_media(self, media_id):
+            raise RuntimeError("temporary archive media failure")
+
+    class SuccessfulArchiveClient:
+        def __init__(self):
+            self.downloaded_media_ids = []
+
+        def download_media(self, media_id):
+            self.downloaded_media_ids.append(media_id)
+            return DownloadedMedia(make_test_image_bytes(), "image/png", "archive-backfill.png")
+
+    monkeypatch.setattr(settings, "admin_token", "archive-admin")
+    service = client.app.dependency_overrides[get_app_service]()
+    media_dir = tmp_path / "archive-backfill-media"
+    service.media_storage_service = MediaStorageService("local", media_dir, "/media")
+    client.app.dependency_overrides[get_wecom_archive_client] = lambda: FailingArchiveClient()
+    payload = {
+        "corpId": "ww_archive_media_backfill",
+        "messages": [
+            {
+                "seq": 521,
+                "msgid": "archive_media_backfill_text_001",
+                "action": "send",
+                "from": "wm_customer",
+                "tolist": ["user_sales"],
+                "msgtime": 1781725500000,
+                "msgtype": "text",
+                "decryptedPayload": {
+                    "msgid": "archive_media_backfill_text_001",
+                    "action": "send",
+                    "from": "wm_customer",
+                    "tolist": ["user_sales"],
+                    "msgtime": 1781725500000,
+                    "msgtype": "text",
+                    "text": {"content": "历史图片需要回填"},
+                },
+            },
+            {
+                "seq": 522,
+                "msgid": "archive_media_backfill_image_001",
+                "action": "send",
+                "from": "wm_customer",
+                "tolist": ["user_sales"],
+                "msgtime": 1781725501000,
+                "msgtype": "image",
+                "decryptedPayload": {
+                    "msgid": "archive_media_backfill_image_001",
+                    "action": "send",
+                    "from": "wm_customer",
+                    "tolist": ["user_sales"],
+                    "msgtime": 1781725501000,
+                    "msgtype": "image",
+                    "image": {"sdkfileid": "archive-image-sdk-backfill", "md5sum": "image-md5", "filesize": 1024},
+                },
+            },
+        ],
+    }
+
+    saved = client.post("/api/wecom/archive/mock-messages", json=payload, headers={"X-Admin-Token": "archive-admin"})
+    processed = client.post("/api/wecom/archive/process", headers={"X-Admin-Token": "archive-admin"})
+    note_id = processed.json()["data"]["processed"][0]["noteId"]
+    pending_before = client.get("/api/imports/pending").json()["data"]
+    generated_before = next(item for item in pending_before if item["generatedNote"] and item["generatedNote"]["id"] == note_id)
+    assert saved.status_code == 200
+    assert generated_before["generatedNote"]["media"][0]["url"] is None
+    assert generated_before["generatedCard"]["media"] == []
+
+    successful_client = SuccessfulArchiveClient()
+    client.app.dependency_overrides[get_wecom_archive_client] = lambda: successful_client
+    backfilled = client.post(
+        "/api/wecom/archive/media-backfill",
+        params={"limit": 10},
+        headers={"X-Admin-Token": "archive-admin"},
+    )
+    pending_after = client.get("/api/imports/pending").json()["data"]
+    generated_after = next(item for item in pending_after if item["generatedNote"] and item["generatedNote"]["id"] == note_id)
+
+    assert backfilled.status_code == 200
+    result = backfilled.json()["data"]
+    assert result["downloadedCount"] == 1
+    assert result["updatedNoteCount"] == 1
+    assert result["updatedCardCount"] == 1
+    assert successful_client.downloaded_media_ids == ["archive-image-sdk-backfill"]
+    assert generated_after["generatedNote"]["media"][0]["url"].startswith("/media/")
+    assert generated_after["generatedCard"]["coverUrl"] == generated_after["generatedNote"]["media"][0]["url"]
+    assert generated_after["generatedCard"]["media"][0]["url"] == generated_after["generatedNote"]["media"][0]["url"]
+    assert len(list(media_dir.iterdir())) == 1
+
+
 def test_real_sync_uses_mock_real_response_while_mock_enabled(client):
     response = client.post("/api/wecom/real-sync")
     assert response.status_code == 200

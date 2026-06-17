@@ -972,3 +972,21 @@ rm -rf
 - 下一步建议：
   1. 用用户新发的“图片 + 文字 + 微信笔记”真实验证 `media.downloadedCount` 和小程序图片展示。
   2. 对已经生成但没有 URL 的旧图片笔记，后续可以补一个“历史媒体补下载/回填”脚本或后台按钮。
+
+## 2026-06-18 补充：历史媒体补下载/回填已实现
+
+- 新增后台接口：
+  - `POST /api/wecom/archive/media-backfill`
+  - admin token 保护。
+  - `limit` 控制本次最多处理的缺失媒体数量。
+- 回填范围：
+  - 已有 `UserNote.media[]` 里 `mediaId` 存在、`url` 为空的媒体。
+  - 不处理已经有 URL 的媒体，不覆盖用户已编辑内容。
+- 回填结果：
+  - 成功下载后写回 `UserNote.media.url`。
+  - 若对应 `sourceCardId` 存在，会补齐 `Card.coverUrl` 和 `Card.media`，保证当前小程序旧卡片展示链路也能看到图片。
+  - 下载失败写入 `media_retry_jobs`，继续处理下一条。
+- 已验证：
+  - archive 测试 15 passed。
+  - 相关后端测试 66 passed。
+- 下一步生产部署后可手动调用一次回填接口，补旧的 `note_f6cfe62264`、`note_866ce69346`、`note_da48e67e5e` 等历史无 URL 图片笔记。
