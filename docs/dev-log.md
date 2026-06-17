@@ -1110,3 +1110,25 @@
   - `GET https://teambuy.lifelove.top/api/wecom/archive/callback?...` 当前返回 404。
   - `GET https://teambuy.lifelove.top/api/wecom/archive/config-check` 当前返回 404。
 - 结论：代码已到 GitHub，生产尚未部署。需要提供服务器 SSH 权限，或在服务器手动执行部署命令。
+
+### 生产部署补充
+
+- 用户提供服务器 SSH key：`/Users/yiyi/Desktop/Desktop/vedo-project/vidoekey.pem`。
+- 已用该 key 登录 `ubuntu@81.70.84.35` 并完成生产部署。
+- 服务器 `git fetch origin` 曾长时间卡住，改为：
+  - 先备份服务器 `backend/app/api/routes_wecom.py` 本地 diff 到 `/home/ubuntu/teamBuy-deploy-backups/`。
+  - 用 `rsync` 同步本地已验证的 `backend/app/`、`requirements.txt`、`.env.example` 到服务器。
+  - 同步 `backend/secrets/wecom_archive_private.pem` 和 `backend/secrets/wecom_archive_public.pem` 到服务器。
+- 生产 `backend/.env` 已配置会话存档项，并确认：
+  - `WECOM_ARCHIVE_ENABLED` 已设置。
+  - `WECOM_ARCHIVE_SECRET` 已设置，长度 43。
+  - `WECOM_CALLBACK_TOKEN` 已设置，长度 28。
+  - `WECOM_ENCODING_AES_KEY` 已设置，长度 43。
+- 第一次生产 `config-check` 发现密钥路径被解析为 `/backend/secrets/...`，容器内实际路径应为 `/app/secrets/...`。已将生产 `.env` 修正为：
+  - `WECOM_ARCHIVE_PRIVATE_KEY_PATH=/app/secrets/wecom_archive_private.pem`
+  - `WECOM_ARCHIVE_PUBLIC_KEY_PATH=/app/secrets/wecom_archive_public.pem`
+- 已重建并重启生产 backend 容器。
+- 公网验证通过：
+  - `GET https://teambuy.lifelove.top/api/wecom/archive/config-check` 返回 `success=true` 且 `missing=[]`。
+  - `GET https://teambuy.lifelove.top/api/wecom/archive/callback?token=...&echostr=hello-archive` 返回 `hello-archive`。
+- 操作中遇到一次脚本错误：远程 Python 状态打印脚本因 shell 引号和 f-string 嵌套导致 `NameError: name 'SET' is not defined`。已改为普通字符串拼接后验证通过。

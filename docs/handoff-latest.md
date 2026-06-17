@@ -738,10 +738,22 @@ rm -rf
   - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_app.py -q -k "wecom_archive or wecom_config_check"`：7 项通过。
   - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_skill_router.py backend/tests/test_app.py backend/tests/test_media_processing_service.py backend/tests/test_media_storage_service.py -q`：57 项通过。
 - 下一步建议：
-  1. 先完成生产部署。当前 Codex 本机 SSH 到 `ubuntu@81.70.84.35` 返回 `Permission denied (publickey)`，公网 `/api/wecom/archive/callback` 和 `/api/wecom/archive/config-check` 仍是 404。
-  2. 部署生产后，企业微信后台“设置接收事件服务器”填写 `https://teambuy.lifelove.top/api/wecom/archive/callback`，Token / EncodingAESKey 先填生产 `backend/.env` 里的 `WECOM_CALLBACK_TOKEN` / `WECOM_ENCODING_AES_KEY`。
+  1. 生产已部署完成。公网 `/api/wecom/archive/config-check` 返回 `success=true`、`missing=[]`，公网 `/api/wecom/archive/callback?token=...&echostr=hello-archive` 返回 `hello-archive`。
+  2. 企业微信后台“设置接收事件服务器”现在可以填写 `https://teambuy.lifelove.top/api/wecom/archive/callback`，Token / EncodingAESKey 填生产 `backend/.env` 里的 `WECOM_CALLBACK_TOKEN` / `WECOM_ENCODING_AES_KEY`。
   3. 在企业微信后台会话内容存档页粘贴 `docs/stage2-docs/10-wecom-archive-config.md` 里的公钥并保存。
-  4. 确认生产 `backend/.env` 已写入 `WECOM_ARCHIVE_SECRET`，但不要写入任何 Git 文档。
-  5. 生产调用 `/api/wecom/archive/config-check`，确认 `missing=[]` 且 `callbackUrl` 正确。
-  6. 接官方会话内容存档 SDK，拉取加密消息、解密、写入 `wecom_archive_messages` 并推进 `wecom_archive_cursors.seq`。
-  7. 把解密消息 Adapter 到 `ContentObject -> content-to-note -> UserNote`。
+  4. 不要把真实 `WECOM_ARCHIVE_SECRET` 写入任何 Git 文档；真实值只留在生产 `backend/.env`。
+  5. 接官方会话内容存档 SDK，拉取加密消息、解密、写入 `wecom_archive_messages` 并推进 `wecom_archive_cursors.seq`。
+  6. 把解密消息 Adapter 到 `ContentObject -> content-to-note -> UserNote`。
+
+## 2026-06-17 补充：会话存档回调已部署生产
+
+- 用户提供生产 SSH key：`/Users/yiyi/Desktop/Desktop/vedo-project/vidoekey.pem`。
+- 已用 `rsync` 同步后端代码到服务器，原因是服务器 `git fetch origin` 长时间卡住。
+- 同步前已备份服务器 `backend/app/api/routes_wecom.py` 本地 diff 到 `/home/ubuntu/teamBuy-deploy-backups/`。
+- 已同步会话存档 RSA 密钥到服务器 `backend/secrets/`，并重建/重启 backend 容器。
+- 生产 Docker 环境的会话存档密钥路径已修正为容器内绝对路径：
+  - `/app/secrets/wecom_archive_private.pem`
+  - `/app/secrets/wecom_archive_public.pem`
+- 生产验证：
+  - `/api/wecom/archive/config-check`：`success=true`，`missing=[]`。
+  - `/api/wecom/archive/callback`：用生产 token 验证返回 `hello-archive`。

@@ -901,3 +901,30 @@ from ip=81.70.84.35
 - 部署前后都要用公网 URL 验证新路由。
 - SSH 权限不可用时，明确告知“生产未部署”，并让用户提供服务器权限或手动执行部署命令。
 - 企业微信后台保存前必须看到公网 `GET /api/wecom/archive/callback?...` 能返回明文 `echostr`。
+
+## 2026-06-17：Docker 容器内密钥路径不要照搬宿主机相对路径
+
+问题：
+
+- 生产 `.env` 初次配置 `WECOM_ARCHIVE_PRIVATE_KEY_PATH=backend/secrets/...`。
+- 应用在容器内运行，`Settings.env_path()` 会按容器内 `ROOT_DIR` 解析，导致路径变成 `/backend/secrets/...`，实际文件在 `/app/secrets/...`。
+- `config-check` 因此返回私钥/公钥不可读。
+
+正确做法：
+
+- 生产 Docker 环境使用容器内绝对路径：
+  - `WECOM_ARCHIVE_PRIVATE_KEY_PATH=/app/secrets/wecom_archive_private.pem`
+  - `WECOM_ARCHIVE_PUBLIC_KEY_PATH=/app/secrets/wecom_archive_public.pem`
+- 配置后必须调用公网 `/api/wecom/archive/config-check`，确认 `privateKeyReadable=true`、`publicKey` 非空、`missing=[]`。
+
+## 2026-06-17：远程 shell 里少写复杂 f-string
+
+问题：
+
+- 通过 SSH here-doc 执行 Python 时，shell 引号和 Python f-string 的内层引号容易互相干扰。
+- 本轮状态打印脚本出现 `NameError: name 'SET' is not defined`，原因就是 f-string 内层字符串被 shell 引号破坏。
+
+正确做法：
+
+- 远程临时 Python 脚本优先用普通字符串拼接。
+- 打印环境变量时只打印 `SET/MISSING` 和长度，不打印真实 Secret。
