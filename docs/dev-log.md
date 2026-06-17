@@ -1191,3 +1191,24 @@
 - 初始实现时需要确认 `encrypt_random_key` 的解码方式；最终按会话存档 SDK 返回值使用 base64 解码后再 RSA 私钥解密。
 - 这轮没有安装官方 Linux SDK `.so` 文件，因此本地测试用 fake client 覆盖拉取成功/失败分支；生产真实拉取仍依赖服务器配置 `WECOM_ARCHIVE_SDK_LIB_PATH`。
 - P0 当前代码链路已经完整，但真实企业微信数据验收必须等官方 SDK 库文件部署到服务器后执行。
+
+### 生产部署与公网验证
+
+- 已提交本地代码：`5e104f0 feat: complete p0 wecom archive import`。
+- 已用 `rsync` 同步后端代码到生产服务器 `/home/ubuntu/teamBuy/backend/app/`，并同步 `backend/.env.example`、`backend/requirements.txt`。
+- 已在生产 `backend/.env` 追加新增配置键：
+  - `WECOM_ARCHIVE_PULL_LIMIT`
+  - `WECOM_ARCHIVE_SDK_TIMEOUT_SECONDS`
+  - `WECOM_ARCHIVE_PROXY`
+  - `WECOM_ARCHIVE_PROXY_PASSWORD`
+- 生产原本没有 `WECOM_ADMIN_TOKEN`，导致 `/api/wecom/archive/pull` 和 `/api/wecom/archive/process` 返回 403。已生成服务器专用 `WECOM_ADMIN_TOKEN` 写入生产 `.env`，只记录长度 43，不记录真实值。
+- 已重建并重启生产 backend 容器。
+- 公网验证：
+  - `GET /api/wecom/archive/config-check`：`missing=[]`、`privateKeyReadable=true`、`sdkLibReadable=false`、`sdkConfigured=false`、`pullLimit=100`。
+  - `POST /api/wecom/archive/pull`：带 admin token 调用返回 502，错误为 `会话内容存档 SDK 配置不完整: WECOM_ARCHIVE_SDK_LIB_PATH`，并写入 failed cursor。
+  - `POST /api/wecom/archive/process`：带 admin token 调用返回 200，`processedCount=0`、`failedCount=0`。
+
+### 部署中遇到的小错误
+
+- 本机验证脚本第一次使用 `python`，当前环境没有该命令，返回 `zsh:1: command not found: python`；已改用 `python3`。
+- 第一次生产管理接口验证假设 token 名为 `ADMIN_TOKEN`，实际配置项是 `WECOM_ADMIN_TOKEN`；已按代码配置项修正，并在生产补齐。

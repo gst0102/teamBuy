@@ -799,3 +799,24 @@ rm -rf
   5. 调用 `/api/wecom/archive/pull`，确认 `savedCount>0` 或明确看到无新消息。
   6. 调用 `/api/wecom/archive/process`，确认生成 `UserNote`。
   7. 在小程序“我的笔记”中查看、编辑、删除该笔记。
+
+## 2026-06-17 补充：P0 已部署生产，等待官方 SDK 动态库
+
+- 生产已部署 commit：`5e104f0 feat: complete p0 wecom archive import`。
+- 生产 `WECOM_ADMIN_TOKEN` 已补齐，值未写入文档。
+- 生产公网验证：
+  - `/api/wecom/archive/config-check`：`missing=[]`、`privateKeyReadable=true`、`sdkConfigured=false`。
+  - `/api/wecom/archive/pull`：返回 502，错误明确为缺少 `WECOM_ARCHIVE_SDK_LIB_PATH`，并写入 failed cursor。
+  - `/api/wecom/archive/process`：返回 200，当前 `processedCount=0`。
+- 结论：
+  - P0 后端链路已经部署。
+  - 事件服务器已保存成功。
+  - 真实会话内容拉取还不能人工通过，唯一阻塞是生产未安装/未配置企业微信官方会话存档 SDK 动态库。
+- 下一步最自然顺序：
+  1. 下载企业微信官方 Linux 会话存档 SDK 动态库。
+  2. 放到服务器并让 Docker 容器可读。
+  3. 设置 `WECOM_ARCHIVE_SDK_LIB_PATH=/app/secrets/<sdk动态库文件名>`。
+  4. 重启 backend。
+  5. 确认 `sdkConfigured=true`。
+  6. 发真实企业微信测试消息。
+  7. 调用 `pull -> process -> 小程序我的笔记验收`。

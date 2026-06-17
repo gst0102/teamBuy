@@ -987,3 +987,28 @@ from ip=81.70.84.35
 - 先对 `encrypt_random_key` 做 base64 解码。
 - 再用本地 RSA 私钥做 `PKCS1_v1_5` 解密得到随机密钥。
 - 最后把随机密钥和 `encrypt_chat_msg` 交给官方 SDK `DecryptData`。
+
+## 2026-06-17：生产管理 token 配置名是 `WECOM_ADMIN_TOKEN`
+
+问题：
+
+- 验证 `/api/wecom/archive/pull` 和 `/api/wecom/archive/process` 时，第一次按 `ADMIN_TOKEN` 去服务器 `.env` 查找，结果为空。
+- 代码实际读取的是 `WECOM_ADMIN_TOKEN`。
+- 如果生产没配置 `WECOM_ADMIN_TOKEN`，所有 admin 接口会返回 403：`WECOM_ADMIN_TOKEN is not configured`。
+
+正确做法：
+
+- 后端 admin 接口统一使用 `WECOM_ADMIN_TOKEN`。
+- 部署后只打印 token 是否存在和长度，不输出真实值。
+- 验证 admin 接口时使用请求头 `X-Admin-Token`。
+
+## 2026-06-17：本机脚本优先用明确 Python 解释器
+
+问题：
+
+- 当前本机 shell 没有 `python` 命令，直接执行会返回 `zsh:1: command not found: python`。
+
+正确做法：
+
+- 简单验证脚本用 `python3`。
+- 项目测试继续使用 `/tmp/teambuy-pytest-venv312/bin/python`，保证依赖环境一致。

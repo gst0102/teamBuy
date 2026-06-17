@@ -5,6 +5,8 @@
 ## 当前状态
 
 - 企业微信后台页面：`https://work.weixin.qq.com/wework_admin/frame#financial/corpEncryptData`
+- 企业微信后台“接收事件服务器”已保存成功。
+- 生产后端 P0 拉取/处理接口已部署，当前 `sdkConfigured=false`，真实消息拉取等待配置官方 Linux SDK 动态库路径。
 - 本轮已生成会话内容存档 RSA 密钥对：
   - 私钥：`backend/secrets/wecom_archive_private.pem`
   - 公钥：`backend/secrets/wecom_archive_public.pem`
