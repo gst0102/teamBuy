@@ -1418,3 +1418,38 @@
   - `generatedNoteId=note_8bbadcfa3d`
 - cursor 已推进到 `seq=5`。
 - 本轮前一次排查只看到了 `seq=3/4` 图片和 `seq=2` 旧文本，漏看了后续 `seq=5` 文本。后续排查多消息场景时，必须先按 seq 倒序完整列出最近消息，再下结论。
+
+### 03:39 房产微信笔记解析与 5 秒聚合
+
+- 用户 2026-06-18 03:39 发送一个房产类型微信笔记。
+- 生产归档消息形态：
+  - `seq=6`
+  - `msgType=note`
+  - `msgTime=2026-06-18T03:39:11.786+08:00`
+  - `info.items` 内包含 text、location、text `[视频]`、5 个 image。
+- 原实现不识别 `note`，生成内容为“企业微信note归档 / 暂无正文”。
+- 已实现：
+  - `ContentObjectAdapter` 支持 `msgType=note`。
+  - 解析 `info.items[].content` JSON。
+  - text 进入正文，location 转为 `位置：...`，image/video/file 进入 media 引用。
+  - 忽略 `[图片]` / `[视频]` / `[文件]` 这类占位文本。
+- 已实现 5 秒聚合：
+  - 同一会话。
+  - 同一发送人。
+  - 非 `note` 类型。
+  - 相邻消息时间差不超过 5 秒。
+  - 合并为一个 `ContentObject -> UserNote`。
+  - 原始归档消息仍逐条保存，业务产物合并生成。
+- 验证：
+  - `/tmp/teambuy-pytest-venv312/bin/python -m compileall backend/app backend/tests`：通过。
+  - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_app.py -q -k "wecom_archive"`：12 项通过。
+  - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_skill_router.py backend/tests/test_app.py backend/tests/test_media_processing_service.py backend/tests/test_media_storage_service.py -q`：63 项通过。
+- 生产部署后用同一条 note 的 mock 副本验证：
+  - `corpId=ww_archive_verify`
+  - `seq=9001`
+  - 生成 `note_da48e67e5e`
+  - 正文包含小区、户型、价格、商圈、备注、位置。
+  - `mediaCount=5`
+  - `locationText=湖南省长沙市雨花区嘉雨路碧桂园城市之光`
+- 注意：
+  - 生产验证副本会出现在待认领列表中，标题为“🍓小区：碧桂园城市之光1栋1210...”。

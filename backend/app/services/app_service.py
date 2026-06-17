@@ -10,6 +10,7 @@ from app.schemas.auth import MockLoginRequest
 from app.schemas.categories import CategoryCreateRequest
 from app.schemas.cards import CardCreateRequest, CardUpdateRequest, CreateRelayRequest, LeadReminderUpdateRequest, LeadReminderUpsertRequest, RecordViewRequest
 from app.schemas.notes import UserNoteUpdateRequest
+from app.schemas.skills import ContentObjectPayload
 from app.services.card_parser_service import CardParserService
 from app.services.content_object_adapter import ContentObjectAdapter
 from app.services.helpers import mask_nickname, new_id
@@ -461,11 +462,13 @@ class AppService:
         ]
         processed: list[dict] = []
         failed: list[dict] = []
-        for message in sorted(messages, key=lambda item: item.seq):
+        for group in self._group_wecom_archive_messages(messages):
+            group_messages = sorted(group, key=lambda item: item.seq)
+            primary = group_messages[0]
             try:
-                content_object = self.content_object_adapter.from_wecom_archive_message(message)
+                content_object = self._build_archive_content_object(group_messages)
                 note_result = self.skill_router_service.run_content_to_note("unclaimed", content_object)
-                batch = self._build_archive_import_batch(message, note_result.noteDraft.title)
+                batch = self._build_archive_import_batch(primary, note_result.noteDraft.title, group_messages)
                 card = self._build_card_from_note_draft(batch, note_result.noteDraft, content_object)
                 note = self._build_user_note_from_draft(batch, note_result.noteDraft, card.id)
                 batch.generatedCardId = card.id
@@ -474,31 +477,44 @@ class AppService:
                 skill_run.outputRef = note.id
                 skill_run.inputSnapshot = {
                     **skill_run.inputSnapshot,
-                    "wecomArchiveMessageId": message.id,
-                    "archiveSeq": message.seq,
-                    "archiveMsgId": message.msgId,
+                    "wecomArchiveMessageIds": [item.id for item in group_messages],
+                    "archiveSeqs": [item.seq for item in group_messages],
+                    "archiveMsgIds": [item.msgId for item in group_messages],
                 }
-                message.generatedNoteId = note.id
-                message.generatedCardId = card.id
-                message.processedAt = now_iso()
-                message.processError = None
+                processed_at = now_iso()
+                for message in group_messages:
+                    message.generatedNoteId = note.id
+                    message.generatedCardId = card.id
+                    message.processedAt = processed_at
+                    message.processError = None
                 self.repo.save_import_batch(batch)
                 self.repo.save_card(card)
                 self.repo.save_user_note(note)
                 self.repo.save_skill_run(skill_run)
-                self.repo.save_wecom_archive_messages([message])
+                self.repo.save_wecom_archive_messages(group_messages)
                 processed.append(
                     {
-                        "archiveMessageId": message.id,
-                        "seq": message.seq,
+                        "archiveMessageId": primary.id,
+                        "archiveMessageIds": [item.id for item in group_messages],
+                        "seq": primary.seq,
+                        "seqs": [item.seq for item in group_messages],
                         "noteId": note.id,
                         "cardId": card.id,
                     }
                 )
             except Exception as exc:
-                message.processError = str(exc)
-                self.repo.save_wecom_archive_messages([message])
-                failed.append({"archiveMessageId": message.id, "seq": message.seq, "error": str(exc)})
+                for message in group_messages:
+                    message.processError = str(exc)
+                self.repo.save_wecom_archive_messages(group_messages)
+                failed.append(
+                    {
+                        "archiveMessageId": primary.id,
+                        "archiveMessageIds": [item.id for item in group_messages],
+                        "seq": primary.seq,
+                        "seqs": [item.seq for item in group_messages],
+                        "error": str(exc),
+                    }
+                )
         return {
             "processedCount": len(processed),
             "failedCount": len(failed),
@@ -516,8 +532,68 @@ class AppService:
             return datetime.fromtimestamp(timestamp, tz=SHANGHAI).isoformat()
         return str(value)
 
-    def _build_archive_import_batch(self, message: WecomArchiveMessage, title: str) -> ImportBatch:
+    def _group_wecom_archive_messages(self, messages: list[WecomArchiveMessage]) -> list[list[WecomArchiveMessage]]:
+        sorted_messages = sorted(messages, key=lambda item: (self._archive_message_timestamp(item), item.seq))
+        groups: list[list[WecomArchiveMessage]] = []
+        for message in sorted_messages:
+            if message.msgType == "note":
+                groups.append([message])
+                continue
+            if not groups or not self._can_merge_archive_message(groups[-1][-1], message):
+                groups.append([message])
+                continue
+            groups[-1].append(message)
+        return groups
+
+    def _can_merge_archive_message(self, previous: WecomArchiveMessage, current: WecomArchiveMessage) -> bool:
+        if previous.msgType == "note" or current.msgType == "note":
+            return False
+        if previous.fromUser != current.fromUser:
+            return False
+        if self._archive_conversation_key(previous) != self._archive_conversation_key(current):
+            return False
+        return self._archive_message_timestamp(current) - self._archive_message_timestamp(previous) <= 5
+
+    def _archive_conversation_key(self, message: WecomArchiveMessage) -> str:
+        if message.roomId:
+            return message.roomId
+        users = sorted([item for item in [message.fromUser, *message.toList] if item])
+        return ",".join(users) or message.msgId or message.id
+
+    def _archive_message_timestamp(self, message: WecomArchiveMessage) -> float:
+        if not message.msgTime:
+            return float(message.seq)
+        try:
+            return parse_iso(message.msgTime).timestamp()
+        except Exception:
+            return float(message.seq)
+
+    def _build_archive_content_object(self, messages: list[WecomArchiveMessage]) -> ContentObjectPayload:
+        objects = [self.content_object_adapter.from_wecom_archive_message(message) for message in messages]
+        if len(objects) == 1:
+            return objects[0]
+        return ContentObjectPayload(
+            sourceType="wecom_thread",
+            title=next((item.title for item in objects if item.title), None),
+            textBlocks=[block for item in objects for block in item.textBlocks],
+            media=[media for item in objects for media in item.media],
+            links=[link for item in objects for link in item.links],
+            participants=self.content_object_adapter._unique_participants(
+                [participant for item in objects for participant in item.participants]
+            ),
+            timestamps=[timestamp for item in objects for timestamp in item.timestamps],
+            sourceRefs=[ref for item in objects for ref in item.sourceRefs],
+            rawMessageIds=[raw_id for item in objects for raw_id in item.rawMessageIds],
+        )
+
+    def _build_archive_import_batch(
+        self,
+        message: WecomArchiveMessage,
+        title: str,
+        messages: list[WecomArchiveMessage] | None = None,
+    ) -> ImportBatch:
         now = now_iso()
+        group_messages = messages or [message]
         return ImportBatch(
             id=new_id("import"),
             externalUserId=message.fromUser or "archive_unknown",
@@ -525,7 +601,7 @@ class AppService:
             status="success",
             titleCandidate=title or f"企业微信{message.msgType or '消息'}归档",
             sourceType="wechat_note",
-            rawMessageIds=[message.id],
+            rawMessageIds=[item.id for item in group_messages],
             startedAt=message.msgTime or now,
             endedAt=now,
             createdAt=now,

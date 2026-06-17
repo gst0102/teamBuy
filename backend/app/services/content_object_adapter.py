@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from app.models.domain import ImportBatch, RawMessage, WecomArchiveMessage
 from app.schemas.skills import ContentLinkPayload, ContentMediaPayload, ContentObjectPayload, ContentParticipantPayload
 
@@ -94,6 +96,8 @@ class ContentObjectAdapter:
             label = str(location.get("address") or location.get("title") or "").strip()
             if label:
                 text_blocks.append(f"位置：{label}")
+        elif msg_type == "note":
+            self._append_archive_note_parts(message, payload, text_blocks, media, links)
         else:
             text = payload.get("content") or payload.get("text")
             if text:
@@ -138,6 +142,62 @@ class ContentObjectAdapter:
         if isinstance(value, dict):
             return value.get("sdkfileid") or value.get("media_id") or value.get("md5sum")
         return payload.get("sdkfileid") or payload.get("media_id")
+
+    def _append_archive_note_parts(
+        self,
+        message: WecomArchiveMessage,
+        payload: dict,
+        text_blocks: list[str],
+        media: list[ContentMediaPayload],
+        links: list[ContentLinkPayload],
+    ) -> None:
+        items = payload.get("info", {}).get("items") if isinstance(payload.get("info"), dict) else []
+        if not isinstance(items, list):
+            return
+        for index, item in enumerate(items):
+            if not isinstance(item, dict):
+                continue
+            part_type = item.get("msg_type") or item.get("msgType")
+            content = self._parse_note_content(item.get("content"))
+            source_ref = f"{message.id}#{index}"
+            if part_type == "text":
+                text = str(content.get("content") or "").strip()
+                if text and text not in {"[图片]", "[视频]", "[文件]"}:
+                    text_blocks.append(text)
+            elif part_type == "location":
+                label = str(content.get("address") or content.get("title") or "").strip()
+                if label:
+                    text_blocks.append(f"位置：{label}")
+            elif part_type == "link":
+                links.append(
+                    ContentLinkPayload(
+                        url=str(content.get("link_url") or content.get("url") or "").strip(),
+                        title=str(content.get("title") or "").strip() or None,
+                        description=str(content.get("description") or "").strip() or None,
+                        coverUrl=str(content.get("image_url") or content.get("thumbUrl") or "").strip() or None,
+                    )
+                )
+            elif part_type in {"image", "video", "file"}:
+                media.append(
+                    ContentMediaPayload(
+                        type=part_type,
+                        url=None,
+                        mediaId=content.get("sdkfileid") or content.get("media_id") or content.get("md5sum"),
+                        title=str(content.get("filename") or "").strip() or None,
+                        sourceRef=source_ref,
+                    )
+                )
+
+    def _parse_note_content(self, value) -> dict:
+        if isinstance(value, dict):
+            return value
+        if isinstance(value, str):
+            try:
+                parsed = json.loads(value)
+            except json.JSONDecodeError:
+                return {"content": value}
+            return parsed if isinstance(parsed, dict) else {"content": value}
+        return {}
 
     def _archive_title(
         self,

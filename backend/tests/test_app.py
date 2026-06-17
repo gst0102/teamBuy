@@ -377,6 +377,122 @@ def test_wecom_archive_process_creates_user_note_and_is_idempotent(client, monke
     assert generated["generatedNote"] is not None
 
 
+def test_wecom_archive_process_parses_note_items(client, monkeypatch):
+    monkeypatch.setattr(settings, "admin_token", "archive-admin")
+    payload = {
+        "corpId": "ww_archive",
+        "messages": [
+            {
+                "seq": 302,
+                "msgid": "archive_note_msg_001",
+                "action": "send",
+                "from": "wm_customer",
+                "tolist": ["user_sales"],
+                "msgtime": 1781725151786,
+                "msgtype": "note",
+                "decryptedPayload": {
+                    "msgid": "archive_note_msg_001",
+                    "action": "send",
+                    "from": "wm_customer",
+                    "tolist": ["user_sales"],
+                    "msgtime": 1781725151786,
+                    "msgtype": "note",
+                    "info": {
+                        "items": [
+                            {
+                                "msg_type": "text",
+                                "content": "{\"content\":\"小区：碧桂园城市之光\\n户型：公寓一房\\n价格：1600\"}",
+                            },
+                            {
+                                "msg_type": "location",
+                                "content": "{\"address\":\"湖南省长沙市雨花区嘉雨路碧桂园城市之光\",\"title\":\"碧桂园城市之光1栋\"}",
+                            },
+                            {
+                                "msg_type": "image",
+                                "content": "{\"md5sum\":\"img-md5\",\"filesize\":100063,\"sdkfileid\":\"sdk-file-001\"}",
+                            },
+                        ]
+                    },
+                },
+            }
+        ],
+    }
+
+    saved = client.post("/api/wecom/archive/mock-messages", json=payload, headers={"X-Admin-Token": "archive-admin"})
+    processed = client.post("/api/wecom/archive/process", headers={"X-Admin-Token": "archive-admin"})
+    pending = client.get("/api/imports/pending").json()["data"]
+
+    assert saved.status_code == 200
+    assert processed.status_code == 200
+    assert processed.json()["data"]["processedCount"] == 1
+    note_id = processed.json()["data"]["processed"][0]["noteId"]
+    generated = next(item for item in pending if item["generatedNote"] and item["generatedNote"]["id"] == note_id)
+    note = generated["generatedNote"]
+    assert "碧桂园城市之光" in note["body"]
+    assert "位置：湖南省长沙市雨花区嘉雨路碧桂园城市之光" in note["body"]
+    assert note["media"][0]["mediaId"] == "sdk-file-001"
+
+
+def test_wecom_archive_process_groups_nearby_messages(client, monkeypatch):
+    monkeypatch.setattr(settings, "admin_token", "archive-admin")
+    payload = {
+        "corpId": "ww_archive",
+        "messages": [
+            {
+                "seq": 401,
+                "msgid": "archive_group_text_001",
+                "action": "send",
+                "from": "wm_customer",
+                "tolist": ["user_sales"],
+                "msgtime": 1781725200000,
+                "msgtype": "text",
+                "decryptedPayload": {
+                    "msgid": "archive_group_text_001",
+                    "action": "send",
+                    "from": "wm_customer",
+                    "tolist": ["user_sales"],
+                    "msgtime": 1781725200000,
+                    "msgtype": "text",
+                    "text": {"content": "房源：碧桂园一房，租金1600"},
+                },
+            },
+            {
+                "seq": 402,
+                "msgid": "archive_group_image_001",
+                "action": "send",
+                "from": "wm_customer",
+                "tolist": ["user_sales"],
+                "msgtime": 1781725203000,
+                "msgtype": "image",
+                "decryptedPayload": {
+                    "msgid": "archive_group_image_001",
+                    "action": "send",
+                    "from": "wm_customer",
+                    "tolist": ["user_sales"],
+                    "msgtime": 1781725203000,
+                    "msgtype": "image",
+                    "image": {"sdkfileid": "image-sdk-file", "md5sum": "image-md5", "filesize": 1024},
+                },
+            },
+        ],
+    }
+
+    saved = client.post("/api/wecom/archive/mock-messages", json=payload, headers={"X-Admin-Token": "archive-admin"})
+    processed = client.post("/api/wecom/archive/process", headers={"X-Admin-Token": "archive-admin"})
+    pending = client.get("/api/imports/pending").json()["data"]
+
+    assert saved.status_code == 200
+    assert processed.status_code == 200
+    result = processed.json()["data"]
+    assert result["processedCount"] == 1
+    assert result["processed"][0]["seqs"] == [401, 402]
+    note_id = result["processed"][0]["noteId"]
+    generated = next(item for item in pending if item["generatedNote"] and item["generatedNote"]["id"] == note_id)
+    assert len(generated["rawMessageIds"]) == 2
+    assert "房源：碧桂园一房" in generated["generatedNote"]["body"]
+    assert generated["generatedNote"]["media"][0]["mediaId"] == "image-sdk-file"
+
+
 def test_real_sync_uses_mock_real_response_while_mock_enabled(client):
     response = client.post("/api/wecom/real-sync")
     assert response.status_code == 200

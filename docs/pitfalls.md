@@ -1149,3 +1149,19 @@ from ip=81.70.84.35
 - 排查“某句话是否进入”时，不只看当前拉取返回的 `rawCount`。
 - 必须查询 `/api/wecom/archive/messages?limit=50`，按 `seq` 倒序列出 `msgType/msgTime/text/generatedNoteId`。
 - 多条图片/文字混发时，以 cursor seq 和消息列表为最终判断依据。
+
+## 2026-06-18：微信笔记 note 的 content 是 JSON 字符串
+
+问题：
+
+- 企业微信会话存档 `msgType=note` 的结构是 `info.items`。
+- 每个 item 的 `content` 不是直接 dict，而是 JSON 字符串。
+- 如果只按普通文本处理，会生成“企业微信note归档 / 暂无正文”，丢失房源正文、位置和图片引用。
+
+正确做法：
+
+- 对 `info.items[].content` 做 JSON 解析。
+- `msg_type=text` 读取 `content.content`。
+- `msg_type=location` 读取 `address/title` 并写入 `位置：...`。
+- `msg_type=image/video/file` 读取 `sdkfileid/md5sum/filesize`，先作为 media 引用保存。
+- `[图片]`、`[视频]`、`[文件]` 这类占位文本不应写入正文。
