@@ -1625,3 +1625,8 @@
 - 当前边界：
   - L2 轻模型标签和 L3 大模型深度标签暂未接入。
   - 专题关系第一版保存在 `UserNote.visibilityConfig.topicIds`，后续稳定后再拆 `topic_items`。
+- 生产部署：
+  - 已同步后端代码到服务器并重建/重启 backend 容器。
+  - `https://teambuy.lifelove.top/health` 返回 ok。
+  - PostgreSQL 已确认存在 `topics` 表。
+  - 生产 `GET /api/notes/topics?ownerUserId=nonexistent` 返回 404 `用户不存在`，说明新接口路由与用户校验生效。
