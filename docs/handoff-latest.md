@@ -994,3 +994,7 @@ rm -rf
   - 成功回填 `note_da48e67e5e` 的 5 张图片，兼容卡片 `card_9af73ff8e0` 已更新。
   - 另有 2 个旧图片失败，原因是超长 `sdkfileid` 造成本地文件名过长。
   - 已修复媒体文件名规则：超长 media ID 截断并追加 hash，等待重新部署后再跑一次回填。
+- 生产二次回填已执行：
+  - 成功回填 `note_f6cfe62264` 和 `note_866ce69346`。
+  - `downloadedCount=2`、`failedCount=0`。
+  - 当前已知历史无 URL 图片笔记已补齐。

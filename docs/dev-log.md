@@ -1512,3 +1512,7 @@
   - 媒体文件名生成对超长 media ID 做截断并追加 `sha256` 短 hash。
   - 新增超长 media ID 存储测试。
   - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_skill_router.py backend/tests/test_app.py backend/tests/test_media_processing_service.py backend/tests/test_media_storage_service.py -q`：67 项通过。
+- 生产二次回填结果：
+  - `checkedNoteCount=2`。
+  - `downloadedCount=2`、`failedCount=0`。
+  - 成功回填 `note_f6cfe62264`、`note_866ce69346`，并更新对应兼容卡片。
