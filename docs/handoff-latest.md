@@ -703,3 +703,40 @@ rm -rf
   - 小程序所有 `.js` `node --check` 通过。
   - 小程序所有 `.json` 解析通过。
 - 仍需微信开发者工具或真机人工验收页面渲染、输入、保存、删除和返回刷新。
+
+## 2026-06-17 补充：会话内容存档配置与 wecom-archive-core 骨架已完成
+
+- 用户已开通企业微信会话内容存档，后台页面为 `https://work.weixin.qq.com/wework_admin/frame#financial/corpEncryptData`。
+- 本轮已生成 RSA 密钥对：
+  - 私钥：`backend/secrets/wecom_archive_private.pem`
+  - 公钥：`backend/secrets/wecom_archive_public.pem`
+  - `*.pem` 被 `.gitignore` 忽略，不进入 Git。
+- 配置文档已新增：`docs/stage2-docs/10-wecom-archive-config.md`。
+- 后端新增会话存档配置项：
+  - `WECOM_ARCHIVE_ENABLED`
+  - `WECOM_ARCHIVE_SECRET`
+  - `WECOM_ARCHIVE_PRIVATE_KEY_PATH`
+  - `WECOM_ARCHIVE_PUBLIC_KEY_PATH`
+  - `WECOM_ARCHIVE_SDK_LIB_PATH`
+- 后端新增会话存档基础模型和仓储：
+  - `WecomArchiveCursor`
+  - `WecomArchiveMessage`
+  - `wecom_archive_cursors`
+  - `wecom_archive_messages`
+- 新增接口：
+  - `GET /api/wecom/archive/config-check`
+  - `GET /api/wecom/archive/cursor`
+  - `GET /api/wecom/archive/messages`
+  - `POST /api/wecom/archive/mock-messages`
+- 原始会话存档消息查询和样例写入需要 admin token。
+- Codex 内置浏览器读取企业微信后台页面时，DOM/截图连续超时；本轮没有自动点击保存后台配置。后续应按配置文档人工粘贴公钥并保存，保存前确认页面是“会话内容存档”而不是“微信客服 API 接收消息”。
+- 最近验证：
+  - `/tmp/teambuy-pytest-venv312/bin/python -m compileall backend/app backend/tests` 通过。
+  - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_app.py -q -k "wecom_archive or wecom_config_check"`：4 项通过。
+  - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_skill_router.py backend/tests/test_app.py backend/tests/test_media_processing_service.py backend/tests/test_media_storage_service.py -q`：54 项通过。
+- 下一步建议：
+  1. 在企业微信后台会话内容存档页粘贴 `docs/stage2-docs/10-wecom-archive-config.md` 里的公钥并保存。
+  2. 把后台会话内容存档 Secret 写入生产 `backend/.env` 的 `WECOM_ARCHIVE_SECRET`。
+  3. 生产调用 `/api/wecom/archive/config-check`，确认 `missing=[]`。
+  4. 接官方会话内容存档 SDK，拉取加密消息、解密、写入 `wecom_archive_messages` 并推进 `wecom_archive_cursors.seq`。
+  5. 把解密消息 Adapter 到 `ContentObject -> content-to-note -> UserNote`。

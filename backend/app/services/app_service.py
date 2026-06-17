@@ -5,7 +5,7 @@ from datetime import timedelta
 from uuid import uuid4
 from fastapi import HTTPException, status
 
-from app.models.domain import AppState, Card, CardMedia, Category, ImportBatch, LeadFollowUpLog, LeadReminder, MediaRetryJob, RawMessage, RelayConfig, RelayEntry, SkillRun, SyncCursor, User, UserNote, ViewEvent
+from app.models.domain import AppState, Card, CardMedia, Category, ImportBatch, LeadFollowUpLog, LeadReminder, MediaRetryJob, RawMessage, RelayConfig, RelayEntry, SkillRun, SyncCursor, User, UserNote, ViewEvent, WecomArchiveCursor, WecomArchiveMessage
 from app.schemas.auth import MockLoginRequest
 from app.schemas.categories import CategoryCreateRequest
 from app.schemas.cards import CardCreateRequest, CardUpdateRequest, CreateRelayRequest, LeadReminderUpdateRequest, LeadReminderUpsertRequest, RecordViewRequest
@@ -334,6 +334,82 @@ class AppService:
         limit: int = 100,
     ) -> list[dict]:
         return [item.model_dump() for item in self.repo.list_skill_runs(status=status, skill_id=skill_id, limit=limit)]
+
+    def get_wecom_archive_cursor(self, corp_id: str) -> WecomArchiveCursor | None:
+        return self.repo.get_wecom_archive_cursor(corp_id)
+
+    def advance_wecom_archive_cursor(
+        self,
+        corp_id: str,
+        seq: int,
+        payload: dict | None = None,
+        status: str = "success",
+        error_message: str | None = None,
+    ) -> WecomArchiveCursor:
+        now = now_iso()
+        existing = self.repo.get_wecom_archive_cursor(corp_id)
+        cursor = WecomArchiveCursor(
+            id=existing.id if existing else f"wecom_archive_cursor_{corp_id}",
+            corpId=corp_id,
+            seq=seq,
+            status=status,
+            lastPayload=payload or {},
+            lastSyncedAt=now,
+            lockToken=None,
+            lockedAt=None,
+            lastError=error_message,
+            createdAt=existing.createdAt if existing else now,
+            updatedAt=now,
+        )
+        self.repo.save_wecom_archive_cursor(cursor)
+        return cursor
+
+    def save_wecom_archive_messages(self, corp_id: str, messages: list[dict]) -> dict:
+        existing_msg_ids = self.repo.existing_wecom_archive_msg_ids(
+            {item.get("msgid") or item.get("msgId") for item in messages if item.get("msgid") or item.get("msgId")}
+        )
+        now = now_iso()
+        archive_messages: list[WecomArchiveMessage] = []
+        max_seq = 0
+        skipped = 0
+        for index, item in enumerate(messages):
+            msg_id = item.get("msgid") or item.get("msgId")
+            if msg_id and msg_id in existing_msg_ids:
+                skipped += 1
+                continue
+            seq = int(item.get("seq") or item.get("Seq") or index + 1)
+            max_seq = max(max_seq, seq)
+            decrypted_payload = item.get("decryptedPayload")
+            archive_messages.append(
+                WecomArchiveMessage(
+                    id=new_id("wecom_archive_msg"),
+                    corpId=corp_id,
+                    seq=seq,
+                    msgId=msg_id,
+                    action=item.get("action"),
+                    fromUser=item.get("from") or item.get("fromUser") or item.get("from_user"),
+                    toList=item.get("tolist") or item.get("toList") or item.get("to_list") or [],
+                    roomId=item.get("roomid") or item.get("roomId") or item.get("room_id"),
+                    msgTime=item.get("msgtime") or item.get("msgTime") or item.get("msg_time"),
+                    msgType=item.get("msgtype") or item.get("msgType") or item.get("msg_type"),
+                    rawPayload=item,
+                    decryptedPayload=decrypted_payload if isinstance(decrypted_payload, dict) else None,
+                    mediaRefs=item.get("mediaRefs") or [],
+                    createdAt=now,
+                )
+            )
+        if archive_messages:
+            self.repo.save_wecom_archive_messages(archive_messages)
+            self.advance_wecom_archive_cursor(corp_id, max_seq, {"savedCount": len(archive_messages)}, status="success")
+        cursor = self.repo.get_wecom_archive_cursor(corp_id)
+        return {
+            "savedCount": len(archive_messages),
+            "skippedDuplicateCount": skipped,
+            "cursor": cursor.model_dump() if cursor else None,
+        }
+
+    def list_wecom_archive_messages(self, limit: int = 100) -> list[dict]:
+        return [item.model_dump() for item in self.repo.list_wecom_archive_messages(limit=limit)]
 
     def list_import_failures(self, limit: int = 100) -> dict:
         failed_runs = self.repo.list_skill_runs(status="failed", limit=limit)

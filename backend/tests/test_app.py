@@ -137,6 +137,72 @@ def test_wecom_config_check_reports_missing_real_fields(client, monkeypatch):
     assert payload["data"]["callbackUrl"].endswith("/api/wecom/kf/teamBuy/callback")
 
 
+def test_wecom_archive_config_check_reports_key_status(client, monkeypatch, tmp_path):
+    private_key = tmp_path / "archive_private.pem"
+    public_key = tmp_path / "archive_public.pem"
+    private_key.write_text("PRIVATE KEY", encoding="utf-8")
+    public_key.write_text("PUBLIC KEY", encoding="utf-8")
+    monkeypatch.setattr(settings, "wecom_corp_id", "ww_archive")
+    monkeypatch.setattr(settings, "wecom_archive_enabled", True)
+    monkeypatch.setattr(settings, "wecom_archive_secret", "archive-secret")
+    monkeypatch.setattr(settings, "wecom_archive_private_key_path", private_key)
+    monkeypatch.setattr(settings, "wecom_archive_public_key_path", public_key)
+    monkeypatch.setattr(settings, "wecom_archive_sdk_lib_path", None)
+
+    response = client.get("/api/wecom/archive/config-check")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["success"] is True
+    assert payload["data"]["enabled"] is True
+    assert payload["data"]["privateKeyReadable"] is True
+    assert payload["data"]["publicKey"] == "PUBLIC KEY"
+    assert payload["data"]["missing"] == []
+
+
+def test_wecom_archive_messages_require_admin_token(client, monkeypatch):
+    monkeypatch.setattr(settings, "admin_token", "archive-admin")
+
+    response = client.get("/api/wecom/archive/messages")
+
+    assert response.status_code == 403
+
+
+def test_wecom_archive_mock_messages_persist_cursor_and_dedupe(client, monkeypatch):
+    monkeypatch.setattr(settings, "admin_token", "archive-admin")
+    monkeypatch.setattr(settings, "wecom_corp_id", "ww_archive")
+    payload = {
+        "messages": [
+            {
+                "seq": 101,
+                "msgid": "archive_msg_001",
+                "action": "send",
+                "from": "wm_external",
+                "tolist": ["zhangsan"],
+                "msgtime": "2026-06-17T17:50:00+08:00",
+                "msgtype": "text",
+                "decryptedPayload": {"text": {"content": "客户发来一段资料"}},
+            }
+        ]
+    }
+
+    first = client.post("/api/wecom/archive/mock-messages", json=payload, headers={"X-Admin-Token": "archive-admin"})
+    second = client.post("/api/wecom/archive/mock-messages", json=payload, headers={"X-Admin-Token": "archive-admin"})
+    messages = client.get("/api/wecom/archive/messages", headers={"X-Admin-Token": "archive-admin"})
+    cursor = client.get("/api/wecom/archive/cursor", headers={"X-Admin-Token": "archive-admin"})
+
+    assert first.status_code == 200
+    assert first.json()["data"]["savedCount"] == 1
+    assert second.status_code == 200
+    assert second.json()["data"]["savedCount"] == 0
+    assert second.json()["data"]["skippedDuplicateCount"] == 1
+    assert messages.status_code == 200
+    assert len(messages.json()["data"]) == 1
+    assert messages.json()["data"][0]["msgId"] == "archive_msg_001"
+    assert cursor.status_code == 200
+    assert cursor.json()["data"]["seq"] == 101
+
+
 def test_real_sync_uses_mock_real_response_while_mock_enabled(client):
     response = client.post("/api/wecom/real-sync")
     assert response.status_code == 200

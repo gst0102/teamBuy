@@ -18,6 +18,7 @@ SyncStatus = Literal["idle", "running", "success", "failed"]
 MediaRetryStatus = Literal["pending", "success", "failed"]
 SyncTaskStatus = Literal["queued", "running", "success", "failed", "retrying", "skipped"]
 SkillRunStatus = Literal["pending", "success", "failed", "needs_confirm"]
+ArchiveCursorStatus = Literal["idle", "running", "success", "failed"]
 
 
 class User(BaseModel):
@@ -271,6 +272,37 @@ class SkillRun(BaseModel):
     endedAt: str | None = None
 
 
+class WecomArchiveCursor(BaseModel):
+    id: str
+    corpId: str
+    seq: int = 0
+    status: ArchiveCursorStatus = "idle"
+    lastPayload: dict = Field(default_factory=dict)
+    lastSyncedAt: str
+    lockToken: str | None = None
+    lockedAt: str | None = None
+    lastError: str | None = None
+    createdAt: str
+    updatedAt: str
+
+
+class WecomArchiveMessage(BaseModel):
+    id: str
+    corpId: str
+    seq: int
+    msgId: str | None = None
+    action: str | None = None
+    fromUser: str | None = None
+    toList: list[str] = Field(default_factory=list)
+    roomId: str | None = None
+    msgTime: str | None = None
+    msgType: str | None = None
+    rawPayload: dict = Field(default_factory=dict)
+    decryptedPayload: dict | None = None
+    mediaRefs: list[dict] = Field(default_factory=list)
+    createdAt: str
+
+
 class AppState(BaseModel):
     users: list[User] = Field(default_factory=list)
     import_batches: list[ImportBatch] = Field(default_factory=list)
@@ -287,3 +319,5 @@ class AppState(BaseModel):
     sync_tasks: list[SyncTask] = Field(default_factory=list)
     sync_task_logs: list[SyncTaskLog] = Field(default_factory=list)
     skill_runs: list[SkillRun] = Field(default_factory=list)
+    wecom_archive_cursors: list[WecomArchiveCursor] = Field(default_factory=list)
+    wecom_archive_messages: list[WecomArchiveMessage] = Field(default_factory=list)

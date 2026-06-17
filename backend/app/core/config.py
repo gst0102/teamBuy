@@ -24,6 +24,14 @@ def env_int(name: str, default: int) -> int:
     return int(value)
 
 
+def env_path(name: str, default: str = "") -> Path | None:
+    value = env_value(name, default)
+    if not value:
+        return None
+    path = Path(value)
+    return path if path.is_absolute() else ROOT_DIR / path
+
+
 @dataclass(slots=True)
 class Settings:
     app_env: str = env_value("APP_ENV", "development")
@@ -43,6 +51,11 @@ class Settings:
     wecom_sync_lock_timeout_seconds: int = env_int("WECOM_SYNC_LOCK_TIMEOUT_SECONDS", 600)
     wecom_api_base_url: str = env_value("WECOM_API_BASE_URL", "https://qyapi.weixin.qq.com")
     wecom_use_mock: bool = env_value("WECOM_USE_MOCK", "true").lower() in {"1", "true", "yes"}
+    wecom_archive_enabled: bool = env_value("WECOM_ARCHIVE_ENABLED", "false").lower() in {"1", "true", "yes"}
+    wecom_archive_secret: str = env_value("WECOM_ARCHIVE_SECRET", "")
+    wecom_archive_private_key_path: Path | None = env_path("WECOM_ARCHIVE_PRIVATE_KEY_PATH", "backend/secrets/wecom_archive_private.pem")
+    wecom_archive_public_key_path: Path | None = env_path("WECOM_ARCHIVE_PUBLIC_KEY_PATH", "backend/secrets/wecom_archive_public.pem")
+    wecom_archive_sdk_lib_path: Path | None = env_path("WECOM_ARCHIVE_SDK_LIB_PATH", "")
     storage_mode: str = env_value("STORAGE_MODE", "mock")
     media_storage_dir: Path = ROOT_DIR / env_value("MEDIA_STORAGE_DIR", "backend/mock/media")
     media_public_url_prefix: str = env_value("MEDIA_PUBLIC_URL_PREFIX", "/media")
@@ -75,6 +88,22 @@ class Settings:
             "WECOM_OPEN_KFID": self.wecom_open_kfid,
         }
         return [key for key, value in required.items() if not value]
+
+    def missing_wecom_archive_fields(self) -> list[str]:
+        missing: list[str] = []
+        if not self.wecom_corp_id:
+            missing.append("WECOM_CORP_ID")
+        if not self.wecom_archive_secret:
+            missing.append("WECOM_ARCHIVE_SECRET")
+        if not self.wecom_archive_private_key_path:
+            missing.append("WECOM_ARCHIVE_PRIVATE_KEY_PATH")
+        elif not self.wecom_archive_private_key_path.exists():
+            missing.append("WECOM_ARCHIVE_PRIVATE_KEY_PATH(file not found)")
+        if not self.wecom_archive_public_key_path:
+            missing.append("WECOM_ARCHIVE_PUBLIC_KEY_PATH")
+        elif not self.wecom_archive_public_key_path.exists():
+            missing.append("WECOM_ARCHIVE_PUBLIC_KEY_PATH(file not found)")
+        return missing
 
 
 settings = Settings()

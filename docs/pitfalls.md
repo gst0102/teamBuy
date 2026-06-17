@@ -846,3 +846,31 @@ from ip=81.70.84.35
 
 - WXML 展示层优先写成 `{{a ? a : b}}`。
 - 复杂归一化逻辑放在 `services/api.js`，页面只做简单展示。
+
+## 2026-06-17：企业微信会话存档不要复用客服 Secret 和游标
+
+问题：
+
+- 会话内容存档页面有独立 Secret 和 RSA 公钥配置。
+- 如果误用微信客服 `WECOM_SECRET` 或 `sync_msg` 游标，会导致权限、解密和排障全部混乱。
+- 原始会话内容是合规存档数据，不能和面向小程序用户的笔记/卡片混在一起。
+
+正确做法：
+
+- 独立配置 `WECOM_ARCHIVE_SECRET`、`WECOM_ARCHIVE_PRIVATE_KEY_PATH`、`WECOM_ARCHIVE_PUBLIC_KEY_PATH`。
+- 原始存档消息保存到 `wecom_archive_messages`，拉取 seq 保存到 `wecom_archive_cursors`。
+- 解密后的内容再由 Adapter 转成 `ContentObject`，进入 `content-to-note`。
+- 用户删除 `UserNote` 不删除合规归档原始消息。
+
+## 2026-06-17：企业微信后台重页面不要反复拉完整 DOM
+
+问题：
+
+- Codex 内置浏览器打开企业微信会话内容存档页后，完整 DOM 快照和大范围页面脚本读取连续超时。
+- 企业微信后台是重前端页面，反复拉整页 DOM 会导致浏览器控制会话重置，也容易误以为页面不可用。
+
+正确做法：
+
+- 不在超时后盲目点击或保存后台配置。
+- 优先用后端生成公钥和本地配置清单，让用户在后台粘贴确认。
+- 如果必须继续浏览器操作，改用截图/小范围字段读取，并在保存前让用户确认。

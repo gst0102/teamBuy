@@ -25,6 +25,8 @@ from app.models.domain import (
     User,
     UserNote,
     ViewEvent,
+    WecomArchiveCursor,
+    WecomArchiveMessage,
 )
 
 
@@ -217,6 +219,21 @@ class AppRepository(Protocol):
         skill_id: str | None = None,
         limit: int = 100,
     ) -> list[SkillRun]:
+        ...
+
+    def get_wecom_archive_cursor(self, corp_id: str) -> WecomArchiveCursor | None:
+        ...
+
+    def save_wecom_archive_cursor(self, cursor: WecomArchiveCursor) -> None:
+        ...
+
+    def save_wecom_archive_messages(self, messages: list[WecomArchiveMessage]) -> None:
+        ...
+
+    def existing_wecom_archive_msg_ids(self, msg_ids: set[str]) -> set[str]:
+        ...
+
+    def list_wecom_archive_messages(self, limit: int = 100) -> list[WecomArchiveMessage]:
         ...
 
 
@@ -605,6 +622,35 @@ class JsonRepository:
             runs = [item for item in runs if item.skillId == skill_id]
         return sorted(runs, key=lambda item: item.startedAt, reverse=True)[:limit]
 
+    def get_wecom_archive_cursor(self, corp_id: str) -> WecomArchiveCursor | None:
+        return next((item for item in self.load().wecom_archive_cursors if item.corpId == corp_id), None)
+
+    def save_wecom_archive_cursor(self, cursor: WecomArchiveCursor) -> None:
+        state = self.load()
+        state.wecom_archive_cursors = [item for item in state.wecom_archive_cursors if item.id != cursor.id]
+        state.wecom_archive_cursors.append(cursor)
+        self.save(state)
+
+    def save_wecom_archive_messages(self, messages: list[WecomArchiveMessage]) -> None:
+        state = self.load()
+        message_ids = {item.id for item in messages}
+        state.wecom_archive_messages = [item for item in state.wecom_archive_messages if item.id not in message_ids]
+        state.wecom_archive_messages.extend(messages)
+        self.save(state)
+
+    def existing_wecom_archive_msg_ids(self, msg_ids: set[str]) -> set[str]:
+        if not msg_ids:
+            return set()
+        return {
+            item.msgId
+            for item in self.load().wecom_archive_messages
+            if item.msgId and item.msgId in msg_ids
+        }
+
+    def list_wecom_archive_messages(self, limit: int = 100) -> list[WecomArchiveMessage]:
+        messages = self.load().wecom_archive_messages
+        return sorted(messages, key=lambda item: (item.seq, item.createdAt), reverse=True)[:limit]
+
 
 class PostgresRepository:
     TABLES = {
@@ -623,6 +669,8 @@ class PostgresRepository:
         "sync_tasks": "sync_tasks",
         "sync_task_logs": "sync_task_logs",
         "skill_runs": "skill_runs",
+        "wecom_archive_cursors": "wecom_archive_cursors",
+        "wecom_archive_messages": "wecom_archive_messages",
     }
     FIELD_COLUMNS = {
         "users": [
@@ -741,6 +789,25 @@ class PostgresRepository:
             ("started_at", "timestamptz", "startedAt"),
             ("ended_at", "timestamptz", "endedAt"),
         ],
+        "wecom_archive_cursors": [
+            ("corp_id", "text", "corpId"),
+            ("seq", "bigint", "seq"),
+            ("status", "text", "status"),
+            ("last_synced_at", "timestamptz", "lastSyncedAt"),
+            ("lock_token", "text", "lockToken"),
+            ("locked_at", "timestamptz", "lockedAt"),
+            ("last_error", "text", "lastError"),
+        ],
+        "wecom_archive_messages": [
+            ("corp_id", "text", "corpId"),
+            ("seq", "bigint", "seq"),
+            ("msg_id", "text", "msgId"),
+            ("action", "text", "action"),
+            ("from_user", "text", "fromUser"),
+            ("room_id", "text", "roomId"),
+            ("msg_time", "timestamptz", "msgTime"),
+            ("msg_type", "text", "msgType"),
+        ],
     }
     INDEXES = {
         "import_batches": [
@@ -801,6 +868,15 @@ class PostgresRepository:
             ("idx_skill_runs_status_time", "status, started_at"),
             ("idx_skill_runs_skill_time", "skill_id, started_at"),
             ("idx_skill_runs_output_ref", "output_ref"),
+        ],
+        "wecom_archive_cursors": [
+            ("idx_wecom_archive_cursors_corp", "corp_id"),
+            ("idx_wecom_archive_cursors_status", "status, updated_at"),
+        ],
+        "wecom_archive_messages": [
+            ("idx_wecom_archive_messages_corp_seq", "corp_id, seq"),
+            ("idx_wecom_archive_messages_msg_id", "msg_id"),
+            ("idx_wecom_archive_messages_type_time", "msg_type, msg_time"),
         ],
     }
 
@@ -1358,6 +1434,43 @@ class PostgresRepository:
         )
         return [SkillRun.model_validate(row) for row in rows]
 
+    def get_wecom_archive_cursor(self, corp_id: str) -> WecomArchiveCursor | None:
+        rows = self._list_payloads(
+            "wecom_archive_cursors",
+            "corp_id = %s",
+            (corp_id,),
+            "last_synced_at desc, id desc",
+        )
+        return WecomArchiveCursor.model_validate(rows[0]) if rows else None
+
+    def save_wecom_archive_cursor(self, cursor: WecomArchiveCursor) -> None:
+        self._save_model("wecom_archive_cursors", cursor)
+
+    def save_wecom_archive_messages(self, messages: list[WecomArchiveMessage]) -> None:
+        with psycopg.connect(self.database_url) as conn:
+            with conn.transaction():
+                for message in messages:
+                    self._upsert_payload(conn, "wecom_archive_messages", message.model_dump(mode="json"))
+
+    def existing_wecom_archive_msg_ids(self, msg_ids: set[str]) -> set[str]:
+        if not msg_ids:
+            return set()
+        with psycopg.connect(self.database_url, row_factory=dict_row) as conn:
+            rows = conn.execute(
+                "select msg_id from wecom_archive_messages where msg_id = any(%s)",
+                (list(msg_ids),),
+            ).fetchall()
+        return {row["msg_id"] for row in rows if row["msg_id"]}
+
+    def list_wecom_archive_messages(self, limit: int = 100) -> list[WecomArchiveMessage]:
+        rows = self._list_payloads(
+            "wecom_archive_messages",
+            "true",
+            (),
+            "seq desc, created_at desc, id desc limit %s" % int(limit),
+        )
+        return [WecomArchiveMessage.model_validate(row) for row in rows]
+
     def init_schema(self) -> None:
         with psycopg.connect(self.database_url) as conn:
             with conn.transaction():
@@ -1396,6 +1509,19 @@ class PostgresRepository:
                     """
                     create unique index if not exists uq_lead_reminders_card_viewer
                     on lead_reminders (card_id, viewer_user_id)
+                    """
+                )
+                conn.execute(
+                    """
+                    create unique index if not exists uq_wecom_archive_cursors_corp
+                    on wecom_archive_cursors (corp_id)
+                    """
+                )
+                conn.execute(
+                    """
+                    create unique index if not exists uq_wecom_archive_messages_msg_id
+                    on wecom_archive_messages (msg_id)
+                    where msg_id is not null
                     """
                 )
 

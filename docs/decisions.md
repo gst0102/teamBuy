@@ -947,3 +947,18 @@ teamBuy 首版定位为素材导入、卡片生成、查看统计、实名接龙
 
 - 当前 tabBar 已承载首页、资源库、添加、访问记录、我的；贸然替换会影响既有资源卡片链路。
 - 笔记库刚上线，需要先验证数据和编辑闭环，再决定是否升级为一级 tab。
+
+### 决策：会话内容存档作为独立 wecom-archive-core，不复用客服 sync_msg 配置
+
+选择：
+
+- 企业微信会话内容存档使用独立配置项：`WECOM_ARCHIVE_SECRET`、`WECOM_ARCHIVE_PRIVATE_KEY_PATH`、`WECOM_ARCHIVE_PUBLIC_KEY_PATH`。
+- 会话内容存档的原始消息单独落到 `wecom_archive_messages`，拉取游标单独落到 `wecom_archive_cursors`。
+- 当前企业微信客服 `sync_msg` 继续保留作为过渡入口；会话内容存档接入后不直接替换客服入口。
+- 会话内容存档原始消息查询接口必须 admin token 保护。
+
+原因：
+
+- 会话内容存档属于合规归档基座，权限、Secret、RSA 密钥、SDK、游标和审计口径都不同于微信客服 `sync_msg`。
+- 两条入口后续可以共用 `ContentObject -> content-to-note -> UserNote`，但不应混用入口配置和存储游标。
+- 原始会话内容敏感度高，不能暴露给普通小程序用户接口。

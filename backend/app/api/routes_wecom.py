@@ -50,6 +50,16 @@ def _verify_admin_token(provided_token: str | None) -> None:
         raise HTTPException(status_code=403, detail="admin token verification failed")
 
 
+def _read_text_file(path) -> str:
+    if not path or not path.exists():
+        return ""
+    return path.read_text(encoding="utf-8")
+
+
+def _mask_path(path) -> str:
+    return str(path) if path else ""
+
+
 async def _download_sync_media(
     messages: list[dict],
     client: WecomClient,
@@ -258,6 +268,72 @@ def config_check(client: WecomClient = Depends(get_wecom_client)):
             "configured": client.is_configured(),
         },
     )
+
+
+@router.get("/archive/config-check", response_model=ApiResponse[dict])
+def archive_config_check():
+    missing = settings.missing_wecom_archive_fields()
+    public_key = _read_text_file(settings.wecom_archive_public_key_path)
+    private_key_exists = bool(settings.wecom_archive_private_key_path and settings.wecom_archive_private_key_path.exists())
+    sdk_exists = bool(settings.wecom_archive_sdk_lib_path and settings.wecom_archive_sdk_lib_path.exists())
+    return ApiResponse(
+        success=not missing,
+        message="wecom archive config ready" if not missing else "wecom archive config incomplete",
+        data={
+            "enabled": settings.wecom_archive_enabled,
+            "corpIdConfigured": bool(settings.wecom_corp_id),
+            "archiveSecretConfigured": bool(settings.wecom_archive_secret),
+            "privateKeyPath": _mask_path(settings.wecom_archive_private_key_path),
+            "privateKeyReadable": private_key_exists,
+            "publicKeyPath": _mask_path(settings.wecom_archive_public_key_path),
+            "publicKey": public_key,
+            "sdkLibPath": _mask_path(settings.wecom_archive_sdk_lib_path),
+            "sdkLibReadable": sdk_exists,
+            "missing": missing,
+            "docs": {
+                "official": "https://developer.work.weixin.qq.com/document/path/91360",
+                "local": "docs/stage2-docs/10-wecom-archive-config.md",
+            },
+        },
+    )
+
+
+@router.get("/archive/cursor", response_model=ApiResponse[dict | None])
+def get_archive_cursor(
+    admin_token: str | None = Query(default=None, alias="adminToken"),
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+):
+    _verify_admin_token(x_admin_token or admin_token)
+    corp_id = settings.wecom_corp_id or "default"
+    cursor = service.get_wecom_archive_cursor(corp_id)
+    return ApiResponse(data=cursor.model_dump() if cursor else None)
+
+
+@router.get("/archive/messages", response_model=ApiResponse[list[dict]])
+def list_archive_messages(
+    limit: int = Query(default=100, ge=1, le=500),
+    admin_token: str | None = Query(default=None, alias="adminToken"),
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+):
+    _verify_admin_token(x_admin_token or admin_token)
+    return ApiResponse(data=service.list_wecom_archive_messages(limit=limit))
+
+
+@router.post("/archive/mock-messages", response_model=ApiResponse[dict])
+def save_archive_mock_messages(
+    payload: dict,
+    admin_token: str | None = Query(default=None, alias="adminToken"),
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+):
+    _verify_admin_token(x_admin_token or admin_token)
+    corp_id = payload.get("corpId") or settings.wecom_corp_id or "default"
+    messages = payload.get("messages") or []
+    if not isinstance(messages, list):
+        raise HTTPException(status_code=400, detail="messages must be a list")
+    return ApiResponse(data=service.save_wecom_archive_messages(corp_id, messages))
 
 
 @router.post("/real-sync", response_model=ApiResponse[dict])

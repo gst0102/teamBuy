@@ -10,6 +10,8 @@ teamBuy 是一个面向微信群私域场景的小程序工具，核心能力是
 
 当前企业微信客服后端回调地址已配置成功，并以 `https://teambuy.lifelove.top/api/wecom/kf/teamBuy/callback` 为准；其它企业微信配置项以 `backend/.env` 为准。
 
+企业微信会话内容存档已开通，进入 P0 第三阶段。配置清单固定在 `docs/stage2-docs/10-wecom-archive-config.md`；后端会话存档接口前缀为 `/api/wecom/archive`。会话内容存档使用独立 `WECOM_ARCHIVE_SECRET` 和 RSA 私钥，不复用微信客服 `WECOM_SECRET`。
+
 长期架构计划以 `docs/stage2-docs/08-plugin-architecture.md` 为准：资料整理助手采用“企业微信稳定基座 + 混合驱动 Skill + 小程序笔记与展示页”。企业微信负责入口、消息和通知；通用基座负责会话存档、身份、合规、支付、笔记库和展示页基础能力；可变功能通过 Skill 扩展。
 
 项目首版重点验证：

@@ -147,6 +147,48 @@ create table if not exists sync_task_logs (
     updated_at timestamptz not null default now()
 );
 
+create table if not exists skill_runs (
+    id text primary key,
+    payload jsonb not null,
+    skill_id text,
+    status text,
+    output_ref text,
+    model_provider text,
+    started_at timestamptz,
+    ended_at timestamptz,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+create table if not exists wecom_archive_cursors (
+    id text primary key,
+    payload jsonb not null,
+    corp_id text,
+    seq bigint,
+    status text,
+    last_synced_at timestamptz,
+    lock_token text,
+    locked_at timestamptz,
+    last_error text,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+create table if not exists wecom_archive_messages (
+    id text primary key,
+    payload jsonb not null,
+    corp_id text,
+    seq bigint,
+    msg_id text,
+    action text,
+    from_user text,
+    room_id text,
+    msg_time timestamptz,
+    msg_type text,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
 create index if not exists idx_import_batches_status on import_batches (status);
 create index if not exists idx_import_batches_conversation on import_batches (external_user_id, conversation_id, started_at);
 create index if not exists idx_import_batches_claimed_by on import_batches (claimed_by_user_id);
@@ -175,3 +217,13 @@ create index if not exists idx_sync_tasks_ready on sync_tasks (status, next_run_
 create index if not exists idx_sync_tasks_name_status on sync_tasks (name, status, updated_at);
 create index if not exists idx_sync_tasks_locked on sync_tasks (locked_by, locked_at);
 create index if not exists idx_sync_task_logs_task_time on sync_task_logs (task_id, created_at);
+create index if not exists idx_skill_runs_status_time on skill_runs (status, started_at);
+create index if not exists idx_skill_runs_skill_time on skill_runs (skill_id, started_at);
+create index if not exists idx_skill_runs_output_ref on skill_runs (output_ref);
+create index if not exists idx_wecom_archive_cursors_corp on wecom_archive_cursors (corp_id);
+create index if not exists idx_wecom_archive_cursors_status on wecom_archive_cursors (status, updated_at);
+create unique index if not exists uq_wecom_archive_cursors_corp on wecom_archive_cursors (corp_id);
+create index if not exists idx_wecom_archive_messages_corp_seq on wecom_archive_messages (corp_id, seq);
+create index if not exists idx_wecom_archive_messages_msg_id on wecom_archive_messages (msg_id);
+create index if not exists idx_wecom_archive_messages_type_time on wecom_archive_messages (msg_type, msg_time);
+create unique index if not exists uq_wecom_archive_messages_msg_id on wecom_archive_messages (msg_id) where msg_id is not null;

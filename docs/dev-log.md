@@ -1044,3 +1044,39 @@
 - 小程序所有 `.js` 执行 `node --check`：通过。
 - 小程序所有 `.json` 解析：通过。
 - 小程序内扫描 `悦享互动宝` / `悦享`：无残留。
+
+## 2026-06-17
+
+### P0 第三阶段：企业微信会话内容存档配置与 wecom-archive-core 骨架
+
+- 企业微信会话内容存档功能已由用户开通，后台页面地址为 `https://work.weixin.qq.com/wework_admin/frame#financial/corpEncryptData`。
+- 本轮生成会话内容存档 RSA 密钥对：
+  - 私钥：`backend/secrets/wecom_archive_private.pem`
+  - 公钥：`backend/secrets/wecom_archive_public.pem`
+  - `*.pem` 已被 `.gitignore` 排除，不提交 Git。
+- 新增配置文档：`docs/stage2-docs/10-wecom-archive-config.md`。
+  - 已记录企业微信后台需要填写的 RSA Public Key。
+  - 已记录 `WECOM_ARCHIVE_SECRET`、私钥路径、公钥路径和后续 SDK 路径。
+- `backend/.env.example` 新增会话内容存档配置项。
+- 新增会话内容存档领域模型：
+  - `WecomArchiveCursor`
+  - `WecomArchiveMessage`
+- JSON / PostgreSQL 仓储已支持：
+  - `wecom_archive_cursors`
+  - `wecom_archive_messages`
+- 新增接口：
+  - `GET /api/wecom/archive/config-check`
+  - `GET /api/wecom/archive/cursor`
+  - `GET /api/wecom/archive/messages`
+  - `POST /api/wecom/archive/mock-messages`
+- 原始会话存档消息查询和样例写入均需要 admin token。
+- 浏览器操作记录：
+  - Codex 内置浏览器当前页确认为企业微信会话内容存档配置地址。
+  - 页面 DOM/截图读取连续超时，未自动点击保存，避免误配置。
+  - 后续建议用户按 `docs/stage2-docs/10-wecom-archive-config.md` 复制公钥到后台保存，保存后把 Secret 写入生产 `.env`。
+
+### 验证结果
+
+- `/tmp/teambuy-pytest-venv312/bin/python -m compileall backend/app backend/tests`：通过。
+- `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_app.py -q -k "wecom_archive or wecom_config_check"`：4 项通过。
+- `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests/test_skill_router.py backend/tests/test_app.py backend/tests/test_media_processing_service.py backend/tests/test_media_storage_service.py -q`：54 项通过。
