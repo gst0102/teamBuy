@@ -88,6 +88,19 @@ create table if not exists relay_entries (
     updated_at timestamptz not null default now()
 );
 
+create table if not exists customer_actions (
+    id text primary key,
+    payload jsonb not null,
+    owner_user_id text,
+    note_id text,
+    source_card_id text,
+    viewer_user_id text,
+    anonymous_id text,
+    action_key text,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
 create table if not exists categories (
     id text primary key,
     payload jsonb not null,
@@ -235,6 +248,10 @@ create index if not exists idx_view_events_anonymous on view_events (card_id, an
 create index if not exists idx_relay_entries_card_status on relay_entries (card_id, status, created_at);
 create index if not exists idx_relay_entries_card_follow_up on relay_entries (card_id, follow_up_status);
 create index if not exists idx_relay_entries_user on relay_entries (user_id);
+create index if not exists idx_customer_actions_note_time on customer_actions (note_id, created_at);
+create index if not exists idx_customer_actions_owner_time on customer_actions (owner_user_id, created_at);
+create index if not exists idx_customer_actions_note_viewer on customer_actions (note_id, viewer_user_id, action_key);
+create index if not exists idx_customer_actions_note_anonymous on customer_actions (note_id, anonymous_id, action_key);
 create index if not exists idx_sync_cursors_open_kfid on sync_cursors (open_kfid);
 create index if not exists idx_sync_cursors_last_synced on sync_cursors (last_synced_at);
 create unique index if not exists uq_sync_cursors_open_kfid on sync_cursors (open_kfid);

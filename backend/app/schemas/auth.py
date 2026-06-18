@@ -9,3 +9,9 @@ class MockLoginRequest(BaseModel):
     openid: str | None = None
     phone: str | None = None
 
+
+class WechatLoginRequest(BaseModel):
+    code: str
+    nickname: str = "微信用户"
+    avatarUrl: str = "https://example.com/avatar-default.png"
+    phone: str | None = None

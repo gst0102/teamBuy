@@ -17,13 +17,16 @@ from app.services.helpers import new_id
 
 URL_PATTERN = re.compile(r"https?://[^\s]+", re.IGNORECASE)
 PHONE_PATTERN = re.compile(r"1[3-9]\d{9}")
-PRICE_PATTERN = re.compile(r"(?:¥|￥)?\s*\d+(?:\.\d+)?\s*(?:元|块|/月|每月|包邮)?")
+PRICE_PATTERN = re.compile(r"(?:¥|￥)?\s*\d+(?:\.\d+)?\s*(?:元/月|/月|每月|万|元|块)?")
+PRICE_UNIT_PATTERN = re.compile(r"(?:¥|￥)?\s*\d+(?:\.\d+)?\s*(?:元/月|/月|每月|万|元|块)")
+PRICE_KEYWORD_PATTERN = re.compile(r"(?:价格|租金|房租|售价|总价|团购价)\D{0,8}((?:¥|￥)?\s*\d+(?:\.\d+)?\s*(?:元/月|/月|每月|万|元|块)?)")
 FIELD_LINE_PATTERN = re.compile(r"^\s*([^:：\s]{1,8})\s*[:：]\s*(.+?)\s*$")
 
 
 PROPERTY_FIELD_ALIASES = {
     "community": ["小区", "楼盘", "项目", "房源", "社区"],
     "layout": ["户型", "房型", "格局"],
+    "area": ["面积", "建面", "建筑面积"],
     "price": ["价格", "租金", "房租", "售价", "总价"],
     "utilities": ["水电", "水电物业", "物业", "物业费"],
     "businessArea": ["商圈", "区域", "板块"],
@@ -64,6 +67,17 @@ GROUPBUY_CONVERSION_DEFAULTS = {
     "enablePrivateConsultation": False,
     "enableSharePoster": True,
     "enableGroupRelay": True,
+    "enablePaymentPlaceholder": False,
+}
+
+MINIAPP_PROPERTY_CONVERSION_DEFAULTS = {
+    "showContactPhone": False,
+    "enableLightScrm": True,
+    "collectLeads": True,
+    "enableAppointment": True,
+    "enablePrivateConsultation": True,
+    "enableSharePoster": True,
+    "enableGroupRelay": False,
     "enablePaymentPlaceholder": False,
 }
 
@@ -249,7 +263,7 @@ class SkillRouterService:
         media_cover_url = next((media.url for media in content.media if media.type == "image" and media.url), None)
         cover_url = link_cover_url if content.sourceType == "link_article" else media_cover_url
         cover_url = cover_url or media_cover_url or link_cover_url
-        phone_match = PHONE_PATTERN.search(body)
+        phone_match = None if content.sourceType == "miniapp_card" else PHONE_PATTERN.search(body)
         location_text = self._extract_prefixed_value(body, "位置：")
         typed_config = self._build_typed_note_config(content, title, body)
         return UserNoteDraftPayload(
@@ -322,32 +336,53 @@ class SkillRouterService:
     def _build_typed_note_config(self, content: ContentObjectPayload, title: str, body: str) -> dict:
         detection = self._detect_card_type(title, body, content)
         rule_tags = self._build_rule_tags(content)
+        if content.sourceType == "miniapp_card" and "小程序" not in rule_tags:
+            rule_tags.insert(0, "小程序")
         for tag in detection["tags"]:
             if tag not in rule_tags:
                 rule_tags.insert(max(len(rule_tags) - 1, 0), tag)
+        is_generated = detection["cardType"] in {"property_listing", "groupbuy_product"} and detection["recognitionConfidence"].get("level") == "high"
+        structured_data = dict(detection["structuredData"])
+        miniapp = content.metadata.get("miniapp") if isinstance(content.metadata, dict) else None
+        miniapp_web_url = ""
+        miniapp_source_name = ""
+        if isinstance(miniapp, dict) and miniapp:
+            structured_data["miniapp"] = {
+                key: value
+                for key, value in miniapp.items()
+                if value
+            }
+            miniapp_web_url = str(miniapp.get("webUrl") or "")
+            miniapp_source_name = str(miniapp.get("displayName") or miniapp.get("description") or "小程序")
         return {
             "contentMode": "structured_card" if detection["cardType"] in {"property_listing", "groupbuy_product"} else "note",
             "cardType": detection["cardType"],
-            "cardState": "collected",
-            "structuredData": detection["structuredData"],
-            "conversionConfig": self._default_conversion_config(detection["cardType"]),
+            "cardState": "generated" if is_generated else "collected",
+            "structuredData": structured_data,
+            "conversionConfig": self._default_conversion_config(detection["cardType"], content.sourceType, detection["typeSuggestions"]),
             "typeSuggestions": detection["typeSuggestions"],
+            "recognitionConfidence": detection["recognitionConfidence"],
             "sourceType": self._note_source_type(content),
-            "systemCategory": detection["systemCategory"],
+            "systemCategory": "小程序" if content.sourceType == "miniapp_card" and detection["systemCategory"] == "待整理" else detection["systemCategory"],
             "tags": rule_tags,
             "userTags": [],
             "tagLevels": {"rule": rule_tags, "light": [], "deep": []},
             "tagStatus": "rule_done",
             "canDeepOrganize": True,
+            "sourceUrl": miniapp_web_url,
+            "sourceName": miniapp_source_name,
+            "sourceLabel": "贝壳网页" if "贝壳" in miniapp_source_name and miniapp_web_url else "",
             "topicIds": [],
             "topics": [],
         }
 
-    def _default_conversion_config(self, card_type: str) -> dict:
+    def _default_conversion_config(self, card_type: str, source_type: str | None = None, suggestions: list[dict] | None = None) -> dict:
         if card_type == "property_listing":
             return dict(PROPERTY_CONVERSION_DEFAULTS)
         if card_type == "groupbuy_product":
             return dict(GROUPBUY_CONVERSION_DEFAULTS)
+        if source_type == "miniapp_card" and any(item.get("cardType") == "property_listing" for item in (suggestions or [])):
+            return dict(MINIAPP_PROPERTY_CONVERSION_DEFAULTS)
         return {
             "showContactPhone": False,
             "enableLightScrm": False,
@@ -361,41 +396,55 @@ class SkillRouterService:
 
     def _detect_card_type(self, title: str, body: str, content: ContentObjectPayload) -> dict:
         property_fields = self._extract_fields(body, PROPERTY_FIELD_ALIASES)
+        inferred_community = self._infer_title_community(title, body)
+        if inferred_community and "community" not in property_fields:
+            property_fields["community"] = inferred_community
         groupbuy_fields = self._extract_fields(body, GROUPBUY_FIELD_ALIASES)
         property_score = self._score_property(body, property_fields)
         groupbuy_score = self._score_groupbuy(body, groupbuy_fields)
         images = [media.url for media in content.media if media.type == "image" and media.url]
 
-        if property_score >= 3 and property_score >= groupbuy_score:
+        if self._is_high_confidence_property(body, property_fields, property_score, groupbuy_score):
             data = self._build_property_data(title, body, property_fields, images)
             return {
                 "cardType": "property_listing",
                 "systemCategory": "房源",
                 "structuredData": data,
                 "typeSuggestions": [],
+                "recognitionConfidence": {"level": "high", "score": property_score, "matchedFields": sorted(property_fields.keys())},
                 "tags": ["房产", "房源"],
             }
-        if groupbuy_score >= 3 and groupbuy_score > property_score:
+        if self._is_high_confidence_groupbuy(body, groupbuy_fields, groupbuy_score, property_score):
             data = self._build_groupbuy_data(title, body, groupbuy_fields, images)
             return {
                 "cardType": "groupbuy_product",
                 "systemCategory": "团购",
                 "structuredData": data,
                 "typeSuggestions": [],
+                "recognitionConfidence": {"level": "high", "score": groupbuy_score, "matchedFields": sorted(groupbuy_fields.keys())},
                 "tags": ["团购", "商品"],
             }
 
         suggestions = []
         if property_score >= 2:
-            suggestions.append({"cardType": "property_listing", "label": "可能是房源信息", "confidence": min(property_score / 5, 0.8)})
+            suggestions.append({"cardType": "property_listing", "label": "可能是房源信息", "confidence": min(property_score / 6, 0.75)})
         if groupbuy_score >= 2:
-            suggestions.append({"cardType": "groupbuy_product", "label": "可能是团购商品", "confidence": min(groupbuy_score / 5, 0.8)})
+            suggestions.append({"cardType": "groupbuy_product", "label": "可能是团购商品", "confidence": min(groupbuy_score / 6, 0.75)})
         card_type = "image_ocr" if content.media and not body.strip() else "text_note"
         return {
             "cardType": card_type,
             "systemCategory": "图片" if card_type == "image_ocr" else "待整理",
             "structuredData": {"rawText": body, "images": images},
             "typeSuggestions": suggestions,
+            "recognitionConfidence": {
+                "level": "medium" if suggestions else "low",
+                "propertyScore": property_score,
+                "groupbuyScore": groupbuy_score,
+                "matchedFields": {
+                    "property": sorted(property_fields.keys()),
+                    "groupbuy": sorted(groupbuy_fields.keys()),
+                },
+            },
             "tags": [],
         }
 
@@ -407,14 +456,62 @@ class SkillRouterService:
             if not match:
                 continue
             label, value = match.groups()
-            key = alias_to_key.get(label.strip())
+            key = alias_to_key.get(self._normalize_field_label(label))
             if key and value.strip():
                 fields[key] = value.strip()
         return fields
 
+    def _normalize_field_label(self, label: str) -> str:
+        return re.sub(r"^[^\u4e00-\u9fffA-Za-z0-9]+", "", label.strip())
+
+    def _infer_title_community(self, title: str, text: str) -> str:
+        value = re.sub(r"(租房|出租|房源|急租|转租|整租|合租|公寓|住宅)$", "", title.strip())
+        value = re.sub(r"(租房|出租|房源|急租|转租|整租|合租|公寓|住宅)", "", value).strip(" -_｜|·,，")
+        if not value or len(value) < 2:
+            return ""
+        has_property_signal = bool(re.search(r"(户型|一房|两房|三房|面积|价格|租金|水电|物业|位置|地址|地铁|服务费|密码锁)", text))
+        if not has_property_signal:
+            return ""
+        return value
+
+    def _is_high_confidence_property(self, text: str, fields: dict, score: int, groupbuy_score: int) -> bool:
+        required = {"community", "layout", "price", "businessArea", "address", "area"}
+        matched = required.intersection(fields.keys())
+        has_location = bool({"community", "businessArea", "address"}.intersection(fields.keys())) or bool(re.search(r"(小区|位置|地址|地铁|商圈)", text))
+        has_shape = bool({"layout", "area"}.intersection(fields.keys())) or bool(re.search(r"(一房|两房|三房|公寓|平)", text))
+        has_price = "price" in fields or bool(re.search(r"\d+\s*(?:元/月|/月|每月|万|元)", text))
+        return score >= 5 and score >= groupbuy_score + 1 and has_price and has_location and has_shape and len(matched) >= 3
+
+    def _is_high_confidence_groupbuy(self, text: str, fields: dict, score: int, property_score: int) -> bool:
+        required = {"productName", "price", "spec", "deadline", "pickupMethod", "pickupLocation"}
+        matched = required.intersection(fields.keys())
+        has_product = "productName" in fields or bool(re.search(r"(商品|团购|拼单|规格|现摘|现发)", text))
+        has_price = "price" in fields or bool(PRICE_PATTERN.search(text))
+        has_delivery = bool({"pickupMethod", "pickupLocation", "deadline", "spec"}.intersection(fields.keys())) or bool(re.search(r"(自提|配送|包邮|取货|截止|接龙|规格)", text))
+        return score >= 5 and score > property_score and has_product and has_price and has_delivery and len(matched) >= 2
+
     def _score_property(self, text: str, fields: dict) -> int:
         score = len(fields)
-        keywords = ["小区", "户型", "租金", "水电", "物业", "商圈", "房源", "公寓", "一房", "两房", "三房"]
+        keywords = [
+            "小区",
+            "户型",
+            "租金",
+            "水电",
+            "物业",
+            "商圈",
+            "房源",
+            "公寓",
+            "一房",
+            "两房",
+            "三房",
+            "二手房",
+            "新房",
+            "租房",
+            "贝壳找房",
+            "采光",
+            "楼层",
+            "拎包入住",
+        ]
         score += sum(1 for keyword in keywords if keyword in text)
         if "price" in fields or re.search(r"\d+\s*(?:元/月|/月|每月|万|元)", text):
             score += 1
@@ -432,7 +529,8 @@ class SkillRouterService:
         return {
             "community": fields.get("community") or title,
             "layout": fields.get("layout", ""),
-            "price": fields.get("price") or self._first_price(body),
+            "area": fields.get("area", ""),
+            "price": self._clean_price(fields.get("price", "")) or self._first_price(body),
             "utilities": fields.get("utilities", ""),
             "businessArea": fields.get("businessArea", ""),
             "address": fields.get("address", ""),
@@ -446,7 +544,7 @@ class SkillRouterService:
     def _build_groupbuy_data(self, title: str, body: str, fields: dict, images: list[str]) -> dict:
         return {
             "productName": fields.get("productName") or title,
-            "price": fields.get("price") or self._first_price(body),
+            "price": self._clean_price(fields.get("price", "")) or self._first_price(body),
             "spec": fields.get("spec", ""),
             "deadline": fields.get("deadline", ""),
             "pickupMethod": fields.get("pickupMethod", ""),
@@ -459,8 +557,24 @@ class SkillRouterService:
         }
 
     def _first_price(self, text: str) -> str:
-        match = PRICE_PATTERN.search(text)
+        for line in text.splitlines():
+            if "服务费" in line or "中介费" in line:
+                continue
+            keyword_match = PRICE_KEYWORD_PATTERN.search(line)
+            if keyword_match:
+                value = self._clean_price(keyword_match.group(1))
+                if value:
+                    return value
+        match = PRICE_UNIT_PATTERN.search(text)
         return match.group(0).strip() if match else ""
+
+    def _clean_price(self, value: str) -> str:
+        if not value:
+            return ""
+        keyword_match = PRICE_KEYWORD_PATTERN.search(value)
+        candidate = keyword_match.group(1) if keyword_match else value
+        unit_match = PRICE_PATTERN.search(candidate)
+        return unit_match.group(0).strip() if unit_match else ""
 
     def _note_source_type(self, content: ContentObjectPayload) -> str:
         if content.media and not content.textBlocks and not content.links:
@@ -469,18 +583,28 @@ class SkillRouterService:
             return "chat"
         if content.sourceType == "image_ocr":
             return "media"
+        if content.sourceType == "miniapp_card":
+            return "miniapp"
         return "note"
 
     def _build_rule_tags(self, content: ContentObjectPayload, host: str = "") -> list[str]:
         haystack = "\n".join([content.title or "", *content.textBlocks, host, " ".join(link.url for link in content.links)]).lower()
         tags: list[str] = []
+        if content.sourceType == "miniapp_card":
+            tags.append("小程序")
         if "mp.weixin.qq.com" in haystack:
             tags.append("微信文章")
         if host:
             tags.append("链接")
+        if "贝壳找房" in haystack or "ke.com" in haystack:
+            tags.append("贝壳找房")
         keyword_tags = {
             "房源": ["房产", "房源"],
             "小区": ["房产"],
+            "二手房": ["房产"],
+            "新房": ["房产"],
+            "租房": ["房产"],
+            "贝壳找房": ["房产"],
             "团购": ["团购"],
             "拼单": ["团购"],
             "草莓": ["草莓", "水果"],
@@ -530,6 +654,7 @@ class SkillRouterService:
             "wecom_thread": "input.wecom-thread",
             "chat_thread": "input.chat-thread",
             "link_article": "input.link-article",
+            "miniapp_card": "input.wecom-miniapp",
             "manual_text": "input.manual-text",
             "image_ocr": "input.image-ocr",
         }

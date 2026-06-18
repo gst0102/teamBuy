@@ -52,6 +52,52 @@ def make_test_image_bytes() -> bytes:
     return output.getvalue()
 
 
+def test_wechat_login_uses_openid_identity(client, monkeypatch):
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"openid": "openid_real_user_a", "unionid": "union_a"}
+
+    monkeypatch.setattr(settings, "wechat_miniapp_appid", "wx-test")
+    monkeypatch.setattr(settings, "wechat_miniapp_secret", "secret-test")
+    monkeypatch.setattr("app.services.app_service.httpx.get", lambda *args, **kwargs: FakeResponse())
+
+    first = client.post("/api/auth/wechat-login", json={"code": "code-a", "nickname": "用户A"})
+    second = client.post("/api/auth/wechat-login", json={"code": "code-b", "nickname": "用户A更新"})
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json()["data"]["id"] == second.json()["data"]["id"]
+    assert second.json()["data"]["openid"] == "openid_real_user_a"
+    assert second.json()["data"]["nickname"] == "用户A更新"
+
+
+def test_create_note_demo_data_for_owner(client):
+    user = client.post("/api/auth/mock-login", json={"nickname": "演示用户", "openid": "openid_demo_owner"}).json()["data"]
+
+    response = client.post("/api/notes/demo-data", params={"ownerUserId": user["id"]})
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert len(data["notes"]) == 3
+    assert data["leadsCreated"] == 2
+    assert data["actionsCreated"] == 3
+    notes = client.get("/api/notes", params={"ownerUserId": user["id"]}).json()["data"]
+    assert len(notes) == 3
+    assert all(item["ownerUserId"] == user["id"] for item in notes)
+    action_note = next(item for item in data["notes"] if "测试房源A" in item["title"])
+    action_rows = client.get(
+        f"/api/notes/{action_note['id']}/customer-actions",
+        params={"ownerUserId": user["id"]},
+    ).json()["data"]
+    assert action_rows["summary"]["total"] == 2
+    assert action_rows["summary"]["leadContact"] == 1
+    assert action_rows["summary"]["appointment"] == 1
+    assert action_rows["summary"]["pending"] == 1
+
+
 def test_wecom_archive_worker_run_once_pulls_then_processes():
     class FakeService:
         def __init__(self):
@@ -486,6 +532,73 @@ def test_wecom_archive_process_parses_note_items(client, monkeypatch):
     assert "碧桂园城市之光" in note["body"]
     assert "位置：湖南省长沙市雨花区嘉雨路碧桂园城市之光" in note["body"]
     assert note["media"][0]["mediaId"] == "sdk-file-001"
+
+
+def test_wecom_archive_process_handles_miniapp_card(client, monkeypatch):
+    monkeypatch.setattr(settings, "admin_token", "archive-admin")
+    payload = {
+        "corpId": "ww_archive",
+        "messages": [
+            {
+                "seq": 305,
+                "msgid": "archive_weapp_msg_001",
+                "action": "send",
+                "from": "wm_customer_weapp",
+                "tolist": ["user_sales"],
+                "msgtime": "2026-06-19T02:41:16+08:00",
+                "msgtype": "weapp",
+                "decryptedPayload": {
+                    "msgid": "archive_weapp_msg_001",
+                    "action": "send",
+                    "from": "wm_customer_weapp",
+                    "tolist": ["user_sales"],
+                    "msgtime": "2026-06-19T02:41:16+08:00",
+                    "msgtype": "weapp",
+                    "weapp": {
+                        "appid": "wxcfd8224218167d98",
+                        "title": "三江尊园 全天采光 好楼层 拎包入住",
+                        "pagepath": "subpackages/ershoufang/pages/esfDetail/esfDetail.html?cityId=150200&houseCode=101137825091&source=share_beikexcx",
+                        "username": "gh_2dbd87cb164c@app",
+                        "description": "贝壳找房丨二手房新房租房装修",
+                        "displayname": "贝壳找房丨二手房新房租房装修",
+                    },
+                },
+            }
+        ],
+    }
+
+    saved = client.post("/api/wecom/archive/mock-messages", json=payload, headers={"X-Admin-Token": "archive-admin"})
+    processed = client.post("/api/wecom/archive/process", headers={"X-Admin-Token": "archive-admin"})
+    pending = client.get("/api/imports/pending").json()["data"]
+
+    assert saved.status_code == 200
+    assert processed.status_code == 200
+    assert processed.json()["data"]["processedCount"] == 1
+    note_id = processed.json()["data"]["processed"][0]["noteId"]
+    generated = next(item for item in pending if item["generatedNote"] and item["generatedNote"]["id"] == note_id)
+    note = generated["generatedNote"]
+    config = note["visibilityConfig"]
+    assert generated["sourceType"] == "miniapp_link"
+    assert note["title"] == "三江尊园 全天采光 好楼层 拎包入住"
+    assert "小程序来源：贝壳找房" in note["body"]
+    assert "房源编码：101137825091" in note["body"]
+    assert "小程序路径：" not in note["body"]
+    assert note["phone"] is None
+    assert config["sourceType"] == "miniapp"
+    assert config["showPhone"] is False
+    assert config["systemCategory"] == "小程序"
+    assert "小程序" in config["tags"]
+    assert "贝壳找房" in config["tags"]
+    assert any(item["cardType"] == "property_listing" for item in config["typeSuggestions"])
+    assert config["structuredData"]["miniapp"]["houseCode"] == "101137825091"
+    assert config["structuredData"]["miniapp"]["pagePath"].startswith("subpackages/ershoufang/pages/esfDetail")
+    assert config["structuredData"]["miniapp"]["webUrl"] == "https://m.ke.com/baotou/ershoufang/101137825091.html"
+    assert config["sourceUrl"] == "https://m.ke.com/baotou/ershoufang/101137825091.html"
+    assert config["conversionConfig"]["enableLightScrm"] is True
+    assert config["conversionConfig"]["collectLeads"] is True
+    assert config["conversionConfig"]["enableAppointment"] is True
+    assert config["conversionConfig"]["enablePrivateConsultation"] is True
+    assert config["conversionConfig"]["showContactPhone"] is False
 
 
 def test_wecom_archive_process_groups_nearby_messages(client, monkeypatch):
@@ -1108,6 +1221,59 @@ def test_health_reports_database_configuration(client):
     assert isinstance(data["database"]["missing"], list)
 
 
+def test_location_geocode_reports_missing_key(client, monkeypatch):
+    from app.api import routes_location
+
+    monkeypatch.setattr(routes_location.settings, "tencent_map_key", "")
+
+    response = client.get("/api/location/geocode", params={"address": "长沙市芙蓉区万家丽"})
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["configured"] is False
+    assert data["found"] is False
+
+
+def test_location_geocode_normalizes_tencent_result(client, monkeypatch):
+    from app.api import routes_location
+
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "status": 0,
+                "result": {
+                    "title": "万国城",
+                    "address": "湖南省长沙市芙蓉区远大一路",
+                    "location": {"lat": 28.21, "lng": 113.02},
+                    "level": "地产小区",
+                    "reliability": 8,
+                },
+            }
+
+    def fake_get(url, params, timeout):
+        assert "geocoder" in url
+        assert params["key"] == "map-key"
+        assert params["address"] == "长沙市芙蓉区万国城"
+        assert timeout == 8
+        return FakeResponse()
+
+    monkeypatch.setattr(routes_location.settings, "tencent_map_key", "map-key")
+    monkeypatch.setattr(routes_location.httpx, "get", fake_get)
+
+    response = client.get("/api/location/geocode", params={"address": "长沙市芙蓉区万国城"})
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["configured"] is True
+    assert data["found"] is True
+    assert data["latitude"] == 28.21
+    assert data["longitude"] == 113.02
+    assert data["name"] == "万国城"
+
+
 def test_mock_import_creates_claimable_batch(client):
     response = client.post(
         "/api/wecom/mock-sync",
@@ -1150,6 +1316,48 @@ def test_wecom_import_uses_content_object_to_note_pipeline(client, monkeypatch):
     assert seen["sourceType"] == "wecom_thread"
     assert seen["rawMessageIds"]
     assert any("联系人" in text or "看房" in text for text in seen["textBlocks"])
+
+
+def test_wecom_sync_import_handles_miniapp_card(client):
+    service = client.app.dependency_overrides[get_app_service]()
+    result = service.trigger_sync_response_import(
+        {
+            "next_cursor": "cursor_weapp",
+            "msg_list": [
+                {
+                    "msgid": "sync_weapp_msg_001",
+                    "open_kfid": "wk_weapp",
+                    "external_userid": "external_weapp",
+                    "send_time": 1781808076,
+                    "msgtype": "weapp",
+                    "weapp": {
+                        "appid": "wxcfd8224218167d98",
+                        "title": "三江尊园 全天采光 好楼层 拎包入住",
+                        "pagepath": "subpackages/ershoufang/pages/esfDetail/esfDetail.html?cityId=150200&houseCode=101137825091",
+                        "username": "gh_2dbd87cb164c@app",
+                        "description": "贝壳找房丨二手房新房租房装修",
+                        "displayname": "贝壳找房丨二手房新房租房装修",
+                    },
+                }
+            ],
+        },
+        fallback_open_kfid="wk_weapp",
+    )
+
+    assert result["importBatchIds"]
+    pending = client.get("/api/imports/pending").json()["data"]
+    latest = pending[-1]
+    note = latest["generatedNote"]
+    assert latest["sourceType"] == "miniapp_link"
+    assert note["title"] == "三江尊园 全天采光 好楼层 拎包入住"
+    assert note["phone"] is None
+    assert note["visibilityConfig"]["sourceType"] == "miniapp"
+    assert note["visibilityConfig"]["showPhone"] is False
+    assert note["visibilityConfig"]["structuredData"]["miniapp"]["houseCode"] == "101137825091"
+    assert note["visibilityConfig"]["structuredData"]["miniapp"]["webUrl"] == "https://m.ke.com/baotou/ershoufang/101137825091.html"
+    assert note["visibilityConfig"]["conversionConfig"]["enableLightScrm"] is True
+    assert note["visibilityConfig"]["conversionConfig"]["collectLeads"] is True
+    assert note["visibilityConfig"]["conversionConfig"]["enableAppointment"] is True
 
 
 def test_wecom_import_persists_successful_skill_run(client):
@@ -1399,6 +1607,12 @@ def test_import_creates_claimable_user_note_and_note_crud(client):
     assert detail.status_code == 200
     assert detail.json()["data"]["sourceCardId"] == claim.json()["data"]["card"]["id"]
 
+    card_detail = client.get(f"/api/cards/{claim.json()['data']['card']['id']}")
+    assert card_detail.status_code == 200
+    assert card_detail.json()["data"]["sourceNoteId"] == note["id"]
+    cards = client.get("/api/cards", params={"ownerUserId": login["id"]}).json()["data"]
+    assert any(item["id"] == claim.json()["data"]["card"]["id"] and item["sourceNoteId"] == note["id"] for item in cards)
+
     updated = client.put(
         f"/api/notes/{note['id']}",
         json={
@@ -1458,6 +1672,16 @@ def test_import_creates_claimable_user_note_and_note_crud(client):
     ).json()["data"]
     assert [item["id"] for item in filtered] == [note["id"]]
 
+    created_date = structured.json()["data"]["createdAt"].split("T", 1)[0]
+    _, month, day = created_date.split("-")
+    compact_month_day = f"{int(month)}{int(day)}"
+    for keyword in [created_date, f"{int(month)}月", compact_month_day]:
+        fuzzy_filtered = client.get(
+            "/api/notes",
+            params={"ownerUserId": login["id"], "keyword": keyword},
+        ).json()["data"]
+        assert note["id"] in [item["id"] for item in fuzzy_filtered]
+
     organized = client.post(f"/api/notes/{note['id']}/organize", params={"ownerUserId": login["id"]})
     assert organized.status_code == 200
     organized_config = organized.json()["data"]["visibilityConfig"]
@@ -1473,6 +1697,87 @@ def test_import_creates_claimable_user_note_and_note_crud(client):
     assert generated_config["structuredData"]["generatedResult"]["pageType"] == "property_promo_page"
     assert "预约看房" in generated_config["structuredData"]["generatedResult"]["enabledActions"]
     assert "私聊咨询" not in generated_config["structuredData"]["generatedResult"]["enabledActions"]
+
+    viewer = client.post("/api/auth/mock-login", json={"nickname": "看房客户"}).json()["data"]
+    action_config = client.get(
+        f"/api/notes/{note['id']}/customer-actions/config",
+        params={"viewerUserId": viewer["id"]},
+    )
+    assert action_config.status_code == 200
+    action_keys = {item["key"] for item in action_config.json()["data"]["actions"]}
+    assert {"lead-contact", "appointment"}.issubset(action_keys)
+
+    lead_action = client.post(
+        f"/api/notes/{note['id']}/customer-actions/lead-contact",
+        json={
+            "viewerUserId": viewer["id"],
+            "nickname": viewer["nickname"],
+            "avatarUrl": viewer["avatarUrl"],
+            "payload": {
+                "name": "王客户",
+                "phone": "13900001111",
+                "wechat": "wx_house_001",
+                "remark": "周末方便看房",
+            },
+        },
+    )
+    assert lead_action.status_code == 200
+    lead_projection = lead_action.json()["data"]["projection"]
+    assert lead_projection["leadReminderId"].startswith("lead_")
+
+    appointment_action = client.post(
+        f"/api/notes/{note['id']}/customer-actions/appointment",
+        json={
+            "viewerUserId": viewer["id"],
+            "nickname": viewer["nickname"],
+            "avatarUrl": viewer["avatarUrl"],
+            "payload": {
+                "date": "2026-06-20",
+                "time": "14:30",
+                "remark": "两个人看房",
+            },
+        },
+    )
+    assert appointment_action.status_code == 200
+    assert appointment_action.json()["data"]["projection"]["leadReminderId"] == lead_projection["leadReminderId"]
+
+    lead_rows = client.get("/api/lead-reminders", params={"ownerUserId": login["id"]}).json()["data"]
+    customer_lead = next(item for item in lead_rows if item["id"] == lead_projection["leadReminderId"])
+    assert customer_lead["cardId"] == claim.json()["data"]["card"]["id"]
+    assert customer_lead["sourceNoteId"] == note["id"]
+    assert customer_lead["customerPhone"] == "13900001111"
+    assert customer_lead["customerWechat"] == "wx_house_001"
+    assert customer_lead["nextFollowUpAt"] == "2026-06-20T14:30:00+08:00"
+    assert any("客户预约：2026-06-20 14:30" in item["content"] for item in customer_lead["followUpLogs"])
+
+    submitted_config = client.get(
+        f"/api/notes/{note['id']}/customer-actions/config",
+        params={"viewerUserId": viewer["id"]},
+    ).json()["data"]
+    submitted = {item["key"]: item for item in submitted_config["actions"]}
+    assert submitted["lead-contact"]["submitted"] is True
+    assert submitted["appointment"]["submitted"] is True
+
+    note_actions = client.get(
+        f"/api/notes/{note['id']}/customer-actions",
+        params={"ownerUserId": login["id"]},
+    )
+    assert note_actions.status_code == 200
+    note_action_data = note_actions.json()["data"]
+    assert note_action_data["summary"]["total"] == 2
+    assert note_action_data["summary"]["leadContact"] == 1
+    assert note_action_data["summary"]["appointment"] == 1
+    assert note_action_data["summary"]["pending"] == 1
+    assert note_action_data["summary"]["hasUnread"] is True
+    assert {item["actionKey"] for item in note_action_data["actions"]} == {"lead-contact", "appointment"}
+    assert note_action_data["actions"][0]["leadReminderId"] == lead_projection["leadReminderId"]
+    assert note_action_data["leads"][0]["id"] == lead_projection["leadReminderId"]
+
+    forbidden_actions = client.get(
+        f"/api/notes/{note['id']}/customer-actions",
+        params={"ownerUserId": viewer["id"]},
+    )
+    assert forbidden_actions.status_code == 403
 
     deleted = client.delete(f"/api/notes/{note['id']}", params={"ownerUserId": login["id"]})
     assert deleted.status_code == 200

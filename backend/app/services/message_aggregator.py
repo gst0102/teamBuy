@@ -9,6 +9,8 @@ WINDOW_SECONDS = 60
 
 
 def detect_source_type(messages: list[RawMessage]) -> str:
+    if any(item.msgType == "weapp" for item in messages):
+        return "miniapp_link"
     for item in messages:
         if item.msgType == "link":
             url = str(item.content.get("url", "")).lower()
@@ -23,6 +25,11 @@ def detect_source_type(messages: list[RawMessage]) -> str:
 
 
 def resolve_title_candidate(messages: list[RawMessage]) -> str:
+    for item in messages:
+        if item.msgType == "weapp":
+            title = str(item.content.get("title", "")).strip()
+            if title:
+                return title
     for item in messages:
         if item.msgType == "link":
             title = str(item.content.get("title", "")).strip()

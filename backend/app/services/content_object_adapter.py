@@ -1,9 +1,15 @@
 from __future__ import annotations
 
 import json
+from urllib.parse import parse_qs, urlparse
 
 from app.models.domain import ImportBatch, RawMessage, WecomArchiveMessage
 from app.schemas.skills import ContentLinkPayload, ContentMediaPayload, ContentObjectPayload, ContentParticipantPayload
+
+
+BEIKE_CITY_SLUGS = {
+    "150200": "baotou",
+}
 
 
 class ContentObjectAdapter:
@@ -45,13 +51,21 @@ class ContentObjectAdapter:
                 location = str(content.get("label", "")).strip()
                 if location:
                     text_blocks.append(f"位置：{location}")
+            elif message.msgType == "weapp":
+                miniapp = self._miniapp_metadata(content)
+                text_blocks.extend(self._miniapp_text_blocks(miniapp))
 
+        miniapp_metadata = next(
+            (self._miniapp_metadata(message.content) for message in messages if message.msgType == "weapp"),
+            {},
+        )
         return ContentObjectPayload(
-            sourceType=self._source_type(batch.sourceType),
-            title=batch.titleCandidate,
+            sourceType="miniapp_card" if miniapp_metadata else self._source_type(batch.sourceType),
+            title=miniapp_metadata.get("title") or batch.titleCandidate,
             textBlocks=text_blocks,
             media=media,
             links=[link for link in links if link.url],
+            metadata={"miniapp": miniapp_metadata} if miniapp_metadata else {},
             participants=self._unique_participants(participants),
             timestamps=timestamps,
             sourceRefs=[batch.id],
@@ -98,18 +112,27 @@ class ContentObjectAdapter:
                 text_blocks.append(f"位置：{label}")
         elif msg_type == "note":
             self._append_archive_note_parts(message, payload, text_blocks, media, links)
+        elif msg_type == "weapp":
+            miniapp_payload = payload.get("weapp") if isinstance(payload.get("weapp"), dict) else payload
+            miniapp = self._miniapp_metadata(miniapp_payload)
+            text_blocks.extend(self._miniapp_text_blocks(miniapp))
         else:
             text = payload.get("content") or payload.get("text")
             if text:
                 text_blocks.append(str(text).strip())
 
         title = self._archive_title(payload, msg_type, text_blocks, links)
+        if msg_type == "weapp":
+            miniapp_payload = payload.get("weapp") if isinstance(payload.get("weapp"), dict) else payload
+            miniapp = self._miniapp_metadata(miniapp_payload)
+            title = miniapp.get("title") or title
         return ContentObjectPayload(
-            sourceType="link_article" if msg_type == "link" else "wecom_thread",
+            sourceType="link_article" if msg_type == "link" else "miniapp_card" if msg_type == "weapp" else "wecom_thread",
             title=title,
             textBlocks=[item for item in text_blocks if item],
             media=media,
             links=[link for link in links if link.url],
+            metadata={"miniapp": miniapp} if msg_type == "weapp" else {},
             participants=[
                 ContentParticipantPayload(id=message.fromUser, role="from_user"),
                 *[ContentParticipantPayload(id=item, role="to_user") for item in message.toList],
@@ -120,7 +143,9 @@ class ContentObjectAdapter:
         )
 
     def _source_type(self, batch_source_type: str) -> str:
-        if batch_source_type in {"wechat_note", "miniapp_link"}:
+        if batch_source_type == "miniapp_link":
+            return "miniapp_card"
+        if batch_source_type == "wechat_note":
             return "wecom_thread"
         if batch_source_type in {"mp_link", "web_link"}:
             return "link_article"
@@ -198,6 +223,52 @@ class ContentObjectAdapter:
                 return {"content": value}
             return parsed if isinstance(parsed, dict) else {"content": value}
         return {}
+
+    def _miniapp_metadata(self, payload: dict) -> dict:
+        page_path = str(payload.get("pagepath") or payload.get("pagePath") or "").strip()
+        query = parse_qs(urlparse(page_path).query)
+        city_id = (query.get("cityId") or query.get("city_id") or [""])[0]
+        house_code = (query.get("houseCode") or query.get("house_code") or [""])[0]
+        appid = str(payload.get("appid") or payload.get("appId") or "").strip()
+        display_name = str(payload.get("displayname") or payload.get("displayName") or "").strip()
+        description = str(payload.get("description") or payload.get("desc") or "").strip()
+        metadata = {
+            "appid": appid,
+            "username": str(payload.get("username") or "").strip(),
+            "title": str(payload.get("title") or "").strip(),
+            "description": description,
+            "displayName": display_name,
+            "pagePath": page_path,
+            "houseCode": house_code,
+            "cityId": city_id,
+            "source": (query.get("source") or [""])[0],
+        }
+        web_url = self._miniapp_web_url(metadata)
+        if web_url:
+            metadata["webUrl"] = web_url
+        return metadata
+
+    def _miniapp_web_url(self, miniapp: dict) -> str:
+        source_text = " ".join(
+            str(miniapp.get(key) or "")
+            for key in ["appid", "username", "displayName", "description", "source"]
+        )
+        if "贝壳" not in source_text and "wxcfd8224218167d98" not in source_text:
+            return ""
+        city_slug = BEIKE_CITY_SLUGS.get(str(miniapp.get("cityId") or ""))
+        house_code = str(miniapp.get("houseCode") or "").strip()
+        if not city_slug or not house_code:
+            return ""
+        return f"https://m.ke.com/{city_slug}/ershoufang/{house_code}.html"
+
+    def _miniapp_text_blocks(self, miniapp: dict) -> list[str]:
+        parts = [
+            f"小程序标题：{miniapp.get('title')}" if miniapp.get("title") else "",
+            f"小程序来源：{miniapp.get('displayName') or miniapp.get('description')}" if miniapp.get("displayName") or miniapp.get("description") else "",
+            f"小程序 appid：{miniapp.get('appid')}" if miniapp.get("appid") else "",
+            f"房源编码：{miniapp.get('houseCode')}" if miniapp.get("houseCode") else "",
+        ]
+        return [part for part in parts if part]
 
     def _archive_title(
         self,

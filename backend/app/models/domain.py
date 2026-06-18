@@ -12,13 +12,21 @@ ViewType = Literal["logged_in", "anonymous"]
 RelayStatus = Literal["active", "deleted"]
 FollowUpStatus = Literal["pending", "followed"]
 LeadReminderStatus = Literal["pending", "contacted", "invalid", "paused", "completed"]
-MessageType = Literal["text", "image", "link", "location", "video", "file", "unknown"]
+MessageType = Literal["text", "image", "link", "location", "video", "file", "weapp", "unknown"]
 SourceType = Literal["wechat_note", "miniapp_link", "mp_link", "web_link", "unknown"]
 SyncStatus = Literal["idle", "running", "success", "failed"]
 MediaRetryStatus = Literal["pending", "success", "failed"]
 SyncTaskStatus = Literal["queued", "running", "success", "failed", "retrying", "skipped"]
 SkillRunStatus = Literal["pending", "success", "failed", "needs_confirm"]
 ArchiveCursorStatus = Literal["idle", "running", "success", "failed"]
+CustomerActionKey = Literal[
+    "lead-contact",
+    "appointment",
+    "relay-intent",
+    "consult-click",
+    "navigation-click",
+    "external-open",
+]
 
 
 class User(BaseModel):
@@ -195,6 +203,21 @@ class LeadReminder(BaseModel):
     updatedAt: str
 
 
+class CustomerAction(BaseModel):
+    id: str
+    ownerUserId: str
+    noteId: str
+    sourceCardId: str | None = None
+    viewerUserId: str | None = None
+    anonymousId: str | None = None
+    actionKey: CustomerActionKey
+    actionLabel: str
+    payload: dict = Field(default_factory=dict)
+    projectionRefs: dict = Field(default_factory=dict)
+    createdAt: str
+    updatedAt: str
+
+
 class Category(BaseModel):
     id: str
     ownerUserId: str
@@ -339,6 +362,7 @@ class AppState(BaseModel):
     view_events: list[ViewEvent] = Field(default_factory=list)
     relay_entries: list[RelayEntry] = Field(default_factory=list)
     lead_reminders: list[LeadReminder] = Field(default_factory=list)
+    customer_actions: list[CustomerAction] = Field(default_factory=list)
     categories: list[Category] = Field(default_factory=list)
     topics: list[Topic] = Field(default_factory=list)
     import_notifications: list[ImportNotification] = Field(default_factory=list)

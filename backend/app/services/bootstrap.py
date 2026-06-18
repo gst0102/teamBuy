@@ -14,6 +14,7 @@ MOCK_FILES = {
     "cards": "cards.json",
     "view_events": "view-events.json",
     "relay_entries": "relays.json",
+    "customer_actions": "customer-actions.json",
     "categories": "categories.json",
     "import_notifications": "import-notifications.json",
 }

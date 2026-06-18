@@ -79,6 +79,11 @@ class Settings:
     object_storage_secret_access_key: str = env_value("OBJECT_STORAGE_SECRET_ACCESS_KEY", "")
     object_storage_public_base_url: str = env_value("OBJECT_STORAGE_PUBLIC_BASE_URL", "")
     object_storage_key_prefix: str = env_value("OBJECT_STORAGE_KEY_PREFIX", "wecom-media")
+    wechat_miniapp_appid: str = env_value("WECHAT_MINIAPP_APPID", "")
+    wechat_miniapp_secret: str = env_value("WECHAT_MINIAPP_SECRET", "")
+    wechat_jscode2session_url: str = env_value("WECHAT_JSCODE2SESSION_URL", "https://api.weixin.qq.com/sns/jscode2session")
+    tencent_map_key: str = env_value("TENCENT_MAP_KEY", "")
+    tencent_map_geocoder_url: str = env_value("TENCENT_MAP_GEOCODER_URL", "https://apis.map.qq.com/ws/geocoder/v1/")
     data_file: Path = ROOT_DIR / env_value("DATA_FILE", "backend/mock/runtime-state.json")
 
     def missing_database_fields(self) -> list[str]:

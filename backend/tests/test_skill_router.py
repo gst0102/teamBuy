@@ -100,7 +100,7 @@ def test_run_content_to_note_detects_property_listing_card():
                 "sourceType": "wecom_thread",
                 "title": "碧桂园城市之光租房",
                 "textBlocks": [
-                    "小区：碧桂园城市之光1栋1210\n户型：公寓一房\n价格：1600元/月\n水电物业：自缴\n商圈：万家丽、高桥北\n备注：服务费200"
+                    "🍊小区：碧桂园城市之光1栋1210\n🍪户型：公寓一房\n面积：42平\n价格：1600元/月\n水电物业：自缴\n商圈：万家丽、高桥北\n备注：服务费200"
                 ],
                 "media": [{"type": "image", "url": "https://example.com/house.webp"}],
                 "sourceRefs": ["wecom_msg_property"],
@@ -113,11 +113,14 @@ def test_run_content_to_note_detects_property_listing_card():
     note = response.json()["data"]["noteDraft"]
     config = note["visibilityConfig"]
     assert config["cardType"] == "property_listing"
+    assert config["cardState"] == "generated"
     assert config["contentMode"] == "structured_card"
     assert config["systemCategory"] == "房源"
+    assert config["recognitionConfidence"]["level"] == "high"
     assert {"房产", "房源"}.issubset(set(config["tags"]))
     assert config["structuredData"]["community"] == "碧桂园城市之光1栋1210"
     assert config["structuredData"]["layout"] == "公寓一房"
+    assert config["structuredData"]["area"] == "42平"
     assert config["structuredData"]["price"] == "1600元/月"
     assert config["structuredData"]["businessArea"] == "万家丽、高桥北"
     assert config["structuredData"]["images"] == ["https://example.com/house.webp"]
@@ -146,8 +149,10 @@ def test_run_content_to_note_detects_groupbuy_product_card():
     note = response.json()["data"]["noteDraft"]
     config = note["visibilityConfig"]
     assert config["cardType"] == "groupbuy_product"
+    assert config["cardState"] == "generated"
     assert config["contentMode"] == "structured_card"
     assert config["systemCategory"] == "团购"
+    assert config["recognitionConfidence"]["level"] == "high"
     assert {"团购", "商品"}.issubset(set(config["tags"]))
     assert config["structuredData"]["productName"] == "丹东草莓"
     assert config["structuredData"]["price"] == "39.9元"
@@ -156,6 +161,81 @@ def test_run_content_to_note_detects_groupbuy_product_card():
     assert config["conversionConfig"]["enableLightScrm"] is True
     assert config["conversionConfig"]["enableGroupRelay"] is True
     assert config["conversionConfig"]["enablePaymentPlaceholder"] is False
+
+
+def test_run_content_to_note_keeps_medium_confidence_as_plain_note_with_suggestions():
+    response = client.post(
+        "/api/skills/content-to-note/run",
+        json={
+            "ownerUserId": "user_001",
+            "content": {
+                "sourceType": "wecom_thread",
+                "title": "今天收到的一条资料",
+                "textBlocks": ["价格：1600元\n位置：万家丽附近\n有几张图片，晚点确认具体用途"],
+                "media": [{"type": "image", "url": "https://example.com/item.webp"}],
+                "sourceRefs": ["wecom_msg_ambiguous"],
+                "rawMessageIds": ["raw_ambiguous"],
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    config = response.json()["data"]["noteDraft"]["visibilityConfig"]
+    assert config["cardType"] == "text_note"
+    assert config["contentMode"] == "note"
+    assert config["cardState"] == "collected"
+    assert config["recognitionConfidence"]["level"] == "medium"
+    assert any(item["cardType"] == "property_listing" for item in config["typeSuggestions"])
+
+
+def test_property_price_prefers_price_line_over_service_fee_and_area_numbers():
+    response = client.post(
+        "/api/skills/content-to-note/run",
+        json={
+            "ownerUserId": "user_001",
+            "content": {
+                "sourceType": "wecom_thread",
+                "title": "芙蓉万国城房源",
+                "textBlocks": [
+                    "🍊小区：芙蓉万国城19A-1137房\n🍪户型：公寓一房\n面积：42平\n💰价格：1300🔥 密码锁\n🌿水电物业：自缴\n📍位置：汽车东站，2号线袁隆平水稻博物馆地铁口\n💫备注：合同期内收取一次性200元的服务费"
+                ],
+                "media": [{"type": "image", "url": "https://example.com/house.webp"}],
+                "sourceRefs": ["wecom_msg_property_price"],
+                "rawMessageIds": ["raw_property_price"],
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    config = response.json()["data"]["noteDraft"]["visibilityConfig"]
+    assert config["cardType"] == "property_listing"
+    assert config["structuredData"]["price"] == "1300"
+    assert config["structuredData"]["serviceFee"] == ""
+
+
+def test_property_detection_uses_title_as_community_signal():
+    response = client.post(
+        "/api/skills/content-to-note/run",
+        json={
+            "ownerUserId": "user_001",
+            "content": {
+                "sourceType": "wecom_thread",
+                "title": "万国城北塔27050",
+                "textBlocks": [
+                    "户型：loft两房\n面积：42平\n价格：27050\n位置：袁隆平地铁口附近\n水电物业：自缴\n备注：带浴缸"
+                ],
+                "media": [{"type": "image", "url": "https://example.com/house.webp"}],
+                "sourceRefs": ["wecom_msg_title_property"],
+                "rawMessageIds": ["raw_title_property"],
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    config = response.json()["data"]["noteDraft"]["visibilityConfig"]
+    assert config["cardType"] == "property_listing"
+    assert config["recognitionConfidence"]["level"] == "high"
+    assert config["structuredData"]["community"] == "万国城北塔27050"
 
 
 def test_commands_include_showcase_and_billing_entries():

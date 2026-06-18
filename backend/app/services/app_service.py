@@ -1,16 +1,19 @@
 from __future__ import annotations
 
 import json
+import re
 from collections import defaultdict
 from datetime import datetime, timedelta
 from uuid import uuid4
+import httpx
 from fastapi import HTTPException, status
 
-from app.models.domain import AppState, Card, CardMedia, Category, ImportBatch, LeadFollowUpLog, LeadReminder, MediaRetryJob, RawMessage, RelayConfig, RelayEntry, SkillRun, SyncCursor, Topic, User, UserNote, ViewEvent, WecomArchiveCursor, WecomArchiveMessage, WecomIdentityBinding
-from app.schemas.auth import MockLoginRequest
+from app.core.config import settings
+from app.models.domain import AppState, Card, CardMedia, Category, CustomerAction, ImportBatch, LeadFollowUpLog, LeadReminder, MediaRetryJob, RawMessage, RelayConfig, RelayEntry, SkillRun, SyncCursor, Topic, User, UserNote, ViewEvent, WecomArchiveCursor, WecomArchiveMessage, WecomIdentityBinding
+from app.schemas.auth import MockLoginRequest, WechatLoginRequest
 from app.schemas.categories import CategoryCreateRequest
 from app.schemas.cards import CardCreateRequest, CardUpdateRequest, CreateRelayRequest, LeadReminderUpdateRequest, LeadReminderUpsertRequest, RecordViewRequest
-from app.schemas.notes import TopicCreateRequest, UserNoteUpdateRequest
+from app.schemas.notes import CustomerActionSubmitRequest, TopicCreateRequest, UserNoteUpdateRequest
 from app.schemas.skills import ContentObjectPayload
 from app.services.card_parser_service import CardParserService
 from app.services.content_object_adapter import ContentObjectAdapter
@@ -58,6 +61,27 @@ GROUPBUY_CONVERSION_DEFAULTS = {
     "enableSharePoster": True,
     "enableGroupRelay": True,
     "enablePaymentPlaceholder": False,
+}
+CUSTOMER_ACTION_LABELS = {
+    "lead-contact": "留下电话/微信",
+    "appointment": "预约看房",
+    "relay-intent": "参与接龙",
+    "consult-click": "咨询动作",
+    "navigation-click": "地图定位",
+    "external-open": "打开外部详情",
+}
+CUSTOMER_ACTION_FIELDS = {
+    "lead-contact": [
+        {"key": "name", "label": "姓名", "type": "text", "required": False},
+        {"key": "phone", "label": "电话", "type": "phone", "required": False},
+        {"key": "wechat", "label": "微信号", "type": "text", "required": False},
+        {"key": "remark", "label": "备注", "type": "textarea", "required": False},
+    ],
+    "appointment": [
+        {"key": "date", "label": "日期", "type": "date", "required": True},
+        {"key": "time", "label": "时间", "type": "time", "required": True},
+        {"key": "remark", "label": "备注", "type": "text", "required": False},
+    ],
 }
 
 
@@ -126,13 +150,56 @@ class AppService:
         return result
 
     def mock_login(self, payload: MockLoginRequest) -> User:
+        return self._upsert_user_by_openid(
+            payload.openid or f"openid_{payload.nickname}",
+            payload.nickname,
+            payload.avatarUrl,
+            payload.phone,
+        )
+
+    def wechat_login(self, payload: WechatLoginRequest) -> User:
+        if not settings.wechat_miniapp_appid or not settings.wechat_miniapp_secret:
+            raise HTTPException(status_code=503, detail="微信登录未配置，请先配置小程序 AppSecret")
+        code = (payload.code or "").strip()
+        if not code:
+            raise HTTPException(status_code=400, detail="缺少微信登录 code")
+        try:
+            response = httpx.get(
+                settings.wechat_jscode2session_url,
+                params={
+                    "appid": settings.wechat_miniapp_appid,
+                    "secret": settings.wechat_miniapp_secret,
+                    "js_code": code,
+                    "grant_type": "authorization_code",
+                },
+                timeout=8,
+            )
+            response.raise_for_status()
+            session_data = response.json()
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail="微信登录服务暂不可用") from exc
+        if session_data.get("errcode"):
+            raise HTTPException(status_code=400, detail=session_data.get("errmsg") or "微信登录失败")
+        openid = session_data.get("openid")
+        if not openid:
+            raise HTTPException(status_code=400, detail="微信登录未返回 openid")
+        return self._upsert_user_by_openid(openid, payload.nickname or "微信用户", payload.avatarUrl, payload.phone, session_data.get("unionid"))
+
+    def _upsert_user_by_openid(
+        self,
+        openid: str,
+        nickname: str,
+        avatar_url: str,
+        phone: str | None = None,
+        unionid: str | None = None,
+    ) -> User:
         now = now_iso()
-        openid = payload.openid or f"openid_{payload.nickname}"
         existing = self.repo.get_user_by_openid(openid)
         if existing:
-            existing.nickname = payload.nickname
-            existing.avatarUrl = payload.avatarUrl
-            existing.phone = payload.phone
+            existing.nickname = nickname
+            existing.avatarUrl = avatar_url
+            existing.phone = phone
+            existing.unionid = unionid or existing.unionid
             existing.updatedAt = now
             self.repo.save_user(existing)
             return existing
@@ -140,9 +207,10 @@ class AppService:
         user = User(
             id=new_id("user"),
             openid=openid,
-            nickname=payload.nickname,
-            avatarUrl=payload.avatarUrl,
-            phone=payload.phone,
+            unionid=unionid,
+            nickname=nickname,
+            avatarUrl=avatar_url,
+            phone=phone,
             createdAt=now,
             updatedAt=now,
         )
@@ -774,11 +842,12 @@ class AppService:
         if len(objects) == 1:
             return objects[0]
         return ContentObjectPayload(
-            sourceType="wecom_thread",
+            sourceType="miniapp_card" if any(item.sourceType == "miniapp_card" for item in objects) else "wecom_thread",
             title=next((item.title for item in objects if item.title), None),
             textBlocks=[block for item in objects for block in item.textBlocks],
             media=[media for item in objects for media in item.media],
             links=[link for item in objects for link in item.links],
+            metadata=self._merge_content_metadata(objects),
             participants=self.content_object_adapter._unique_participants(
                 [participant for item in objects for participant in item.participants]
             ),
@@ -795,19 +864,30 @@ class AppService:
     ) -> ImportBatch:
         now = now_iso()
         group_messages = messages or [message]
+        source_type = "miniapp_link" if any(item.msgType == "weapp" for item in group_messages) else "wechat_note"
         return ImportBatch(
             id=new_id("import"),
             externalUserId=message.fromUser or "archive_unknown",
             conversationId=message.roomId or ",".join(message.toList) or message.msgId or message.id,
             status="success",
             titleCandidate=title or f"企业微信{message.msgType or '消息'}归档",
-            sourceType="wechat_note",
+            sourceType=source_type,
             rawMessageIds=[item.id for item in group_messages],
             startedAt=message.msgTime or now,
             endedAt=now,
             createdAt=now,
             updatedAt=now,
         )
+
+    def _merge_content_metadata(self, objects: list[ContentObjectPayload]) -> dict:
+        metadata: dict = {}
+        for item in objects:
+            if not isinstance(item.metadata, dict):
+                continue
+            for key, value in item.metadata.items():
+                if value and key not in metadata:
+                    metadata[key] = value
+        return metadata
 
     def _run_import_skill(self, owner_user_id: str, content_object: ContentObjectPayload):
         if self._should_light_bookmark(content_object):
@@ -1136,24 +1216,57 @@ class AppService:
         if topic_id:
             result = [item for item in result if topic_id in (item.visibilityConfig or {}).get("topicIds", [])]
         if keyword:
-            lowered = keyword.lower()
+            lowered = keyword.lower().strip()
+            query_digits = re.sub(r"\D+", "", lowered)
             result = [
                 item
                 for item in result
-                if lowered in " ".join(
-                    [
-                        item.title,
-                        item.summary,
-                        item.body,
-                        (item.visibilityConfig or {}).get("sourceName", ""),
-                        (item.visibilityConfig or {}).get("systemCategory", ""),
-                        (item.visibilityConfig or {}).get("cardType", ""),
-                        json.dumps((item.visibilityConfig or {}).get("structuredData", {}), ensure_ascii=False),
-                        " ".join(self._note_tags(item)),
-                    ]
-                ).lower()
+                if self._note_matches_keyword(item, lowered, query_digits)
             ]
         return result
+
+    def _note_matches_keyword(self, note: UserNote, lowered: str, query_digits: str) -> bool:
+        haystack = self._note_search_text(note).lower()
+        if lowered in haystack:
+            return True
+        haystack_digits = re.sub(r"\D+", "", haystack)
+        return bool(query_digits and query_digits in haystack_digits)
+
+    def _note_search_text(self, note: UserNote) -> str:
+        config = note.visibilityConfig or {}
+        topics = " ".join(str(item.get("name", "")) for item in config.get("topics", []) if isinstance(item, dict))
+        return " ".join(
+            [
+                note.title,
+                note.summary,
+                note.body,
+                note.createdAt,
+                self._date_search_text(note.createdAt),
+                config.get("sourceName", ""),
+                config.get("systemCategory", ""),
+                config.get("cardType", ""),
+                json.dumps(config.get("structuredData", {}), ensure_ascii=False),
+                " ".join(self._note_tags(note)),
+                topics,
+            ]
+        )
+
+    def _date_search_text(self, value: str) -> str:
+        parsed = parse_iso(value)
+        if not parsed:
+            return value or ""
+        local = parsed.astimezone(SHANGHAI)
+        month = local.month
+        day = local.day
+        return " ".join(
+            [
+                f"{local.year}年{month}月{day}日",
+                f"{local.year}-{month:02d}-{day:02d}",
+                f"{month}月{day}日",
+                f"{month}{day}",
+                f"{local.year}{month:02d}{day:02d}",
+            ]
+        )
 
     def _note_tags(self, note: UserNote) -> list[str]:
         config = note.visibilityConfig or {}
@@ -1451,6 +1564,446 @@ class AppService:
         self.repo.save_user_note(note)
         return note
 
+    def create_note_demo_data(self, owner_user_id: str) -> dict:
+        user = self.repo.get_user(owner_user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="用户不存在")
+        now = now_iso()
+        demo_specs = [
+            {
+                "title": "测试房源A 万润时光里 27050 两房 近地铁",
+                "summary": "用于测试轻 SCRM 红点、留资和预约。",
+                "community": "万润时光里",
+                "price": "27050",
+                "layout": "loft 两房",
+                "area": "万家丽 / 地铁口",
+                "address": "长沙万润时光里",
+                "phone": "13800001001",
+                "customer": "王客户",
+                "customerPhone": "13900001111",
+                "customerWechat": "wx_demo_001",
+                "appointment": {"date": "2026-06-20", "time": "14:30", "remark": "两个人看房"},
+                "leadStatus": "pending",
+            },
+            {
+                "title": "测试房源B 高桥北 精装一房 可短租",
+                "summary": "用于测试已联系线索和拨号入口。",
+                "community": "高桥北公寓",
+                "price": "1600元/月",
+                "layout": "精装一房",
+                "area": "高桥北",
+                "address": "长沙高桥北",
+                "phone": "13800001002",
+                "customer": "李客户",
+                "customerPhone": "13900002222",
+                "customerWechat": "wx_demo_002",
+                "appointment": None,
+                "leadStatus": "contacted",
+            },
+            {
+                "title": "测试房源C 袁隆平地铁口 民水民电 首次出",
+                "summary": "用于测试无客户动作时的空状态。",
+                "community": "袁隆平地铁口公寓",
+                "price": "1800元/月",
+                "layout": "一室一厅",
+                "area": "袁隆平地铁口",
+                "address": "长沙袁隆平地铁口",
+                "phone": "13800001003",
+                "customer": "",
+                "customerPhone": "",
+                "customerWechat": "",
+                "appointment": None,
+                "leadStatus": "",
+            },
+        ]
+        notes: list[UserNote] = []
+        actions: list[CustomerAction] = []
+        leads: list[LeadReminder] = []
+        for spec in demo_specs:
+            note_id = new_id("note")
+            structured_data = {
+                "community": spec["community"],
+                "price": spec["price"],
+                "layout": spec["layout"],
+                "businessArea": spec["area"],
+                "address": spec["address"],
+                "contact": spec["phone"],
+                "organizeResult": {
+                    "summary": spec["summary"],
+                    "generationOptions": ["房源推广图", "微信群文案", "客户话术", "对比表"],
+                    "enabledFeatures": ["展示联系电话", "轻 SCRM 跟进", "收集线索", "预约看房"],
+                },
+                "generatedResult": {
+                    "pageType": "property_promo_page",
+                    "status": "generated",
+                    "enabledActions": ["展示联系电话", "轻 SCRM 跟进", "收集线索", "预约看房"],
+                    "note": "演示数据",
+                },
+            }
+            note = UserNote(
+                id=note_id,
+                ownerUserId=owner_user_id,
+                status="active",
+                title=spec["title"],
+                summary=spec["summary"],
+                body=f"{spec['community']}，{spec['price']}，{spec['layout']}，{spec['area']}，带轻 SCRM 演示数据。",
+                phone=spec["phone"],
+                locationText=spec["address"],
+                visibilityConfig={
+                    "cardType": "property_listing",
+                    "cardState": "generated",
+                    "contentMode": "generated_card",
+                    "tags": ["房源", "演示数据"],
+                    "conversionConfig": {
+                        "showContactPhone": True,
+                        "enableLightScrm": True,
+                        "collectLeads": True,
+                        "enableAppointment": True,
+                        "enablePrivateConsultation": True,
+                        "enableSharePoster": True,
+                        "enableGroupRelay": False,
+                        "enablePaymentPlaceholder": False,
+                    },
+                    "structuredData": structured_data,
+                },
+                createdAt=now,
+                updatedAt=now,
+            )
+            self.repo.save_user_note(note)
+            notes.append(note)
+            if not spec["customerPhone"]:
+                continue
+            lead = LeadReminder(
+                id=new_id("lead"),
+                ownerUserId=owner_user_id,
+                cardId=note.id,
+                viewerUserId=new_id("viewer"),
+                nickname=spec["customer"],
+                avatarUrl="https://example.com/avatar-demo.png",
+                status=spec["leadStatus"],
+                note="演示客户：可测试拨号、保存资料和跟进状态。",
+                customerPhone=spec["customerPhone"],
+                customerWechat=spec["customerWechat"],
+                budgetText="预算待确认",
+                intentLevel="高意向" if spec["leadStatus"] == "pending" else "中意向",
+                customerTags=["演示", "房源客户"],
+                viewCount=2,
+                lastViewedAt=now,
+                contactedAt=now if spec["leadStatus"] == "contacted" else None,
+                nextFollowUpAt="2026-06-20T14:30:00+08:00" if spec["appointment"] else None,
+                followUpLogs=[
+                    LeadFollowUpLog(id=new_id("log"), content="演示线索已生成，可点击拨号或编辑客户资料。", createdAt=now)
+                ],
+                createdAt=now,
+                updatedAt=now,
+            )
+            self.repo.save_lead_reminder(lead)
+            leads.append(lead)
+            lead_action = CustomerAction(
+                id=new_id("action"),
+                ownerUserId=owner_user_id,
+                noteId=note.id,
+                sourceCardId=note.id,
+                viewerUserId=lead.viewerUserId,
+                actionKey="lead-contact",
+                actionLabel="留下电话/微信",
+                payload={
+                    "name": spec["customer"],
+                    "phone": spec["customerPhone"],
+                    "wechat": spec["customerWechat"],
+                    "remark": "演示留资",
+                },
+                projectionRefs={"leadReminderId": lead.id},
+                createdAt=now,
+                updatedAt=now,
+            )
+            self.repo.save_customer_action(lead_action)
+            actions.append(lead_action)
+            if spec["appointment"]:
+                appointment_action = CustomerAction(
+                    id=new_id("action"),
+                    ownerUserId=owner_user_id,
+                    noteId=note.id,
+                    sourceCardId=note.id,
+                    viewerUserId=lead.viewerUserId,
+                    actionKey="appointment",
+                    actionLabel="预约看房",
+                    payload=spec["appointment"],
+                    projectionRefs={"leadReminderId": lead.id},
+                    createdAt=now,
+                    updatedAt=now,
+                )
+                self.repo.save_customer_action(appointment_action)
+                actions.append(appointment_action)
+        return {
+            "notes": [item.model_dump() for item in notes],
+            "actionsCreated": len(actions),
+            "leadsCreated": len(leads),
+        }
+
+    def get_customer_action_config(
+        self,
+        note_id: str,
+        viewer_user_id: str | None = None,
+        anonymous_id: str | None = None,
+    ) -> dict:
+        note = self._get_active_note(note_id)
+        config = self._normalize_note_visibility_config(note.visibilityConfig)
+        actions = self._available_customer_actions(config)
+        submitted = self._submitted_customer_actions(note_id, viewer_user_id, anonymous_id)
+        return {
+            "noteId": note.id,
+            "ownerUserId": note.ownerUserId,
+            "sourceCardId": note.sourceCardId,
+            "actions": [
+                {
+                    **item,
+                    "submitted": item["key"] in submitted,
+                    "statusText": submitted.get(item["key"], {}).get("statusText", ""),
+                    "submittedAt": submitted.get(item["key"], {}).get("createdAt"),
+                }
+                for item in actions
+            ],
+        }
+
+    def list_customer_actions_for_note_owner(self, note_id: str, owner_user_id: str) -> dict:
+        note = self._get_active_note(note_id)
+        if note.ownerUserId != owner_user_id:
+            raise HTTPException(status_code=403, detail="仅发布者可查看客户动作")
+        actions = self.repo.list_customer_actions_for_note(note_id)
+        projected_lead_ids = {
+            str((action.projectionRefs or {}).get("leadReminderId") or "")
+            for action in actions
+            if (action.projectionRefs or {}).get("leadReminderId")
+        }
+        lead_rows = [
+            self._build_lead_reminder_row(item)
+            for item in self.repo.list_lead_reminders(owner_user_id)
+            if item.id in projected_lead_ids
+        ]
+        pending_count = sum(1 for item in lead_rows if item.get("status") == "pending")
+        action_rows = []
+        lead_status_by_id = {item["id"]: item for item in lead_rows}
+        for action in actions:
+            lead_id = (action.projectionRefs or {}).get("leadReminderId")
+            lead = lead_status_by_id.get(lead_id)
+            row = action.model_dump()
+            row["customerName"] = action.payload.get("name") or (lead.get("nickname") if lead else "") or "客户"
+            row["leadReminderId"] = lead_id
+            row["leadStatus"] = lead.get("status") if lead else None
+            row["leadStatusText"] = self._lead_status_text(lead.get("status")) if lead else ""
+            row["statusText"] = self._customer_action_status_text(action.actionKey, action.payload)
+            action_rows.append(row)
+        summary = {
+            "total": len(actions),
+            "leadContact": sum(1 for item in actions if item.actionKey == "lead-contact"),
+            "appointment": sum(1 for item in actions if item.actionKey == "appointment"),
+            "consult": sum(1 for item in actions if item.actionKey == "consult-click"),
+            "leads": len(lead_rows),
+            "pending": pending_count,
+            "hasUnread": pending_count > 0,
+            "latestActionAt": actions[0].createdAt if actions else None,
+        }
+        return {
+            "noteId": note.id,
+            "ownerUserId": note.ownerUserId,
+            "sourceCardId": note.sourceCardId,
+            "summary": summary,
+            "actions": action_rows,
+            "leads": lead_rows,
+        }
+
+    def submit_customer_action(self, note_id: str, action_key: str, payload: CustomerActionSubmitRequest) -> dict:
+        note = self._get_active_note(note_id)
+        config = self._normalize_note_visibility_config(note.visibilityConfig)
+        allowed_keys = {item["key"] for item in self._available_customer_actions(config)}
+        if action_key not in allowed_keys:
+            raise HTTPException(status_code=400, detail="当前资料未启用该客户动作")
+        if action_key not in {"lead-contact", "appointment"}:
+            raise HTTPException(status_code=400, detail="该客户动作暂未接入持久化")
+        viewer_key = self._customer_viewer_key(payload.viewerUserId, payload.anonymousId)
+        clean_payload = self._normalize_customer_action_payload(action_key, payload.payload)
+        now = now_iso()
+        action = CustomerAction(
+            id=new_id("action"),
+            ownerUserId=note.ownerUserId,
+            noteId=note.id,
+            sourceCardId=note.sourceCardId,
+            viewerUserId=payload.viewerUserId,
+            anonymousId=payload.anonymousId,
+            actionKey=action_key,
+            actionLabel=CUSTOMER_ACTION_LABELS[action_key],
+            payload=clean_payload,
+            projectionRefs={},
+            createdAt=now,
+            updatedAt=now,
+        )
+        reminder = self._project_customer_action_to_lead(note, action, payload, viewer_key)
+        action.projectionRefs = {"leadReminderId": reminder.id}
+        self.repo.save_customer_action(action)
+        return {
+            "action": action.model_dump(),
+            "projection": {
+                "leadReminderId": reminder.id,
+                "status": reminder.status,
+                "nextFollowUpAt": reminder.nextFollowUpAt,
+            },
+            "statusText": self._customer_action_status_text(action_key, clean_payload),
+        }
+
+    def _get_active_note(self, note_id: str) -> UserNote:
+        note = self.repo.get_user_note(note_id)
+        if not note or note.status == "deleted":
+            raise HTTPException(status_code=404, detail="笔记不存在")
+        return note
+
+    def _available_customer_actions(self, config: dict) -> list[dict]:
+        conversion = config.get("conversionConfig") or {}
+        card_type = config.get("cardType", "text_note")
+        actions: list[dict] = []
+        if conversion.get("collectLeads"):
+            actions.append({
+                "key": "lead-contact",
+                "label": "留下电话/微信",
+                "formTitle": "留下电话/微信",
+                "submitText": "提交联系方式",
+                "fields": CUSTOMER_ACTION_FIELDS["lead-contact"],
+            })
+        if conversion.get("enableAppointment"):
+            actions.append({
+                "key": "appointment",
+                "label": "预约看房" if card_type == "property_listing" else "预约沟通",
+                "formTitle": "预约看房" if card_type == "property_listing" else "预约沟通",
+                "submitText": "提交预约",
+                "fields": CUSTOMER_ACTION_FIELDS["appointment"],
+            })
+        return actions
+
+    def _submitted_customer_actions(
+        self,
+        note_id: str,
+        viewer_user_id: str | None,
+        anonymous_id: str | None,
+    ) -> dict:
+        if not viewer_user_id and not anonymous_id:
+            return {}
+        submitted: dict = {}
+        for action in self.repo.list_customer_actions_for_note(note_id, viewer_user_id, anonymous_id):
+            submitted.setdefault(action.actionKey, {
+                "createdAt": action.createdAt,
+                "statusText": self._customer_action_status_text(action.actionKey, action.payload),
+            })
+        return submitted
+
+    def _customer_viewer_key(self, viewer_user_id: str | None, anonymous_id: str | None) -> str:
+        viewer_key = (viewer_user_id or anonymous_id or "").strip()
+        if not viewer_key:
+            raise HTTPException(status_code=400, detail="缺少客户身份")
+        return viewer_key
+
+    def _normalize_customer_action_payload(self, action_key: str, payload: dict) -> dict:
+        data = payload if isinstance(payload, dict) else {}
+        if action_key == "lead-contact":
+            phone = str(data.get("phone") or "").strip()
+            wechat = str(data.get("wechat") or "").strip()
+            if not phone and not wechat:
+                raise HTTPException(status_code=400, detail="请填写电话或微信")
+            return {
+                "name": str(data.get("name") or "").strip(),
+                "phone": phone,
+                "wechat": wechat,
+                "remark": str(data.get("remark") or "").strip(),
+            }
+        if action_key == "appointment":
+            date = str(data.get("date") or "").strip()
+            time = str(data.get("time") or "").strip()
+            if not date or not time:
+                raise HTTPException(status_code=400, detail="请选择预约日期和时间")
+            return {
+                "date": date,
+                "time": time,
+                "remark": str(data.get("remark") or "").strip(),
+            }
+        return dict(data)
+
+    def _project_customer_action_to_lead(
+        self,
+        note: UserNote,
+        action: CustomerAction,
+        request: CustomerActionSubmitRequest,
+        viewer_key: str,
+    ) -> LeadReminder:
+        source_card_id = note.sourceCardId or note.id
+        existing = self.repo.get_lead_reminder_by_card_viewer(source_card_id, viewer_key)
+        now = now_iso()
+        nickname = (request.nickname or action.payload.get("name") or "客户").strip()
+        logs = list(existing.followUpLogs if existing else [])
+        log_content = self._customer_action_log_content(action.actionKey, action.payload)
+        if log_content:
+            logs.insert(0, LeadFollowUpLog(id=new_id("log"), content=log_content, createdAt=now))
+        reminder = LeadReminder(
+            id=existing.id if existing else new_id("lead"),
+            ownerUserId=note.ownerUserId,
+            cardId=source_card_id,
+            viewerUserId=viewer_key,
+            nickname=nickname,
+            avatarUrl=request.avatarUrl or (existing.avatarUrl if existing else None),
+            status="pending" if not existing else existing.status,
+            note=self._merge_lead_note(existing.note if existing else None, action),
+            customerPhone=action.payload.get("phone") or (existing.customerPhone if existing else None),
+            customerWechat=action.payload.get("wechat") or (existing.customerWechat if existing else None),
+            budgetText=existing.budgetText if existing else None,
+            intentLevel=existing.intentLevel if existing else None,
+            customerTags=existing.customerTags if existing else [],
+            viewCount=existing.viewCount if existing else 0,
+            lastViewedAt=now,
+            contactedAt=existing.contactedAt if existing else None,
+            closedAt=existing.closedAt if existing else None,
+            conclusionReason=existing.conclusionReason if existing else None,
+            nextFollowUpAt=self._appointment_follow_up_at(action.payload) if action.actionKey == "appointment" else (existing.nextFollowUpAt if existing else None),
+            followUpLogs=logs,
+            createdAt=existing.createdAt if existing else now,
+            updatedAt=now,
+        )
+        self.repo.save_lead_reminder(reminder)
+        return reminder
+
+    def _customer_action_log_content(self, action_key: str, payload: dict) -> str:
+        if action_key == "lead-contact":
+            pieces = [
+                "客户留下联系方式",
+                f"电话：{payload.get('phone')}" if payload.get("phone") else "",
+                f"微信：{payload.get('wechat')}" if payload.get("wechat") else "",
+                f"备注：{payload.get('remark')}" if payload.get("remark") else "",
+            ]
+            return "；".join([item for item in pieces if item])
+        if action_key == "appointment":
+            remark = f"；备注：{payload.get('remark')}" if payload.get("remark") else ""
+            return f"客户预约：{payload.get('date')} {payload.get('time')}{remark}"
+        return ""
+
+    def _merge_lead_note(self, current_note: str | None, action: CustomerAction) -> str:
+        text = self._customer_action_log_content(action.actionKey, action.payload)
+        if not text:
+            return current_note or ""
+        if current_note and text in current_note:
+            return current_note
+        return "\n".join([item for item in [text, current_note or ""] if item]).strip()
+
+    def _appointment_follow_up_at(self, payload: dict) -> str | None:
+        date = str(payload.get("date") or "").strip()
+        time = str(payload.get("time") or "").strip()
+        if not date or not time:
+            return None
+        return f"{date}T{time}:00+08:00"
+
+    def _customer_action_status_text(self, action_key: str, payload: dict) -> str:
+        if action_key == "lead-contact":
+            return "已提交联系方式"
+        if action_key == "appointment":
+            return f"已预约 {payload.get('date', '')} {payload.get('time', '')}".strip()
+        return "已记录"
+
     def delete_user_note(self, note_id: str, owner_user_id: str) -> dict:
         note = self.get_user_note(note_id, owner_user_id)
         note.status = "deleted"
@@ -1464,9 +2017,23 @@ class AppService:
             {
                 **item.model_dump(),
                 "stats": self._build_card_stats(item.id),
+                "sourceNoteId": self._find_note_id_by_source_card(item.id),
             }
             for item in cards
         ]
+
+    def get_card_detail(self, card_id: str) -> dict:
+        card = self.get_card(card_id)
+        return {
+            **card.model_dump(),
+            "sourceNoteId": self._find_note_id_by_source_card(card.id),
+        }
+
+    def _find_note_id_by_source_card(self, card_id: str) -> str | None:
+        for note in self.repo.list_all_user_notes(include_deleted=False):
+            if note.sourceCardId == card_id:
+                return note.id
+        return None
 
     def list_categories(self, owner_user_id: str | None = None) -> list[dict]:
         return [item.model_dump() for item in self.repo.list_categories(owner_user_id)]
@@ -1737,14 +2304,7 @@ class AppService:
 
     def list_lead_reminders(self, owner_user_id: str, reminder_status: str | None = None) -> list[dict]:
         reminders = self.repo.list_lead_reminders(owner_user_id, reminder_status)
-        rows = []
-        for item in reminders:
-            row = item.model_dump()
-            card = self.repo.get_card(item.cardId)
-            row["cardTitle"] = card.title if card else "资源已删除"
-            row["cardStatus"] = card.status if card else "archived"
-            rows.append(row)
-        return rows
+        return [self._build_lead_reminder_row(item) for item in reminders]
 
     def get_lead_reminder_detail(self, reminder_id: str, owner_user_id: str) -> dict:
         reminder = self.repo.get_lead_reminder(reminder_id)
@@ -1752,11 +2312,35 @@ class AppService:
             raise HTTPException(status_code=404, detail="线索不存在")
         if reminder.ownerUserId != owner_user_id:
             raise HTTPException(status_code=403, detail="仅发布者可查看线索")
+        return self._build_lead_reminder_row(reminder)
+
+    def _build_lead_reminder_row(self, reminder: LeadReminder) -> dict:
         row = reminder.model_dump()
         card = self.repo.get_card(reminder.cardId)
-        row["cardTitle"] = card.title if card else "资源已删除"
-        row["cardStatus"] = card.status if card else "archived"
+        note = self._find_note_by_lead_source(reminder.cardId)
+        row["cardTitle"] = card.title if card else note.title if note else "资源已删除"
+        row["cardStatus"] = card.status if card else "active" if note and note.status != "deleted" else "archived"
+        row["sourceNoteId"] = note.id if note else None
         return row
+
+    def _lead_status_text(self, status: str | None) -> str:
+        status_map = {
+            "pending": "待联系",
+            "contacted": "已联系",
+            "invalid": "无效",
+            "paused": "暂不跟进",
+            "completed": "已完成",
+        }
+        return status_map.get(status or "", "")
+
+    def _find_note_by_lead_source(self, source_id: str) -> UserNote | None:
+        note = self.repo.get_user_note(source_id)
+        if note:
+            return note
+        return next(
+            (item for item in self.repo.list_all_user_notes(include_deleted=False) if item.sourceCardId == source_id),
+            None,
+        )
 
     def upsert_lead_reminder(self, payload: LeadReminderUpsertRequest) -> LeadReminder:
         card = self.repo.get_card(payload.cardId)

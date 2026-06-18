@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from app.api.dependencies import get_app_service
-from app.schemas.auth import MockLoginRequest
+from app.schemas.auth import MockLoginRequest, WechatLoginRequest
 from app.schemas.common import ApiResponse
 from app.services.app_service import AppService
 
@@ -16,3 +16,8 @@ def mock_login(payload: MockLoginRequest, service: AppService = Depends(get_app_
     user = service.mock_login(payload)
     return ApiResponse(data=user.model_dump())
 
+
+@router.post("/wechat-login", response_model=ApiResponse[dict])
+def wechat_login(payload: WechatLoginRequest, service: AppService = Depends(get_app_service)):
+    user = service.wechat_login(payload)
+    return ApiResponse(data=user.model_dump())

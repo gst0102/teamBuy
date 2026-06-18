@@ -12,6 +12,7 @@ from app.models.domain import (
     AppState,
     Card,
     Category,
+    CustomerAction,
     ImportBatch,
     ImportNotification,
     LeadReminder,
@@ -166,6 +167,17 @@ class AppRepository(Protocol):
         ...
 
     def delete_lead_reminder(self, reminder_id: str) -> None:
+        ...
+
+    def save_customer_action(self, action: CustomerAction) -> None:
+        ...
+
+    def list_customer_actions_for_note(
+        self,
+        note_id: str,
+        viewer_user_id: str | None = None,
+        anonymous_id: str | None = None,
+    ) -> list[CustomerAction]:
         ...
 
     def save_import_notification(self, notification: ImportNotification) -> None:
@@ -413,6 +425,7 @@ class JsonRepository:
         state.view_events = [item for item in state.view_events if item.cardId != card_id]
         state.relay_entries = [item for item in state.relay_entries if item.cardId != card_id]
         state.lead_reminders = [item for item in state.lead_reminders if item.cardId != card_id]
+        state.customer_actions = [item for item in state.customer_actions if item.sourceCardId != card_id]
         self.save(state)
 
     def list_categories(self, owner_user_id: str | None = None) -> list[Category]:
@@ -517,6 +530,25 @@ class JsonRepository:
         state = self.load()
         state.lead_reminders = [item for item in state.lead_reminders if item.id != reminder_id]
         self.save(state)
+
+    def save_customer_action(self, action: CustomerAction) -> None:
+        state = self.load()
+        state.customer_actions = [item for item in state.customer_actions if item.id != action.id]
+        state.customer_actions.append(action)
+        self.save(state)
+
+    def list_customer_actions_for_note(
+        self,
+        note_id: str,
+        viewer_user_id: str | None = None,
+        anonymous_id: str | None = None,
+    ) -> list[CustomerAction]:
+        actions = [item for item in self.load().customer_actions if item.noteId == note_id]
+        if viewer_user_id:
+            actions = [item for item in actions if item.viewerUserId == viewer_user_id]
+        elif anonymous_id:
+            actions = [item for item in actions if item.anonymousId == anonymous_id]
+        return sorted(actions, key=lambda item: item.createdAt, reverse=True)
 
     def save_import_notification(self, notification: ImportNotification) -> None:
         state = self.load()
@@ -733,6 +765,7 @@ class PostgresRepository:
         "view_events": "view_events",
         "relay_entries": "relay_entries",
         "lead_reminders": "lead_reminders",
+        "customer_actions": "customer_actions",
         "categories": "categories",
         "topics": "topics",
         "import_notifications": "import_notifications",
@@ -816,6 +849,14 @@ class PostgresRepository:
             ("viewer_user_id", "text", "viewerUserId"),
             ("status", "text", "status"),
             ("contacted_at", "timestamptz", "contactedAt"),
+        ],
+        "customer_actions": [
+            ("owner_user_id", "text", "ownerUserId"),
+            ("note_id", "text", "noteId"),
+            ("source_card_id", "text", "sourceCardId"),
+            ("viewer_user_id", "text", "viewerUserId"),
+            ("anonymous_id", "text", "anonymousId"),
+            ("action_key", "text", "actionKey"),
         ],
         "categories": [
             ("owner_user_id", "text", "ownerUserId"),
@@ -937,6 +978,12 @@ class PostgresRepository:
         "lead_reminders": [
             ("idx_lead_reminders_owner_status", "owner_user_id, status, updated_at"),
             ("idx_lead_reminders_card_viewer", "card_id, viewer_user_id"),
+        ],
+        "customer_actions": [
+            ("idx_customer_actions_note_time", "note_id, created_at"),
+            ("idx_customer_actions_owner_time", "owner_user_id, created_at"),
+            ("idx_customer_actions_note_viewer", "note_id, viewer_user_id, action_key"),
+            ("idx_customer_actions_note_anonymous", "note_id, anonymous_id, action_key"),
         ],
         "topics": [
             ("idx_topics_owner_name", "owner_user_id, name"),
@@ -1166,6 +1213,7 @@ class PostgresRepository:
             conn.execute("delete from relay_entries where card_id = %s", (card_id,))
             conn.execute("delete from view_events where card_id = %s", (card_id,))
             conn.execute("delete from lead_reminders where card_id = %s", (card_id,))
+            conn.execute("delete from customer_actions where source_card_id = %s", (card_id,))
             conn.execute("delete from cards where id = %s", (card_id,))
 
     def list_categories(self, owner_user_id: str | None = None) -> list[Category]:
@@ -1277,6 +1325,31 @@ class PostgresRepository:
     def delete_lead_reminder(self, reminder_id: str) -> None:
         with psycopg.connect(self.database_url) as conn:
             conn.execute("delete from lead_reminders where id = %s", (reminder_id,))
+
+    def save_customer_action(self, action: CustomerAction) -> None:
+        self._save_model("customer_actions", action)
+
+    def list_customer_actions_for_note(
+        self,
+        note_id: str,
+        viewer_user_id: str | None = None,
+        anonymous_id: str | None = None,
+    ) -> list[CustomerAction]:
+        where_parts = ["note_id = %s"]
+        params: list[str] = [note_id]
+        if viewer_user_id:
+            where_parts.append("viewer_user_id = %s")
+            params.append(viewer_user_id)
+        elif anonymous_id:
+            where_parts.append("anonymous_id = %s")
+            params.append(anonymous_id)
+        rows = self._list_payloads(
+            "customer_actions",
+            " and ".join(where_parts),
+            tuple(params),
+            "created_at desc, id desc",
+        )
+        return [CustomerAction.model_validate(row) for row in rows]
 
     def save_import_notification(self, notification: ImportNotification) -> None:
         self._save_model("import_notifications", notification)

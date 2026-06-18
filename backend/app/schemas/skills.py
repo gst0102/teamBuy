@@ -37,6 +37,7 @@ class ContentObjectPayload(BaseModel):
     textBlocks: list[str] = Field(default_factory=list)
     media: list[ContentMediaPayload] = Field(default_factory=list)
     links: list[ContentLinkPayload] = Field(default_factory=list)
+    metadata: dict = Field(default_factory=dict)
     participants: list[ContentParticipantPayload] = Field(default_factory=list)
     timestamps: list[str] = Field(default_factory=list)
     sourceRefs: list[str] = Field(default_factory=list)

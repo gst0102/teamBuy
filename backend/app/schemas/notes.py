@@ -27,3 +27,11 @@ class TopicCreateRequest(BaseModel):
 
 class TopicNoteRequest(BaseModel):
     ownerUserId: str
+
+
+class CustomerActionSubmitRequest(BaseModel):
+    viewerUserId: str | None = None
+    anonymousId: str | None = None
+    nickname: str | None = None
+    avatarUrl: str | None = None
+    payload: dict = Field(default_factory=dict)

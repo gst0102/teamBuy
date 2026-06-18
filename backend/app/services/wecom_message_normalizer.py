@@ -98,6 +98,16 @@ class WecomMessageNormalizer:
                 "latitude": location_payload.get("latitude"),
                 "longitude": location_payload.get("longitude"),
             }
+        if msg_type == "weapp":
+            weapp_payload = message.get("weapp") or {}
+            return {
+                "appid": weapp_payload.get("appid") or weapp_payload.get("appId") or "",
+                "username": weapp_payload.get("username") or "",
+                "title": weapp_payload.get("title") or "",
+                "description": weapp_payload.get("description") or weapp_payload.get("desc") or "",
+                "displayname": weapp_payload.get("displayname") or weapp_payload.get("displayName") or "",
+                "pagepath": weapp_payload.get("pagepath") or weapp_payload.get("pagePath") or "",
+            }
         return message.get("content") if isinstance(message.get("content"), dict) else {}
 
     def _extract_media_id(self, msg_type: str, message: dict[str, Any]) -> str | None:

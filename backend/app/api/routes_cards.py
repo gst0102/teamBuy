@@ -104,7 +104,7 @@ async def upload_asset(
 
 @router.get("/cards/{card_id}", response_model=ApiResponse[dict])
 def get_card(card_id: str, service: AppService = Depends(get_app_service)):
-    return ApiResponse(data=service.get_card(card_id).model_dump())
+    return ApiResponse(data=service.get_card_detail(card_id))
 
 
 @router.put("/cards/{card_id}", response_model=ApiResponse[dict])
