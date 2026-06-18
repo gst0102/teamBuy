@@ -29,6 +29,36 @@ from app.services.wecom_mock_service import WecomMockService
 LEAD_REMINDER_STATUSES = {"pending", "contacted", "invalid", "paused", "completed"}
 LEAD_CLOSED_STATUSES = {"invalid", "paused", "completed"}
 WECOM_EXTERNAL_BINDING_SOURCE = "wecom_external_user"
+CONVERSION_CONFIG_KEYS = {
+    "showContactPhone",
+    "enableLightScrm",
+    "collectLeads",
+    "enableAppointment",
+    "enablePrivateConsultation",
+    "enableSharePoster",
+    "enableGroupRelay",
+    "enablePaymentPlaceholder",
+}
+PROPERTY_CONVERSION_DEFAULTS = {
+    "showContactPhone": True,
+    "enableLightScrm": True,
+    "collectLeads": True,
+    "enableAppointment": True,
+    "enablePrivateConsultation": True,
+    "enableSharePoster": True,
+    "enableGroupRelay": False,
+    "enablePaymentPlaceholder": False,
+}
+GROUPBUY_CONVERSION_DEFAULTS = {
+    "showContactPhone": True,
+    "enableLightScrm": True,
+    "collectLeads": True,
+    "enableAppointment": False,
+    "enablePrivateConsultation": False,
+    "enableSharePoster": True,
+    "enableGroupRelay": True,
+    "enablePaymentPlaceholder": False,
+}
 
 
 class AppService:
@@ -1167,6 +1197,10 @@ class AppService:
         normalized.setdefault("cardState", "collected")
         structured_data = normalized.get("structuredData")
         normalized["structuredData"] = structured_data if isinstance(structured_data, dict) else {}
+        normalized["conversionConfig"] = self._normalize_conversion_config(
+            normalized.get("cardType", "text_note"),
+            normalized.get("conversionConfig", {}),
+        )
         type_suggestions = normalized.get("typeSuggestions")
         normalized["typeSuggestions"] = type_suggestions if isinstance(type_suggestions, list) else []
         tag_levels = normalized.get("tagLevels") or {}
@@ -1183,6 +1217,22 @@ class AppService:
         normalized["topics"] = [item for item in normalized.get("topics", []) if isinstance(item, dict) and item.get("id")]
         normalized.setdefault("tagStatus", "user_updated" if user_tags else "rule_done")
         return normalized
+
+    def _normalize_conversion_config(self, card_type: str, config: dict | None) -> dict:
+        defaults = self._default_conversion_config(card_type)
+        incoming = config if isinstance(config, dict) else {}
+        result = dict(defaults)
+        for key in CONVERSION_CONFIG_KEYS:
+            if key in incoming:
+                result[key] = bool(incoming.get(key))
+        return result
+
+    def _default_conversion_config(self, card_type: str) -> dict:
+        if card_type == "property_listing":
+            return dict(PROPERTY_CONVERSION_DEFAULTS)
+        if card_type == "groupbuy_product":
+            return dict(GROUPBUY_CONVERSION_DEFAULTS)
+        return {key: False for key in CONVERSION_CONFIG_KEYS}
 
     def _unique_strings(self, values) -> list[str]:
         result: list[str] = []
@@ -1204,11 +1254,14 @@ class AppService:
         config["canDeepOrganize"] = False
         config["tagStatus"] = "deep_done"
         structured_data = dict(config.get("structuredData") or {})
+        conversion_config = self._normalize_conversion_config(card_type, config.get("conversionConfig"))
+        config["conversionConfig"] = conversion_config
         if card_type == "property_listing":
             config["contentMode"] = "structured_card"
             structured_data["organizeResult"] = {
                 "summary": self._property_summary(structured_data, note),
                 "generationOptions": ["房源推广图", "微信群文案", "客户话术", "对比表"],
+                "enabledFeatures": self._enabled_conversion_features(card_type, conversion_config),
             }
             config["structuredData"] = structured_data
             note.summary = structured_data["organizeResult"]["summary"]
@@ -1217,6 +1270,7 @@ class AppService:
             structured_data["organizeResult"] = {
                 "summary": self._groupbuy_summary(structured_data, note),
                 "generationOptions": ["团购海报", "发群文案", "接龙格式", "商品卖点"],
+                "enabledFeatures": self._enabled_conversion_features(card_type, conversion_config),
             }
             config["structuredData"] = structured_data
             note.summary = structured_data["organizeResult"]["summary"]
@@ -1229,6 +1283,53 @@ class AppService:
         note.updatedAt = now_iso()
         self.repo.save_user_note(note)
         return note
+
+    def generate_note_result(self, note_id: str, owner_user_id: str) -> UserNote:
+        note = self.get_user_note(note_id, owner_user_id)
+        config = self._normalize_note_visibility_config(note.visibilityConfig)
+        card_type = config.get("cardType", "text_note")
+        if card_type not in {"property_listing", "groupbuy_product"}:
+            raise HTTPException(status_code=400, detail="当前资料卡暂不支持生成场景页")
+        conversion_config = self._normalize_conversion_config(card_type, config.get("conversionConfig"))
+        structured_data = dict(config.get("structuredData") or {})
+        structured_data["generatedResult"] = {
+            "pageType": "property_promo_page" if card_type == "property_listing" else "groupbuy_share_page",
+            "status": "generated",
+            "enabledActions": self._enabled_conversion_features(card_type, conversion_config),
+            "note": "当前为生成态配置结果，正式海报/页面渲染后续由场景生成 Skill 接管。",
+        }
+        config["cardState"] = "generated"
+        config["contentMode"] = "generated_card"
+        config["conversionConfig"] = conversion_config
+        config["structuredData"] = structured_data
+        config["canDeepOrganize"] = False
+        note.visibilityConfig = config
+        note.updatedAt = now_iso()
+        self.repo.save_user_note(note)
+        return note
+
+    def _enabled_conversion_features(self, card_type: str, config: dict) -> list[str]:
+        labels = {
+            "showContactPhone": "展示联系电话",
+            "enableLightScrm": "轻 SCRM 跟进",
+            "collectLeads": "收集线索",
+            "enableAppointment": "预约看房",
+            "enablePrivateConsultation": "私聊咨询",
+            "enableSharePoster": "生成海报",
+            "enableGroupRelay": "团购接龙",
+            "enablePaymentPlaceholder": "下单按钮预留",
+        }
+        ordered_keys = [
+            "showContactPhone",
+            "enableLightScrm",
+            "collectLeads",
+            "enableAppointment",
+            "enablePrivateConsultation",
+            "enableSharePoster",
+            "enableGroupRelay",
+            "enablePaymentPlaceholder",
+        ]
+        return [labels[key] for key in ordered_keys if config.get(key)]
 
     def _property_summary(self, data: dict, note: UserNote) -> str:
         parts = [

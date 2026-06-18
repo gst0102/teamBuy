@@ -121,6 +121,9 @@ def test_run_content_to_note_detects_property_listing_card():
     assert config["structuredData"]["price"] == "1600元/月"
     assert config["structuredData"]["businessArea"] == "万家丽、高桥北"
     assert config["structuredData"]["images"] == ["https://example.com/house.webp"]
+    assert config["conversionConfig"]["enableLightScrm"] is True
+    assert config["conversionConfig"]["enableAppointment"] is True
+    assert config["conversionConfig"]["enableGroupRelay"] is False
 
 
 def test_run_content_to_note_detects_groupbuy_product_card():
@@ -150,6 +153,9 @@ def test_run_content_to_note_detects_groupbuy_product_card():
     assert config["structuredData"]["price"] == "39.9元"
     assert config["structuredData"]["spec"] == "3斤装"
     assert config["structuredData"]["pickupMethod"] == "包邮到家"
+    assert config["conversionConfig"]["enableLightScrm"] is True
+    assert config["conversionConfig"]["enableGroupRelay"] is True
+    assert config["conversionConfig"]["enablePaymentPlaceholder"] is False
 
 
 def test_commands_include_showcase_and_billing_entries():

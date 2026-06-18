@@ -41,6 +41,22 @@
 - 下一阶段可做“类型转换”：低置信文本卡允许用户手动转成房源卡或团购卡。
 - 后续再接房源推广图、团购海报、微信群文案、客户话术等生成型 Skill。
 
+## 后续补充：房源/团购生成态功能配置
+
+- 后端新增 `visibilityConfig.conversionConfig` 标准配置，用于第二态编辑到第四态生成之间的转化能力控制。
+- 房源默认开启：展示联系电话、轻 SCRM、线索收集、预约看房、私聊咨询、生成海报；不开启团购接龙和下单预留。
+- 团购默认开启：展示联系电话、轻 SCRM、线索收集、团购接龙、生成海报；下单按钮只做预留且默认关闭。
+- `POST /api/notes/{note_id}/generate` 新增轻量生成接口，当前把资料卡置为 `generated`，并把启用动作写入 `structuredData.generatedResult.enabledActions`。
+- 小程序编辑页新增“功能配置”面板，房源/团购展示不同开关；新增“生成场景页”动作。
+- 规则：房源/商品本体字段继续放 `structuredData`，行为/转化开关只放 `conversionConfig`。
+
+验证：
+
+- `python -m compileall backend/app backend/tests`：通过。
+- 目标后端测试：房源/团购结构识别、配置保存、生成接口通过。
+- 小程序 JS 静态检查通过。
+- 小程序 JSON 解析通过。
+
 # 2026-06-10
 
 ## 本次目标

@@ -69,6 +69,16 @@ UI 流程统一，数据结构分型，行为能力按场景区分。
     "contact": "",
     "images": []
   },
+  "conversionConfig": {
+    "showContactPhone": true,
+    "enableLightScrm": true,
+    "collectLeads": true,
+    "enableAppointment": true,
+    "enablePrivateConsultation": true,
+    "enableSharePoster": true,
+    "enableGroupRelay": false,
+    "enablePaymentPlaceholder": false
+  },
   "typeSuggestions": []
 }
 ```
@@ -79,6 +89,17 @@ UI 流程统一，数据结构分型，行为能力按场景区分。
 - `editing`：编辑态，用户人工修正字段、标签、专题。
 - `organized`：整理态，系统完成规则整理或后续 AI 增强。
 - `generated`：生成态，已生成海报、图文页、话术等可直接使用结果。
+
+`conversionConfig` 是第二态到第四态的转化能力配置，不属于房源/商品本体字段：
+
+- `showContactPhone`：生成页是否展示联系电话。
+- `enableLightScrm`：是否记录浏览、收藏、咨询、预约、接龙等轻 SCRM 行为。
+- `collectLeads`：是否允许用户提交联系方式和备注。
+- `enableAppointment`：房源是否展示预约看房。
+- `enablePrivateConsultation`：房源是否展示私聊咨询。
+- `enableSharePoster`：是否保留生成海报入口。
+- `enableGroupRelay`：团购是否展示接龙/报名入口。
+- `enablePaymentPlaceholder`：团购是否展示“下单按钮预留”；当前不接真实支付。
 
 ## 4. 类型识别规则
 
@@ -131,6 +152,15 @@ UI 流程统一，数据结构分型，行为能力按场景区分。
 
 整理态只做字段标准化、摘要、标签和生成建议，不直接生成最终海报。
 
+编辑态到生成态允许配置：
+
+- 是否展示联系电话。
+- 是否开启轻 SCRM 跟进。
+- 是否收集线索。
+- 是否允许预约看房。
+- 是否允许私聊咨询。
+- 是否保留生成海报入口。
+
 可生成能力预留：
 
 - 房源推广图
@@ -153,6 +183,15 @@ UI 流程统一，数据结构分型，行为能力按场景区分。
 - 图片
 
 整理态只做商品字段标准化、摘要、标签和生成建议，不直接开团或交易。
+
+编辑态到生成态允许配置：
+
+- 是否展示联系电话。
+- 是否开启轻 SCRM 跟进。
+- 是否收集线索。
+- 是否开启团购接龙。
+- 是否保留生成海报入口。
+- 是否展示“下单按钮预留”；当前不接真实支付。
 
 可生成能力预留：
 

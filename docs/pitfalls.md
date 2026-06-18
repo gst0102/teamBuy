@@ -11,6 +11,17 @@
 - 房源用 `property_listing` 和房源字段，团购用 `groupbuy_product` 和商品字段。
 - 第一版字段放在 `UserNote.visibilityConfig.structuredData`，不要为了短期 UI 方便复制到多个互相不一致的位置。
 
+## 2026-06-18：转化能力配置不要混入 structuredData
+
+问题：
+- 联系电话是否展示、轻 SCRM 是否开启、是否允许预约/接龙，这些是生成页行为，不是房源或商品本体字段。
+- 如果混到 `structuredData`，后续字段整理、AI 补全或用户编辑房源/商品时，容易误覆盖功能开关。
+
+规避方式：
+- 房源/团购本体字段只放在 `structuredData`。
+- 第二态到第四态的功能开关统一放在 `visibilityConfig.conversionConfig`。
+- 整理态和生成态读取 `conversionConfig` 生成 `enabledFeatures` / `enabledActions`。
+
 ## 2026-06-18：动态字段不要直接依赖 WXML 动态 key 渲染
 
 问题：

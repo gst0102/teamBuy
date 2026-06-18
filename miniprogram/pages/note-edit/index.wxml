@@ -42,6 +42,20 @@
     <button class="organize-btn compact" loading="{{saving}}" bindtap="handleOrganize">整理</button>
   </view>
 
+  <view class="form-panel conversion-panel" wx:if="{{isProperty || isGroupbuy}}">
+    <view class="section-title">功能配置</view>
+    <view class="section-hint">这些开关会影响整理态和生成态展示的联系、线索和转化入口。</view>
+    <block wx:for="{{conversionOptions}}" wx:key="key">
+      <view class="switch-row">
+        <view class="switch-text">
+          <view class="switch-label">{{item.label}}</view>
+          <view class="switch-desc">{{item.desc}}</view>
+        </view>
+        <switch checked="{{item.checked}}" color="#11924d" data-key="{{item.key}}" bindchange="handleConversionToggle" />
+      </view>
+    </block>
+  </view>
+
   <view class="form-panel">
     <view class="section-title">来源类型</view>
     <view class="option-row">
@@ -165,5 +179,10 @@
   <view class="bottom-actions">
     <button class="delete-btn" bindtap="handleDelete">删除</button>
     <button class="save-btn" loading="{{saving}}" bindtap="handleSave">保存</button>
+  </view>
+
+  <view class="generate-actions" wx:if="{{isProperty || isGroupbuy}}">
+    <button class="secondary-btn" loading="{{saving}}" bindtap="handleOrganize">整理资料</button>
+    <button class="generate-btn" loading="{{saving}}" bindtap="handleGenerate">生成场景页</button>
   </view>
 </view>

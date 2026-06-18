@@ -1436,6 +1436,16 @@ def test_import_creates_claimable_user_note_and_note_crud(client):
                     "price": "1600元/月",
                     "businessArea": "万家丽、高桥北",
                 },
+                "conversionConfig": {
+                    "showContactPhone": True,
+                    "enableLightScrm": True,
+                    "collectLeads": True,
+                    "enableAppointment": True,
+                    "enablePrivateConsultation": False,
+                    "enableSharePoster": True,
+                    "enableGroupRelay": False,
+                    "enablePaymentPlaceholder": False,
+                },
             },
         },
     )
@@ -1453,6 +1463,16 @@ def test_import_creates_claimable_user_note_and_note_crud(client):
     organized_config = organized.json()["data"]["visibilityConfig"]
     assert organized_config["cardState"] == "organized"
     assert organized_config["structuredData"]["organizeResult"]["generationOptions"] == ["房源推广图", "微信群文案", "客户话术", "对比表"]
+    assert "轻 SCRM 跟进" in organized_config["structuredData"]["organizeResult"]["enabledFeatures"]
+    assert "私聊咨询" not in organized_config["structuredData"]["organizeResult"]["enabledFeatures"]
+
+    generated = client.post(f"/api/notes/{note['id']}/generate", params={"ownerUserId": login["id"]})
+    assert generated.status_code == 200
+    generated_config = generated.json()["data"]["visibilityConfig"]
+    assert generated_config["cardState"] == "generated"
+    assert generated_config["structuredData"]["generatedResult"]["pageType"] == "property_promo_page"
+    assert "预约看房" in generated_config["structuredData"]["generatedResult"]["enabledActions"]
+    assert "私聊咨询" not in generated_config["structuredData"]["generatedResult"]["enabledActions"]
 
     deleted = client.delete(f"/api/notes/{note['id']}", params={"ownerUserId": login["id"]})
     assert deleted.status_code == 200

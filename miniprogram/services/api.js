@@ -180,6 +180,16 @@ function organizeNote(noteId, ownerUserId) {
   }));
 }
 
+function generateNote(noteId, ownerUserId) {
+  return request({
+    url: `/api/notes/${noteId}/generate?ownerUserId=${ownerUserId}`,
+    method: "POST"
+  }).then(async (res) => ({
+    ...res,
+    data: await normalizeAndCacheNote(res.data)
+  }));
+}
+
 function deleteNote(noteId, ownerUserId) {
   return request({
     url: `/api/notes/${noteId}?ownerUserId=${ownerUserId}`,
@@ -427,6 +437,7 @@ module.exports = {
   fetchNote,
   updateNote,
   organizeNote,
+  generateNote,
   deleteNote,
   fetchCards,
   fetchCard,

@@ -60,6 +60,17 @@ const GROUPBUY_FIELDS = [
   { key: "contact", label: "联系方式", placeholder: "可选" }
 ];
 
+const CONVERSION_OPTIONS = [
+  { key: "showContactPhone", label: "展示联系电话", desc: "生成页展示电话或联系按钮", property: true, groupbuy: true },
+  { key: "enableLightScrm", label: "轻 SCRM 跟进", desc: "记录浏览、收藏、咨询等转化行为", property: true, groupbuy: true },
+  { key: "collectLeads", label: "收集线索", desc: "允许用户提交联系方式和备注", property: true, groupbuy: true },
+  { key: "enableAppointment", label: "预约看房", desc: "房源页展示预约看房入口", property: true, groupbuy: false },
+  { key: "enablePrivateConsultation", label: "私聊咨询", desc: "房源页展示私聊咨询入口", property: true, groupbuy: false },
+  { key: "enableSharePoster", label: "生成海报", desc: "生成页保留分享海报入口", property: true, groupbuy: true },
+  { key: "enableGroupRelay", label: "团购接龙", desc: "团购页展示接龙/报名入口", property: false, groupbuy: true },
+  { key: "enablePaymentPlaceholder", label: "下单按钮预留", desc: "只展示预留入口，不接真实支付", property: false, groupbuy: true }
+];
+
 function formatDateTime(value) {
   if (!value) return "";
   const date = new Date(value);
@@ -95,6 +106,44 @@ function hydrateFields(fields, data) {
   }));
 }
 
+function defaultConversionConfig(cardType) {
+  if (cardType === "property_listing") {
+    return {
+      showContactPhone: true,
+      enableLightScrm: true,
+      collectLeads: true,
+      enableAppointment: true,
+      enablePrivateConsultation: true,
+      enableSharePoster: true,
+      enableGroupRelay: false,
+      enablePaymentPlaceholder: false
+    };
+  }
+  if (cardType === "groupbuy_product") {
+    return {
+      showContactPhone: true,
+      enableLightScrm: true,
+      collectLeads: true,
+      enableAppointment: false,
+      enablePrivateConsultation: false,
+      enableSharePoster: true,
+      enableGroupRelay: true,
+      enablePaymentPlaceholder: false
+    };
+  }
+  return {};
+}
+
+function hydrateConversionOptions(cardType, config) {
+  const merged = { ...defaultConversionConfig(cardType), ...(config || {}) };
+  return CONVERSION_OPTIONS
+    .filter((option) => (cardType === "property_listing" ? option.property : cardType === "groupbuy_product" ? option.groupbuy : false))
+    .map((option) => ({
+      ...option,
+      checked: Boolean(merged[option.key])
+    }));
+}
+
 Page({
   data: {
     user: null,
@@ -119,6 +168,8 @@ Page({
     isProperty: false,
     isGroupbuy: false,
     structuredData: {},
+    conversionConfig: {},
+    conversionOptions: [],
     propertyFields: hydrateFields(PROPERTY_FIELDS, {}),
     groupbuyFields: hydrateFields(GROUPBUY_FIELDS, {}),
     topics: [],
@@ -168,6 +219,7 @@ Page({
     const cardType = config.cardType || (config.contentMode === "bookmark" ? "link" : "text_note");
     const isBookmark = cardType === "link" && config.contentMode === "bookmark";
     const structuredData = config.structuredData || {};
+    const conversionConfig = { ...defaultConversionConfig(cardType), ...(config.conversionConfig || {}) };
     this.setData({
       form: {
         title: note.title || "",
@@ -185,6 +237,8 @@ Page({
       isGroupbuy: cardType === "groupbuy_product",
       cardTypeLabel: CARD_TYPES[cardType] || "资料卡",
       structuredData,
+      conversionConfig,
+      conversionOptions: hydrateConversionOptions(cardType, conversionConfig),
       propertyFields: hydrateFields(PROPERTY_FIELDS, structuredData),
       groupbuyFields: hydrateFields(GROUPBUY_FIELDS, structuredData),
       bookmark: buildBookmark(note)
@@ -207,11 +261,25 @@ Page({
     const key = event.currentTarget.dataset.key;
     const value = event.detail.value;
     const structuredData = { ...(this.data.structuredData || {}), [key]: value };
-    const config = { ...(this.data.form.visibilityConfig || {}), structuredData };
+    const config = { ...(this.data.form.visibilityConfig || {}), structuredData, cardState: "editing" };
     this.setData({
       structuredData,
       propertyFields: hydrateFields(PROPERTY_FIELDS, structuredData),
       groupbuyFields: hydrateFields(GROUPBUY_FIELDS, structuredData),
+      "form.visibilityConfig": config
+    });
+  },
+  handleConversionToggle(event) {
+    const key = event.currentTarget.dataset.key;
+    const conversionConfig = { ...(this.data.conversionConfig || {}), [key]: Boolean(event.detail.value) };
+    const config = {
+      ...(this.data.form.visibilityConfig || {}),
+      conversionConfig,
+      cardState: "editing"
+    };
+    this.setData({
+      conversionConfig,
+      conversionOptions: hydrateConversionOptions(config.cardType, conversionConfig),
       "form.visibilityConfig": config
     });
   },
@@ -287,23 +355,13 @@ Page({
     }
   },
   async handleSave() {
-    const { user, noteId, form } = this.data;
-    if (!form.title.trim()) {
-      wx.showToast({ title: "标题不能为空", icon: "none" });
-      return;
-    }
     this.setData({ saving: true });
     try {
-      await api.updateNote(noteId, {
-        ownerUserId: user.id,
-        ...form,
-        title: form.title.trim(),
-        body: form.body.trim() || form.title.trim()
-      });
+      await this.handleSaveOnly();
       wx.showToast({ title: "已保存", icon: "success" });
       setTimeout(() => wx.navigateBack(), 350);
     } catch (error) {
-      wx.showToast({ title: error.detail || "保存失败", icon: "none" });
+      wx.showToast({ title: error.detail || error.message || "保存失败", icon: "none" });
     } finally {
       this.setData({ saving: false });
     }
@@ -322,6 +380,33 @@ Page({
     } finally {
       this.setData({ saving: false });
     }
+  },
+  async handleGenerate() {
+    const { user, noteId } = this.data;
+    if (!user || !noteId) return;
+    this.setData({ saving: true });
+    try {
+      await this.handleSaveOnly();
+      const res = await api.generateNote(noteId, user.id);
+      this.applyLoadedNote(res.data || {});
+      wx.showToast({ title: "已生成配置", icon: "success" });
+    } catch (error) {
+      wx.showToast({ title: error.detail || error.message || "生成失败", icon: "none" });
+    } finally {
+      this.setData({ saving: false });
+    }
+  },
+  async handleSaveOnly() {
+    const { user, noteId, form } = this.data;
+    if (!form.title.trim()) {
+      throw new Error("标题不能为空");
+    }
+    await api.updateNote(noteId, {
+      ownerUserId: user.id,
+      ...form,
+      title: form.title.trim(),
+      body: form.body.trim() || form.title.trim()
+    });
   },
   handleOpenSource() {
     const { sourceUrl } = this.data.bookmark || {};

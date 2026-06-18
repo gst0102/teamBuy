@@ -45,6 +45,28 @@ GROUPBUY_FIELD_ALIASES = {
     "contact": ["电话", "联系电话", "联系方式", "联系人"],
 }
 
+PROPERTY_CONVERSION_DEFAULTS = {
+    "showContactPhone": True,
+    "enableLightScrm": True,
+    "collectLeads": True,
+    "enableAppointment": True,
+    "enablePrivateConsultation": True,
+    "enableSharePoster": True,
+    "enableGroupRelay": False,
+    "enablePaymentPlaceholder": False,
+}
+
+GROUPBUY_CONVERSION_DEFAULTS = {
+    "showContactPhone": True,
+    "enableLightScrm": True,
+    "collectLeads": True,
+    "enableAppointment": False,
+    "enablePrivateConsultation": False,
+    "enableSharePoster": True,
+    "enableGroupRelay": True,
+    "enablePaymentPlaceholder": False,
+}
+
 
 class SkillRouterService:
     """Deterministic first-pass router for shortcut commands and simple rules."""
@@ -277,6 +299,7 @@ class SkillRouterService:
                     "coverUrl": link.coverUrl if link else None,
                     "parseStatus": "meta_done" if link else "pending",
                 },
+                "conversionConfig": self._default_conversion_config("link"),
                 "typeSuggestions": [],
                 "sourceType": "link",
                 "systemCategory": "文章",
@@ -307,6 +330,7 @@ class SkillRouterService:
             "cardType": detection["cardType"],
             "cardState": "collected",
             "structuredData": detection["structuredData"],
+            "conversionConfig": self._default_conversion_config(detection["cardType"]),
             "typeSuggestions": detection["typeSuggestions"],
             "sourceType": self._note_source_type(content),
             "systemCategory": detection["systemCategory"],
@@ -317,6 +341,22 @@ class SkillRouterService:
             "canDeepOrganize": True,
             "topicIds": [],
             "topics": [],
+        }
+
+    def _default_conversion_config(self, card_type: str) -> dict:
+        if card_type == "property_listing":
+            return dict(PROPERTY_CONVERSION_DEFAULTS)
+        if card_type == "groupbuy_product":
+            return dict(GROUPBUY_CONVERSION_DEFAULTS)
+        return {
+            "showContactPhone": False,
+            "enableLightScrm": False,
+            "collectLeads": False,
+            "enableAppointment": False,
+            "enablePrivateConsultation": False,
+            "enableSharePoster": False,
+            "enableGroupRelay": False,
+            "enablePaymentPlaceholder": False,
         }
 
     def _detect_card_type(self, title: str, body: str, content: ContentObjectPayload) -> dict:

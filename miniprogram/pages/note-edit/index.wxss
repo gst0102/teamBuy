@@ -201,8 +201,46 @@
   font-weight: 900;
 }
 
+.section-hint {
+  margin: -8rpx 0 18rpx;
+  color: #6f7d91;
+  font-size: 23rpx;
+  line-height: 1.45;
+}
+
 .section-title.spaced {
   margin-top: 24rpx;
+}
+
+.switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20rpx;
+  padding: 18rpx 0;
+  border-top: 1rpx solid #edf0f5;
+}
+
+.switch-row:first-of-type {
+  border-top: 0;
+}
+
+.switch-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.switch-label {
+  color: #172033;
+  font-size: 27rpx;
+  font-weight: 800;
+}
+
+.switch-desc {
+  margin-top: 6rpx;
+  color: #6f7d91;
+  font-size: 23rpx;
+  line-height: 1.4;
 }
 
 .option-row,
@@ -309,6 +347,32 @@
   grid-template-columns: 180rpx 1fr;
   gap: 20rpx;
   margin-top: 28rpx;
+}
+
+.generate-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18rpx;
+  margin-top: 18rpx;
+}
+
+.secondary-btn,
+.generate-btn {
+  height: 84rpx;
+  line-height: 84rpx;
+  border-radius: 8rpx;
+  font-size: 28rpx;
+  font-weight: 800;
+}
+
+.secondary-btn {
+  background: #e8f7ef;
+  color: #11924d;
+}
+
+.generate-btn {
+  background: #11924d;
+  color: #fff;
 }
 
 .delete-btn,
