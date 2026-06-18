@@ -1,4 +1,291 @@
+# 2026-06-19
+
+## 本次补充：customer-action-plugin 第一版落地
+
+背景：
+
+- 用户确认下一阶段重点只做“客户页动作持久化”，并要求做成可复用插件，后续普通笔记、团购、活动等场景也能复用。
+- 当前客户页 `note-preview` 的留联系方式和预约看房只是本地状态，刷新或发布者查看时无法形成真实线索闭环。
+
+完成内容：
+
+- 后端新增通用 `CustomerAction` 模型和 `customer_actions` 仓储 / PostgreSQL 表。
+- 新增接口：
+  - `GET /api/notes/{note_id}/customer-actions/config`
+  - `POST /api/notes/{note_id}/customer-actions/{action_key}`
+- 第一版接入两个动作插件：
+  - `lead-contact`：客户留下电话 / 微信。
+  - `appointment`：客户提交预约日期和时间。
+- 两个动作都会先写通用动作记录，再投影到现有 `lead_reminders`。
+- `lead-contact` 会写入客户手机号、微信号、备注和跟进日志。
+- `appointment` 会复用同一条线索，写入预约时间为 `nextFollowUpAt`，并追加跟进日志。
+- 线索列表补充 `sourceNoteId`，兼容新 `UserNote` 主链路和旧 `Card` 线索模型。
+- 小程序 `pages/note-preview/index` 已把“提交联系方式”和“提交预约”从本地假提交改成真实 API 提交；刷新后会读取客户动作配置并恢复已提交状态。
+- 新增 `backend/mock/customer-actions.json`，用于本地 JSON 仓储初始状态。
+
+验证：
+
+- `pytest backend/tests/test_app.py::test_import_creates_claimable_user_note_and_note_crud -q`：通过。
+- `node --check miniprogram/pages/note-preview/index.js && node --check miniprogram/services/api.js`：通过。
+- `python -m compileall backend/app backend/tests`：通过。
+
+## 本次补充：客户页动作持久化收敛为插件化重点
+
+背景：
+
+- 用户确认房产长标题通常是中介有意把价格、地铁口、户型、亮点放在首屏，不应自动拆字段或改标题。
+- 用户确认后续重点只做“客户页动作持久化”，且必须做成插件，因为其他笔记场景也会复用。
+
+完成内容：
+
+- 新增 `docs/stage2-docs/13-customer-action-plugin-architecture.md`。
+- 固定 `customer-action-plugin` 方向：客户页动作由插件注册，房源 / 团购 / 普通笔记通过 `conversionConfig` 启用动作。
+- 第一版插件清单包括 `lead-contact`、`appointment`、`relay-intent`、`consult-click`、`navigation-click`、`external-open`。
+- 明确动作提交先落通用动作记录，再投影到 `lead_reminders`、预约、接龙和跟进。
+- 明确不做标题拆字段、封面裁切焦点、三条亮点自动生成等旁支优化。
+
+验证：
+
+- 本次仅更新架构文档和长期记忆，无业务代码变更。
+
+## 本次补充：房源详情主动作同排与分享图长标题防重叠
+
+背景：
+
+- 用户反馈房产资料详情顶部主动作排版不理想，希望“分享文案 / 转发给好友 / 客户页预览”放在同一排。
+- 用户截图显示房源分享图在长标题场景下，标题、价格和补充信息可能互相挤压或重叠。
+
+完成内容：
+
+- `pages/note-edit/index` 房源 / 团购工作台顶部主动作调整为一行三列，顺序为“分享文案 / 转发给好友 / 客户页预览”。
+- 主动作按钮补充 `margin: 0`、`min-width: 0` 和不换行约束，避免微信小程序默认按钮外边距导致三列排版挤压。
+- `pages/note-poster/index` 分享图标题生成前会压平换行和多余空白。
+- 分享图页面预览标题限制为最多 3 行；canvas 保存图片时同样限制标题区域高度，给价格和详情行保留空间。
+
+验证：
+
+- `node --check miniprogram/pages/note-poster/index.js`：通过。
+- `node --check miniprogram/pages/note-edit/index.js`：通过。
+- `git diff --check -- miniprogram/pages/note-edit/index.wxml miniprogram/pages/note-edit/index.wxss miniprogram/pages/note-poster/index.js miniprogram/pages/note-poster/index.wxss`：通过。
+
+## 本次补充：企业微信小程序卡片归档不再生成空笔记
+
+背景：
+
+- 用户在 02:41 左右把贝壳房源小程序卡片发给企业微信，后端会话存档成功收到 `msgtype=weapp`，但小程序前端只能看到空资料。
+- 生产排查确认企业微信实际下发的是小程序卡片外壳：标题、appid、username、displayname/description、pagepath，以及 pagepath 中的 `houseCode` / `cityId` / `source`；没有价格、户型、面积、图片和经纬度。
+
+完成内容：
+
+- `ContentObjectPayload` 新增 `metadata`，用于保留小程序 appid、pagepath、houseCode 等非正文元数据。
+- `ContentObjectAdapter` 已支持会话存档 `weapp` 和客服 `sync_msg` `weapp`，入库时生成可见正文：小程序标题、来源、appid、房源编码。
+- 小程序 pagepath 不直接展示在正文中，完整路径只保存到 `visibilityConfig.structuredData.miniapp.pagePath`，避免页面被长参数污染。
+- `WecomMessageNormalizer`、`MessageAggregator` 和 `MessageType` 已补齐 `weapp`，普通客服同步链路也可导入小程序卡片。
+- `SkillRouterService` 对小程序卡片写入 `sourceType=miniapp`、`systemCategory=小程序`、标签 `小程序/贝壳找房/房产`；贝壳卡片只给“可能是房源信息”的中置信提示，不自动当高置信房源。
+- 修复 pagepath 长数字被手机号正则误识别的问题：`miniapp_card` 不从正文提取手机号，`showPhone=false`。
+- 已将本地后端代码同步并重建生产后端。
+- 已修复生产 02:41 的历史空笔记：
+  - archive message：`wecom_archive_msg_04c9699da3`
+  - note：`note_4ecff85fca`
+  - card：`card_336b070ffc`
+  - 标题：`三江尊园 全天采光 好楼层 拎包入住`
+  - `houseCode=101137825091`、`cityId=150200`
+
+验证：
+
+- `python -m compileall backend/app backend/tests`：通过。
+- `pytest backend/tests -q`：98 项通过。
+- 生产 `https://teambuy.lifelove.top/health`：通过。
+- 生产 `GET /api/notes/note_4ecff85fca?ownerUserId=user_08e8927ed8`：返回 `sourceType=miniapp`，正文不再为空，`phone=null`，`typeSuggestions` 含房源中置信提示。
+
+## 本次补充：贝壳小程序原房源入口与 SCRM 组合
+
+背景：
+
+- 用户确认不需要强行爬取贝壳详情，贝壳小程序卡片可以在我们的房源块里显示为原小程序入口。
+- 用户希望客户仍能通过我们的客户页使用轻 SCRM、留资、预约、咨询等能力。
+
+完成内容：
+
+- 小程序 `app.json` 增加贝壳 appid 的 `navigateToMiniProgramAppIdList`；地图选点仍只声明 `chooseLocation`。
+- `pages/note-edit/index` 新增“原小程序房源”块：展示来源、标题、房源编码，并提供“查看贝壳原房源”和“客户页预览”。
+- `pages/note-preview/index` 客户页新增“查看贝壳原房源”动作，点击后通过 `wx.navigateToMiniProgram` 跳转到贝壳小程序对应 `pagePath`；失败时复制标题、来源和房源编码兜底。
+- 后端规则调整：贝壳这类 `miniapp_card` 房源候选默认开启轻 SCRM、留资、预约、微信咨询和海报入口，不开启电话展示。
+- 后端会根据 `cityId + houseCode` 生成贝壳网页候选 URL；当前 `cityId=150200` 映射为 `baotou`，生成 `https://m.ke.com/baotou/ershoufang/101137825091.html`，并写入 `visibilityConfig.sourceUrl` 和 `structuredData.miniapp.webUrl`。
+- 该网页 URL 可能被贝壳验证码拦截，不能作为稳定爬取来源；用途是备用打开、复制和人工核对。
+- `buildStructuredDataForType` 已修复：用户把小程序卡切成房源字段卡时，会保留 `structuredData.miniapp`，不会丢失原贝壳入口。
+- `pages/notes/index` 列表会把小程序资料显示为“小程序”，并展示来源和房源编码。
+- 生产历史 note `note_4ecff85fca` 已恢复 `structuredData.miniapp`，当前为 `property_listing + sourceType=miniapp`，并已开启轻 SCRM、留资、预约和微信咨询。
+
+验证：
+
+- `pytest backend/tests -q`：98 项通过。
+- 小程序所有 `.js` 执行 `node --check`：通过。
+- 小程序所有 `.json` 解析检查：通过。
+- 生产 `GET /api/notes/note_4ecff85fca?ownerUserId=user_08e8927ed8` 确认保留 `houseCode=101137825091`、`pagePath` 和 SCRM 配置。
+- 生产同一接口确认已保留 `sourceUrl=https://m.ke.com/baotou/ershoufang/101137825091.html`。
+
+## 本次补充：房源标题小区识别、默认城市定位和客户页动作文案
+
+背景：
+
+- 用户指出房产中介的标题里通常就带小区名，识别高置信时应把标题小区作为有效信号。
+- 用户指出如果中介之前发过长沙房源，后续地址不带城市时也应默认补长沙，避免同名小区导致地图匹配失败。
+- 用户反馈客户页里的“我要留资 / 私聊咨询”不够直白，需要换成客户能理解的动作。
+- 用户要求预约看房默认今天/明天，并能用滚轮选择具体时间，精确到几点几分。
+
+完成内容：
+
+- 后端房源识别增强：当标题含小区名且正文有户型、面积、价格、位置等房源信号时，会把标题作为 `community` 参与高置信判断。
+- 新增测试覆盖“标题是小区名，正文有房源字段”的高置信房源识别。
+- 编辑页和客户页地图解析会记住最近一次房源城市，例如 `长沙市`；后续地址不含城市时，会用记住的城市补全后再调腾讯地图地理编码。
+- 客户页动作文案调整：
+  - `联系咨询` 改为 `电话咨询`。
+  - `我要留资` 改为 `留下电话/微信`。
+  - `私聊咨询` 改为 `微信咨询`。
+  - `预约看房` 描述改为选择日期和时间。
+- 客户页留资表单新增微信号字段，电话和微信二选一即可提交。
+- 客户页预约看房改为页面内表单：默认今天 10:00，支持今天/明天快捷选择，也支持日期和时间选择器精确到分钟。
+
+验证：
+
+- `pytest backend/tests -q`：96 项通过。
+- 小程序所有 `.js` 执行 `node --check`：通过。
+- 小程序所有 `.json` 解析检查：通过。
+
+## 本次补充：分享入口、悬浮保存、手机号记忆和客户页图片/导航优化
+
+背景：
+
+- 用户认为“生成推广”不如“发给好友”直观，当前工作台应更强调结果分享。
+- 用户希望长页面编辑时保存按钮能固定在页面左侧中部，减少滑到底保存的操作。
+- 用户希望手机号填写后后续默认带入，减少重复输入。
+- 用户确认客户页预览就是客户看到的详细页面，因此图片应在客户页完整展示。
+- 用户希望地图定位点击后能尽量支持跳转导航 App，而不只是微信内置地图。
+
+完成内容：
+
+- 笔记列表房源/团购卡片动作文案统一改为“转发给好友”，并接入微信原生 `open-type="share"`。
+- 房源/团购工作台顶部动作改为“分享文案 / 转发给好友 / 朋友圈海报”，其中“转发给好友”直接调起微信转发。
+- `pages/note-edit/index` 增加浅绿色小尺寸悬浮保存按钮，默认吸附右侧中部，拖动松手后按左右距离吸附到最近侧；底部保存按钮仍保留。
+- 发布者联系方式增加本地记忆：保存房源/团购联系方式后，下一条资料如果没有识别出联系方式，会自动带入上次手机号。
+- 客户页留资手机号增加本地记忆：客户填写手机号并提交后，下次打开留资表单默认带入该手机号，仍可手动修改。
+- 客户页新增房源图片横向图库，封面图继续作为分享卡片图片，其余图片在客户页内展示并支持预览。
+- 客户页地图定位动作改为弹出“选择导航App / 微信内置地图 / 复制地址”；优先使用 `MapContext.openMapApp`，不支持时回退 `wx.openLocation`。
+- 客户页正文内原“发给微信好友 / 发朋友圈”按钮已移除，改为右侧靠下固定的两个同尺寸小浮动按钮，避免和内容动作混淆。
+- 修复补充：编辑页顶部恢复“客户页预览”独立入口，“转发给好友”保留为单独原生分享按钮，避免点击详情预览时误触发转发。
+- 修复补充：我的笔记列表不再展示 `房源 · 编辑中` 这类内部生命周期状态，房源/团购卡片徽标只展示业务类型。
+
+验证：
+
+- `pytest backend/tests -q`：95 项通过。
+- 小程序所有 `.js` 执行 `node --check`：通过。
+- 小程序所有 `.json` 解析检查：通过。
+
+## 本次补充：客户页地图不显示经纬度，默认地址自动生成地图点
+
+背景：
+
+- 用户确认客户页地图可以显示，但不希望把经纬度数字直接展示给客户。
+- 用户希望房源“默认地址”和地图位置默认对应，不能只有手动确认地图点后才显示地图。
+
+完成内容：
+
+- 客户页 `pages/note-preview/index` 的地图头部不再显示经纬度数字，改为“腾讯地图 / 正在匹配默认地址 / 按默认地址定位”。
+- 客户页有地址但没有坐标时，会尝试通过后端地理编码接口把默认地址解析成腾讯地图坐标；成功后直接显示地图和小房子标记。
+- 编辑页 `pages/note-edit/index` 加入同样的静默解析：房源有默认地址但没有 `mapLocation` 时，自动尝试生成坐标并保存到资料卡。
+- 编辑页地址变更后会清掉不匹配的旧地图点，避免地址和地图小房子位置不一致。
+- 新增后端 `GET /api/location/geocode`，由后端持有 `TENCENT_MAP_KEY` 调用腾讯地图地理编码，避免地图 Key 暴露到小程序前端。
+- `backend/.env.example` 新增 `TENCENT_MAP_KEY` 和 `TENCENT_MAP_GEOCODER_URL` 配置说明。
+
+验证：
+
+- `pytest backend/tests/test_app.py -q`：59 项通过。
+- 小程序所有 `.js` 执行 `node --check`：通过。
+- 小程序所有 `.json` 解析检查：通过。
+
+生产配置补充：
+
+- 已将腾讯地图 Key 配置到本地 `backend/.env` 和生产服务器 `/home/ubuntu/teamBuy/backend/.env`，未写入前端代码。
+- 已同步 `routes_location.py`、`config.py`、`main.py` 到生产后端并重建 `teambuy-backend` 容器。
+- 生产验证：`https://teambuy.lifelove.top/health` 正常，`/api/location/geocode` 返回 `configured=true` 且可解析测试地址坐标。
+
 # 2026-06-18
+
+## 本次补充：按用户参考图调整我的笔记列表和收藏态首屏
+
+背景：
+
+- 用户指出“我的笔记”页分类和标签不应横向滑动，应先展示常用项，再通过下拉展示全部。
+- 用户要求笔记卡片底部“编辑字段”旁边展示上传时间，精确到年月日。
+- 用户指出进入编辑页后的第一个 UI 状态与预期差距较大，应优先处理收藏态首屏，再继续处理其他三态。
+
+完成内容：
+
+- `pages/notes/index` 分类筛选改为默认展示“最近使用、笔记、下拉箭头”，点击后展示全部分类和“添加分类”入口。
+- 标签筛选改为默认展示“最近使用、房产、户外、团购、添加标签”，可展开全部标签。
+- 笔记卡片底部新增“上传时间 YYYY年M月D日”，放在“编辑字段”旁边。
+- `pages/note-edit/index` 收藏态首屏去掉流程条和大状态头，改为先展示原始导入内容块、识别标签、图片预览，再展示“可能是房源资料”和“确认并编辑 / 直接整理”。
+- “确认并编辑”会把状态持久化为 `editing`。
+
+验证：
+
+- `pytest backend/tests -q`：91 项通过。
+- 小程序所有 `.js` 执行 `node --check`：通过。
+- 小程序所有 `.json` 解析检查：通过。
+
+## 本次补充：按房产 4 态重构笔记编辑页
+
+背景：
+
+- 用户确认房产资料应按“收藏态、编辑态、整理态、生成态”推进。
+- 现有 `note-edit` 虽然已有房源字段和功能配置，但视觉上仍像一个长表单，和预期的 4 态流程差距较大。
+
+完成内容：
+
+- 小程序 `pages/note-edit/index` 重构为 4 态流程：
+  - 收藏态：展示企业微信导入的原始内容、识别标签、素材预览和“确认并编辑”入口。
+  - 编辑态：突出房源/团购结构化字段表单，并把 `conversionConfig` 单独放在“转化功能配置”面板。
+  - 整理态：展示整理摘要、字段审核、待确认项、生成建议和已启用动作。
+  - 生成态：展示生成页管理预览、客户可用动作和轻 SCRM 数据占位。
+- 页面顶部新增“收藏 -> 编辑 -> 整理 -> 生成”进度条和当前状态说明。
+- “整理资料”现在会先保存当前字段，再调用整理接口，避免整理旧数据。
+- 旧链接收藏卡逻辑保留，不受房源/团购 4 态重构影响。
+
+验证：
+
+- `pytest backend/tests -q`：91 项通过。
+- 小程序所有 `.js` 执行 `node --check`：通过。
+- 小程序所有 `.json` 解析检查：通过。
+
+## 本次补充：隐藏旧资源详情入口，强制优先走新资料卡链路
+
+背景：
+
+- 用户测试时发现房源/团购 typed card 已经生成，但从资源库、首页、线索或客户资料打开时仍进入旧 `card-view/card-edit` 资源卡页面。
+- 根因是当前导入链路为了兼容旧小程序闭环仍双写 `UserNote` 和 `Card`，而部分前端入口仍以 `Card` 为主。
+
+完成内容：
+
+- 后端 `/api/cards` 和 `/api/cards/{card_id}` 响应新增 `sourceNoteId`，用于标识兼容旧 Card 对应的新 `UserNote`。
+- 小程序新增 `utils/resource-navigation.js`，统一处理资源跳转：
+  - 有 `sourceNoteId` 时进入 `/pages/note-edit/index`。
+  - 没有 `sourceNoteId` 的纯旧资源卡才回退旧 `card-view/card-edit`。
+- 资源库、首页热门资源、访问记录、客户资料库、待联系列表、线索详情、管理页的资源入口已接入统一跳转。
+- 旧 `card-view` 和 `card-edit` 未删除；当资源拥有者直接打开带 `sourceNoteId` 的旧页面时，会自动重定向到新笔记编辑页。
+- 客户分享访问旧 `card-view` 暂不强制拦截，避免在新的客户展示页完成前误伤外部查看链路。
+
+验证：
+
+- `python -m compileall backend/app backend/tests`：通过。
+- `pytest backend/tests -q`：91 项通过。
+- 小程序所有 `.js` 执行 `node --check`：通过。
+- 小程序所有 `.json` 解析检查：通过。
+
+下一步：
+
+- 在微信开发者工具里重新编译/预览，确认从资源库、首页、待联系、客户资料库打开已认领房源/团购资料时，进入新“笔记详情 / 功能配置 / 生成场景页”。
+- 等新资料卡链路稳定后，再决定是否删除或改造旧 `card-view/card-edit`。
 
 ## 本次目标
 
@@ -1691,3 +1978,348 @@
   - `https://teambuy.lifelove.top/health` 返回 ok。
   - PostgreSQL 已确认存在 `topics` 表。
   - 生产 `GET /api/notes/topics?ownerUserId=nonexistent` 返回 404 `用户不存在`，说明新接口路由与用户校验生效。
+
+### 轻量资料库与两层工作台改造
+
+- 产品收敛：
+  - 不再把“收藏 -> 编辑 -> 整理 -> 生成”四态作为用户主 UI 卖点。
+  - 用户主体验调整为两层：自动生成结果工作台 + 板块级轻编辑。
+  - 高置信房源/团购直接进入工作台；中置信普通资料卡给“可能是房源 / 团购”确认；低置信普通笔记不打扰。
+- 后端实现：
+  - `content-to-note` 增加 `recognitionConfidence`，房源/团购高置信写入 `level=high`。
+  - 房源识别增强：支持 emoji 字段标签，增加面积字段，要求价格、位置和房型/面积等组合信号。
+  - 团购识别增强：要求商品、价格和配送/自提/截止/规格等组合信号。
+  - 高置信房源/团购默认 `cardState=generated`，直接进入可用工作台。
+  - 中置信保留 `text_note` 并写入 `typeSuggestions`。
+  - 笔记搜索新增宽松模糊索引：标题、摘要、正文、结构化字段、标签、专题、来源、上传日期和数字归一化日期。
+- 小程序实现：
+  - `pages/note-edit` 从 4 态流程 UI 改为工作台 UI。
+  - 房源/团购展示顶部工作台、房源/商品卡、媒体、功能组、轻 SCRM、基础信息、标签与专题。
+  - 房源默认功能组：分享/海报、轻 CRM、留资、预约看房、私聊咨询。
+  - 团购默认功能组：分享/海报、轻 CRM、留资、团购接龙。
+  - 每个核心板块支持隐藏/恢复；普通笔记支持添加轻 CRM、留资表单、预约、接龙功能组。
+  - `pages/notes` 保持默认按上传/导入时间倒序，并保留每个卡片的上传时间。
+  - 资料库新增“未整理”轻入口，专题继续作为轻文件夹，标签仍负责多维搜索筛选。
+  - 普通笔记列表展示中置信提示，例如“可能是：房源 / 团购”。
+- 验证：
+  - `/Users/yiyi/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3 -m compileall backend/app backend/tests`：通过。
+  - `/Users/yiyi/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3 -m pytest backend/tests -q`：92 passed。
+  - `find miniprogram -name '*.js' -print0 | xargs -0 -n1 node --check`：通过。
+  - 小程序 JSON 解析检查：通过。
+
+### 两层工作台编辑体验细化
+
+- 用户反馈：
+  - 字段输入框和背景颜色太接近，编辑感不清晰。
+  - 海报入口、客户页入口还只是预留提示。
+  - 价格识别对“价格 1300 + 服务费 200 + 面积 42 平”等混合数字不够稳。
+  - 户型、水电、服务费、自提方式这类字段希望更轻，不想纯手打。
+  - 图片需要支持编辑和删除。
+- 已调整：
+  - 字段区改为浅色信息块 + 白底描边输入框，拉开层次。
+  - 常见字段增加快捷项：户型、水电物业、服务费、自提/配送、库存备注等。
+  - 图片区改成素材卡，显示封面/图片/视频标记，支持设为封面和从当前资料卡删除。
+  - “客户页”入口新增 `pages/note-preview/index`，用于 owner 侧预览客户可见内容与动作。
+  - “海报入口”新增 `pages/note-poster/index`，用于预览海报草稿和复制发群文案。
+  - 价格识别优先读取带价格关键词的行，忽略服务费行，避免面积、楼栋号、服务费数字抢占价格。
+- 验证：
+  - `/Users/yiyi/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3 -m compileall backend/app backend/tests`：通过。
+  - `/Users/yiyi/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3 -m pytest backend/tests -q`：93 passed。
+  - `find miniprogram -name '*.js' -print0 | xargs -0 -n1 node --check`：通过。
+  - 小程序 JSON 解析检查：通过。
+
+### 客户页动作、海报配色与地图定位完善
+
+- 用户反馈：
+  - 海报入口深蓝背景太深，文字不清楚。
+  - 需要明确海报与客户页的作用边界。
+  - 客户页按钮视觉和功能都需要更完整。
+  - 房源需要腾讯地图定位，方便客户点击查看位置。
+  - 标签和专题也应像户型快捷项一样，默认给出可点选项，减少手动输入。
+- 已调整：
+  - 海报页改为浅色海报卡，提供 5 个主流强调色可切换：墨绿、青绿、湖蓝、玫红、暖黄。
+  - 客户页新增原生分享按钮，并实现 `onShareAppMessage` / `onShareTimeline`。
+  - 客户页动作按钮改为两列动作卡，支持联系咨询、留资表单、预约看房、私聊咨询、地图定位、团购接龙等交互。
+  - 房源编辑页地址字段增加“选择地图位置”，通过微信原生腾讯地图选点，保存到 `structuredData.mapLocation`。
+  - 客户页有经纬度时调用 `wx.openLocation` 打开腾讯地图；无经纬度但有地址时复制地址。
+  - `app.json` 增加 `scope.userLocation` 授权说明。
+  - 标签区展示系统默认标签并可删除，同时给出推荐标签快捷项。
+  - 专题区给出推荐专题快捷项，点击后自动创建或加入已有专题。
+- 验证：
+  - `/Users/yiyi/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3 -m compileall backend/app backend/tests`：通过。
+  - `/Users/yiyi/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3 -m pytest backend/tests -q`：93 passed。
+  - `find miniprogram -name '*.js' -print0 | xargs -0 -n1 node --check`：通过。
+  - 小程序 JSON 解析检查：通过。
+
+### 字段推荐与标签展示降噪
+
+- 用户反馈：
+  - 商圈字段也需要像户型一样给默认点选。
+  - 地理位置不应只藏在“选择地图位置”按钮里，有默认地址就应该直接显示。
+  - `未整理`、`待跟进` 和过长标签不要在前台展示。
+  - 标签和专题推荐只显示高置信、高价值项。
+- 已调整：
+  - 房源商圈 / 区域字段新增快捷项：万家丽、高桥北、汽车东站、袁隆平地铁口、高桥。
+  - 商圈识别值会按顿号、逗号等拆分成可点快捷项。
+  - 地址字段有地址时显示默认地址预览；用户选过地图点后显示真实小地图预览。
+  - `未整理` 保留为资料库筛选概念，不再作为标签/专题推荐显示。
+  - `待整理`、`未整理`、`待跟进`、过长标签从编辑页和资料列表前台展示中过滤。
+  - 推荐标签和推荐专题只保留短、明确、重复价值高的项。
+- 验证：
+  - `/Users/yiyi/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3 -m pytest backend/tests -q`：93 passed。
+  - `find miniprogram -name '*.js' -print0 | xargs -0 -n1 node --check`：通过。
+  - 小程序 JSON 解析检查：通过。
+
+### 专题移除、地图预览与分享按钮细化
+
+- 用户反馈：
+  - 点击默认专题后删不了。
+  - 默认地址不应只显示文字，要有腾讯地图经纬度定位。
+  - 客户页“发给微信好友”按钮背景过深。
+  - 需要有可提示发朋友圈的入口。
+- 已调整：
+  - 编辑页已加入当前资料的专题不再因名称过长被隐藏，都会显示为可点 `×` 的胶囊，便于从当前资料移除。
+  - 资料库列表页专题只做筛选，不做删除；专题筛选改为横向胶囊并提供“全部”清除筛选。
+  - 列表页专题只展示短、高价值专题，避免长专题堆叠。
+  - 地址字段不再显示纯地址文字预览；有经纬度时显示腾讯地图，没经纬度时显示“生成腾讯地图定位”入口。
+  - 客户页“发给微信好友”按钮改为浅绿色；新增“发朋友圈”提示入口，朋友圈分享配置继续走 `onShareTimeline`。
+- 验证：
+  - `/Users/yiyi/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3 -m pytest backend/tests -q`：93 passed。
+  - `find miniprogram -name '*.js' -print0 | xargs -0 -n1 node --check`：通过。
+  - 小程序 JSON 解析检查：通过。
+
+### 客户页地图经纬度与房源标记
+
+- 用户反馈：
+  - 客户页地图看不明白，不确定是否能显示经纬度。
+  - 希望地图上有小房子标记。
+- 已调整：
+  - 客户页有经纬度时直接展示腾讯地图卡片。
+  - 地图卡片顶部显示经纬度。
+  - 地图 marker 增加 `🏠` label 和 `🏠 房源位置` callout。
+  - 编辑页地图预览 marker 同步增加房源标记。
+  - 没有经纬度时仍提示先在编辑页选择腾讯地图位置，不伪造定位。
+- 验证：
+  - `/Users/yiyi/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3 -m pytest backend/tests -q`：93 passed。
+  - `find miniprogram -name '*.js' -print0 | xargs -0 -n1 node --check`：通过。
+  - 小程序 JSON 解析检查：通过。
+
+### 地图选点权限与保存体验修正
+
+- 用户反馈：
+  - 点击生成/保存经纬度时直接退回，不让选。
+  - 不要求精确到门牌号，能定位到小区即可。
+- 已调整：
+  - `app.json` 增加 `requiredPrivateInfos: ["chooseLocation"]`，避免微信隐私接口未声明导致选点直接失败；`wx.openLocation` 不写入 `requiredPrivateInfos`。
+  - 选择地图位置成功后自动保存 `structuredData.mapLocation`，不需要再手动点保存。
+  - 地图选点失败时改为弹窗说明：确认位置权限，并在腾讯地图中搜索小区名称即可。
+  - 保存定位时优先使用地图返回地址，无法精确门牌时允许用小区/商圈作为地址兜底。
+- 验证：
+  - `/Users/yiyi/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3 -m pytest backend/tests -q`：93 passed。
+  - `find miniprogram -name '*.js' -print0 | xargs -0 -n1 node --check`：通过。
+  - 小程序 JSON 解析检查：通过。
+
+### 资料详情支持用户补传图片/视频
+
+- 用户反馈：
+  - 微信笔记导入过来的图片可以删除，但资料详情里没有新增入口。
+  - 贝壳等小程序房源无法稳定拿到详情图和视频时，需要允许用户保留标题/原小程序链接，再自行补充图片、视频和字段。
+- 已调整：
+  - `miniprogram/pages/note-edit/` 的“图片与视频”板块新增“添加”入口。
+  - 支持从相册/相机添加图片，支持从相册/相机添加视频。
+  - 上传继续复用现有 `POST /api/uploads/asset` 接口，不新增后端接口。
+  - 上传成功后自动写回当前资料并保存；首张图片会自动作为封面。
+  - 媒体列表避免封面图重复显示，同一张图若是封面则只显示一次并标记“封面”。
+  - 编辑页视频素材改为可直接播放。
+  - 客户页预览新增“房源视频”展示区，用户补传的视频可以在客户页看到。
+- 验证：
+  - 小程序 JS 静态检查：通过。
+  - 小程序 JSON 解析检查：通过。
+  - `git diff --check`：通过。
+
+### 分享图路径弱化与保存海报
+
+- 用户反馈：
+  - 当前“海报”概念不清楚，用户不明白它和客户页链接的区别。
+  - 朋友圈更适合发客户页链接，海报应只是辅助图片素材。
+- 已调整：
+  - 资料详情顶部工作台主动作移除“朋友圈海报”按钮，只保留“分享文案 / 客户页预览 / 转发给好友”。
+  - 分享图入口改为弱链接“保存分享图”。
+  - `pages/note-poster/index` 标题从“海报入口”改为“分享图”。
+  - 分享图页面新增“保存海报”按钮，使用 canvas 生成静态图片并保存到相册。
+  - 分享图页面保留“客户页”和“复制文案”次级动作。
+  - 功能组文案从“生成海报”改为“保存分享图”，避免和客户页分享混淆。
+- 验证：
+  - 小程序 JS 静态检查：通过。
+  - 小程序 JSON 解析检查：通过。
+  - `git diff --check`：通过。
+
+### 房源轻 SCRM 增加按资料查看客户动作入口
+
+- 用户反馈：
+  - 客户页动作持久化后，发布者不应只去全局线索列表里找。
+  - 房源资料详情的“轻 SCRM”板块应能直接查看这条房源的留资、预约、咨询动作。
+  - 有待跟进线索时，房源卡片应像微信未读一样有红点提醒。
+- 已调整：
+  - 后端新增 `GET /api/notes/{note_id}/customer-actions?ownerUserId=...`，按 noteId 返回客户动作汇总、动作明细和已投影线索。
+  - 房源/团购资料详情的轻 SCRM 板块显示“客户动作 / 留资 / 待跟进”数量。
+  - 轻 SCRM 板块新增“查看客户动作 / 查看线索”入口，跳转到 `pages/note-actions/index`。
+  - 有 `pending` 线索时，轻 SCRM 标题和入口显示红点；线索处理后红点可随状态消失。
+  - 新增 `pages/note-actions/index`，按当前 noteId 展示客户动作时间线和线索列表，并可进入线索详情。
+- 验证：
+  - 目标后端测试 `test_import_creates_claimable_user_note_and_note_crud`：通过。
+  - 新增小程序页面 JS 静态检查：通过。
+  - 小程序页面 JSON 解析检查：通过。
+
+### 客户动作生产 404 与多端按钮适配修复
+
+- 用户反馈：
+  - 手机/iPad 测试客户页提交“留下电话/微信”时报 `Not Found`。
+  - 房源资料详情进入“查看客户动作 / 查看线索”也报 `Not Found`。
+  - 资料详情顶部“分享文案 / 转发给好友 / 客户页预览”在手机和平板上样式变形。
+  - 客户预览页右下角“好友 / 朋友圈”和提交按钮在不同设备上尺寸不稳定。
+- 根因：
+  - 小程序当前 `apiBaseUrl` 指向生产 `https://teambuy.lifelove.top`，但生产后端尚未部署 `customer_actions` 新接口。
+  - 部分按钮依赖固定 `line-height`，在不同屏宽/设备渲染时容易挤压或显得过小。
+- 已调整：
+  - 已同步后端代码到生产服务器并重建 `teambuy-backend` 容器。
+  - 公网验证新接口已从路由级 `{"detail":"Not Found"}` 变为业务级 `{"detail":"笔记不存在"}`，确认路由已上线。
+  - 资料详情顶部动作按钮改为 flex 居中和 rpx 尺寸，窄屏降低间距与字体。
+  - “保存分享图”弱入口改为稳定 rpx 胶囊样式。
+  - 客户预览页浮动“好友 / 朋友圈”和留资/预约提交按钮改为 rpx + flex 布局，增加安全区底部间距。
+- 验证：
+  - 生产 `/health` 正常。
+  - 生产 `GET /api/notes/note_not_exists/customer-actions?ownerUserId=user_test` 返回“笔记不存在”，不再是路由级 `Not Found`。
+  - 生产 customer action config 和 lead-contact POST 路由同样已上线。
+  - `/Users/yiyi/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3 -m pytest backend/tests -q`：98 passed。
+  - 小程序 JS 静态检查：通过。
+  - 小程序 JSON 解析检查：通过。
+  - `git diff --check`：通过。
+
+### 真机身份隔离、红点已读和线索拨号入口
+
+- 用户反馈：
+  - 两个不同微信真机测试看到同样资料数据，应该按 openid 隔离，非分享场景不能看其他人的笔记。
+  - 房源轻 SCRM 红点点开后应取消。
+  - 待联系页面和从轻 SCRM 进入的客户页面，电话旁边必须有拨号入口，同时保留编辑修改功能。
+- 根因：
+  - 登录页仍使用默认“本地测试用户”mock 登录；后端 mock 登录默认 `openid = openid_昵称`，两个微信默认昵称一致时会复用同一用户。
+  - 红点之前绑定 pending 线索数量，点开查看不会改变 pending，所以不会消失。
+- 已调整：
+  - 后端新增 `POST /api/auth/wechat-login`，用小程序 `wx.login` code 通过后端换 openid 后创建/更新用户。
+  - 后端新增 `WECHAT_MINIAPP_APPID`、`WECHAT_MINIAPP_SECRET`、`WECHAT_JSCODE2SESSION_URL` 配置项；Secret 只允许放后端。
+  - 小程序登录页优先走微信登录；生产未配置 AppSecret 时，兜底为“本机唯一测试身份”，避免不同手机继续共用默认用户。
+  - 小程序启动时清理旧的 `openid_本地测试用户` 缓存，避免旧真机预览继续串数据。
+  - 轻 SCRM 红点改为本机已读模型：最新客户动作时间大于本机已读时间才显示，点击“查看客户动作 / 查看线索”后立即取消红点。
+  - 待联系列表、线索详情、房源客户动作页均在手机号旁增加“拨号”入口，调用 `wx.makePhoneCall`，原有编辑/保存功能保留。
+  - 已部署后端登录接口到生产；公网验证 `/api/auth/wechat-login` 已不是 404，当前因服务器未配置 AppSecret 返回明确配置提示。
+- 验证：
+  - `/Users/yiyi/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3 -m pytest backend/tests -q`：99 passed。
+  - 小程序 JS 静态检查：通过。
+  - 小程序 JSON 解析检查：通过。
+  - `git diff --check`：通过。
+
+### 当前用户一键生成房源测试数据
+
+- 用户反馈：
+  - 需要 mock 几组假数据，否则真机无法完整测试房源资料详情、轻 SCRM、客户动作和拨号。
+- 已调整：
+  - 后端新增 `POST /api/notes/demo-data?ownerUserId=...`。
+  - 生成 3 条当前用户自己的房源资料：
+    - 测试房源 A：有留资、预约、待跟进线索，可测红点、客户动作页和预约投影。
+    - 测试房源 B：有已联系线索，可测线索列表和拨号入口。
+    - 测试房源 C：无客户动作，可测空状态。
+  - 每次生成的数据归属当前登录用户，用于验证两个微信账号数据隔离。
+  - 小程序“我的”页新增“生成测试房源数据”入口。
+  - 生产后端已部署该接口，并用临时测试用户验证成功生成 3 条房源、2 条线索、3 条客户动作。
+- 验证：
+  - `/Users/yiyi/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3 -m pytest backend/tests -q`：100 passed。
+  - 小程序 JS 静态检查：通过。
+  - 小程序 JSON 解析检查：通过。
+  - `git diff --check`：通过。
+
+### 我的笔记卡片增加 SCRM 快捷入口与按钮适配
+
+- 用户反馈：
+  - “我的笔记”搜索按钮太长太黑，应改短并使用小程序主题蓝色。
+  - 房源 SCRM 入口藏在资料详情下面太深，应该在房源笔记卡片上直接显示 SCRM 按钮和红点。
+  - 点开 SCRM 后卡片红点应消失。
+  - 资料详情顶部“分享文案 / 转发给好友 / 客户页预览”文字没有居中，浮动“存”按钮太小。
+- 已调整：
+  - “我的笔记”搜索按钮改为短蓝色按钮。
+  - 房源/团购笔记卡片加载后会补取当前 noteId 的客户动作汇总。
+  - 卡片右上角显示未读红点；底部新增 `SCRM` 胶囊入口，待跟进时显示数量。
+  - 点击卡片 `SCRM` 后写入本机已读时间并跳转 `pages/note-actions/index`，红点立即消失。
+  - 资料详情顶部三按钮改为专用 `hero-action-btn`，按钮内加 `text` 并用 flex 居中。
+  - 浮动保存按钮从 60rpx 放大到 84rpx，文字同步放大。
+- 验证：
+  - 小程序 JS 静态检查：通过。
+  - 小程序 JSON 解析检查：通过。
+  - `git diff --check`：通过。
+
+### 我的笔记搜索栏与客户信息入口微调
+
+- 用户反馈：
+  - 搜索输入框太短，搜索按钮太长，不应一行各占一半。
+  - 卡片上的 `SCRM` 文案偏技术，应改成“客户信息”。
+  - 有未读/待处理时客户信息入口颜色稍红；点开处理/查看后恢复当前蓝色。
+- 已调整：
+  - 搜索区改为 `输入框 + 92rpx 搜索按钮`，输入框占主要空间。
+  - 房源/团购卡片入口文案改为“客户信息”，待跟进时显示数量。
+  - 未读态客户信息入口使用淡红底和红字，已读态恢复蓝色。
+- 验证：
+  - 小程序 JS 静态检查：通过。
+  - 小程序 JSON 解析检查：通过。
+  - `git diff --check`：通过。
+
+### 资料详情图片删除与设封面持久化修复
+
+- 用户反馈：
+  - 上传两张图片后删除一张，刷新/返回后又恢复成两张。
+  - 图片无法稳定设置为封面。
+- 根因：
+  - 删除和设封面只更新了本地 `form` 展示状态，没有立即保存到后端。
+  - 素材数量按 `coverUrl + media.length` 计算，会把同一张封面重复计数。
+- 已调整：
+  - 删除图片/视频后立即保存当前资料。
+  - 设置封面后立即保存当前资料。
+  - 保存失败时重新加载服务端资料，避免前端停留在错误状态。
+  - 素材数量改为按实际展示的 `mediaItems.length` 计算，避免封面重复计数。
+- 验证：
+  - 小程序 JS 静态检查：通过。
+  - 小程序 JSON 解析检查：通过。
+  - `git diff --check`：通过。
+
+### 封面角标视觉区分
+
+- 用户反馈：
+  - 设置成封面后，“封面”字样应更明显，不要继续用白字深色底，否则和普通图片不容易区分。
+- 已调整：
+  - 封面角标单独使用淡红底和红字。
+  - 封面角标字号略放大，普通“图片/视频”角标保持原样。
+- 验证：
+  - 小程序 JS 静态检查：通过。
+  - 小程序 JSON 解析检查：通过。
+  - `git diff --check`：通过。
+
+### 房产场景 5 项体验补强
+
+- 用户确认：
+  - 标题保持原样，不做自动拆字段提示。
+  - 重点继续放在房源客户动作持久化和房源工作台体验。
+- 已调整：
+  - 我的笔记房源卡片增加房源状态 chip：推广中 / 已租 / 暂停推广。
+  - 卡片“客户信息”文案更直观：有待跟进显示“待跟进 N”，有线索显示“客户 N”。
+  - 房源资料详情顶部增加“复制客户话术”，保留“保存分享图”为弱入口。
+  - 房源资料详情增加“房源状态”快捷切换；状态会立即保存。
+  - 客户页预览识别已租 / 暂停推广后，关闭电话咨询、留资、预约、私聊、接龙等新增转化动作，只保留原房源 / 地图等信息入口。
+  - 图片与视频素材支持上移 / 下移排序，并立即保存排序结果。
+  - 房源客户动作页改成分层展示：新线索/待跟进、预约看房、已联系/已归档、全部客户动作。
+  - 客户动作页、全局线索页、线索详情页拨号成功后，提示是否标记已联系；确认后写入跟进记录并刷新列表。
+- 验证：
+  - `find miniprogram -name '*.js' -not -path '*/miniprogram_npm/*' -print0 | xargs -0 -n 1 node --check`：通过。
+  - `python3 -m json.tool` 检查相关小程序页面 JSON：通过。
+  - `git diff --check`：通过。
+  - `/tmp/teambuy-pytest-venv312/bin/python -m compileall backend/app backend/tests`：通过。
+  - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests -q`：100 passed。
+  - 直接运行项目根目录 `.venv/bin/python -m pytest` 会因该虚拟环境 Python 版本较低触发 `dataclass(slots=True)` 报错，本轮已改用 Python 3.12 测试环境完成回归。

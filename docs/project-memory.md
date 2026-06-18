@@ -1,6 +1,6 @@
 # Project Memory
 
-更新时间：2026-06-18
+更新时间：2026-06-19
 
 ## 1. 产品定位
 
@@ -53,11 +53,18 @@ teamBuy 是一个面向微信群私域场景的小程序工具，核心能力是
 - 大模型：规则优先，大模型兜底；企业微信入口采用快捷指令 / 菜单优先、规则其次、AI 意图识别兜底的混合驱动模式。AI 不能直接执行业务动作，低置信度必须让用户点选确认。
 - Skill 架构：文字类来源统一进入 `ContentObject -> content-to-note -> UserNote`。微信笔记、聊天记录、链接文章、手动文字和后续 OCR 都是不同 Input Adapter，不拆成多个重复 Skill；`note-to-comic-image` 独立负责漫画图/宣传图/长图；`showcase-builder` 是小程序可视化展示页构建器。
 - 链接文章入口：普通 URL 默认先生成轻收藏 `link-bookmark`，第一层按文章收藏卡展示，只保存原始链接、标题、封面、来源、收藏时间、基础分类、基础标签和一句话摘要；用户点击卡片默认打开原文，普通网页受微信限制时降级复制链接；用户明确发送 `整理链接/文章总结/整理文章/做笔记` 或在小程序点击“整理为笔记”时，才升级为 `content-to-note` 深度整理。
+- 小程序卡片入口：企业微信 `msgtype=weapp` 不再当普通空笔记处理，统一转成 `miniapp_card`，前台来源为 `miniapp`。正文只展示标题、来源、appid、houseCode；完整 `pagePath`、`cityId`、`username` 等保存在 `visibilityConfig.structuredData.miniapp`。贝壳小程序卡片只有外壳字段时只给“可能是房源”的中置信提示，不伪造价格、户型、图片、经纬度；用户确认成房源字段卡时必须保留 `miniapp` 元数据。客户页可用 `wx.navigateToMiniProgram` 跳转贝壳原房源，同时我们的客户页继续承载轻 SCRM、留资、预约、微信咨询和跟进能力。
 - 资料组织方式：采用“强标签、弱分类、专题聚合”，不做强制三级分类。分类只做系统基础视图，标签是搜索和召回核心，专题替代多级文件夹承载场景集合。架构文档见 `docs/stage2-docs/11-tag-topic-search-architecture.md`。
 - 多类型资料卡：资料整理助手不是单一笔记工具，而是多类型信息结构化系统。统一流程是“收藏 -> 编辑 -> 整理 -> 生成”，但 `cardType` 决定数据结构和行为能力。URL/公众号文章是链接卡/阅读卡，普通文字是文本卡，房源是字段卡，团购是商品卡，图片/截图后续是 OCR 卡。第一版不新建房源/团购表，继续用 `UserNote.visibilityConfig.cardType/cardState/structuredData/typeSuggestions` 兼容扩展；架构文档见 `docs/stage2-docs/12-typed-content-card-architecture.md`。
-- 转化配置：房源/团购从编辑态到生成态需要保存 `conversionConfig`，用于控制是否展示联系电话、是否开启轻 SCRM、是否收集线索、房源预约看房/私聊咨询、团购接龙、海报入口和下单按钮预留。该配置不属于房源/商品本体字段，不应混入 `structuredData`。
+- 房源/团购小程序前台体验已从显性的 4 态流程收敛为“两层工作台”：高置信资料直接展示可分享、可留资、可预约/接龙、可跟进的结果工作台；用户只做板块级编辑、隐藏、恢复和功能组调整。4 态仅保留为后台生命周期语义，不再作为主 UI。中置信资料在普通卡片上轻提示确认类型，低置信资料直接当普通笔记。
+- 房源地图定位规则：客户页不展示经纬度数字；房源默认地址优先通过后端腾讯地图地理编码解析为 `structuredData.mapLocation`，再在编辑页/客户页展示地图和小房子标记。地图 Key 只允许放后端 `TENCENT_MAP_KEY`，解析失败时用微信原生选点兜底，不伪造坐标。
+- 转化配置：房源/团购从编辑态到生成态需要保存 `conversionConfig`，用于控制是否展示联系电话、是否开启轻 SCRM、是否收集线索、房源预约看房/私聊咨询、团购接龙、分享图入口和下单按钮预留。该配置不属于房源/商品本体字段，不应混入 `structuredData`。
+- 客户页动作持久化是下一阶段重点，并必须做成 `customer-action-plugin` 这类可复用插件。房源、团购、普通笔记只决定默认启用哪些动作；动作提交统一落通用记录，再投影到线索、预约、接龙和跟进。第一版已落地 `lead-contact` 和 `appointment`：客户页提交电话/微信或预约后会写入 `customer_actions`，并投影到 `lead_reminders`。发布者查看时，房源资料详情“轻 SCRM”板块是单房源客户动作主入口，可按 noteId 查看留资、预约和线索；全局线索列表保留为跨资料待办。长标题是房产中介主动展示卖点的方式，不拆字段、不改标题，只做排版容错。
+- 房产场景继续围绕工作台效率优化：房源状态用 `structuredData.propertyStatus` 管理推广中 / 已租 / 暂停推广，客户页按状态关闭新增转化动作；图片/视频排序属于资料展示状态，调整后必须立即保存；电话拨号后应提示是否标记已联系，并写入跟进记录。
+- 旧资源详情页策略：当前兼容旧 `Card`、`card-view`、`card-edit` 暂不删除，但已认领导入资料必须优先走新 `UserNote` 资料卡链路。后端 Card 响应通过 `sourceNoteId` 映射到新笔记，小程序资源入口有 `sourceNoteId` 时打开 `pages/note-edit/index`；旧页面只作为历史回退和客户分享临时展示。
 - 企业微信会话内容存档 P0：事件服务器已保存成功；真实归档链路拆成 `/api/wecom/archive/pull` 和 `/api/wecom/archive/process`。`pull` 负责官方 SDK 拉取/解密/原始消息入库，`process` 负责 `ContentObject -> content-to-note -> UserNote`，重复处理通过 `generatedNoteId` 幂等保护。当前生产已配置官方 SDK 动态库，自动 worker 已开启。会话存档媒体下载转存已实现：`sdkfileid -> GetMediaData -> 服务端媒体处理/转存 -> UserNote.media.url`，小程序本地缓存不能替代正式存储；仍需生产真实图片消息验证。
 - identity-core P0 第一版已实现“认领后绑定”：用户第一次认领导入后，系统保存企业微信来源 `externalUserId -> ownerUserId`，后续同来源企业微信客服导入和会话存档导入会自动进入该用户笔记库，不再进入“新导入资料”。当前仍是 mock 登录用户 ID，不代表正式微信 openid/unionid 身份体系已经完成。
+- 小程序正式登录接口已新增：前端可调用 `wx.login`，后端 `POST /api/auth/wechat-login` 通过 jscode2session 换 openid 后创建/更新用户；服务器还需配置 `WECHAT_MINIAPP_APPID` 和 `WECHAT_MINIAPP_SECRET` 才能启用真实 openid。未配置前，小程序用设备级唯一 mock openid 兜底，避免两个真机共用“本地测试用户”。后续正式上线仍应把前端传 `ownerUserId` 升级为服务端 session/token 校验。
 - 当前 P0 真实联调允许使用生产环境，因为企业微信会话存档和小程序体验版依赖公网 HTTPS 与合法域名；后续进入更稳定阶段应拆出 staging/test 环境，避免生产试错扩大风险。
 - 会话内容存档只负责拉取与合规归档，不负责向微信用户回复“已完成”。导入完成通知后续走独立通道：企业微信应用消息、微信客服消息或小程序订阅消息。
 - 当前不做完整 PC Web 管理端；客服侧边栏/H5 发卡片仅作为 P2 技术预研。
