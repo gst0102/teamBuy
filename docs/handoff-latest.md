@@ -26,6 +26,8 @@
 - `pytest backend/tests -q`：91 passed。
 - 小程序所有 `.js` `node --check`：通过。
 - 小程序所有 `.json` 解析：通过。
+- 生产 backend 已部署到 `https://teambuy.lifelove.top`，健康检查通过。
+- 生产 generate 路由已验证：假 note 请求返回“笔记不存在”，说明接口已挂载。
 
 当前注意：
 - 本轮为规则版，不调用大模型。

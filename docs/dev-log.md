@@ -56,6 +56,8 @@
 - 目标后端测试：房源/团购结构识别、配置保存、生成接口通过。
 - 小程序 JS 静态检查通过。
 - 小程序 JSON 解析通过。
+- 生产部署：已同步 backend 到 `81.70.84.35:/home/ubuntu/teamBuy/backend/` 并重建 `teambuy-backend` 容器。
+- 生产验证：`https://teambuy.lifelove.top/health` 返回 `status=ok`；`POST /api/notes/note_not_exists/generate?ownerUserId=user_not_exists` 返回“笔记不存在”，确认 generate 路由已上线。
 
 # 2026-06-10
 
