@@ -43,6 +43,27 @@ Page({
   handleGoCustomers() {
     wx.navigateTo({ url: "/pages/customers/index" });
   },
+  async handleCreateDemoData() {
+    const currentUser = getCurrentUser();
+    if (!currentUser) {
+      wx.reLaunch({ url: "/pages/login/index" });
+      return;
+    }
+    try {
+      wx.showLoading({ title: "生成中" });
+      const res = await api.createDemoData(currentUser.id);
+      wx.hideLoading();
+      wx.showModal({
+        title: "测试数据已生成",
+        content: `已生成 ${(res.data.notes || []).length} 条房源、${res.data.leadsCreated || 0} 条线索。可以去“我的笔记”或“待联系线索”测试。`,
+        showCancel: false,
+        success: () => this.loadProfileStats()
+      });
+    } catch (error) {
+      wx.hideLoading();
+      wx.showToast({ title: error.detail || "生成失败", icon: "none" });
+    }
+  },
   handleGoNotes() {
     wx.navigateTo({ url: "/pages/notes/index" });
   },

@@ -1,5 +1,5 @@
 <view class="page-shell">
-  <custom-nav title="笔记详情" />
+  <custom-nav title="资料详情" />
 
   <view class="bookmark-article" wx:if="{{isBookmark}}">
     <image wx:if="{{form.coverUrl}}" class="bookmark-cover" src="{{form.coverUrl}}" mode="aspectFill"></image>
@@ -15,8 +15,8 @@
         <text>{{bookmark.category}}</text>
       </view>
       <view>
-        <text>收藏时间</text>
-        <text>{{bookmark.collectedAtText || '刚刚'}}</text>
+        <text>上传时间</text>
+        <text>{{uploadDateText || '刚刚'}}</text>
       </view>
       <view>
         <text>来源</text>
@@ -34,155 +34,272 @@
     </view>
   </view>
 
-  <view class="type-summary" wx:if="{{!isBookmark}}">
-    <view>
-      <view class="type-label">{{cardTypeLabel}}</view>
-      <view class="type-desc">{{isProperty ? '字段化保存房源信息，后续可生成推广物料。' : isGroupbuy ? '字段化保存团购商品，后续可生成海报和发群文案。' : '先保存资料，再按需整理和生成。'}}</view>
+  <block wx:if="{{!isBookmark}}">
+    <view class="workbench-hero {{isGroupbuy ? 'groupbuy' : ''}}" wx:if="{{isProperty || isGroupbuy}}">
+      <view class="hero-topline">
+        <text>{{isProperty ? '房源工作台' : '团购工作台'}}</text>
+        <text>{{uploadDateText}}</text>
+      </view>
+      <view class="hero-title">{{displayTitle}}</view>
+      <view class="hero-subtitle">{{displaySubtitle}}</view>
+      <view class="hero-actions">
+        <button class="hero-action-btn" bindtap="handleCopyShareText"><text>分享文案</text></button>
+        <button class="hero-action-btn" open-type="share"><text>转发给好友</text></button>
+        <button class="hero-action-btn" bindtap="handlePreviewPage"><text>客户页预览</text></button>
+      </view>
+      <view class="hero-weak-actions">
+        <view class="poster-weak-action" bindtap="handlePosterEntry">保存分享图</view>
+        <view class="poster-weak-action" bindtap="handleCopyCustomerTalk">复制客户话术</view>
+      </view>
     </view>
-    <button class="organize-btn compact" loading="{{saving}}" bindtap="handleOrganize">整理</button>
-  </view>
 
-  <view class="form-panel conversion-panel" wx:if="{{isProperty || isGroupbuy}}">
-    <view class="section-title">功能配置</view>
-    <view class="section-hint">这些开关会影响整理态和生成态展示的联系、线索和转化入口。</view>
-    <block wx:for="{{conversionOptions}}" wx:key="key">
-      <view class="switch-row">
-        <view class="switch-text">
-          <view class="switch-label">{{item.label}}</view>
-          <view class="switch-desc">{{item.desc}}</view>
+    <view class="note-hero" wx:else>
+      <view class="note-type-line">
+        <text>{{cardTypeLabel}}</text>
+        <text>{{uploadDateText}}</text>
+      </view>
+      <view class="note-hero-title">{{form.title || '未命名资料'}}</view>
+      <view class="note-hero-summary">{{form.summary || '普通笔记，可按需添加功能组。'}}</view>
+    </view>
+
+    <view class="miniapp-panel" wx:if="{{miniappInfo.visible}}">
+      <view class="miniapp-mark">原小程序房源</view>
+      <view class="miniapp-title">{{miniappInfo.title || form.title}}</view>
+      <view class="miniapp-source">{{miniappInfo.sourceName}}</view>
+      <view class="miniapp-code" wx:if="{{miniappInfo.houseCode}}">房源编码 {{miniappInfo.houseCode}}</view>
+      <view class="miniapp-actions">
+        <button bindtap="handleOpenMiniapp">{{miniappInfo.buttonText}}</button>
+        <button bindtap="handlePreviewPage">客户页预览</button>
+      </view>
+    </view>
+
+    <view class="suggest-panel" wx:if="{{!isProperty && !isGroupbuy && suggestionButtons.length}}">
+      <view class="suggest-title">这条资料像是？</view>
+      <view class="suggest-text">识别结果不够确定，点一下即可切成对应工作台。</view>
+      <view class="suggest-actions">
+        <block wx:for="{{suggestionButtons}}" wx:key="cardType">
+          <button data-type="{{item.cardType}}" bindtap="handleConvertType">{{item.label}}</button>
+        </block>
+        <button data-type="text_note" bindtap="handleConvertType">普通笔记</button>
+      </view>
+    </view>
+
+    <view class="form-panel block-panel" wx:if="{{isProperty || isGroupbuy}}">
+      <view class="block-head">
+        <view>
+          <view class="section-title">{{isProperty ? '房源卡' : '商品卡'}}</view>
+          <view class="section-hint">这是客户第一眼看到的核心信息。</view>
         </view>
-        <switch checked="{{item.checked}}" color="#11924d" data-key="{{item.key}}" bindchange="handleConversionToggle" />
+        <button class="text-btn" data-section="fieldCard" bindtap="handleToggleSection">{{hiddenSections.fieldCard ? '恢复' : '隐藏'}}</button>
       </view>
-    </block>
-  </view>
-
-  <view class="form-panel">
-    <view class="section-title">来源类型</view>
-    <view class="option-row">
-      <block wx:for="{{sourceTypes}}" wx:key="value">
-        <text class="option-chip {{bookmark.sourceType === item.value ? 'active' : ''}}" data-key="sourceType" data-value="{{item.value}}" bindtap="handleBookmarkField">{{item.label}}</text>
-      </block>
+      <view wx:if="{{!hiddenSections.fieldCard}}">
+        <block wx:if="{{isProperty}}">
+          <block wx:for="{{propertyFields}}" wx:key="key">
+            <view class="field">
+              <view class="label">{{item.label}}</view>
+              <input class="input" value="{{item.value}}" data-key="{{item.key}}" bindinput="handleStructuredInput" placeholder="{{item.placeholder}}" />
+              <view class="quick-options" wx:if="{{item.quickOptions.length}}">
+                <block wx:for="{{item.quickOptions}}" wx:for-item="option" wx:key="*this">
+                  <text data-key="{{item.key}}" data-value="{{option}}" bindtap="handleQuickFieldOption">{{option}}</text>
+                </block>
+              </view>
+              <view class="quick-options" wx:if="{{item.key === 'address'}}">
+                <text bindtap="handleChooseLocation">{{mapPreview.hasPoint ? '重新选择地图' : '用默认地址选地图'}}</text>
+                <text wx:if="{{structuredData.mapLocation.latitude}}">已选定位</text>
+              </view>
+              <view class="map-preview" wx:if="{{item.key === 'address' && (mapPreview.address || geocodingAddress)}}">
+                <map
+                  wx:if="{{mapPreview.hasPoint}}"
+                  latitude="{{mapPreview.latitude}}"
+                  longitude="{{mapPreview.longitude}}"
+                  markers="{{mapPreview.markers}}"
+                  scale="16"
+                  show-location="{{false}}"
+                ></map>
+                <view wx:else class="map-empty" bindtap="handleChooseLocation">
+                  <text>{{geocodingAddress ? '正在匹配默认地址' : '用默认地址生成地图'}}</text>
+                  <text>{{geocodingAddress ? '匹配成功后会自动显示小房子标记' : '点这里按默认地址选择小区位置'}}</text>
+                </view>
+              </view>
+            </view>
+          </block>
+        </block>
+        <block wx:if="{{isGroupbuy}}">
+          <block wx:for="{{groupbuyFields}}" wx:key="key">
+            <view class="field">
+              <view class="label">{{item.label}}</view>
+              <input class="input" value="{{item.value}}" data-key="{{item.key}}" bindinput="handleStructuredInput" placeholder="{{item.placeholder}}" />
+              <view class="quick-options" wx:if="{{item.quickOptions.length}}">
+                <block wx:for="{{item.quickOptions}}" wx:for-item="option" wx:key="*this">
+                  <text data-key="{{item.key}}" data-value="{{option}}" bindtap="handleQuickFieldOption">{{option}}</text>
+                </block>
+              </view>
+            </view>
+          </block>
+        </block>
+        <view class="field">
+          <view class="label">{{isProperty ? '备注 / 亮点' : '备注 / 卖点'}}</view>
+          <textarea class="textarea small" value="{{structuredData.remark}}" data-key="remark" bindinput="handleStructuredInput" placeholder="补充客户需要知道的信息"></textarea>
+        </view>
+        <view class="field" wx:if="{{isProperty}}">
+          <view class="label">房源状态</view>
+          <view class="status-options">
+            <block wx:for="{{propertyStatusOptions}}" wx:key="value">
+              <text class="{{item.className}}" data-status="{{item.value}}" bindtap="handleSetPropertyStatus">{{item.label}}</text>
+            </block>
+          </view>
+        </view>
+      </view>
+      <view class="hidden-tip" wx:else>这个板块已隐藏，客户页不展示。</view>
     </view>
 
-    <view class="section-title spaced">系统弱分类</view>
-    <view class="option-row">
-      <block wx:for="{{systemCategories}}" wx:key="*this">
-        <text class="option-chip {{bookmark.systemCategory === item ? 'active' : ''}}" data-key="systemCategory" data-value="{{item}}" bindtap="handleBookmarkField">{{item}}</text>
-      </block>
+    <view class="form-panel block-panel" wx:if="{{isProperty || isGroupbuy}}">
+      <view class="block-head">
+        <view>
+          <view class="section-title">图片与视频</view>
+          <view class="section-hint">{{mediaCountText}}</view>
+        </view>
+        <view class="media-head-actions">
+          <button wx:if="{{!hiddenSections.media}}" class="text-btn upload-btn" loading="{{uploadingMedia}}" disabled="{{uploadingMedia}}" bindtap="handleChooseMediaUpload">添加</button>
+          <button class="text-btn" data-section="media" bindtap="handleToggleSection">{{hiddenSections.media ? '恢复' : '隐藏'}}</button>
+        </view>
+      </view>
+      <view class="media-grid" wx:if="{{!hiddenSections.media && mediaItems.length}}">
+        <block wx:for="{{mediaItems}}" wx:key="key">
+          <view class="media-card">
+            <image wx:if="{{item.type === 'image'}}" src="{{item.url}}" mode="aspectFill" data-url="{{item.url}}" bindtap="handlePreviewMedia"></image>
+            <video wx:elif="{{item.type === 'video'}}" src="{{item.url}}" controls object-fit="cover"></video>
+            <view wx:else class="media-video">素材</view>
+            <view class="media-badge {{item.label === '封面' ? 'cover' : ''}}">{{item.label}}</view>
+            <view class="media-actions">
+              <text wx:if="{{item.type === 'image' && item.source !== 'cover'}}" data-url="{{item.url}}" bindtap="handleSetCover">设封面</text>
+              <text wx:if="{{item.source === 'media' && item.canMoveUp}}" data-index="{{item.index}}" data-direction="up" bindtap="handleMoveMedia">上移</text>
+              <text wx:if="{{item.source === 'media' && item.canMoveDown}}" data-index="{{item.index}}" data-direction="down" bindtap="handleMoveMedia">下移</text>
+              <text class="danger" data-source="{{item.source}}" data-index="{{item.index}}" bindtap="handleDeleteMedia">删除</text>
+            </view>
+          </view>
+        </block>
+      </view>
+      <view class="media-upload-empty" wx:if="{{!hiddenSections.media && !mediaItems.length}}" bindtap="handleChooseMediaUpload">
+        <text>添加图片/视频</text>
+        <text>适合贝壳小程序这类只带原链接的房源，后续素材可以自己补。</text>
+      </view>
+      <view class="hidden-tip" wx:if="{{hiddenSections.media}}">这个板块已隐藏，客户页不展示。</view>
     </view>
-  </view>
 
-  <view class="form-panel">
-    <view class="section-title">用户标签</view>
-    <view class="editable-tags" wx:if="{{bookmark.userTags.length}}">
-      <block wx:for="{{bookmark.userTags}}" wx:key="*this">
-        <text data-tag="{{item}}" bindtap="handleRemoveTag">{{item}} ×</text>
-      </block>
+    <view class="form-panel block-panel">
+      <view class="block-head">
+        <view>
+          <view class="section-title">{{isProperty || isGroupbuy ? '功能组' : '+ 添加功能'}}</view>
+          <view class="section-hint">{{isProperty ? '房源默认带轻 CRM、留资、预约和咨询。' : isGroupbuy ? '团购默认带轻 CRM、留资和接龙。' : miniappInfo.visible ? '原房源在贝壳展示，这里负责轻 CRM、留资、预约和跟进。' : '普通笔记也可以按需加一组能力。'}}</view>
+        </view>
+      </view>
+      <view wx:if="{{isProperty || isGroupbuy}}">
+        <block wx:for="{{conversionOptions}}" wx:key="key">
+          <view class="switch-row">
+            <view class="switch-text">
+              <view class="switch-label">{{item.label}}</view>
+              <view class="switch-desc">{{item.desc}}</view>
+            </view>
+            <switch checked="{{item.checked}}" color="#11924d" data-key="{{item.key}}" bindchange="handleConversionToggle" />
+          </view>
+        </block>
+      </view>
+      <view class="feature-grid" wx:else>
+        <block wx:for="{{featurePresets}}" wx:key="key">
+          <button class="{{item.active ? 'active' : ''}}" data-key="{{item.key}}" bindtap="handleAddFeatureGroup">{{item.label}}</button>
+        </block>
+      </view>
     </view>
-    <view class="inline-input">
-      <input value="{{tagDraft}}" placeholder="新增标签，例如：露营 / 亲子 / 装备" bindinput="handleTagDraft" />
-      <button bindtap="handleAddTag">添加</button>
-    </view>
-  </view>
 
-  <view class="form-panel">
-    <view class="section-title">专题</view>
-    <view class="editable-tags" wx:if="{{bookmark.topics.length}}">
-      <block wx:for="{{bookmark.topics}}" wx:key="id">
-        <text data-id="{{item.id}}" bindtap="handleRemoveTopic">{{item.name}} ×</text>
-      </block>
+    <view class="form-panel block-panel" wx:if="{{isProperty || isGroupbuy}}">
+      <view class="block-head">
+        <view>
+          <view class="scrm-title-row">
+            <view class="section-title">轻 SCRM</view>
+            <view class="scrm-alert-dot" wx:if="{{scrmSummary.hasUnread}}"></view>
+          </view>
+          <view class="section-hint">记录浏览、留资和待跟进线索。</view>
+        </view>
+        <button class="text-btn" data-section="scrm" bindtap="handleToggleSection">{{hiddenSections.scrm ? '恢复' : '隐藏'}}</button>
+      </view>
+      <view class="scrm-grid" wx:if="{{!hiddenSections.scrm}}">
+        <view><text>{{scrmSummary.total}}</text><text>客户动作</text></view>
+        <view><text>{{scrmSummary.leadContact}}</text><text>留资</text></view>
+        <view><text>{{scrmSummary.pending}}</text><text>待跟进</text></view>
+        <button class="scrm-entry {{scrmSummary.hasUnread ? 'is-hot' : ''}}" bindtap="handleOpenCustomerActions">
+          <text>查看客户动作 / 查看线索</text>
+          <text>{{scrmSummary.latestText}}</text>
+          <view class="scrm-entry-dot" wx:if="{{scrmSummary.hasUnread}}"></view>
+        </button>
+      </view>
+      <view class="hidden-tip" wx:else>这个板块已隐藏，客户页不展示。</view>
     </view>
-    <view class="option-row" wx:if="{{topics.length}}">
-      <block wx:for="{{topics}}" wx:key="id">
-        <text class="option-chip" data-id="{{item.id}}" bindtap="handleAddTopic">{{item.name}}</text>
-      </block>
-    </view>
-    <view class="inline-input">
-      <input value="{{topicDraft}}" placeholder="新建专题，例如：周末亲子露营" bindinput="handleTopicDraft" />
-      <button bindtap="handleCreateTopic">新建</button>
-    </view>
-  </view>
 
-  <view class="form-panel typed-form" wx:if="{{isProperty}}">
-    <view class="section-title">房源字段</view>
-    <block wx:for="{{propertyFields}}" wx:key="key">
+    <view class="form-panel">
+      <view class="section-title">基础信息</view>
       <view class="field">
-        <view class="label">{{item.label}}</view>
-        <input class="input" value="{{item.value}}" data-key="{{item.key}}" bindinput="handleStructuredInput" placeholder="{{item.placeholder}}" />
+        <view class="label">标题</view>
+        <input class="input" value="{{form.title}}" data-key="title" bindinput="handleInput" placeholder="请输入标题" />
       </view>
-    </block>
-    <view class="field">
-      <view class="label">备注</view>
-      <textarea class="textarea small" value="{{structuredData.remark}}" data-key="remark" bindinput="handleStructuredInput" placeholder="补充房源亮点、服务费、看房说明等"></textarea>
-    </view>
-  </view>
-
-  <view class="form-panel typed-form" wx:if="{{isGroupbuy}}">
-    <view class="section-title">团购商品字段</view>
-    <block wx:for="{{groupbuyFields}}" wx:key="key">
       <view class="field">
-        <view class="label">{{item.label}}</view>
-        <input class="input" value="{{item.value}}" data-key="{{item.key}}" bindinput="handleStructuredInput" placeholder="{{item.placeholder}}" />
+        <view class="label">摘要</view>
+        <textarea class="textarea small" value="{{form.summary}}" data-key="summary" bindinput="handleInput" placeholder="一句话概括这条资料"></textarea>
       </view>
-    </block>
-    <view class="field">
-      <view class="label">备注 / 卖点</view>
-      <textarea class="textarea small" value="{{structuredData.remark}}" data-key="remark" bindinput="handleStructuredInput" placeholder="补充商品卖点、售后、开团说明等"></textarea>
-    </view>
-  </view>
-
-  <view class="template-bar" wx:if="{{!isBookmark}}">
-    <view>
-      <view class="template-label">{{template.label}}</view>
-      <view class="template-desc">按这些字段补充，会更方便后续展示。</view>
-    </view>
-    <view class="template-tags">
-      <block wx:for="{{template.fields}}" wx:key="*this">
-        <text class="template-tag">{{item}}</text>
-      </block>
-    </view>
-  </view>
-
-  <view class="form-panel">
-    <view class="section-title" wx:if="{{isBookmark}}">基础信息</view>
-    <view class="field">
-      <view class="label">标题</view>
-      <input class="input" value="{{form.title}}" data-key="title" bindinput="handleInput" placeholder="请输入笔记标题" />
+      <view class="field">
+        <view class="label">正文</view>
+        <textarea class="textarea" value="{{form.body}}" data-key="body" bindinput="handleInput" placeholder="保留原始说明或补充描述"></textarea>
+      </view>
     </view>
 
-    <view class="field">
-      <view class="label">摘要</view>
-      <textarea class="textarea small" value="{{form.summary}}" data-key="summary" bindinput="handleInput" placeholder="一句话概括这条资料"></textarea>
+    <view class="form-panel">
+      <view class="section-title">标签与专题</view>
+      <view class="editable-tags" wx:if="{{bookmark.tags.length}}">
+        <block wx:for="{{bookmark.tags}}" wx:key="*this">
+          <text data-tag="{{item}}" bindtap="handleRemoveTag">{{item}} ×</text>
+        </block>
+      </view>
+      <view class="quick-options" wx:if="{{suggestedTagOptions.length}}">
+        <block wx:for="{{suggestedTagOptions}}" wx:key="*this">
+          <text data-tag="{{item}}" bindtap="handleSuggestedTag">+ {{item}}</text>
+        </block>
+      </view>
+      <view class="inline-input">
+        <input value="{{tagDraft}}" placeholder="新增标签，例如：万家丽 / 公寓" bindinput="handleTagDraft" />
+        <button bindtap="handleAddTag">添加</button>
+      </view>
+      <view class="editable-tags topic-tags" wx:if="{{bookmark.topics.length}}">
+        <block wx:for="{{bookmark.topics}}" wx:key="id">
+          <text data-id="{{item.id}}" bindtap="handleRemoveTopic">{{item.name}} ×</text>
+        </block>
+      </view>
+      <view class="quick-options" wx:if="{{suggestedTopicOptions.length}}">
+        <block wx:for="{{suggestedTopicOptions}}" wx:key="name">
+          <text data-name="{{item.name}}" bindtap="handleSuggestedTopic">+ {{item.name}}</text>
+        </block>
+      </view>
+      <view class="inline-input">
+        <input value="{{topicDraft}}" placeholder="新建专题，例如：万家丽租房" bindinput="handleTopicDraft" />
+        <button bindtap="handleCreateTopic">新建</button>
+      </view>
     </view>
 
-    <view class="field" wx:if="{{!isBookmark}}">
-      <view class="label">正文</view>
-      <textarea class="textarea" value="{{form.body}}" data-key="body" bindinput="handleInput" placeholder="整理后的正文内容"></textarea>
+    <view class="bottom-actions">
+      <button class="delete-btn" bindtap="handleDelete">删除</button>
+      <button class="save-btn" loading="{{saving}}" bindtap="handleSave">保存</button>
     </view>
-
-    <view class="field" wx:if="{{!isBookmark}}">
-      <view class="label">电话</view>
-      <input class="input" value="{{form.phone}}" data-key="phone" bindinput="handleInput" placeholder="可选" />
-    </view>
-
-    <view class="field" wx:if="{{!isBookmark}}">
-      <view class="label">位置</view>
-      <input class="input" value="{{form.locationText}}" data-key="locationText" bindinput="handleInput" placeholder="可选" />
-    </view>
-  </view>
-
-  <view class="media-panel" wx:if="{{!isBookmark && (form.coverUrl || form.media.length)}}">
-    <image wx:if="{{form.coverUrl}}" class="cover" src="{{form.coverUrl}}" mode="aspectFill"></image>
-    <view class="media-count">素材 {{form.media.length}}</view>
-  </view>
-
-  <view class="bottom-actions">
-    <button class="delete-btn" bindtap="handleDelete">删除</button>
-    <button class="save-btn" loading="{{saving}}" bindtap="handleSave">保存</button>
-  </view>
-
-  <view class="generate-actions" wx:if="{{isProperty || isGroupbuy}}">
-    <button class="secondary-btn" loading="{{saving}}" bindtap="handleOrganize">整理资料</button>
-    <button class="generate-btn" loading="{{saving}}" bindtap="handleGenerate">生成场景页</button>
-  </view>
+    <movable-area class="floating-save-area">
+      <movable-view
+        class="floating-save {{saveFloatMovable ? 'moving' : ''}}"
+        direction="all"
+        x="{{saveFloatX}}"
+        y="{{saveFloatY}}"
+        bindlongpress="handleFloatSaveLongPress"
+        bindchange="handleFloatSaveChange"
+        bindtouchend="handleFloatSaveTouchEnd"
+      >
+        <button loading="{{saving}}" bindtap="handleSave" bindlongpress="handleFloatSaveLongPress">存</button>
+      </movable-view>
+    </movable-area>
+  </block>
 </view>

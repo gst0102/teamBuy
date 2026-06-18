@@ -1,0 +1,37 @@
+<view class="page-shell">
+  <custom-nav title="分享图" />
+
+  <view class="poster-wrap" wx:if="{{poster}}">
+    <view class="theme-row">
+      <block wx:for="{{themes}}" wx:key="key">
+        <view class="theme-dot {{activeTheme.key === item.key ? 'active' : ''}}" style="background: {{item.color}};" data-key="{{item.key}}" bindtap="handleTheme">
+          <text>{{item.name}}</text>
+        </view>
+      </block>
+    </view>
+
+    <view class="poster-card theme-{{activeTheme.key}}">
+      <image wx:if="{{poster.coverUrl}}" class="poster-cover" src="{{poster.coverUrl}}" mode="aspectFill"></image>
+      <view wx:else class="poster-cover placeholder">{{poster.badge}}</view>
+      <view class="poster-body">
+        <view class="badge">{{poster.badge}}</view>
+        <view class="title">{{poster.title}}</view>
+        <view class="price" wx:if="{{poster.price}}">{{poster.price}}</view>
+        <view class="line">{{poster.line}}</view>
+      </view>
+    </view>
+
+    <view class="poster-actions">
+      <button class="save-poster" loading="{{savingPoster}}" bindtap="handleSavePoster">保存海报</button>
+      <button class="preview-link" bindtap="handlePreviewPage">客户页</button>
+    </view>
+
+    <view class="copy-panel">
+      <view class="panel-title">发群文案</view>
+      <view class="copy-text">{{poster.copy}}</view>
+      <button bindtap="handleCopy">复制文案</button>
+    </view>
+  </view>
+
+  <canvas canvas-id="posterCanvas" class="poster-canvas"></canvas>
+</view>

@@ -97,6 +97,10 @@
         <view class="source-link">查看详情 ></view>
       </view>
       <view class="muted">查看 {{item.viewCount}} 次，最近 {{item.lastViewedText}}</view>
+      <view class="phone-row" wx:if="{{item.customerPhone}}">
+        <text>电话 {{item.customerPhone}}</text>
+        <text class="call-action" data-id="{{item.id}}" data-phone="{{item.customerPhone}}" catchtap="handleCallPhone">拨号</text>
+      </view>
       <view class="lead-brief" wx:if="{{item.note || item.latestFollowUp || item.conclusionReason}}">
         <view wx:if="{{item.note}}" class="brief-line">备注：{{item.note}}</view>
         <view wx:if="{{item.latestFollowUp}}" class="brief-line">最近跟进：{{item.latestFollowUp.content}}</view>

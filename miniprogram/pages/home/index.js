@@ -1,5 +1,6 @@
 const resourceStore = require("../../stores/resource-store");
 const { buildDashboard, getCurrentUser } = require("../../utils/dashboard");
+const { navigateToResourceView } = require("../../utils/resource-navigation");
 
 Page({
   data: {
@@ -45,7 +46,9 @@ Page({
     wx.switchTab({ url: "/pages/visits/index" });
   },
   handleOpenResource(event) {
-    wx.navigateTo({ url: `/pages/card-view/index?id=${event.currentTarget.dataset.id}` });
+    const id = event.currentTarget.dataset.id;
+    const card = this.data.hotResources.find((item) => item.id === id) || id;
+    navigateToResourceView(card);
   },
   handleManageResource(event) {
     wx.navigateTo({ url: `/pages/manager/index?id=${event.currentTarget.dataset.id}` });

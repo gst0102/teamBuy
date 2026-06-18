@@ -57,6 +57,11 @@ Page({
           requireAddress: !!(resData && resData.relayConfig && resData.relayConfig.requireAddress)
         }
       };
+      const currentUser = getCurrentUser();
+      if (currentUser && card.ownerUserId === currentUser.id && card.sourceNoteId) {
+        wx.redirectTo({ url: `/pages/note-edit/index?id=${card.sourceNoteId}` });
+        return;
+      }
       this.setData({ card, statusLabel: statusLabel(card.status) });
       this.syncCategorySelection(card.categoryIds || []);
     } catch (error) {

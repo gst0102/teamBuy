@@ -1,5 +1,6 @@
 const api = require("../../services/api");
 const { getCurrentUser, formatTime } = require("../../utils/dashboard");
+const { navigateToResourceView } = require("../../utils/resource-navigation");
 
 const INTENT_FILTERS = [
   { key: "all", label: "全部" },
@@ -559,6 +560,6 @@ Page({
     wx.navigateTo({ url: `/pages/lead-detail/index?id=${event.currentTarget.dataset.id}` });
   },
   handleOpenCard(event) {
-    wx.navigateTo({ url: `/pages/card-view/index?id=${event.currentTarget.dataset.cardId}` });
+    navigateToResourceView(event.currentTarget.dataset.cardId);
   }
 });

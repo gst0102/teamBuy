@@ -1,6 +1,7 @@
 const api = require("../../services/api");
 const resourceStore = require("../../stores/resource-store");
 const { enrichCard, getCurrentUser } = require("../../utils/dashboard");
+const { navigateToResourceEdit, navigateToResourceView } = require("../../utils/resource-navigation");
 
 Page({
   data: {
@@ -105,14 +106,17 @@ Page({
   },
   handleOpen(event) {
     const id = event.currentTarget.dataset.id || event.detail.id;
-    wx.navigateTo({ url: `/pages/card-edit/index?id=${id}` });
+    const card = this.data.cards.find((item) => item.id === id) || id;
+    navigateToResourceEdit(card);
   },
   handleManage(event) {
     const id = event.currentTarget.dataset.id || event.detail.id;
     wx.navigateTo({ url: `/pages/manager/index?id=${id}` });
   },
   handleView(event) {
-    wx.navigateTo({ url: `/pages/card-view/index?id=${event.currentTarget.dataset.id}` });
+    const id = event.currentTarget.dataset.id;
+    const card = this.data.cards.find((item) => item.id === id) || id;
+    navigateToResourceView(card);
   },
   handleOpenPendingImports() {
     wx.navigateTo({ url: "/pages/imports/index" });

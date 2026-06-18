@@ -1,6 +1,7 @@
 const api = require("../../services/api");
 const resourceStore = require("../../stores/resource-store");
 const { formatTime, statusText } = require("../../utils/dashboard");
+const { navigateToResourceEdit, navigateToResourceView } = require("../../utils/resource-navigation");
 
 function filterRelays(relays, filter) {
   if (filter === "pending") return relays.filter((item) => item.isPending);
@@ -263,9 +264,9 @@ Page({
     wx.navigateTo({ url: `/pages/card-edit/index?id=${res.data.id}` });
   },
   handleOpenCard() {
-    wx.navigateTo({ url: `/pages/card-view/index?id=${this.data.cardId}` });
+    navigateToResourceView(this.data.cardId);
   },
   handleEditCard() {
-    wx.navigateTo({ url: `/pages/card-edit/index?id=${this.data.cardId}` });
+    navigateToResourceEdit(this.data.cardId);
   }
 });

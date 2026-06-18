@@ -1,5 +1,6 @@
 const resourceStore = require("../../stores/resource-store");
 const { buildDashboard, buildVisitGroups, getCurrentUser } = require("../../utils/dashboard");
+const { navigateToResourceView } = require("../../utils/resource-navigation");
 
 Page({
   data: {
@@ -73,6 +74,6 @@ Page({
     wx.navigateTo({ url: `/pages/manager/index?id=${event.currentTarget.dataset.id}` });
   },
   handleOpenCard(event) {
-    wx.navigateTo({ url: `/pages/card-view/index?id=${event.currentTarget.dataset.id}` });
+    navigateToResourceView(event.currentTarget.dataset.id);
   }
 });

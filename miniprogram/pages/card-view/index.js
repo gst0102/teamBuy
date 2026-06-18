@@ -44,7 +44,8 @@ Page({
     this.setData({ cardId: query.id });
   },
   async onShow() {
-    await this.loadCard();
+    const redirected = await this.loadCard();
+    if (redirected) return;
     await this.recordView();
     await this.loadStats();
   },
@@ -52,11 +53,16 @@ Page({
     const card = await resourceStore.getCard(this.data.cardId, { force: true });
     const detailMedia = (card.media || []).filter((item) => item.url !== card.coverUrl);
     const currentUser = getApp().globalData.currentUser || wx.getStorageSync("currentUser");
+    if (currentUser && card.ownerUserId === currentUser.id && card.sourceNoteId) {
+      wx.redirectTo({ url: `/pages/note-edit/index?id=${card.sourceNoteId}` });
+      return true;
+    }
     this.setData({
       card,
       detailMedia,
       isOwner: !!(currentUser && card.ownerUserId === currentUser.id)
     });
+    return false;
   },
   async recordView() {
     const currentUser = getApp().globalData.currentUser;

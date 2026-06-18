@@ -32,8 +32,11 @@
 }
 
 .edit-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   height: 58rpx;
-  line-height: 58rpx;
+  line-height: 1.2;
   border-radius: 999rpx;
   background: #edf5ff;
   color: #1677ff;
@@ -107,6 +110,15 @@
   color: #9aa4b2;
   font-size: 24rpx;
   font-weight: 400;
+}
+
+.demo-item {
+  color: #11924d;
+}
+
+.demo-item .menu-arrow {
+  color: #11924d;
+  font-weight: 900;
 }
 
 .logout-btn {

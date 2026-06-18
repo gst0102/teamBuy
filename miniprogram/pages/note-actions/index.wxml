@@ -1,0 +1,106 @@
+<view class="page">
+  <view class="summary-band">
+    <view>
+      <text>{{summary.total}}</text>
+      <text>客户动作</text>
+    </view>
+    <view>
+      <text>{{summary.leadContact}}</text>
+      <text>留资</text>
+    </view>
+    <view>
+      <text>{{summary.appointment}}</text>
+      <text>预约</text>
+    </view>
+    <view class="{{summary.pending ? 'warn' : ''}}">
+      <text>{{summary.pending}}</text>
+      <text>待跟进</text>
+    </view>
+  </view>
+
+  <view class="section">
+    <view class="section-title">新线索 / 待跟进</view>
+    <view class="empty" wx:if="{{!loading && !pendingLeads.length}}">暂无待跟进线索</view>
+    <block wx:for="{{pendingLeads}}" wx:key="id">
+      <view class="lead-item hot" data-id="{{item.id}}" bindtap="handleOpenLead">
+        <view class="item-head">
+          <view>
+            <view class="item-title">{{item.nickname}}</view>
+            <view class="item-time">更新 {{item.updatedText}}</view>
+          </view>
+          <view class="status-pill">{{item.statusText}}</view>
+        </view>
+        <view class="lead-meta">
+          <view class="phone-row" wx:if="{{item.customerPhone}}">
+            <text>电话 {{item.customerPhone}}</text>
+            <text class="call-action" data-id="{{item.id}}" data-phone="{{item.customerPhone}}" catchtap="handleCallPhone">拨号</text>
+          </view>
+          <text wx:if="{{item.customerWechat}}">微信 {{item.customerWechat}}</text>
+          <text>跟进 {{item.nextFollowUpText}}</text>
+        </view>
+      </view>
+    </block>
+  </view>
+
+  <view class="section">
+    <view class="section-title">预约看房</view>
+    <view class="empty" wx:if="{{!loading && !appointmentActions.length}}">暂无预约</view>
+    <block wx:for="{{appointmentActions}}" wx:key="id">
+      <view class="action-item">
+        <view class="item-head">
+          <view>
+            <view class="item-title">{{item.title}}</view>
+            <view class="item-time">{{item.createdText}}</view>
+          </view>
+        </view>
+        <view class="detail-lines">
+          <text wx:for="{{item.details}}" wx:key="*this">{{item}}</text>
+        </view>
+        <button class="plain-btn" wx:if="{{item.leadReminderId}}" data-id="{{item.leadReminderId}}" bindtap="handleOpenLead">查看线索详情</button>
+      </view>
+    </block>
+  </view>
+
+  <view class="section">
+    <view class="section-title">已联系 / 已归档</view>
+    <view class="empty" wx:if="{{!loading && !finishedLeads.length}}">暂无已处理线索</view>
+    <block wx:for="{{finishedLeads}}" wx:key="id">
+      <view class="lead-item" data-id="{{item.id}}" bindtap="handleOpenLead">
+        <view class="item-head">
+          <view>
+            <view class="item-title">{{item.nickname}}</view>
+            <view class="item-time">更新 {{item.updatedText}}</view>
+          </view>
+          <view class="status-pill">{{item.statusText}}</view>
+        </view>
+        <view class="lead-meta">
+          <view class="phone-row" wx:if="{{item.customerPhone}}">
+            <text>电话 {{item.customerPhone}}</text>
+            <text class="call-action" data-id="{{item.id}}" data-phone="{{item.customerPhone}}" catchtap="handleCallPhone">拨号</text>
+          </view>
+          <text wx:if="{{item.customerWechat}}">微信 {{item.customerWechat}}</text>
+          <text>跟进 {{item.nextFollowUpText}}</text>
+        </view>
+      </view>
+    </block>
+  </view>
+
+  <view class="section">
+    <view class="section-title">全部客户动作</view>
+    <view class="empty" wx:if="{{!loading && !otherActions.length}}">暂无其他动作</view>
+    <block wx:for="{{otherActions}}" wx:key="id">
+      <view class="action-item">
+        <view class="item-head">
+          <view>
+            <view class="item-title">{{item.title}}</view>
+            <view class="item-time">{{item.createdText}}</view>
+          </view>
+        </view>
+        <view class="detail-lines">
+          <text wx:for="{{item.details}}" wx:key="*this">{{item}}</text>
+        </view>
+        <button class="plain-btn" wx:if="{{item.leadReminderId}}" data-id="{{item.leadReminderId}}" bindtap="handleOpenLead">查看线索详情</button>
+      </view>
+    </block>
+  </view>
+</view>

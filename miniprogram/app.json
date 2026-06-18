@@ -16,7 +16,10 @@
     "pages/customers/index",
     "pages/notes/index",
     "pages/topics/index",
-    "pages/note-edit/index"
+    "pages/note-edit/index",
+    "pages/note-actions/index",
+    "pages/note-preview/index",
+    "pages/note-poster/index"
   ],
   "window": {
     "navigationBarTitleText": "\u8d44\u6599\u6574\u7406\u52a9\u624b",
@@ -25,6 +28,17 @@
     "backgroundColor": "#eef6ff",
     "backgroundTextStyle": "light"
   },
+  "permission": {
+    "scope.userLocation": {
+      "desc": "\u7528\u4e8e\u9009\u62e9\u623f\u6e90\u4f4d\u7f6e\u5e76\u5728\u5ba2\u6237\u9875\u6253\u5f00\u817e\u8baf\u5730\u56fe"
+    }
+  },
+  "requiredPrivateInfos": [
+    "chooseLocation"
+  ],
+  "navigateToMiniProgramAppIdList": [
+    "wxcfd8224218167d98"
+  ],
   "tabBar": {
     "color": "#9aa4b2",
     "selectedColor": "#1677ff",

@@ -1,0 +1,153 @@
+.page {
+  min-height: 100vh;
+  padding: 24rpx;
+  background: #eef6ff;
+  color: #172033;
+  box-sizing: border-box;
+}
+
+.summary-band {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12rpx;
+  padding: 20rpx;
+  border-radius: 8rpx;
+  background: #ffffff;
+}
+
+.summary-band view {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6rpx;
+}
+
+.summary-band text:first-child {
+  color: #172033;
+  font-size: 34rpx;
+  font-weight: 900;
+}
+
+.summary-band text:last-child {
+  color: #64748b;
+  font-size: 22rpx;
+}
+
+.summary-band .warn text:first-child {
+  color: #ef4444;
+}
+
+.section {
+  margin-top: 24rpx;
+}
+
+.section-title {
+  margin-bottom: 14rpx;
+  color: #172033;
+  font-size: 30rpx;
+  font-weight: 900;
+}
+
+.action-item,
+.lead-item {
+  margin-bottom: 16rpx;
+  padding: 22rpx;
+  border-radius: 8rpx;
+  background: #ffffff;
+  box-shadow: 0 8rpx 24rpx rgba(15, 23, 42, 0.06);
+}
+
+.lead-item.hot {
+  border-left: 8rpx solid #ef4444;
+}
+
+.item-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16rpx;
+}
+
+.item-title {
+  color: #172033;
+  font-size: 30rpx;
+  font-weight: 900;
+}
+
+.item-time {
+  margin-top: 6rpx;
+  color: #94a3b8;
+  font-size: 22rpx;
+}
+
+.status-pill {
+  flex-shrink: 0;
+  padding: 6rpx 14rpx;
+  border-radius: 999rpx;
+  background: #fff1f2;
+  color: #ef4444;
+  font-size: 22rpx;
+  font-weight: 800;
+}
+
+.detail-lines,
+.lead-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+  margin-top: 16rpx;
+  color: #475569;
+  font-size: 24rpx;
+  line-height: 1.45;
+}
+
+.phone-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14rpx;
+  padding: 12rpx 14rpx;
+  border-radius: 18rpx;
+  background: #f3fbf6;
+  color: #172033;
+  font-size: 25rpx;
+  font-weight: 800;
+}
+
+.call-action {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 92rpx;
+  min-height: 50rpx;
+  border-radius: 999rpx;
+  background: #11924d;
+  color: #ffffff;
+  font-size: 23rpx;
+  font-weight: 900;
+}
+
+.plain-btn {
+  margin: 18rpx 0 0;
+  padding: 0;
+  background: transparent;
+  color: #11924d;
+  font-size: 24rpx;
+  font-weight: 900;
+  line-height: 1.4;
+  text-align: left;
+}
+
+.plain-btn::after {
+  border: 0;
+}
+
+.empty {
+  padding: 44rpx 20rpx;
+  border-radius: 8rpx;
+  background: #ffffff;
+  color: #94a3b8;
+  font-size: 26rpx;
+  text-align: center;
+}

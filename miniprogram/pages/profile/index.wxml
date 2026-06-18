@@ -68,6 +68,10 @@
       <text>客户资料库</text>
       <text class="menu-arrow">></text>
     </view>
+    <view class="menu-item demo-item" bindtap="handleCreateDemoData">
+      <text>生成测试房源数据</text>
+      <text class="menu-arrow">3套房源</text>
+    </view>
     <view class="menu-item" bindtap="handleMemberPlaceholder">
       <text>会员中心</text>
       <text class="menu-arrow">即将开放</text>

@@ -11,35 +11,53 @@
 
   <view class="search-box">
     <input class="search-input" placeholder="搜索标题 / 摘要 / 来源 / 标签" value="{{keyword}}" bindinput="handleKeywordChange" confirm-type="search" bindconfirm="handleSearch" />
-    <button class="search-btn" bindtap="handleSearch">搜索</button>
   </view>
 
-  <scroll-view class="source-tabs" scroll-x>
-    <block wx:for="{{sourceFilters}}" wx:key="value">
-      <view class="source-tab {{activeSourceType === item.value ? 'active' : ''}}" data-value="{{item.value}}" bindtap="handleSourceFilter">{{item.label}}</view>
-    </block>
-  </scroll-view>
+  <view class="filter-row">
+    <view class="filter-title">分类</view>
+    <view class="filter-line">
+      <block wx:for="{{categoryQuickFilters}}" wx:key="value">
+        <text class="filter-chip {{activeSourceType === item.value ? 'active' : ''}}" data-value="{{item.value}}" bindtap="handleSourceFilter">{{item.label}}</text>
+      </block>
+      <text class="filter-chip icon" bindtap="toggleCategories">{{showAllCategories ? '⌃' : '⌄'}}</text>
+    </view>
+    <view class="filter-line expanded" wx:if="{{showAllCategories}}">
+      <block wx:for="{{sourceFilters}}" wx:key="value">
+        <text class="filter-chip {{activeSourceType === item.value ? 'active' : ''}}" data-value="{{item.value}}" bindtap="handleSourceFilter">{{item.label}}</text>
+      </block>
+      <text class="filter-chip add" bindtap="handleAddCategory">+ 添加分类</text>
+    </view>
+  </view>
 
-  <view class="filter-row" wx:if="{{tagFilters.length}}">
+  <view class="filter-row">
     <view class="filter-title">标签</view>
-    <scroll-view scroll-x class="filter-scroll">
+    <view class="filter-line">
+      <block wx:for="{{tagQuickFilters}}" wx:key="value">
+        <text class="filter-chip {{activeTag === item.value ? 'active' : ''}}" data-value="{{item.value}}" bindtap="handleTagFilter">{{item.name}}</text>
+      </block>
+      <text class="filter-chip add" bindtap="handleAddTag">+ 添加标签</text>
+      <text class="filter-chip icon" wx:if="{{tagFilters.length}}" bindtap="toggleTags">{{showAllTags ? '⌃' : '⌄'}}</text>
+    </view>
+    <view class="filter-line expanded" wx:if="{{showAllTags && tagFilters.length}}">
       <block wx:for="{{tagFilters}}" wx:key="name">
         <text class="filter-chip {{activeTag === item.name ? 'active' : ''}}" data-tag="{{item.name}}" bindtap="handleTagFilter">{{item.name}} {{item.count}}</text>
       </block>
-    </scroll-view>
+    </view>
   </view>
 
   <view class="filter-row" wx:if="{{topics.length}}">
     <view class="filter-title">专题</view>
-    <scroll-view scroll-x class="filter-scroll">
+    <scroll-view scroll-x class="filter-scroll" show-scrollbar="{{false}}">
+      <text class="filter-chip topic-chip {{activeTopicId === '' ? 'active' : ''}}" data-id="" bindtap="handleTopicFilter">全部</text>
       <block wx:for="{{topics}}" wx:key="id">
-        <text class="filter-chip {{activeTopicId === item.id ? 'active' : ''}}" data-id="{{item.id}}" bindtap="handleTopicFilter">{{item.name}} {{item.noteCount}}</text>
+        <text class="filter-chip topic-chip {{activeTopicId === item.id ? 'active' : ''}}" data-id="{{item.id}}" bindtap="handleTopicFilter">{{item.name}} {{item.noteCount}}</text>
       </block>
     </scroll-view>
   </view>
 
   <view class="list-meta">
     <text>共 {{notes.length}} 条</text>
+    <text class="{{activeSystemCategory === '待整理' ? 'active' : ''}}" bindtap="handleUnorganizedFilter">未整理</text>
     <text bindtap="handleSortToggle">{{sort === 'collected' ? '按收藏时间' : '按更新时间'}}</text>
   </view>
 
@@ -67,19 +85,22 @@
             </block>
           </view>
         </view>
-        <view class="bookmark-actions">
+          <view class="bookmark-actions">
+          <text data-id="{{item.id}}" catchtap="handleEdit">编辑字段</text>
+          <text class="upload-time">上传时间 {{item.uploadDateText}}</text>
           <text>打开原文</text>
-          <text data-id="{{item.id}}" catchtap="handleEdit">整理 / 编辑</text>
           <text class="danger" data-id="{{item.id}}" catchtap="handleDelete">删除</text>
         </view>
       </view>
 
       <view wx:elif="{{item.isProperty}}" class="typed-card property-card">
+        <view class="card-unread-dot" wx:if="{{item.scrmHasUnread}}"></view>
         <image wx:if="{{item.coverUrl}}" class="typed-cover" src="{{item.coverDisplayUrl ? item.coverDisplayUrl : item.coverUrl}}" mode="aspectFill" data-id="{{item.id}}" bindtap="handleEdit"></image>
         <view wx:else class="typed-cover placeholder" data-id="{{item.id}}" bindtap="handleEdit">房</view>
         <view class="typed-main" data-id="{{item.id}}" bindtap="handleEdit">
           <view class="typed-head">
             <text>{{item.cardBadge}}</text>
+            <text class="property-status {{item.propertyStatus.className}}">{{item.propertyStatus.text}}</text>
           </view>
           <view class="typed-title">{{item.structuredData.community || item.title}}</view>
           <view class="typed-primary">{{item.primaryValue}}</view>
@@ -92,12 +113,15 @@
         </view>
         <view class="typed-actions">
           <text data-id="{{item.id}}" bindtap="handleEdit">编辑字段</text>
-          <text data-id="{{item.id}}" bindtap="handleEdit">{{item.cardAction}}</text>
+          <text class="scrm-shortcut {{item.scrmHasUnread ? 'hot' : ''}}" data-id="{{item.id}}" catchtap="handleOpenScrm">{{item.scrmLabel || '客户信息'}}</text>
+          <text class="upload-time">上传时间 {{item.uploadDateText}}</text>
+          <button class="inline-share" open-type="share" data-id="{{item.id}}">{{item.cardAction}}</button>
           <text class="danger" data-id="{{item.id}}" bindtap="handleDelete">删除</text>
         </view>
       </view>
 
       <view wx:elif="{{item.isGroupbuy}}" class="typed-card groupbuy-card">
+        <view class="card-unread-dot" wx:if="{{item.scrmHasUnread}}"></view>
         <image wx:if="{{item.coverUrl}}" class="typed-cover" src="{{item.coverDisplayUrl ? item.coverDisplayUrl : item.coverUrl}}" mode="aspectFill" data-id="{{item.id}}" bindtap="handleEdit"></image>
         <view wx:else class="typed-cover placeholder orange" data-id="{{item.id}}" bindtap="handleEdit">团</view>
         <view class="typed-main" data-id="{{item.id}}" bindtap="handleEdit">
@@ -115,7 +139,9 @@
         </view>
         <view class="typed-actions">
           <text data-id="{{item.id}}" bindtap="handleEdit">编辑商品</text>
-          <text data-id="{{item.id}}" bindtap="handleEdit">{{item.cardAction}}</text>
+          <text class="scrm-shortcut {{item.scrmHasUnread ? 'hot' : ''}}" data-id="{{item.id}}" catchtap="handleOpenScrm">{{item.scrmLabel || '客户信息'}}</text>
+          <text class="upload-time">上传时间 {{item.uploadDateText}}</text>
+          <button class="inline-share" open-type="share" data-id="{{item.id}}">{{item.cardAction}}</button>
           <text class="danger" data-id="{{item.id}}" bindtap="handleDelete">删除</text>
         </view>
       </view>
@@ -126,6 +152,7 @@
         <view class="note-main" data-id="{{item.id}}" bindtap="handleEdit">
           <view class="note-title">{{item.title}}</view>
           <view class="note-summary">{{item.summary ? item.summary : item.body}}</view>
+          <view class="suggestion-line" wx:if="{{item.suggestionText}}">{{item.suggestionText}}</view>
           <view class="note-meta">
             <text>{{item.status === 'active' ? '已认领' : '草稿'}}</text>
             <text wx:if="{{item.phone}}">电话</text>
@@ -133,7 +160,8 @@
           </view>
         </view>
         <view class="note-actions">
-          <text data-id="{{item.id}}" bindtap="handleEdit">编辑</text>
+          <text data-id="{{item.id}}" bindtap="handleEdit">编辑字段</text>
+          <text class="upload-time">上传时间 {{item.uploadDateText}}</text>
           <text class="danger" data-id="{{item.id}}" bindtap="handleDelete">删除</text>
         </view>
       </view>

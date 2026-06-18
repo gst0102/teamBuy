@@ -202,6 +202,34 @@
   border: 1rpx solid #e6eef9;
 }
 
+.phone-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14rpx;
+  margin-top: 14rpx;
+  padding: 14rpx 16rpx;
+  border-radius: 18rpx;
+  background: #f3fbf6;
+  color: #172033;
+  font-size: 25rpx;
+  font-weight: 800;
+}
+
+.call-action {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 92rpx;
+  min-height: 50rpx;
+  border-radius: 999rpx;
+  background: #11924d;
+  color: #ffffff;
+  font-size: 23rpx;
+  font-weight: 900;
+}
+
 .source-label {
   color: #8a96a8;
   font-size: 22rpx;

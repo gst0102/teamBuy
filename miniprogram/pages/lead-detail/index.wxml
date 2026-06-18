@@ -44,6 +44,10 @@
         <text class="customer-tag">{{item}}</text>
       </block>
     </view>
+    <view class="phone-row" wx:if="{{customerPhone}}">
+      <text>电话 {{customerPhone}}</text>
+      <text class="call-action" data-phone="{{customerPhone}}" catchtap="handleCallPhone">拨号</text>
+    </view>
     <input class="field-input" value="{{customerPhone}}" placeholder="手机号" bindinput="handleCustomerPhoneChange" />
     <input class="field-input" value="{{customerWechat}}" placeholder="微信号" bindinput="handleCustomerWechatChange" />
     <input class="field-input" value="{{budgetText}}" placeholder="预算，如 200 万内 / 3000-5000 元" bindinput="handleBudgetChange" />

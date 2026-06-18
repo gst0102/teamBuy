@@ -1,0 +1,98 @@
+<view class="page-shell">
+  <custom-nav title="客户页预览" />
+
+  <view class="preview-page" wx:if="{{view}}">
+    <image wx:if="{{view.coverUrl}}" class="cover" src="{{view.coverUrl}}" mode="aspectFill"></image>
+    <view wx:else class="cover placeholder">{{view.badge}}</view>
+    <view class="content">
+      <view class="badge">{{view.badge}}</view>
+      <view class="title">{{view.title}}</view>
+      <view class="subtitle">{{view.subtitle}}</view>
+      <view class="availability {{view.availability ? view.availability.status : ''}}" wx:if="{{view.availability}}">
+        <view>{{view.availability.title}}</view>
+        <text>{{view.availability.desc}}</text>
+      </view>
+      <view class="rows">
+        <block wx:for="{{view.rows}}" wx:key="label">
+          <view class="row">
+            <text>{{item.label}}</text>
+            <text>{{item.value}}</text>
+          </view>
+        </block>
+      </view>
+      <view class="gallery" wx:if="{{view.galleryImages.length}}">
+        <view class="section-title">房源图片</view>
+        <scroll-view scroll-x class="gallery-scroll">
+          <block wx:for="{{view.galleryImages}}" wx:key="*this">
+            <image src="{{item}}" mode="aspectFill" data-url="{{item}}" bindtap="handlePreviewImage"></image>
+          </block>
+        </scroll-view>
+      </view>
+      <view class="gallery" wx:if="{{view.galleryVideos.length}}">
+        <view class="section-title">房源视频</view>
+        <scroll-view scroll-x class="gallery-scroll video-scroll">
+          <block wx:for="{{view.galleryVideos}}" wx:key="*this">
+            <video src="{{item}}" controls object-fit="cover"></video>
+          </block>
+        </scroll-view>
+      </view>
+      <view class="remark" wx:if="{{view.remark}}">{{view.remark}}</view>
+      <view class="map-card" wx:if="{{view.address}}">
+        <view class="map-head">
+          <text>房源定位</text>
+          <text wx:if="{{view.mapLocation.hasPoint}}">腾讯地图</text>
+          <text wx:elif="{{resolvingMap}}">正在匹配默认地址</text>
+          <text wx:else>按默认地址定位</text>
+        </view>
+        <map
+          wx:if="{{view.mapLocation.hasPoint}}"
+          id="previewMap"
+          latitude="{{view.mapLocation.latitude}}"
+          longitude="{{view.mapLocation.longitude}}"
+          markers="{{view.mapLocation.markers}}"
+          scale="16"
+          show-location="{{false}}"
+        ></map>
+        <view wx:else class="map-empty" bindtap="handleOpenMap">{{resolvingMap ? '正在生成地图定位' : '点这里用默认地址打开地图'}}</view>
+      </view>
+      <view class="actions" wx:if="{{view.actions.length}}">
+        <block wx:for="{{view.actions}}" wx:key="key">
+          <view class="action-card {{item.key}}" data-key="{{item.key}}" bindtap="handleAction">
+            <view>{{item.title}}</view>
+            <text>{{item.desc}}</text>
+          </view>
+        </block>
+      </view>
+      <view class="lead-form" wx:if="{{showLeadForm}}">
+        <input value="{{leadDraft.name}}" data-key="name" bindinput="handleLeadInput" placeholder="姓名" />
+        <input value="{{leadDraft.phone}}" data-key="phone" bindinput="handleLeadInput" placeholder="电话" type="number" />
+        <input value="{{leadDraft.wechat}}" data-key="wechat" bindinput="handleLeadInput" placeholder="微信号，可选" />
+        <textarea value="{{leadDraft.remark}}" data-key="remark" bindinput="handleLeadInput" placeholder="备注，例如预算、看房时间"></textarea>
+        <button loading="{{submittingAction === 'lead-contact'}}" bindtap="handleSubmitLead">提交联系方式</button>
+      </view>
+      <view class="appointment-form" wx:if="{{showAppointmentForm}}">
+        <view class="quick-date">
+          <text data-offset="0" bindtap="handleQuickAppointment">今天</text>
+          <text data-offset="1" bindtap="handleQuickAppointment">明天</text>
+        </view>
+        <view class="picker-row">
+          <picker mode="date" value="{{appointmentDraft.date}}" bindchange="handleAppointmentDate">
+            <view>日期：{{appointmentDraft.date}}</view>
+          </picker>
+          <picker mode="time" value="{{appointmentDraft.time}}" bindchange="handleAppointmentTime">
+            <view>时间：{{appointmentDraft.time}}</view>
+          </picker>
+        </view>
+        <input value="{{appointmentDraft.remark}}" bindinput="handleAppointmentRemark" placeholder="备注，可选，例如两个人看房" />
+        <button loading="{{submittingAction === 'appointment'}}" bindtap="handleSubmitAppointment">提交预约</button>
+      </view>
+      <view class="status-line" wx:if="{{leadSubmittedText}}">{{leadSubmittedText}}</view>
+      <view class="status-line" wx:if="{{appointmentText}}">预约意向：{{appointmentText}}</view>
+      <view class="status-line" wx:if="{{relaySubmitted}}">已记录接龙意向</view>
+    </view>
+    <view class="floating-share-actions">
+      <button open-type="share">好友</button>
+      <button bindtap="handleTimelineHint">朋友圈</button>
+    </view>
+  </view>
+</view>

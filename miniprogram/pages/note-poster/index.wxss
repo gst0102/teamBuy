@@ -1,0 +1,215 @@
+.page-shell {
+  min-height: 100vh;
+  padding: 0 28rpx 48rpx;
+  background: #f6f8fb;
+  box-sizing: border-box;
+}
+
+.poster-wrap {
+  margin-top: 24rpx;
+}
+
+.theme-row {
+  display: flex;
+  gap: 12rpx;
+  margin-bottom: 18rpx;
+  overflow-x: auto;
+}
+
+.theme-dot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 96rpx;
+  height: 54rpx;
+  flex-shrink: 0;
+  border: 4rpx solid transparent;
+  border-radius: 8rpx;
+  color: #fff;
+  font-size: 21rpx;
+  font-weight: 900;
+}
+
+.theme-dot.active {
+  border-color: #172033;
+}
+
+.poster-card {
+  overflow: hidden;
+  border: 1rpx solid #e3e8f0;
+  border-radius: 8rpx;
+  background: #fffdf7;
+  color: #172033;
+  box-shadow: 0 16rpx 38rpx rgba(23, 32, 51, 0.08);
+}
+
+.poster-cover {
+  width: 100%;
+  height: 520rpx;
+  background: #eef2f7;
+}
+
+.poster-cover.placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #17633a;
+  font-size: 54rpx;
+  font-weight: 900;
+}
+
+.poster-body {
+  padding: 30rpx;
+}
+
+.badge {
+  display: inline-flex;
+  padding: 6rpx 14rpx;
+  border-radius: 6rpx;
+  background: #e8f7ef;
+  color: #11924d;
+  font-size: 23rpx;
+  font-weight: 900;
+}
+
+.theme-forest .badge {
+  background: #e8f7ef;
+  color: #17633a;
+}
+
+.theme-teal .badge {
+  background: #e6fffb;
+  color: #0f766e;
+}
+
+.theme-blue .badge {
+  background: #eaf2ff;
+  color: #2563eb;
+}
+
+.theme-rose .badge {
+  background: #fff0f3;
+  color: #be3455;
+}
+
+.theme-amber .badge {
+  background: #fff7e6;
+  color: #d97706;
+}
+
+.title {
+  margin-top: 18rpx;
+  font-size: 42rpx;
+  font-weight: 900;
+  line-height: 1.3;
+  display: -webkit-box;
+  overflow: hidden;
+  word-break: break-all;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+.price {
+  margin-top: 18rpx;
+  color: #17633a;
+  font-size: 38rpx;
+  font-weight: 900;
+}
+
+.theme-teal .price {
+  color: #0f766e;
+}
+
+.theme-blue .price {
+  color: #2563eb;
+}
+
+.theme-rose .price {
+  color: #be3455;
+}
+
+.theme-amber .price {
+  color: #d97706;
+}
+
+.line {
+  margin-top: 12rpx;
+  color: #4b5565;
+  font-size: 27rpx;
+  line-height: 1.5;
+}
+
+.poster-actions {
+  display: grid;
+  grid-template-columns: 1fr 160rpx;
+  gap: 14rpx;
+  margin-top: 20rpx;
+}
+
+.poster-actions button {
+  height: 78rpx;
+  margin: 0;
+  padding: 0;
+  line-height: 78rpx;
+  border-radius: 8rpx;
+  font-size: 27rpx;
+  font-weight: 900;
+}
+
+.poster-actions button::after {
+  border: 0;
+}
+
+.save-poster {
+  background: #11924d;
+  color: #fff;
+}
+
+.preview-link {
+  background: #eef5ff;
+  color: #2563eb;
+}
+
+.copy-panel {
+  margin-top: 24rpx;
+  padding: 24rpx;
+  border-radius: 8rpx;
+  background: #fff;
+}
+
+.panel-title {
+  color: #172033;
+  font-size: 29rpx;
+  font-weight: 900;
+}
+
+.copy-text {
+  margin-top: 16rpx;
+  padding: 18rpx;
+  border-radius: 8rpx;
+  background: #f8fafc;
+  color: #4b5565;
+  font-size: 26rpx;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.copy-panel button {
+  margin-top: 20rpx;
+  height: 78rpx;
+  line-height: 78rpx;
+  border-radius: 8rpx;
+  background: #11924d;
+  color: #fff;
+  font-size: 27rpx;
+  font-weight: 800;
+}
+
+.poster-canvas {
+  position: fixed;
+  left: -2000px;
+  top: 0;
+  width: 750px;
+  height: 1050px;
+  pointer-events: none;
+}

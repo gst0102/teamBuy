@@ -1,5 +1,6 @@
 const api = require("../../services/api");
 const { getCurrentUser, formatTime } = require("../../utils/dashboard");
+const { navigateToResourceView } = require("../../utils/resource-navigation");
 
 function filterLeads(leads, filter) {
   if (filter === "pending") return leads.filter((item) => item.status === "pending");
@@ -224,13 +225,50 @@ Page({
     }
   },
   handleOpenDetail(event) {
-    wx.navigateTo({ url: `/pages/card-view/index?id=${event.currentTarget.dataset.cardId}` });
+    navigateToResourceView(event.currentTarget.dataset.cardId);
   },
   handleOpenManager(event) {
     wx.navigateTo({ url: `/pages/manager/index?id=${event.currentTarget.dataset.cardId}` });
   },
   handleOpenLeadDetail(event) {
     wx.navigateTo({ url: `/pages/lead-detail/index?id=${event.currentTarget.dataset.id}` });
+  },
+  handleCallPhone(event) {
+    const phone = event.currentTarget.dataset.phone;
+    const id = event.currentTarget.dataset.id;
+    if (!phone) {
+      wx.showToast({ title: "暂无手机号", icon: "none" });
+      return;
+    }
+    wx.makePhoneCall({
+      phoneNumber: phone,
+      success: () => this.confirmMarkContacted(id),
+      fail: () => wx.showToast({ title: "拨号失败", icon: "none" })
+    });
+  },
+  confirmMarkContacted(id) {
+    if (!id) return;
+    wx.showModal({
+      title: "是否标记已联系？",
+      content: "如果这通电话已经沟通过，可以顺手记录到线索里。",
+      confirmText: "标记",
+      confirmColor: "#11924d",
+      success: async (res) => {
+        if (!res.confirm) return;
+        const currentUser = getCurrentUser();
+        try {
+          await api.updateLeadReminder(id, {
+            ownerUserId: currentUser.id,
+            status: "contacted",
+            logContent: "已电话联系客户"
+          });
+          wx.showToast({ title: "已标记联系", icon: "success" });
+          this.loadLeads();
+        } catch (error) {
+          wx.showToast({ title: error.detail || "更新失败", icon: "none" });
+        }
+      }
+    });
   },
   handleOpenCustomers() {
     wx.navigateTo({ url: "/pages/customers/index" });

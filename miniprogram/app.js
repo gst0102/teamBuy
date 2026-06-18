@@ -9,6 +9,10 @@ App({
   onLaunch() {
     this.globalData.buttonPosition = cacheButtonPosition();
     const user = wx.getStorageSync("currentUser");
+    if (user && user.openid === "openid_本地测试用户") {
+      wx.removeStorageSync("currentUser");
+      return;
+    }
     if (user) {
       this.globalData.currentUser = user;
     }

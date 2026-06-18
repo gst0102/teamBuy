@@ -1,5 +1,6 @@
 const api = require("../../services/api");
 const { getCurrentUser, formatTime } = require("../../utils/dashboard");
+const { navigateToResourceView } = require("../../utils/resource-navigation");
 
 function leadStatusText(status) {
   const map = {
@@ -121,6 +122,42 @@ Page({
   handleCustomerWechatChange(event) {
     this.setData({ customerWechat: event.detail.value });
   },
+  handleCallPhone(event) {
+    const phone = event.currentTarget.dataset.phone || this.data.customerPhone;
+    if (!phone) {
+      wx.showToast({ title: "暂无手机号", icon: "none" });
+      return;
+    }
+    wx.makePhoneCall({
+      phoneNumber: phone,
+      success: () => this.confirmMarkContacted(),
+      fail: () => wx.showToast({ title: "拨号失败", icon: "none" })
+    });
+  },
+  confirmMarkContacted() {
+    if (!this.data.leadId) return;
+    wx.showModal({
+      title: "是否标记已联系？",
+      content: "如果这通电话已经沟通过，可以顺手记录到线索里。",
+      confirmText: "标记",
+      confirmColor: "#11924d",
+      success: async (res) => {
+        if (!res.confirm) return;
+        const currentUser = getCurrentUser();
+        try {
+          await api.updateLeadReminder(this.data.leadId, {
+            ownerUserId: currentUser.id,
+            status: "contacted",
+            logContent: "已电话联系客户"
+          });
+          wx.showToast({ title: "已标记联系", icon: "success" });
+          this.loadLead();
+        } catch (error) {
+          wx.showToast({ title: error.detail || "更新失败", icon: "none" });
+        }
+      }
+    });
+  },
   handleBudgetChange(event) {
     this.setData({ budgetText: event.detail.value });
   },
@@ -214,7 +251,7 @@ Page({
   },
   handleOpenDetail() {
     if (!this.data.lead) return;
-    wx.navigateTo({ url: `/pages/card-view/index?id=${this.data.lead.cardId}` });
+    navigateToResourceView(this.data.lead.cardId);
   },
   handleOpenManager() {
     if (!this.data.lead) return;

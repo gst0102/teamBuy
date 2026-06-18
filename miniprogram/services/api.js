@@ -58,6 +58,14 @@ function mockLogin(payload) {
   });
 }
 
+function wechatLogin(payload) {
+  return request({
+    url: "/api/auth/wechat-login",
+    method: "POST",
+    data: payload
+  });
+}
+
 function fetchPendingImports() {
   return request({
     url: "/api/imports/pending"
@@ -121,6 +129,13 @@ function fetchTopics(ownerUserId) {
   return request({ url: `/api/notes/topics?ownerUserId=${ownerUserId}` });
 }
 
+function createDemoData(ownerUserId) {
+  return request({
+    url: `/api/notes/demo-data?ownerUserId=${ownerUserId}`,
+    method: "POST"
+  });
+}
+
 function createTopic(payload) {
   return request({
     url: "/api/notes/topics",
@@ -157,6 +172,38 @@ function fetchNote(noteId, ownerUserId) {
     ...res,
     data: await normalizeAndCacheNote(res.data)
   }));
+}
+
+function geocodeAddress(params = {}) {
+  const query = [];
+  if (params.address) query.push(`address=${encodeURIComponent(params.address)}`);
+  if (params.region) query.push(`region=${encodeURIComponent(params.region)}`);
+  return request({
+    url: `/api/location/geocode?${query.join("&")}`
+  });
+}
+
+function fetchCustomerActionConfig(noteId, params = {}) {
+  const query = [];
+  if (params.viewerUserId) query.push(`viewerUserId=${encodeURIComponent(params.viewerUserId)}`);
+  if (params.anonymousId) query.push(`anonymousId=${encodeURIComponent(params.anonymousId)}`);
+  return request({
+    url: `/api/notes/${noteId}/customer-actions/config?${query.join("&")}`
+  });
+}
+
+function fetchNoteCustomerActions(noteId, ownerUserId) {
+  return request({
+    url: `/api/notes/${noteId}/customer-actions?ownerUserId=${ownerUserId}`
+  });
+}
+
+function submitCustomerAction(noteId, actionKey, payload = {}) {
+  return request({
+    url: `/api/notes/${noteId}/customer-actions/${actionKey}`,
+    method: "POST",
+    data: payload
+  });
 }
 
 function updateNote(noteId, payload) {
@@ -426,15 +473,21 @@ function deleteLeadReminder(reminderId, ownerUserId) {
 
 module.exports = {
   mockLogin,
+  wechatLogin,
   fetchPendingImports,
   claimImport,
   fetchNotes,
   fetchTagSuggestions,
   fetchTopics,
+  createDemoData,
   createTopic,
   addNoteToTopic,
   removeNoteFromTopic,
   fetchNote,
+  geocodeAddress,
+  fetchCustomerActionConfig,
+  fetchNoteCustomerActions,
+  submitCustomerAction,
   updateNote,
   organizeNote,
   generateNote,
