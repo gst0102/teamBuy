@@ -1,5 +1,18 @@
 # Pitfalls
 
+## 2026-06-20：OCR 不要绕开 content-to-note 主链路
+
+问题：
+- 截图识别出的文字看起来可以直接生成房源/商品，但如果 OCR 接口直接写业务字段，会绕过现有类型识别、解释信息和中置信人工确认。
+- OCR 引擎可能未安装、识别为空或识别错字；如果强行高置信生成业务卡，会放大错误。
+- PaddleOCR / Tesseract / 云 OCR 的依赖和部署方式不同，不能把某个 provider 写死到业务流程里。
+
+规避方式：
+- OCR 只负责把图片变成文字和媒体引用，输出 `ContentObject.sourceType=image_ocr`。
+- 后续统一走 `content-to-note`，再由 typed card 规则决定高置信、中置信或普通笔记。
+- OCR 结果必须保存在 `structuredData.ocr`，保留 provider、是否配置、置信度和识别文本。
+- OCR 未配置或识别为空时，也要保留图片资料，允许用户手动补充。
+
 ## 2026-06-20：中置信资料不要只在前端本地切类型
 
 问题：

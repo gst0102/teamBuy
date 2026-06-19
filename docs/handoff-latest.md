@@ -7,6 +7,9 @@
 本地状态：当前订单 / 消息 / 商品 P1 / 站内消息左右气泡已完成两组代码提交；仍需排除微信开发者工具自动改动 `miniprogram/project.config.json` 和未跟踪 PDF `企业微信客服服务须知.pdf`。
 
 最新补充：
+- 2026-06-20 新增 OCR 图片识别入库第一版：后端 `POST /api/ocr/image-to-note`，小程序“我的笔记”页有“图片识别”入口，生成的资料来源为 `sourceType=ocr`。
+- OCR 只作为图片 Input Adapter：识别文字写入 `structuredData.ocr`，再统一走 `ContentObject.sourceType=image_ocr -> content-to-note -> UserNote`。
+- OCR provider 可配置为 `auto/paddle/tesseract/mock`；生产要真正识别图片，需要安装并配置 PaddleOCR 或 Tesseract。未配置时图片仍会保存，用户可手动补正文和字段。
 - 2026-06-20 新增归档 parser 插件化收口：archive parser 现在有稳定 `name/msg_types`，registry 显式注册并给解析结果 metadata 写入 `archiveParser/archiveMsgType`。
 - 2026-06-20 新增类型识别可解释：`visibilityConfig.recognitionExplanation` 记录候选类型、分数、命中字段、可读信号、parser hints 和摘要；`typeSuggestions` 也带 `score/matchedFields/signals/reason`。
 - 2026-06-20 新增中置信人工确认接口：`POST /api/notes/{note_id}/confirm-type`，支持确认成房源、商品或普通笔记；确认后清空 `typeSuggestions`，写入 manual 识别记录，并保留原文、图片和 `structuredData.miniapp`。

@@ -1,5 +1,41 @@
 # 2026-06-20
 
+## 本次补充：OCR 图片识别入库第一版
+
+背景：
+
+- 用户确认 OCR 是重要入口能力，希望开始开发。
+- 项目长期规则要求 OCR 作为 Input Adapter，不直接生成业务结果，而是统一进入 `ContentObject -> content-to-note -> UserNote`。
+
+完成内容：
+
+- 后端新增 `OcrService`：
+  - `OCR_PROVIDER=auto` 默认优先尝试 PaddleOCR，再尝试 Tesseract。
+  - 支持 `OCR_PROVIDER=paddle`、`OCR_PROVIDER=tesseract`、`OCR_PROVIDER=mock`。
+  - 未安装 OCR 引擎时返回可解释结果，不阻断图片保存。
+- 后端新增 `POST /api/ocr/image-to-note`：
+  - 接收图片文件和 `ownerUserId`。
+  - 复用现有图片压缩与存储链路保存图片。
+  - 使用 OCR 识别图片文字。
+  - 以 `ContentObject.sourceType=image_ocr` 进入 `content-to-note`。
+  - 生成并保存 `UserNote`，同时记录 `SkillRun`。
+  - 识别结果写入 `visibilityConfig.structuredData.ocr`，来源标记为 `sourceType=ocr`，标签包含 `图片识别`。
+- 小程序“我的笔记”页新增“图片识别”入口：
+  - 用户选择相册/拍照图片后上传识别。
+  - 成功后直接跳转到新生成的资料编辑页。
+  - 列表筛选新增“图片识别”来源。
+- `backend/.env.example` 新增 OCR 配置项：`OCR_PROVIDER`、`OCR_LANGUAGE`、`OCR_TESSERACT_BIN`、`OCR_MOCK_TEXT`。
+
+验证：
+
+- `node --check miniprogram/pages/notes/index.js && node --check miniprogram/services/api.js`：通过。
+- `/Users/yiyi/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3 -m compileall backend/app backend/tests`：通过。
+- `/Users/yiyi/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3 -m pytest backend/tests/test_app.py -q -k 'ocr_image_upload'`：1 passed。
+- 小程序所有 `.js` 执行 `node --check`：通过。
+- 小程序所有 `.json` 解析检查：通过。
+- `/Users/yiyi/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3 -m pytest backend/tests -q`：105 passed。
+- `git diff --check`：通过。
+
 ## 本次补充：归档 parser 插件化、识别解释和中置信人工确认
 
 背景：

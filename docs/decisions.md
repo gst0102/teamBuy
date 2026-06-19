@@ -2,6 +2,22 @@
 
 ## 2026-06-20
 
+### 决策：OCR 第一版作为图片输入适配器，不直接生成业务结果
+
+选择：
+
+- OCR 第一版新增 `POST /api/ocr/image-to-note`，图片上传后先识别文字，再统一进入 `ContentObject.sourceType=image_ocr -> content-to-note -> UserNote`。
+- OCR 结果保存到 `visibilityConfig.structuredData.ocr`，资料来源标记为 `sourceType=ocr`，标签包含 `图片识别`。
+- OCR 引擎做成可替换 provider：`auto / paddle / tesseract / mock`。
+- 当前代码不强制引入 PaddleOCR 或云 OCR SDK 依赖；生产部署时可按服务器环境安装 PaddleOCR 或 Tesseract，再通过环境变量启用。
+- OCR 未配置或识别为空时，仍保存图片资料，允许用户手动补正文和字段。
+
+原因：
+
+- OCR 是资料输入能力，不应绕开已有 typed card、识别解释和中置信人工确认机制。
+- PaddleOCR 依赖较重，直接写死会增加部署不确定性；先把业务链路、接口和前端入口稳定下来。
+- 后续如接腾讯云 OCR，也只替换 provider，不改变小程序和 `content-to-note` 主链路。
+
 ### 决策：中置信类型确认由后端统一执行
 
 选择：
