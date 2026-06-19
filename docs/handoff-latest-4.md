@@ -3,7 +3,7 @@
 更新时间：2026-06-20
 工作目录：`/Users/yiyi/Desktop/Desktop/myprojects/teamBuy`
 当前分支：`main...origin/main [ahead 8+]`
-当前状态：后端能力和小程序体验已分组提交；仍有文档归档待提交，`miniprogram/project.config.json` 和未跟踪 PDF 不纳入当前业务提交。小程序上传由用户手动完成，Codex 默认不要尝试微信开发者工具 CLI 上传。
+当前状态：后端能力和小程序体验已分组提交，生产后端已部署并完成公网冒烟；仍有部署结果文档归档待提交，`miniprogram/project.config.json` 和未跟踪 PDF 不纳入当前业务提交。小程序上传由用户手动完成，Codex 默认不要尝试微信开发者工具 CLI 上传。
 
 ## 1. 项目背景与目标
 
@@ -264,8 +264,12 @@ git diff --check
 
 ### 5.3 部署状态
 
-- 生产后端此前已部署过订单/消息相关能力，公网 `/health` 曾验证通过。
-- 但当前本地最新改动包含后续 P1、消息参与者、聊天左右气泡等补丁，不能假设已经全部部署到生产。
+- 当前生产后端已部署本轮最新后端代码。
+- 同步前备份路径：`/home/ubuntu/teamBuy-deploy-backups/20260620-031227`。
+- 已重建并重启生产 `teambuy-backend` 容器。
+- 公网 `/health` 返回 `status=ok`，Postgres configured。
+- 公网 `/api/orders?userId=user_test&role=buyer` 返回 200 空订单列表。
+- 公网 `/api/messages/threads?userId=user_test` 返回 200 空会话列表。
 - 小程序体验版/上传由用户手动在微信开发者工具完成；Codex 默认不要尝试 CLI 上传。
 
 ## 6. 已知问题和风险

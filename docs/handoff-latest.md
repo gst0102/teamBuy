@@ -11,7 +11,9 @@
 - 已提交后端能力：`feat: add lightweight orders and messaging backend`，包含订单接口、消息接口、消息模型、归档 parser、schema、测试和 mock 数据。
 - 已提交小程序体验：`feat: add miniapp orders and messaging flows`，包含订单页、消息页、消息入口组件、商品 SKU/名单体验、客户页和我的页入口。
 - 本轮收口验证：小程序全量 JS 检查通过；小程序 JSON 解析通过；Python 3.12 `compileall` 通过；`pytest backend/tests/test_app.py -q` 为 66 passed；`pytest backend/tests -q` 为 103 passed；`git diff --check` 通过。
-- 下一步继续执行生产后端部署，部署后补充公网验证结果；小程序体验版仍由用户在微信开发者工具中手动上传。
+- 生产后端已部署：同步前备份到 `/home/ubuntu/teamBuy-deploy-backups/20260620-031227`，已重建并重启 `teambuy-backend`。
+- 公网验证通过：`/health` 正常；`/api/orders?userId=user_test&role=buyer` 返回 200 空列表；`/api/messages/threads?userId=user_test` 返回 200 空会话列表。
+- 小程序体验版仍由用户在微信开发者工具中手动上传。
 - 站内消息详情页已改为微信式左右对话：当前登录用户消息在右侧，绿色气泡，头像在右；对方消息在左侧，白色气泡，头像在左，并展示对方昵称。
 - 已修正“我的消息头像在气泡右边但整组仍贴左侧”的问题：消息行保持 `justify-content:flex-end`，只对我的头像/气泡设置排序，不再反转整条 flex 主轴。
 - 后端消息线程行已返回 `participants`，包含 owner/buyer 的角色、昵称和头像；消息页不再只能按 senderUserId 猜测展示。

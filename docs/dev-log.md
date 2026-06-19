@@ -22,6 +22,19 @@
 - `/Users/yiyi/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3 -m pytest backend/tests -q`：103 passed。
 - `git diff --check`：通过。
 
+部署：
+
+- 已通过 SSH 访问生产服务器 `ubuntu@81.70.84.35`，生产目录为 `/home/ubuntu/teamBuy`。
+- 同步前已备份生产 `backend/app`、`backend/tests`、`backend/mock` 和 `docker-compose.yml` 到 `/home/ubuntu/teamBuy-deploy-backups/20260620-031227`。
+- 已用 `rsync` 同步本地 `backend/app/`、`backend/tests/`、`backend/mock/`、`backend/requirements.txt`、`backend/Dockerfile`、`backend/.env.example` 到生产，排除生产 `.env`、`secrets/`、媒体目录和 `backend/mock/runtime-state.json`。
+- 已重建并重启生产 `teambuy-backend` 容器。
+
+公网验证：
+
+- `GET https://teambuy.lifelove.top/health`：返回 `status=ok`，Postgres configured。
+- `GET https://teambuy.lifelove.top/api/orders?userId=user_test&role=buyer`：返回 200，空订单列表。
+- `GET https://teambuy.lifelove.top/api/messages/threads?userId=user_test`：返回 200，空会话列表，`unreadTotal=0`。
+
 ## 本次补充：站内消息左右气泡
 
 背景：
