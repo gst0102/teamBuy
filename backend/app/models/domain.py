@@ -22,11 +22,13 @@ ArchiveCursorStatus = Literal["idle", "running", "success", "failed"]
 CustomerActionKey = Literal[
     "lead-contact",
     "appointment",
+    "order-intent",
     "relay-intent",
     "consult-click",
     "navigation-click",
     "external-open",
 ]
+MessageThreadStatus = Literal["active", "archived"]
 
 
 class User(BaseModel):
@@ -218,6 +220,30 @@ class CustomerAction(BaseModel):
     updatedAt: str
 
 
+class MessageThread(BaseModel):
+    id: str
+    noteId: str
+    orderActionId: str | None = None
+    ownerUserId: str
+    buyerUserId: str
+    participantUserIds: list[str] = Field(default_factory=list)
+    title: str
+    lastMessage: str = ""
+    lastMessageAt: str | None = None
+    unreadByUser: dict[str, int] = Field(default_factory=dict)
+    status: MessageThreadStatus = "active"
+    createdAt: str
+    updatedAt: str
+
+
+class MessageRecord(BaseModel):
+    id: str
+    threadId: str
+    senderUserId: str
+    content: str
+    createdAt: str
+
+
 class Category(BaseModel):
     id: str
     ownerUserId: str
@@ -363,6 +389,8 @@ class AppState(BaseModel):
     relay_entries: list[RelayEntry] = Field(default_factory=list)
     lead_reminders: list[LeadReminder] = Field(default_factory=list)
     customer_actions: list[CustomerAction] = Field(default_factory=list)
+    message_threads: list[MessageThread] = Field(default_factory=list)
+    message_records: list[MessageRecord] = Field(default_factory=list)
     categories: list[Category] = Field(default_factory=list)
     topics: list[Topic] = Field(default_factory=list)
     import_notifications: list[ImportNotification] = Field(default_factory=list)

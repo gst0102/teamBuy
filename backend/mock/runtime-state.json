@@ -9,8 +9,49 @@
       "phone": "13900000000",
       "createdAt": "2026-06-08T09:00:00+08:00",
       "updatedAt": "2026-06-08T09:00:00+08:00"
+    },
+    {
+      "id": "user_18f8b72d63",
+      "openid": "openid_screenshot_test",
+      "unionid": null,
+      "nickname": "截图测试用户",
+      "avatarUrl": "https://example.com/avatar-default.png",
+      "phone": null,
+      "createdAt": "2026-06-19T07:14:45.556081+08:00",
+      "updatedAt": "2026-06-19T07:14:45.556081+08:00"
+    },
+    {
+      "id": "user_ad48dcf817",
+      "openid": "mock_1781816790310_779d01a1b5aa",
+      "unionid": null,
+      "nickname": "微信用户",
+      "avatarUrl": "https://example.com/avatar-local.png",
+      "phone": null,
+      "createdAt": "2026-06-19T07:28:57.692191+08:00",
+      "updatedAt": "2026-06-19T07:28:57.692191+08:00"
+    },
+    {
+      "id": "user_964b1d4df3",
+      "openid": "mock_1781824652487_59b740367cd13",
+      "unionid": null,
+      "nickname": "微信用户",
+      "avatarUrl": "https://example.com/avatar-local.png",
+      "phone": null,
+      "createdAt": "2026-06-19T07:17:32.503852+08:00",
+      "updatedAt": "2026-06-19T07:44:53.537696+08:00"
+    },
+    {
+      "id": "user_111f16d8d3",
+      "openid": "mock_1781817373101_bb5b1f931a0a1",
+      "unionid": null,
+      "nickname": "微信用户",
+      "avatarUrl": "https://example.com/avatar-local.png",
+      "phone": null,
+      "createdAt": "2026-06-19T07:32:40.427967+08:00",
+      "updatedAt": "2026-06-19T07:53:55.103780+08:00"
     }
   ],
+  "wecom_identity_bindings": [],
   "import_batches": [],
   "raw_messages": [],
   "cards": [
@@ -59,6 +100,1539 @@
       "updatedAt": "2026-06-08T09:00:00+08:00"
     }
   ],
+  "user_notes": [
+    {
+      "id": "note_seed_groupbuy_product_001",
+      "ownerUserId": "user_seed_owner",
+      "importBatchId": null,
+      "sourceCardId": null,
+      "status": "active",
+      "title": "周末现摘草莓商品展示",
+      "summary": "多规格草莓商品展示，可开启团购接龙。",
+      "body": "周末现摘草莓，支持 1 斤尝鲜装和 3 斤家庭装。团长可在商品工作台调整 SKU、售罄状态和接龙开关。",
+      "coverUrl": "https://images.unsplash.com/photo-1464965911861-746a04b4bca6?auto=format&fit=crop&w=900&q=80",
+      "media": [
+        {
+          "id": "note_media_seed_strawberry_001",
+          "type": "image",
+          "url": "https://images.unsplash.com/photo-1464965911861-746a04b4bca6?auto=format&fit=crop&w=900&q=80",
+          "sortOrder": 1
+        }
+      ],
+      "categoryIds": [
+        "cat_seed_group"
+      ],
+      "phone": "13900000000",
+      "locationText": "社区自提点",
+      "sourceRefs": [],
+      "visibilityConfig": {
+        "cardType": "groupbuy_product",
+        "cardState": "generated",
+        "structuredData": {
+          "productName": "周末现摘草莓",
+          "price": "28-78 元",
+          "spec": "按口味和规格选择",
+          "deliveryMethod": "社区自提 / 同城配送",
+          "pickupLocation": "社区自提点，具体地址群内通知",
+          "contactPhone": "13900000000",
+          "stockNote": "数量有限，售罄 SKU 不可接龙",
+          "deadline": "",
+          "skuConfig": {
+            "attributeGroups": [
+              {
+                "id": "group_flavor",
+                "name": "口味",
+                "options": [
+                  {
+                    "id": "flavor_sweet",
+                    "label": "甜口"
+                  },
+                  {
+                    "id": "flavor_sour_sweet",
+                    "label": "酸甜"
+                  }
+                ]
+              },
+              {
+                "id": "group_size",
+                "name": "规格",
+                "options": [
+                  {
+                    "id": "size_1jin",
+                    "label": "1斤装"
+                  },
+                  {
+                    "id": "size_3jin",
+                    "label": "3斤装"
+                  }
+                ]
+              }
+            ],
+            "skus": [
+              {
+                "id": "sku_sweet_1jin",
+                "key": "flavor_sweet|size_1jin",
+                "name": "甜口 / 1斤装",
+                "price": "28",
+                "description": "适合尝鲜",
+                "soldOut": false
+              },
+              {
+                "id": "sku_sweet_3jin",
+                "key": "flavor_sweet|size_3jin",
+                "name": "甜口 / 3斤装",
+                "price": "78",
+                "description": "家庭分享装",
+                "soldOut": false
+              },
+              {
+                "id": "sku_sour_sweet_1jin",
+                "key": "flavor_sour_sweet|size_1jin",
+                "name": "酸甜 / 1斤装",
+                "price": "26",
+                "description": "口感更清爽",
+                "soldOut": true
+              },
+              {
+                "id": "sku_sour_sweet_3jin",
+                "key": "flavor_sour_sweet|size_3jin",
+                "name": "酸甜 / 3斤装",
+                "price": "72",
+                "description": "适合做果酱",
+                "soldOut": false
+              }
+            ]
+          }
+        },
+        "conversionConfig": {
+          "showContactPhone": true,
+          "enableLightScrm": false,
+          "collectLeads": false,
+          "enableAppointment": false,
+          "enablePrivateChat": false,
+          "enableGroupRelay": true,
+          "enableSharePoster": true,
+          "enablePaymentPlaceholder": false
+        }
+      },
+      "createdAt": "2026-06-19T10:00:00+08:00",
+      "updatedAt": "2026-06-19T10:00:00+08:00"
+    },
+    {
+      "id": "note_977fafcb90",
+      "ownerUserId": "user_18f8b72d63",
+      "importBatchId": null,
+      "sourceCardId": null,
+      "status": "active",
+      "title": "测试房源A 万润时光里 27050 两房 近地铁",
+      "summary": "用于测试轻 SCRM 红点、留资和预约。",
+      "body": "万润时光里，27050，loft 两房，万家丽 / 地铁口，带轻 SCRM 演示数据。",
+      "coverUrl": null,
+      "media": [],
+      "categoryIds": [],
+      "phone": "13800001001",
+      "locationText": "长沙万润时光里",
+      "sourceRefs": [],
+      "visibilityConfig": {
+        "cardType": "property_listing",
+        "cardState": "generated",
+        "contentMode": "generated_card",
+        "tags": [
+          "房源",
+          "演示数据"
+        ],
+        "conversionConfig": {
+          "showContactPhone": true,
+          "enableLightScrm": true,
+          "collectLeads": true,
+          "enableAppointment": true,
+          "enablePrivateConsultation": true,
+          "enableSharePoster": true,
+          "enableGroupRelay": false,
+          "enablePaymentPlaceholder": false
+        },
+        "structuredData": {
+          "community": "万润时光里",
+          "price": "27050",
+          "layout": "loft 两房",
+          "businessArea": "万家丽 / 地铁口",
+          "address": "长沙万润时光里",
+          "contact": "13800001001",
+          "organizeResult": {
+            "summary": "用于测试轻 SCRM 红点、留资和预约。",
+            "generationOptions": [
+              "房源推广图",
+              "微信群文案",
+              "客户话术",
+              "对比表"
+            ],
+            "enabledFeatures": [
+              "展示联系电话",
+              "轻 SCRM 跟进",
+              "收集线索",
+              "预约看房"
+            ]
+          },
+          "generatedResult": {
+            "pageType": "property_promo_page",
+            "status": "generated",
+            "enabledActions": [
+              "展示联系电话",
+              "轻 SCRM 跟进",
+              "收集线索",
+              "预约看房"
+            ],
+            "note": "演示数据"
+          }
+        }
+      },
+      "createdAt": "2026-06-19T07:14:45.562113+08:00",
+      "updatedAt": "2026-06-19T07:14:45.562113+08:00"
+    },
+    {
+      "id": "note_af4c82d94d",
+      "ownerUserId": "user_18f8b72d63",
+      "importBatchId": null,
+      "sourceCardId": null,
+      "status": "active",
+      "title": "测试房源B 高桥北 精装一房 可短租",
+      "summary": "用于测试已联系线索和拨号入口。",
+      "body": "高桥北公寓，1600元/月，精装一房，高桥北，带轻 SCRM 演示数据。",
+      "coverUrl": null,
+      "media": [],
+      "categoryIds": [],
+      "phone": "13800001002",
+      "locationText": "长沙高桥北",
+      "sourceRefs": [],
+      "visibilityConfig": {
+        "cardType": "property_listing",
+        "cardState": "generated",
+        "contentMode": "generated_card",
+        "tags": [
+          "房源",
+          "演示数据"
+        ],
+        "conversionConfig": {
+          "showContactPhone": true,
+          "enableLightScrm": true,
+          "collectLeads": true,
+          "enableAppointment": true,
+          "enablePrivateConsultation": true,
+          "enableSharePoster": true,
+          "enableGroupRelay": false,
+          "enablePaymentPlaceholder": false
+        },
+        "structuredData": {
+          "community": "高桥北公寓",
+          "price": "1600元/月",
+          "layout": "精装一房",
+          "businessArea": "高桥北",
+          "address": "长沙高桥北",
+          "contact": "13800001002",
+          "organizeResult": {
+            "summary": "用于测试已联系线索和拨号入口。",
+            "generationOptions": [
+              "房源推广图",
+              "微信群文案",
+              "客户话术",
+              "对比表"
+            ],
+            "enabledFeatures": [
+              "展示联系电话",
+              "轻 SCRM 跟进",
+              "收集线索",
+              "预约看房"
+            ]
+          },
+          "generatedResult": {
+            "pageType": "property_promo_page",
+            "status": "generated",
+            "enabledActions": [
+              "展示联系电话",
+              "轻 SCRM 跟进",
+              "收集线索",
+              "预约看房"
+            ],
+            "note": "演示数据"
+          }
+        }
+      },
+      "createdAt": "2026-06-19T07:14:45.562113+08:00",
+      "updatedAt": "2026-06-19T07:14:45.562113+08:00"
+    },
+    {
+      "id": "note_8850cb9b0e",
+      "ownerUserId": "user_18f8b72d63",
+      "importBatchId": null,
+      "sourceCardId": null,
+      "status": "active",
+      "title": "测试房源C 袁隆平地铁口 民水民电 首次出",
+      "summary": "用于测试无客户动作时的空状态。",
+      "body": "袁隆平地铁口公寓，1800元/月，一室一厅，袁隆平地铁口，带轻 SCRM 演示数据。",
+      "coverUrl": null,
+      "media": [],
+      "categoryIds": [],
+      "phone": "13800001003",
+      "locationText": "长沙袁隆平地铁口",
+      "sourceRefs": [],
+      "visibilityConfig": {
+        "cardType": "property_listing",
+        "cardState": "generated",
+        "contentMode": "generated_card",
+        "tags": [
+          "房源",
+          "演示数据"
+        ],
+        "conversionConfig": {
+          "showContactPhone": true,
+          "enableLightScrm": true,
+          "collectLeads": true,
+          "enableAppointment": true,
+          "enablePrivateConsultation": true,
+          "enableSharePoster": true,
+          "enableGroupRelay": false,
+          "enablePaymentPlaceholder": false
+        },
+        "structuredData": {
+          "community": "袁隆平地铁口公寓",
+          "price": "1800元/月",
+          "layout": "一室一厅",
+          "businessArea": "袁隆平地铁口",
+          "address": "长沙袁隆平地铁口",
+          "contact": "13800001003",
+          "organizeResult": {
+            "summary": "用于测试无客户动作时的空状态。",
+            "generationOptions": [
+              "房源推广图",
+              "微信群文案",
+              "客户话术",
+              "对比表"
+            ],
+            "enabledFeatures": [
+              "展示联系电话",
+              "轻 SCRM 跟进",
+              "收集线索",
+              "预约看房"
+            ]
+          },
+          "generatedResult": {
+            "pageType": "property_promo_page",
+            "status": "generated",
+            "enabledActions": [
+              "展示联系电话",
+              "轻 SCRM 跟进",
+              "收集线索",
+              "预约看房"
+            ],
+            "note": "演示数据"
+          }
+        }
+      },
+      "createdAt": "2026-06-19T07:14:45.562113+08:00",
+      "updatedAt": "2026-06-19T07:14:45.562113+08:00"
+    },
+    {
+      "id": "note_f55f335371",
+      "ownerUserId": "user_18f8b72d63",
+      "importBatchId": null,
+      "sourceCardId": null,
+      "status": "active",
+      "title": "测试商品 周末现摘草莓",
+      "summary": "用于测试商品展示、SKU 售罄和团购接龙。",
+      "body": "周末现摘草莓，支持多规格选择；售罄 SKU 不可提交，接龙不进入 SCRM。",
+      "coverUrl": "https://images.unsplash.com/photo-1464965911861-746a04b4bca6?auto=format&fit=crop&w=900&q=80",
+      "media": [
+        {
+          "id": "media_68e35651b2",
+          "type": "image",
+          "url": "https://images.unsplash.com/photo-1464965911861-746a04b4bca6?auto=format&fit=crop&w=900&q=80",
+          "sortOrder": 1
+        }
+      ],
+      "categoryIds": [],
+      "phone": "13800001004",
+      "locationText": "社区自提点",
+      "sourceRefs": [],
+      "visibilityConfig": {
+        "cardType": "groupbuy_product",
+        "cardState": "generated",
+        "contentMode": "generated_card",
+        "tags": [
+          "商品",
+          "团购",
+          "演示数据"
+        ],
+        "conversionConfig": {
+          "showContactPhone": true,
+          "enableLightScrm": false,
+          "collectLeads": false,
+          "enableAppointment": false,
+          "enablePrivateConsultation": false,
+          "enableSharePoster": true,
+          "enableGroupRelay": true,
+          "enablePaymentPlaceholder": false
+        },
+        "structuredData": {
+          "productName": "周末现摘草莓",
+          "price": "28-78 元",
+          "spec": "按口味和规格选择",
+          "deliveryMethod": "社区自提 / 同城配送",
+          "pickupLocation": "社区自提点，具体地址群内通知",
+          "contactPhone": "13800001004",
+          "stockNote": "数量有限，售罄 SKU 不可接龙",
+          "deadline": "",
+          "skuConfig": {
+            "attributeGroups": [
+              {
+                "id": "taste",
+                "name": "口味",
+                "options": [
+                  {
+                    "id": "sweet",
+                    "label": "甜口"
+                  },
+                  {
+                    "id": "sour_sweet",
+                    "label": "酸甜"
+                  }
+                ]
+              },
+              {
+                "id": "size",
+                "name": "规格",
+                "options": [
+                  {
+                    "id": "one_jin",
+                    "label": "1斤装"
+                  },
+                  {
+                    "id": "three_jin",
+                    "label": "3斤装"
+                  }
+                ]
+              }
+            ],
+            "skus": [
+              {
+                "id": "sku_sweet_one",
+                "key": "sweet|one_jin",
+                "name": "甜口 / 1斤装",
+                "price": "28",
+                "description": "适合尝鲜",
+                "soldOut": false
+              },
+              {
+                "id": "sku_sweet_three",
+                "key": "sweet|three_jin",
+                "name": "甜口 / 3斤装",
+                "price": "78",
+                "description": "家庭分享装",
+                "soldOut": false
+              },
+              {
+                "id": "sku_sour_one",
+                "key": "sour_sweet|one_jin",
+                "name": "酸甜 / 1斤装",
+                "price": "26",
+                "description": "口感清爽",
+                "soldOut": true
+              },
+              {
+                "id": "sku_sour_three",
+                "key": "sour_sweet|three_jin",
+                "name": "酸甜 / 3斤装",
+                "price": "72",
+                "description": "适合做果酱",
+                "soldOut": false
+              }
+            ]
+          }
+        }
+      },
+      "createdAt": "2026-06-19T07:14:45.562113+08:00",
+      "updatedAt": "2026-06-19T07:14:45.562113+08:00"
+    },
+    {
+      "id": "note_0fea0fd25b",
+      "ownerUserId": "user_964b1d4df3",
+      "importBatchId": null,
+      "sourceCardId": null,
+      "status": "active",
+      "title": "测试房源A 万润时光里 27050 两房 近地铁",
+      "summary": "用于测试轻 SCRM 红点、留资和预约。",
+      "body": "万润时光里，27050，loft 两房，万家丽 / 地铁口，带轻 SCRM 演示数据。",
+      "coverUrl": null,
+      "media": [],
+      "categoryIds": [],
+      "phone": "13800001001",
+      "locationText": "长沙万润时光里",
+      "sourceRefs": [],
+      "visibilityConfig": {
+        "cardType": "property_listing",
+        "cardState": "generated",
+        "contentMode": "generated_card",
+        "tags": [
+          "房源",
+          "演示数据"
+        ],
+        "conversionConfig": {
+          "showContactPhone": true,
+          "enableLightScrm": true,
+          "collectLeads": true,
+          "enableAppointment": true,
+          "enablePrivateConsultation": true,
+          "enableSharePoster": true,
+          "enableGroupRelay": false,
+          "enablePaymentPlaceholder": false
+        },
+        "structuredData": {
+          "community": "万润时光里",
+          "price": "27050",
+          "layout": "loft 两房",
+          "businessArea": "万家丽 / 地铁口",
+          "address": "长沙万润时光里",
+          "contact": "13800001001",
+          "organizeResult": {
+            "summary": "用于测试轻 SCRM 红点、留资和预约。",
+            "generationOptions": [
+              "房源推广图",
+              "微信群文案",
+              "客户话术",
+              "对比表"
+            ],
+            "enabledFeatures": [
+              "展示联系电话",
+              "轻 SCRM 跟进",
+              "收集线索",
+              "预约看房"
+            ]
+          },
+          "generatedResult": {
+            "pageType": "property_promo_page",
+            "status": "generated",
+            "enabledActions": [
+              "展示联系电话",
+              "轻 SCRM 跟进",
+              "收集线索",
+              "预约看房"
+            ],
+            "note": "演示数据"
+          }
+        }
+      },
+      "createdAt": "2026-06-19T07:17:36.793988+08:00",
+      "updatedAt": "2026-06-19T07:17:36.793988+08:00"
+    },
+    {
+      "id": "note_3c209e13db",
+      "ownerUserId": "user_964b1d4df3",
+      "importBatchId": null,
+      "sourceCardId": null,
+      "status": "active",
+      "title": "测试房源B 高桥北 精装一房 可短租",
+      "summary": "用于测试已联系线索和拨号入口。",
+      "body": "高桥北公寓，1600元/月，精装一房，高桥北，带轻 SCRM 演示数据。",
+      "coverUrl": null,
+      "media": [],
+      "categoryIds": [],
+      "phone": "13800001002",
+      "locationText": "长沙高桥北",
+      "sourceRefs": [],
+      "visibilityConfig": {
+        "cardType": "property_listing",
+        "cardState": "generated",
+        "contentMode": "generated_card",
+        "tags": [
+          "房源",
+          "演示数据"
+        ],
+        "conversionConfig": {
+          "showContactPhone": true,
+          "enableLightScrm": true,
+          "collectLeads": true,
+          "enableAppointment": true,
+          "enablePrivateConsultation": true,
+          "enableSharePoster": true,
+          "enableGroupRelay": false,
+          "enablePaymentPlaceholder": false
+        },
+        "structuredData": {
+          "community": "高桥北公寓",
+          "price": "1600元/月",
+          "layout": "精装一房",
+          "businessArea": "高桥北",
+          "address": "长沙高桥北",
+          "contact": "13800001002",
+          "organizeResult": {
+            "summary": "用于测试已联系线索和拨号入口。",
+            "generationOptions": [
+              "房源推广图",
+              "微信群文案",
+              "客户话术",
+              "对比表"
+            ],
+            "enabledFeatures": [
+              "展示联系电话",
+              "轻 SCRM 跟进",
+              "收集线索",
+              "预约看房"
+            ]
+          },
+          "generatedResult": {
+            "pageType": "property_promo_page",
+            "status": "generated",
+            "enabledActions": [
+              "展示联系电话",
+              "轻 SCRM 跟进",
+              "收集线索",
+              "预约看房"
+            ],
+            "note": "演示数据"
+          }
+        }
+      },
+      "createdAt": "2026-06-19T07:17:36.793988+08:00",
+      "updatedAt": "2026-06-19T07:17:36.793988+08:00"
+    },
+    {
+      "id": "note_cb21ade092",
+      "ownerUserId": "user_964b1d4df3",
+      "importBatchId": null,
+      "sourceCardId": null,
+      "status": "active",
+      "title": "测试房源C 袁隆平地铁口 民水民电 首次出",
+      "summary": "用于测试无客户动作时的空状态。",
+      "body": "袁隆平地铁口公寓，1800元/月，一室一厅，袁隆平地铁口，带轻 SCRM 演示数据。",
+      "coverUrl": null,
+      "media": [],
+      "categoryIds": [],
+      "phone": "13800001003",
+      "locationText": "长沙袁隆平地铁口",
+      "sourceRefs": [],
+      "visibilityConfig": {
+        "cardType": "property_listing",
+        "cardState": "generated",
+        "contentMode": "generated_card",
+        "tags": [
+          "房源",
+          "演示数据"
+        ],
+        "conversionConfig": {
+          "showContactPhone": true,
+          "enableLightScrm": true,
+          "collectLeads": true,
+          "enableAppointment": true,
+          "enablePrivateConsultation": true,
+          "enableSharePoster": true,
+          "enableGroupRelay": false,
+          "enablePaymentPlaceholder": false
+        },
+        "structuredData": {
+          "community": "袁隆平地铁口公寓",
+          "price": "1800元/月",
+          "layout": "一室一厅",
+          "businessArea": "袁隆平地铁口",
+          "address": "长沙袁隆平地铁口",
+          "contact": "13800001003",
+          "organizeResult": {
+            "summary": "用于测试无客户动作时的空状态。",
+            "generationOptions": [
+              "房源推广图",
+              "微信群文案",
+              "客户话术",
+              "对比表"
+            ],
+            "enabledFeatures": [
+              "展示联系电话",
+              "轻 SCRM 跟进",
+              "收集线索",
+              "预约看房"
+            ]
+          },
+          "generatedResult": {
+            "pageType": "property_promo_page",
+            "status": "generated",
+            "enabledActions": [
+              "展示联系电话",
+              "轻 SCRM 跟进",
+              "收集线索",
+              "预约看房"
+            ],
+            "note": "演示数据"
+          }
+        }
+      },
+      "createdAt": "2026-06-19T07:17:36.793988+08:00",
+      "updatedAt": "2026-06-19T07:17:36.793988+08:00"
+    },
+    {
+      "id": "note_85b1cb998f",
+      "ownerUserId": "user_964b1d4df3",
+      "importBatchId": null,
+      "sourceCardId": null,
+      "status": "active",
+      "title": "测试商品 周末现摘草莓",
+      "summary": "用于测试商品展示、SKU 售罄和团购接龙。",
+      "body": "周末现摘草莓，支持多规格选择；售罄 SKU 不可提交，接龙不进入 SCRM。",
+      "coverUrl": "https://images.unsplash.com/photo-1464965911861-746a04b4bca6?auto=format&fit=crop&w=900&q=80",
+      "media": [
+        {
+          "id": "media_eea52fc5bc",
+          "type": "image",
+          "url": "https://images.unsplash.com/photo-1464965911861-746a04b4bca6?auto=format&fit=crop&w=900&q=80",
+          "sortOrder": 1
+        }
+      ],
+      "categoryIds": [],
+      "phone": "13800001004",
+      "locationText": "社区自提点",
+      "sourceRefs": [],
+      "visibilityConfig": {
+        "cardType": "groupbuy_product",
+        "cardState": "generated",
+        "contentMode": "generated_card",
+        "tags": [
+          "商品",
+          "团购",
+          "演示数据"
+        ],
+        "conversionConfig": {
+          "showContactPhone": true,
+          "enableLightScrm": false,
+          "collectLeads": false,
+          "enableAppointment": false,
+          "enablePrivateConsultation": false,
+          "enableSharePoster": true,
+          "enableGroupRelay": true,
+          "enablePaymentPlaceholder": false
+        },
+        "structuredData": {
+          "productName": "周末现摘草莓",
+          "price": "28-78 元",
+          "spec": "按口味和规格选择",
+          "deliveryMethod": "社区自提 / 同城配送",
+          "pickupLocation": "社区自提点，具体地址群内通知",
+          "contactPhone": "13800001004",
+          "stockNote": "数量有限，售罄 SKU 不可接龙",
+          "deadline": "",
+          "skuConfig": {
+            "attributeGroups": [
+              {
+                "id": "taste",
+                "name": "口味",
+                "options": [
+                  {
+                    "id": "sweet",
+                    "label": "甜口"
+                  },
+                  {
+                    "id": "sour_sweet",
+                    "label": "酸甜"
+                  }
+                ]
+              },
+              {
+                "id": "size",
+                "name": "规格",
+                "options": [
+                  {
+                    "id": "one_jin",
+                    "label": "1斤装"
+                  },
+                  {
+                    "id": "three_jin",
+                    "label": "3斤装"
+                  }
+                ]
+              }
+            ],
+            "skus": [
+              {
+                "id": "sku_sweet_one",
+                "key": "sweet|one_jin",
+                "name": "甜口 / 1斤装",
+                "price": "28",
+                "description": "适合尝鲜",
+                "soldOut": false
+              },
+              {
+                "id": "sku_sweet_three",
+                "key": "sweet|three_jin",
+                "name": "甜口 / 3斤装",
+                "price": "78",
+                "description": "家庭分享装",
+                "soldOut": false
+              },
+              {
+                "id": "sku_sour_one",
+                "key": "sour_sweet|one_jin",
+                "name": "酸甜 / 1斤装",
+                "price": "26",
+                "description": "口感清爽",
+                "soldOut": true
+              },
+              {
+                "id": "sku_sour_three",
+                "key": "sour_sweet|three_jin",
+                "name": "酸甜 / 3斤装",
+                "price": "72",
+                "description": "适合做果酱",
+                "soldOut": false
+              }
+            ]
+          }
+        }
+      },
+      "createdAt": "2026-06-19T07:17:36.793988+08:00",
+      "updatedAt": "2026-06-19T07:17:36.793988+08:00"
+    },
+    {
+      "id": "note_87e4d1c178",
+      "ownerUserId": "user_ad48dcf817",
+      "importBatchId": null,
+      "sourceCardId": null,
+      "status": "active",
+      "title": "测试房源B 高桥北 精装一房 可短租",
+      "summary": "用于测试已联系线索和拨号入口。",
+      "body": "高桥北公寓，1600元/月，精装一房，高桥北，带轻 SCRM 演示数据。",
+      "coverUrl": null,
+      "media": [],
+      "categoryIds": [],
+      "phone": "13800001002",
+      "locationText": "长沙高桥北",
+      "sourceRefs": [],
+      "visibilityConfig": {
+        "cardType": "property_listing",
+        "cardState": "generated",
+        "contentMode": "generated_card",
+        "tags": [
+          "房源",
+          "演示数据"
+        ],
+        "conversionConfig": {
+          "showContactPhone": true,
+          "enableLightScrm": true,
+          "collectLeads": true,
+          "enableAppointment": true,
+          "enablePrivateConsultation": true,
+          "enableSharePoster": true,
+          "enableGroupRelay": false,
+          "enablePaymentPlaceholder": false
+        },
+        "structuredData": {
+          "community": "高桥北公寓",
+          "price": "1600元/月",
+          "layout": "精装一房",
+          "businessArea": "高桥北",
+          "address": "长沙高桥北",
+          "contact": "13800001002",
+          "organizeResult": {
+            "summary": "用于测试已联系线索和拨号入口。",
+            "generationOptions": [
+              "房源推广图",
+              "微信群文案",
+              "客户话术",
+              "对比表"
+            ],
+            "enabledFeatures": [
+              "展示联系电话",
+              "轻 SCRM 跟进",
+              "收集线索",
+              "预约看房"
+            ]
+          },
+          "generatedResult": {
+            "pageType": "property_promo_page",
+            "status": "generated",
+            "enabledActions": [
+              "展示联系电话",
+              "轻 SCRM 跟进",
+              "收集线索",
+              "预约看房"
+            ],
+            "note": "演示数据"
+          }
+        }
+      },
+      "createdAt": "2026-06-19T07:29:00.978782+08:00",
+      "updatedAt": "2026-06-19T07:29:00.978782+08:00"
+    },
+    {
+      "id": "note_a1651945ae",
+      "ownerUserId": "user_ad48dcf817",
+      "importBatchId": null,
+      "sourceCardId": null,
+      "status": "active",
+      "title": "测试房源C 袁隆平地铁口 民水民电 首次出",
+      "summary": "用于测试无客户动作时的空状态。",
+      "body": "袁隆平地铁口公寓，1800元/月，一室一厅，袁隆平地铁口，带轻 SCRM 演示数据。",
+      "coverUrl": null,
+      "media": [],
+      "categoryIds": [],
+      "phone": "13800001003",
+      "locationText": "长沙袁隆平地铁口",
+      "sourceRefs": [],
+      "visibilityConfig": {
+        "cardType": "property_listing",
+        "cardState": "generated",
+        "contentMode": "generated_card",
+        "tags": [
+          "房源",
+          "演示数据"
+        ],
+        "conversionConfig": {
+          "showContactPhone": true,
+          "enableLightScrm": true,
+          "collectLeads": true,
+          "enableAppointment": true,
+          "enablePrivateConsultation": true,
+          "enableSharePoster": true,
+          "enableGroupRelay": false,
+          "enablePaymentPlaceholder": false
+        },
+        "structuredData": {
+          "community": "袁隆平地铁口公寓",
+          "price": "1800元/月",
+          "layout": "一室一厅",
+          "businessArea": "袁隆平地铁口",
+          "address": "长沙袁隆平地铁口",
+          "contact": "13800001003",
+          "organizeResult": {
+            "summary": "用于测试无客户动作时的空状态。",
+            "generationOptions": [
+              "房源推广图",
+              "微信群文案",
+              "客户话术",
+              "对比表"
+            ],
+            "enabledFeatures": [
+              "展示联系电话",
+              "轻 SCRM 跟进",
+              "收集线索",
+              "预约看房"
+            ]
+          },
+          "generatedResult": {
+            "pageType": "property_promo_page",
+            "status": "generated",
+            "enabledActions": [
+              "展示联系电话",
+              "轻 SCRM 跟进",
+              "收集线索",
+              "预约看房"
+            ],
+            "note": "演示数据"
+          }
+        }
+      },
+      "createdAt": "2026-06-19T07:29:00.978782+08:00",
+      "updatedAt": "2026-06-19T07:29:00.978782+08:00"
+    },
+    {
+      "id": "note_c632c459dd",
+      "ownerUserId": "user_111f16d8d3",
+      "importBatchId": null,
+      "sourceCardId": null,
+      "status": "active",
+      "title": "测试房源A 万润时光里 27050 两房 近地铁",
+      "summary": "用于测试轻 SCRM 红点、留资和预约。",
+      "body": "万润时光里，27050，loft 两房，万家丽 / 地铁口，带轻 SCRM 演示数据。",
+      "coverUrl": null,
+      "media": [],
+      "categoryIds": [],
+      "phone": "13800001001",
+      "locationText": "长沙万润时光里",
+      "sourceRefs": [],
+      "visibilityConfig": {
+        "cardType": "property_listing",
+        "cardState": "generated",
+        "contentMode": "generated_card",
+        "tags": [
+          "房源",
+          "演示数据"
+        ],
+        "conversionConfig": {
+          "showContactPhone": true,
+          "enableLightScrm": true,
+          "collectLeads": true,
+          "enableAppointment": true,
+          "enablePrivateConsultation": true,
+          "enableSharePoster": true,
+          "enableGroupRelay": false,
+          "enablePaymentPlaceholder": false
+        },
+        "structuredData": {
+          "community": "万润时光里",
+          "price": "27050",
+          "layout": "loft 两房",
+          "businessArea": "万家丽 / 地铁口",
+          "address": "长沙万润时光里",
+          "contact": "13800001001",
+          "organizeResult": {
+            "summary": "用于测试轻 SCRM 红点、留资和预约。",
+            "generationOptions": [
+              "房源推广图",
+              "微信群文案",
+              "客户话术",
+              "对比表"
+            ],
+            "enabledFeatures": [
+              "展示联系电话",
+              "轻 SCRM 跟进",
+              "收集线索",
+              "预约看房"
+            ]
+          },
+          "generatedResult": {
+            "pageType": "property_promo_page",
+            "status": "generated",
+            "enabledActions": [
+              "展示联系电话",
+              "轻 SCRM 跟进",
+              "收集线索",
+              "预约看房"
+            ],
+            "note": "演示数据"
+          }
+        }
+      },
+      "createdAt": "2026-06-19T07:32:57.210558+08:00",
+      "updatedAt": "2026-06-19T07:32:57.210558+08:00"
+    },
+    {
+      "id": "note_0f9386e4e9",
+      "ownerUserId": "user_111f16d8d3",
+      "importBatchId": null,
+      "sourceCardId": null,
+      "status": "active",
+      "title": "测试房源B 高桥北 精装一房 可短租",
+      "summary": "用于测试已联系线索和拨号入口。",
+      "body": "高桥北公寓，1600元/月，精装一房，高桥北，带轻 SCRM 演示数据。",
+      "coverUrl": null,
+      "media": [],
+      "categoryIds": [],
+      "phone": "13800001002",
+      "locationText": "长沙高桥北",
+      "sourceRefs": [],
+      "visibilityConfig": {
+        "cardType": "property_listing",
+        "cardState": "generated",
+        "contentMode": "generated_card",
+        "tags": [
+          "房源",
+          "演示数据"
+        ],
+        "conversionConfig": {
+          "showContactPhone": true,
+          "enableLightScrm": true,
+          "collectLeads": true,
+          "enableAppointment": true,
+          "enablePrivateConsultation": true,
+          "enableSharePoster": true,
+          "enableGroupRelay": false,
+          "enablePaymentPlaceholder": false
+        },
+        "structuredData": {
+          "community": "高桥北公寓",
+          "price": "1600元/月",
+          "layout": "精装一房",
+          "businessArea": "高桥北",
+          "address": "长沙高桥北",
+          "contact": "13800001002",
+          "organizeResult": {
+            "summary": "用于测试已联系线索和拨号入口。",
+            "generationOptions": [
+              "房源推广图",
+              "微信群文案",
+              "客户话术",
+              "对比表"
+            ],
+            "enabledFeatures": [
+              "展示联系电话",
+              "轻 SCRM 跟进",
+              "收集线索",
+              "预约看房"
+            ]
+          },
+          "generatedResult": {
+            "pageType": "property_promo_page",
+            "status": "generated",
+            "enabledActions": [
+              "展示联系电话",
+              "轻 SCRM 跟进",
+              "收集线索",
+              "预约看房"
+            ],
+            "note": "演示数据"
+          }
+        }
+      },
+      "createdAt": "2026-06-19T07:32:57.210558+08:00",
+      "updatedAt": "2026-06-19T07:32:57.210558+08:00"
+    },
+    {
+      "id": "note_fc8dc6b5fe",
+      "ownerUserId": "user_111f16d8d3",
+      "importBatchId": null,
+      "sourceCardId": null,
+      "status": "active",
+      "title": "测试商品 周末现摘草莓",
+      "summary": "用于测试商品展示、SKU 售罄和团购接龙。",
+      "body": "周末现摘草莓，支持多规格选择；售罄 SKU 不可提交，接龙不进入 SCRM。",
+      "coverUrl": "https://images.unsplash.com/photo-1464965911861-746a04b4bca6?auto=format&fit=crop&w=900&q=80",
+      "media": [
+        {
+          "id": "media_1e049c40d4",
+          "type": "image",
+          "url": "https://images.unsplash.com/photo-1464965911861-746a04b4bca6?auto=format&fit=crop&w=900&q=80",
+          "sortOrder": 1
+        }
+      ],
+      "categoryIds": [],
+      "phone": "13800001004",
+      "locationText": "社区自提点",
+      "sourceRefs": [],
+      "visibilityConfig": {
+        "cardType": "groupbuy_product",
+        "cardState": "generated",
+        "contentMode": "generated_card",
+        "tags": [
+          "商品",
+          "团购",
+          "演示数据"
+        ],
+        "conversionConfig": {
+          "showContactPhone": true,
+          "enableLightScrm": false,
+          "collectLeads": false,
+          "enableAppointment": false,
+          "enablePrivateConsultation": false,
+          "enableSharePoster": true,
+          "enableGroupRelay": true,
+          "enablePaymentPlaceholder": false
+        },
+        "structuredData": {
+          "productName": "周末现摘草莓",
+          "price": "28-78 元",
+          "spec": "按口味和规格选择",
+          "deliveryMethod": "社区自提 / 同城配送",
+          "pickupLocation": "社区自提点，具体地址群内通知",
+          "contactPhone": "13800001004",
+          "stockNote": "数量有限，售罄 SKU 不可接龙",
+          "deadline": "",
+          "skuConfig": {
+            "attributeGroups": [
+              {
+                "id": "taste",
+                "name": "口味",
+                "options": [
+                  {
+                    "id": "sweet",
+                    "label": "甜口"
+                  },
+                  {
+                    "id": "sour_sweet",
+                    "label": "酸甜"
+                  }
+                ]
+              },
+              {
+                "id": "size",
+                "name": "规格",
+                "options": [
+                  {
+                    "id": "one_jin",
+                    "label": "1斤装"
+                  },
+                  {
+                    "id": "three_jin",
+                    "label": "3斤装"
+                  }
+                ]
+              }
+            ],
+            "skus": [
+              {
+                "id": "sku_sweet_one",
+                "key": "sweet|one_jin",
+                "name": "甜口 / 1斤装",
+                "price": "28",
+                "description": "适合尝鲜",
+                "soldOut": false
+              },
+              {
+                "id": "sku_sweet_three",
+                "key": "sweet|three_jin",
+                "name": "甜口 / 3斤装",
+                "price": "78",
+                "description": "家庭分享装",
+                "soldOut": false
+              },
+              {
+                "id": "sku_sour_one",
+                "key": "sour_sweet|one_jin",
+                "name": "酸甜 / 1斤装",
+                "price": "26",
+                "description": "口感清爽",
+                "soldOut": true
+              },
+              {
+                "id": "sku_sour_three",
+                "key": "sour_sweet|three_jin",
+                "name": "酸甜 / 3斤装",
+                "price": "72",
+                "description": "适合做果酱",
+                "soldOut": false
+              }
+            ]
+          }
+        }
+      },
+      "createdAt": "2026-06-19T07:32:57.210558+08:00",
+      "updatedAt": "2026-06-19T07:32:57.210558+08:00"
+    },
+    {
+      "id": "note_45d8133bb3",
+      "ownerUserId": "user_ad48dcf817",
+      "importBatchId": null,
+      "sourceCardId": null,
+      "status": "active",
+      "title": "测试房源A 万润时光里 27050 两房 近地铁",
+      "summary": "用于测试轻 SCRM 红点、留资和预约。",
+      "body": "万润时光里，27050，loft 两房，万家丽 / 地铁口，带轻 SCRM 演示数据。",
+      "coverUrl": "",
+      "media": [],
+      "categoryIds": [],
+      "phone": "13800001001",
+      "locationText": "长沙万润时光里",
+      "sourceRefs": [],
+      "visibilityConfig": {
+        "cardType": "property_listing",
+        "cardState": "editing",
+        "contentMode": "generated_card",
+        "tags": [
+          "房源",
+          "演示数据"
+        ],
+        "conversionConfig": {
+          "showContactPhone": true,
+          "enableLightScrm": true,
+          "collectLeads": true,
+          "enableAppointment": true,
+          "enablePrivateConsultation": true,
+          "enableSharePoster": true,
+          "enableGroupRelay": false,
+          "enablePaymentPlaceholder": false
+        },
+        "structuredData": {
+          "community": "万润时光里",
+          "price": "27050",
+          "layout": "loft 两房",
+          "businessArea": "万家丽 / 地铁口",
+          "address": "长沙万润时光里",
+          "contact": "13800001001",
+          "organizeResult": {
+            "summary": "用于测试轻 SCRM 红点、留资和预约。",
+            "generationOptions": [
+              "房源推广图",
+              "微信群文案",
+              "客户话术",
+              "对比表"
+            ],
+            "enabledFeatures": [
+              "展示联系电话",
+              "轻 SCRM 跟进",
+              "收集线索",
+              "预约看房"
+            ]
+          },
+          "generatedResult": {
+            "pageType": "property_promo_page",
+            "status": "generated",
+            "enabledActions": [
+              "展示联系电话",
+              "轻 SCRM 跟进",
+              "收集线索",
+              "预约看房"
+            ],
+            "note": "演示数据"
+          },
+          "propertyStatus": "active",
+          "mapLocation": {
+            "name": "轩梦居影院酒店(长沙理工大学涂家冲地铁站店)",
+            "address": "长沙万润时光里 万润时光里 万家丽 / 地铁口",
+            "latitude": 28.152272,
+            "longitude": 112.97993
+          }
+        },
+        "typeSuggestions": [],
+        "userTags": [],
+        "tagLevels": {
+          "rule": [],
+          "light": [],
+          "deep": []
+        },
+        "topicIds": [],
+        "topics": [],
+        "tagStatus": "rule_done"
+      },
+      "createdAt": "2026-06-19T07:29:00.978782+08:00",
+      "updatedAt": "2026-06-19T07:36:50.765001+08:00"
+    },
+    {
+      "id": "note_00be37d1d1",
+      "ownerUserId": "user_ad48dcf817",
+      "importBatchId": null,
+      "sourceCardId": null,
+      "status": "deleted",
+      "title": "测试商品 周末现摘草莓",
+      "summary": "用于测试商品展示、SKU 售罄和团购接龙。",
+      "body": "周末现摘草莓，支持多规格选择；售罄 SKU 不可提交，接龙不进入 SCRM。",
+      "coverUrl": "https://images.unsplash.com/photo-1464965911861-746a04b4bca6?auto=format&fit=crop&w=900&q=80",
+      "media": [
+        {
+          "type": "image",
+          "url": "https://images.unsplash.com/photo-1464965911861-746a04b4bca6?auto=format&fit=crop&w=900&q=80",
+          "mediaId": null,
+          "title": null,
+          "sourceRef": null
+        }
+      ],
+      "categoryIds": [],
+      "phone": "13800001004",
+      "locationText": "社区自提点",
+      "sourceRefs": [],
+      "visibilityConfig": {
+        "cardType": "groupbuy_product",
+        "cardState": "editing",
+        "contentMode": "generated_card",
+        "tags": [
+          "商品",
+          "团购",
+          "演示数据"
+        ],
+        "conversionConfig": {
+          "showContactPhone": true,
+          "enableLightScrm": false,
+          "collectLeads": false,
+          "enableAppointment": false,
+          "enablePrivateConsultation": false,
+          "enableSharePoster": true,
+          "enableGroupRelay": true,
+          "enablePaymentPlaceholder": false
+        },
+        "structuredData": {
+          "productName": "周末现摘草莓",
+          "price": "28-78 元",
+          "spec": "按口味和规格选择",
+          "deliveryMethod": "社区自提 / 同城配送",
+          "pickupLocation": "社区自提点，具体地址群内通知",
+          "contactPhone": "13800001004",
+          "stockNote": "数量有限，售罄 SKU 不可接龙",
+          "deadline": "",
+          "skuConfig": {
+            "attributeGroups": [
+              {
+                "id": "taste",
+                "name": "口味",
+                "options": [
+                  {
+                    "id": "sweet",
+                    "label": "甜口"
+                  },
+                  {
+                    "id": "sour_sweet",
+                    "label": "酸甜"
+                  }
+                ]
+              },
+              {
+                "id": "size",
+                "name": "规格",
+                "options": [
+                  {
+                    "id": "one_jin",
+                    "label": "1斤"
+                  },
+                  {
+                    "id": "three_jin",
+                    "label": "3斤装"
+                  }
+                ]
+              }
+            ],
+            "skus": [
+              {
+                "id": "sku_sweet_one",
+                "key": "sweet|one_jin",
+                "optionIds": [
+                  "sweet",
+                  "one_jin"
+                ],
+                "optionLabels": [
+                  "甜口",
+                  "1斤"
+                ],
+                "name": "甜口 / 1斤",
+                "price": "28",
+                "description": "适合尝鲜",
+                "soldOut": false
+              },
+              {
+                "id": "sku_sweet_three",
+                "key": "sweet|three_jin",
+                "optionIds": [
+                  "sweet",
+                  "three_jin"
+                ],
+                "optionLabels": [
+                  "甜口",
+                  "3斤装"
+                ],
+                "name": "甜口 / 3斤装",
+                "price": "78",
+                "description": "家庭分享装",
+                "soldOut": false
+              },
+              {
+                "id": "sku_sour_one",
+                "key": "sour_sweet|one_jin",
+                "optionIds": [
+                  "sour_sweet",
+                  "one_jin"
+                ],
+                "optionLabels": [
+                  "酸甜",
+                  "1斤"
+                ],
+                "name": "酸甜 / 1斤",
+                "price": "26",
+                "description": "口感清爽",
+                "soldOut": true
+              },
+              {
+                "id": "sku_sour_three",
+                "key": "sour_sweet|three_jin",
+                "optionIds": [
+                  "sour_sweet",
+                  "three_jin"
+                ],
+                "optionLabels": [
+                  "酸甜",
+                  "3斤装"
+                ],
+                "name": "酸甜 / 3斤装",
+                "price": "72",
+                "description": "适合做果酱",
+                "soldOut": false
+              }
+            ]
+          },
+          "contact": "13800001002"
+        },
+        "typeSuggestions": [],
+        "userTags": [],
+        "tagLevels": {
+          "rule": [],
+          "light": [],
+          "deep": []
+        },
+        "topicIds": [],
+        "topics": [],
+        "tagStatus": "rule_done"
+      },
+      "createdAt": "2026-06-19T07:29:00.978782+08:00",
+      "updatedAt": "2026-06-19T07:46:17.542407+08:00"
+    },
+    {
+      "id": "note_89023b77aa",
+      "ownerUserId": "user_111f16d8d3",
+      "importBatchId": null,
+      "sourceCardId": null,
+      "status": "active",
+      "title": "测试房源C 袁隆平地铁口 民水民电 首次出",
+      "summary": "用于测试无客户动作时的空状态。",
+      "body": "袁隆平地铁口公寓，1800元/月，一室一厅，袁隆平地铁口，带轻 SCRM 演示数据。",
+      "coverUrl": "",
+      "media": [],
+      "categoryIds": [],
+      "phone": "13800001003",
+      "locationText": "长沙袁隆平地铁口",
+      "sourceRefs": [],
+      "visibilityConfig": {
+        "cardType": "property_listing",
+        "cardState": "editing",
+        "contentMode": "generated_card",
+        "tags": [
+          "房源",
+          "演示数据"
+        ],
+        "conversionConfig": {
+          "showContactPhone": true,
+          "enableLightScrm": true,
+          "collectLeads": true,
+          "enableAppointment": true,
+          "enablePrivateConsultation": true,
+          "enableSharePoster": true,
+          "enableGroupRelay": false,
+          "enablePaymentPlaceholder": false
+        },
+        "structuredData": {
+          "community": "袁隆平地铁口公寓",
+          "price": "1800元/月",
+          "layout": "一室一厅",
+          "businessArea": "袁隆平地铁口",
+          "address": "长沙袁隆平地铁口",
+          "contact": "13800001003",
+          "organizeResult": {
+            "summary": "用于测试无客户动作时的空状态。",
+            "generationOptions": [
+              "房源推广图",
+              "微信群文案",
+              "客户话术",
+              "对比表"
+            ],
+            "enabledFeatures": [
+              "展示联系电话",
+              "轻 SCRM 跟进",
+              "收集线索",
+              "预约看房"
+            ]
+          },
+          "generatedResult": {
+            "pageType": "property_promo_page",
+            "status": "generated",
+            "enabledActions": [
+              "展示联系电话",
+              "轻 SCRM 跟进",
+              "收集线索",
+              "预约看房"
+            ],
+            "note": "演示数据"
+          },
+          "propertyStatus": "active",
+          "mapLocation": {
+            "name": "袁隆干果(高桥大市场新太平街7区店)",
+            "address": "长沙袁隆平地铁口 袁隆平地铁口公寓 袁隆平地铁口",
+            "latitude": 28.173934,
+            "longitude": 113.02607
+          }
+        },
+        "typeSuggestions": [],
+        "userTags": [],
+        "tagLevels": {
+          "rule": [],
+          "light": [],
+          "deep": []
+        },
+        "topicIds": [],
+        "topics": [],
+        "tagStatus": "rule_done"
+      },
+      "createdAt": "2026-06-19T07:32:57.210558+08:00",
+      "updatedAt": "2026-06-19T07:46:47.090154+08:00"
+    }
+  ],
   "view_events": [
     {
       "id": "view_seed_001",
@@ -99,6 +1673,647 @@
       "updatedAt": "2026-06-08T09:20:00+08:00"
     }
   ],
+  "lead_reminders": [
+    {
+      "id": "lead_33ba2060c5",
+      "ownerUserId": "user_18f8b72d63",
+      "cardId": "note_977fafcb90",
+      "viewerUserId": "viewer_035dff7168",
+      "nickname": "王客户",
+      "avatarUrl": "https://example.com/avatar-demo.png",
+      "status": "pending",
+      "note": "演示客户：可测试拨号、保存资料和跟进状态。",
+      "customerPhone": "13900001111",
+      "customerWechat": "wx_demo_001",
+      "budgetText": "预算待确认",
+      "intentLevel": "高意向",
+      "customerTags": [
+        "演示",
+        "房源客户"
+      ],
+      "viewCount": 2,
+      "lastViewedAt": "2026-06-19T07:14:45.562113+08:00",
+      "contactedAt": null,
+      "closedAt": null,
+      "conclusionReason": null,
+      "nextFollowUpAt": "2026-06-20T14:30:00+08:00",
+      "followUpLogs": [
+        {
+          "id": "log_155ca9a8ac",
+          "content": "演示线索已生成，可点击拨号或编辑客户资料。",
+          "createdAt": "2026-06-19T07:14:45.562113+08:00"
+        }
+      ],
+      "createdAt": "2026-06-19T07:14:45.562113+08:00",
+      "updatedAt": "2026-06-19T07:14:45.562113+08:00"
+    },
+    {
+      "id": "lead_1631946832",
+      "ownerUserId": "user_18f8b72d63",
+      "cardId": "note_af4c82d94d",
+      "viewerUserId": "viewer_0f1c1ed735",
+      "nickname": "李客户",
+      "avatarUrl": "https://example.com/avatar-demo.png",
+      "status": "contacted",
+      "note": "演示客户：可测试拨号、保存资料和跟进状态。",
+      "customerPhone": "13900002222",
+      "customerWechat": "wx_demo_002",
+      "budgetText": "预算待确认",
+      "intentLevel": "中意向",
+      "customerTags": [
+        "演示",
+        "房源客户"
+      ],
+      "viewCount": 2,
+      "lastViewedAt": "2026-06-19T07:14:45.562113+08:00",
+      "contactedAt": "2026-06-19T07:14:45.562113+08:00",
+      "closedAt": null,
+      "conclusionReason": null,
+      "nextFollowUpAt": null,
+      "followUpLogs": [
+        {
+          "id": "log_e732c3fb10",
+          "content": "演示线索已生成，可点击拨号或编辑客户资料。",
+          "createdAt": "2026-06-19T07:14:45.562113+08:00"
+        }
+      ],
+      "createdAt": "2026-06-19T07:14:45.562113+08:00",
+      "updatedAt": "2026-06-19T07:14:45.562113+08:00"
+    },
+    {
+      "id": "lead_fa05f34f21",
+      "ownerUserId": "user_964b1d4df3",
+      "cardId": "note_0fea0fd25b",
+      "viewerUserId": "viewer_cd5c64dbd1",
+      "nickname": "王客户",
+      "avatarUrl": "https://example.com/avatar-demo.png",
+      "status": "pending",
+      "note": "演示客户：可测试拨号、保存资料和跟进状态。",
+      "customerPhone": "13900001111",
+      "customerWechat": "wx_demo_001",
+      "budgetText": "预算待确认",
+      "intentLevel": "高意向",
+      "customerTags": [
+        "演示",
+        "房源客户"
+      ],
+      "viewCount": 2,
+      "lastViewedAt": "2026-06-19T07:17:36.793988+08:00",
+      "contactedAt": null,
+      "closedAt": null,
+      "conclusionReason": null,
+      "nextFollowUpAt": "2026-06-20T14:30:00+08:00",
+      "followUpLogs": [
+        {
+          "id": "log_02b55fa1bb",
+          "content": "演示线索已生成，可点击拨号或编辑客户资料。",
+          "createdAt": "2026-06-19T07:17:36.793988+08:00"
+        }
+      ],
+      "createdAt": "2026-06-19T07:17:36.793988+08:00",
+      "updatedAt": "2026-06-19T07:17:36.793988+08:00"
+    },
+    {
+      "id": "lead_07bf8c216b",
+      "ownerUserId": "user_964b1d4df3",
+      "cardId": "note_3c209e13db",
+      "viewerUserId": "viewer_e158e6e480",
+      "nickname": "李客户",
+      "avatarUrl": "https://example.com/avatar-demo.png",
+      "status": "contacted",
+      "note": "演示客户：可测试拨号、保存资料和跟进状态。",
+      "customerPhone": "13900002222",
+      "customerWechat": "wx_demo_002",
+      "budgetText": "预算待确认",
+      "intentLevel": "中意向",
+      "customerTags": [
+        "演示",
+        "房源客户"
+      ],
+      "viewCount": 2,
+      "lastViewedAt": "2026-06-19T07:17:36.793988+08:00",
+      "contactedAt": "2026-06-19T07:17:36.793988+08:00",
+      "closedAt": null,
+      "conclusionReason": null,
+      "nextFollowUpAt": null,
+      "followUpLogs": [
+        {
+          "id": "log_e537e04891",
+          "content": "演示线索已生成，可点击拨号或编辑客户资料。",
+          "createdAt": "2026-06-19T07:17:36.793988+08:00"
+        }
+      ],
+      "createdAt": "2026-06-19T07:17:36.793988+08:00",
+      "updatedAt": "2026-06-19T07:17:36.793988+08:00"
+    },
+    {
+      "id": "lead_5667873ee0",
+      "ownerUserId": "user_ad48dcf817",
+      "cardId": "note_45d8133bb3",
+      "viewerUserId": "viewer_2190637fa0",
+      "nickname": "王客户",
+      "avatarUrl": "https://example.com/avatar-demo.png",
+      "status": "pending",
+      "note": "演示客户：可测试拨号、保存资料和跟进状态。",
+      "customerPhone": "13900001111",
+      "customerWechat": "wx_demo_001",
+      "budgetText": "预算待确认",
+      "intentLevel": "高意向",
+      "customerTags": [
+        "演示",
+        "房源客户"
+      ],
+      "viewCount": 2,
+      "lastViewedAt": "2026-06-19T07:29:00.978782+08:00",
+      "contactedAt": null,
+      "closedAt": null,
+      "conclusionReason": null,
+      "nextFollowUpAt": "2026-06-20T14:30:00+08:00",
+      "followUpLogs": [
+        {
+          "id": "log_e8a86799d0",
+          "content": "演示线索已生成，可点击拨号或编辑客户资料。",
+          "createdAt": "2026-06-19T07:29:00.978782+08:00"
+        }
+      ],
+      "createdAt": "2026-06-19T07:29:00.978782+08:00",
+      "updatedAt": "2026-06-19T07:29:00.978782+08:00"
+    },
+    {
+      "id": "lead_17df859be0",
+      "ownerUserId": "user_ad48dcf817",
+      "cardId": "note_87e4d1c178",
+      "viewerUserId": "viewer_64539076de",
+      "nickname": "李客户",
+      "avatarUrl": "https://example.com/avatar-demo.png",
+      "status": "contacted",
+      "note": "演示客户：可测试拨号、保存资料和跟进状态。",
+      "customerPhone": "13900002222",
+      "customerWechat": "wx_demo_002",
+      "budgetText": "预算待确认",
+      "intentLevel": "中意向",
+      "customerTags": [
+        "演示",
+        "房源客户"
+      ],
+      "viewCount": 2,
+      "lastViewedAt": "2026-06-19T07:29:00.978782+08:00",
+      "contactedAt": "2026-06-19T07:29:00.978782+08:00",
+      "closedAt": null,
+      "conclusionReason": null,
+      "nextFollowUpAt": null,
+      "followUpLogs": [
+        {
+          "id": "log_e1e482ae10",
+          "content": "演示线索已生成，可点击拨号或编辑客户资料。",
+          "createdAt": "2026-06-19T07:29:00.978782+08:00"
+        }
+      ],
+      "createdAt": "2026-06-19T07:29:00.978782+08:00",
+      "updatedAt": "2026-06-19T07:29:00.978782+08:00"
+    },
+    {
+      "id": "lead_c47e55e070",
+      "ownerUserId": "user_111f16d8d3",
+      "cardId": "note_c632c459dd",
+      "viewerUserId": "viewer_fe114a395e",
+      "nickname": "王客户",
+      "avatarUrl": "https://example.com/avatar-demo.png",
+      "status": "pending",
+      "note": "演示客户：可测试拨号、保存资料和跟进状态。",
+      "customerPhone": "13900001111",
+      "customerWechat": "wx_demo_001",
+      "budgetText": "预算待确认",
+      "intentLevel": "高意向",
+      "customerTags": [
+        "演示",
+        "房源客户"
+      ],
+      "viewCount": 2,
+      "lastViewedAt": "2026-06-19T07:32:57.210558+08:00",
+      "contactedAt": null,
+      "closedAt": null,
+      "conclusionReason": null,
+      "nextFollowUpAt": "2026-06-20T14:30:00+08:00",
+      "followUpLogs": [
+        {
+          "id": "log_77487388a0",
+          "content": "演示线索已生成，可点击拨号或编辑客户资料。",
+          "createdAt": "2026-06-19T07:32:57.210558+08:00"
+        }
+      ],
+      "createdAt": "2026-06-19T07:32:57.210558+08:00",
+      "updatedAt": "2026-06-19T07:32:57.210558+08:00"
+    },
+    {
+      "id": "lead_19355b2b4d",
+      "ownerUserId": "user_111f16d8d3",
+      "cardId": "note_0f9386e4e9",
+      "viewerUserId": "viewer_aedbeb05c5",
+      "nickname": "李客户",
+      "avatarUrl": "https://example.com/avatar-demo.png",
+      "status": "contacted",
+      "note": "演示客户：可测试拨号、保存资料和跟进状态。",
+      "customerPhone": "13900002222",
+      "customerWechat": "wx_demo_002",
+      "budgetText": "预算待确认",
+      "intentLevel": "中意向",
+      "customerTags": [
+        "演示",
+        "房源客户"
+      ],
+      "viewCount": 2,
+      "lastViewedAt": "2026-06-19T07:32:57.210558+08:00",
+      "contactedAt": "2026-06-19T07:32:57.210558+08:00",
+      "closedAt": null,
+      "conclusionReason": null,
+      "nextFollowUpAt": null,
+      "followUpLogs": [
+        {
+          "id": "log_b030e8e29b",
+          "content": "演示线索已生成，可点击拨号或编辑客户资料。",
+          "createdAt": "2026-06-19T07:32:57.210558+08:00"
+        }
+      ],
+      "createdAt": "2026-06-19T07:32:57.210558+08:00",
+      "updatedAt": "2026-06-19T07:32:57.210558+08:00"
+    }
+  ],
+  "customer_actions": [
+    {
+      "id": "action_seed_relay_001",
+      "ownerUserId": "user_seed_owner",
+      "noteId": "note_seed_groupbuy_product_001",
+      "sourceCardId": null,
+      "viewerUserId": "user_seed_customer",
+      "anonymousId": null,
+      "actionKey": "relay-intent",
+      "actionLabel": "参与接龙",
+      "payload": {
+        "skuKey": "flavor_sweet|size_3jin",
+        "skuId": "sku_sweet_3jin",
+        "skuName": "甜口 / 3斤装",
+        "skuPrice": "78",
+        "quantity": 2,
+        "phone": "13800138000",
+        "wechat": "berry_fan",
+        "remark": "周六下午自提",
+        "name": "李小莓",
+        "avatarUrl": "https://example.com/avatar-customer.png"
+      },
+      "projectionRefs": {},
+      "createdAt": "2026-06-19T10:20:00+08:00",
+      "updatedAt": "2026-06-19T10:20:00+08:00"
+    },
+    {
+      "id": "action_058fcbe9c5",
+      "ownerUserId": "user_18f8b72d63",
+      "noteId": "note_977fafcb90",
+      "sourceCardId": "note_977fafcb90",
+      "viewerUserId": "viewer_035dff7168",
+      "anonymousId": null,
+      "actionKey": "lead-contact",
+      "actionLabel": "留下电话/微信",
+      "payload": {
+        "name": "王客户",
+        "phone": "13900001111",
+        "wechat": "wx_demo_001",
+        "remark": "演示留资"
+      },
+      "projectionRefs": {
+        "leadReminderId": "lead_33ba2060c5"
+      },
+      "createdAt": "2026-06-19T07:14:45.562113+08:00",
+      "updatedAt": "2026-06-19T07:14:45.562113+08:00"
+    },
+    {
+      "id": "action_2ee25bb9f4",
+      "ownerUserId": "user_18f8b72d63",
+      "noteId": "note_977fafcb90",
+      "sourceCardId": "note_977fafcb90",
+      "viewerUserId": "viewer_035dff7168",
+      "anonymousId": null,
+      "actionKey": "appointment",
+      "actionLabel": "预约看房",
+      "payload": {
+        "date": "2026-06-20",
+        "time": "14:30",
+        "remark": "两个人看房"
+      },
+      "projectionRefs": {
+        "leadReminderId": "lead_33ba2060c5"
+      },
+      "createdAt": "2026-06-19T07:14:45.562113+08:00",
+      "updatedAt": "2026-06-19T07:14:45.562113+08:00"
+    },
+    {
+      "id": "action_01d80663bb",
+      "ownerUserId": "user_18f8b72d63",
+      "noteId": "note_af4c82d94d",
+      "sourceCardId": "note_af4c82d94d",
+      "viewerUserId": "viewer_0f1c1ed735",
+      "anonymousId": null,
+      "actionKey": "lead-contact",
+      "actionLabel": "留下电话/微信",
+      "payload": {
+        "name": "李客户",
+        "phone": "13900002222",
+        "wechat": "wx_demo_002",
+        "remark": "演示留资"
+      },
+      "projectionRefs": {
+        "leadReminderId": "lead_1631946832"
+      },
+      "createdAt": "2026-06-19T07:14:45.562113+08:00",
+      "updatedAt": "2026-06-19T07:14:45.562113+08:00"
+    },
+    {
+      "id": "action_a7f8fc8fce",
+      "ownerUserId": "user_18f8b72d63",
+      "noteId": "note_f55f335371",
+      "sourceCardId": null,
+      "viewerUserId": "viewer_80094ae792",
+      "anonymousId": null,
+      "actionKey": "relay-intent",
+      "actionLabel": "参与接龙",
+      "payload": {
+        "skuKey": "sweet|three_jin",
+        "skuId": "sku_sweet_three",
+        "skuName": "甜口 / 3斤装",
+        "skuPrice": "78",
+        "quantity": 2,
+        "phone": "13800138000",
+        "wechat": "berry_fan",
+        "remark": "周六下午自提",
+        "name": "李小莓",
+        "avatarUrl": "https://example.com/avatar-demo.png"
+      },
+      "projectionRefs": {},
+      "createdAt": "2026-06-19T07:14:45.562113+08:00",
+      "updatedAt": "2026-06-19T07:14:45.562113+08:00"
+    },
+    {
+      "id": "action_2a01c28030",
+      "ownerUserId": "user_964b1d4df3",
+      "noteId": "note_0fea0fd25b",
+      "sourceCardId": "note_0fea0fd25b",
+      "viewerUserId": "viewer_cd5c64dbd1",
+      "anonymousId": null,
+      "actionKey": "lead-contact",
+      "actionLabel": "留下电话/微信",
+      "payload": {
+        "name": "王客户",
+        "phone": "13900001111",
+        "wechat": "wx_demo_001",
+        "remark": "演示留资"
+      },
+      "projectionRefs": {
+        "leadReminderId": "lead_fa05f34f21"
+      },
+      "createdAt": "2026-06-19T07:17:36.793988+08:00",
+      "updatedAt": "2026-06-19T07:17:36.793988+08:00"
+    },
+    {
+      "id": "action_45a0e48b10",
+      "ownerUserId": "user_964b1d4df3",
+      "noteId": "note_0fea0fd25b",
+      "sourceCardId": "note_0fea0fd25b",
+      "viewerUserId": "viewer_cd5c64dbd1",
+      "anonymousId": null,
+      "actionKey": "appointment",
+      "actionLabel": "预约看房",
+      "payload": {
+        "date": "2026-06-20",
+        "time": "14:30",
+        "remark": "两个人看房"
+      },
+      "projectionRefs": {
+        "leadReminderId": "lead_fa05f34f21"
+      },
+      "createdAt": "2026-06-19T07:17:36.793988+08:00",
+      "updatedAt": "2026-06-19T07:17:36.793988+08:00"
+    },
+    {
+      "id": "action_094c10b316",
+      "ownerUserId": "user_964b1d4df3",
+      "noteId": "note_3c209e13db",
+      "sourceCardId": "note_3c209e13db",
+      "viewerUserId": "viewer_e158e6e480",
+      "anonymousId": null,
+      "actionKey": "lead-contact",
+      "actionLabel": "留下电话/微信",
+      "payload": {
+        "name": "李客户",
+        "phone": "13900002222",
+        "wechat": "wx_demo_002",
+        "remark": "演示留资"
+      },
+      "projectionRefs": {
+        "leadReminderId": "lead_07bf8c216b"
+      },
+      "createdAt": "2026-06-19T07:17:36.793988+08:00",
+      "updatedAt": "2026-06-19T07:17:36.793988+08:00"
+    },
+    {
+      "id": "action_1fa5dbf9ff",
+      "ownerUserId": "user_964b1d4df3",
+      "noteId": "note_85b1cb998f",
+      "sourceCardId": null,
+      "viewerUserId": "viewer_494233b5b8",
+      "anonymousId": null,
+      "actionKey": "relay-intent",
+      "actionLabel": "参与接龙",
+      "payload": {
+        "skuKey": "sweet|three_jin",
+        "skuId": "sku_sweet_three",
+        "skuName": "甜口 / 3斤装",
+        "skuPrice": "78",
+        "quantity": 2,
+        "phone": "13800138000",
+        "wechat": "berry_fan",
+        "remark": "周六下午自提",
+        "name": "李小莓",
+        "avatarUrl": "https://example.com/avatar-demo.png"
+      },
+      "projectionRefs": {},
+      "createdAt": "2026-06-19T07:17:36.793988+08:00",
+      "updatedAt": "2026-06-19T07:17:36.793988+08:00"
+    },
+    {
+      "id": "action_139821504d",
+      "ownerUserId": "user_ad48dcf817",
+      "noteId": "note_45d8133bb3",
+      "sourceCardId": "note_45d8133bb3",
+      "viewerUserId": "viewer_2190637fa0",
+      "anonymousId": null,
+      "actionKey": "lead-contact",
+      "actionLabel": "留下电话/微信",
+      "payload": {
+        "name": "王客户",
+        "phone": "13900001111",
+        "wechat": "wx_demo_001",
+        "remark": "演示留资"
+      },
+      "projectionRefs": {
+        "leadReminderId": "lead_5667873ee0"
+      },
+      "createdAt": "2026-06-19T07:29:00.978782+08:00",
+      "updatedAt": "2026-06-19T07:29:00.978782+08:00"
+    },
+    {
+      "id": "action_617a82c9e8",
+      "ownerUserId": "user_ad48dcf817",
+      "noteId": "note_45d8133bb3",
+      "sourceCardId": "note_45d8133bb3",
+      "viewerUserId": "viewer_2190637fa0",
+      "anonymousId": null,
+      "actionKey": "appointment",
+      "actionLabel": "预约看房",
+      "payload": {
+        "date": "2026-06-20",
+        "time": "14:30",
+        "remark": "两个人看房"
+      },
+      "projectionRefs": {
+        "leadReminderId": "lead_5667873ee0"
+      },
+      "createdAt": "2026-06-19T07:29:00.978782+08:00",
+      "updatedAt": "2026-06-19T07:29:00.978782+08:00"
+    },
+    {
+      "id": "action_c2cbcab78a",
+      "ownerUserId": "user_ad48dcf817",
+      "noteId": "note_87e4d1c178",
+      "sourceCardId": "note_87e4d1c178",
+      "viewerUserId": "viewer_64539076de",
+      "anonymousId": null,
+      "actionKey": "lead-contact",
+      "actionLabel": "留下电话/微信",
+      "payload": {
+        "name": "李客户",
+        "phone": "13900002222",
+        "wechat": "wx_demo_002",
+        "remark": "演示留资"
+      },
+      "projectionRefs": {
+        "leadReminderId": "lead_17df859be0"
+      },
+      "createdAt": "2026-06-19T07:29:00.978782+08:00",
+      "updatedAt": "2026-06-19T07:29:00.978782+08:00"
+    },
+    {
+      "id": "action_05d873d142",
+      "ownerUserId": "user_ad48dcf817",
+      "noteId": "note_00be37d1d1",
+      "sourceCardId": null,
+      "viewerUserId": "viewer_9eb1cb32aa",
+      "anonymousId": null,
+      "actionKey": "relay-intent",
+      "actionLabel": "参与接龙",
+      "payload": {
+        "skuKey": "sweet|three_jin",
+        "skuId": "sku_sweet_three",
+        "skuName": "甜口 / 3斤装",
+        "skuPrice": "78",
+        "quantity": 2,
+        "phone": "13800138000",
+        "wechat": "berry_fan",
+        "remark": "周六下午自提",
+        "name": "李小莓",
+        "avatarUrl": "https://example.com/avatar-demo.png"
+      },
+      "projectionRefs": {},
+      "createdAt": "2026-06-19T07:29:00.978782+08:00",
+      "updatedAt": "2026-06-19T07:29:00.978782+08:00"
+    },
+    {
+      "id": "action_8b427131f4",
+      "ownerUserId": "user_111f16d8d3",
+      "noteId": "note_c632c459dd",
+      "sourceCardId": "note_c632c459dd",
+      "viewerUserId": "viewer_fe114a395e",
+      "anonymousId": null,
+      "actionKey": "lead-contact",
+      "actionLabel": "留下电话/微信",
+      "payload": {
+        "name": "王客户",
+        "phone": "13900001111",
+        "wechat": "wx_demo_001",
+        "remark": "演示留资"
+      },
+      "projectionRefs": {
+        "leadReminderId": "lead_c47e55e070"
+      },
+      "createdAt": "2026-06-19T07:32:57.210558+08:00",
+      "updatedAt": "2026-06-19T07:32:57.210558+08:00"
+    },
+    {
+      "id": "action_d03883b96a",
+      "ownerUserId": "user_111f16d8d3",
+      "noteId": "note_c632c459dd",
+      "sourceCardId": "note_c632c459dd",
+      "viewerUserId": "viewer_fe114a395e",
+      "anonymousId": null,
+      "actionKey": "appointment",
+      "actionLabel": "预约看房",
+      "payload": {
+        "date": "2026-06-20",
+        "time": "14:30",
+        "remark": "两个人看房"
+      },
+      "projectionRefs": {
+        "leadReminderId": "lead_c47e55e070"
+      },
+      "createdAt": "2026-06-19T07:32:57.210558+08:00",
+      "updatedAt": "2026-06-19T07:32:57.210558+08:00"
+    },
+    {
+      "id": "action_92d1f5b421",
+      "ownerUserId": "user_111f16d8d3",
+      "noteId": "note_0f9386e4e9",
+      "sourceCardId": "note_0f9386e4e9",
+      "viewerUserId": "viewer_aedbeb05c5",
+      "anonymousId": null,
+      "actionKey": "lead-contact",
+      "actionLabel": "留下电话/微信",
+      "payload": {
+        "name": "李客户",
+        "phone": "13900002222",
+        "wechat": "wx_demo_002",
+        "remark": "演示留资"
+      },
+      "projectionRefs": {
+        "leadReminderId": "lead_19355b2b4d"
+      },
+      "createdAt": "2026-06-19T07:32:57.210558+08:00",
+      "updatedAt": "2026-06-19T07:32:57.210558+08:00"
+    },
+    {
+      "id": "action_a95c651243",
+      "ownerUserId": "user_111f16d8d3",
+      "noteId": "note_fc8dc6b5fe",
+      "sourceCardId": null,
+      "viewerUserId": "viewer_63fc839223",
+      "anonymousId": null,
+      "actionKey": "relay-intent",
+      "actionLabel": "参与接龙",
+      "payload": {
+        "skuKey": "sweet|three_jin",
+        "skuId": "sku_sweet_three",
+        "skuName": "甜口 / 3斤装",
+        "skuPrice": "78",
+        "quantity": 2,
+        "phone": "13800138000",
+        "wechat": "berry_fan",
+        "remark": "周六下午自提",
+        "name": "李小莓",
+        "avatarUrl": "https://example.com/avatar-demo.png"
+      },
+      "projectionRefs": {},
+      "createdAt": "2026-06-19T07:32:57.210558+08:00",
+      "updatedAt": "2026-06-19T07:32:57.210558+08:00"
+    }
+  ],
   "categories": [
     {
       "id": "cat_seed_sale",
@@ -114,5 +2329,14 @@
       "sortOrder": 2,
       "createdAt": "2026-06-08T09:00:00+08:00"
     }
-  ]
+  ],
+  "topics": [],
+  "import_notifications": [],
+  "sync_cursors": [],
+  "media_retry_jobs": [],
+  "sync_tasks": [],
+  "sync_task_logs": [],
+  "skill_runs": [],
+  "wecom_archive_cursors": [],
+  "wecom_archive_messages": []
 }

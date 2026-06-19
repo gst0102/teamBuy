@@ -266,6 +266,12 @@ class SkillRouterService:
         phone_match = None if content.sourceType == "miniapp_card" else PHONE_PATTERN.search(body)
         location_text = self._extract_prefixed_value(body, "位置：")
         typed_config = self._build_typed_note_config(content, title, body)
+        structured_data = typed_config.get("structuredData") if isinstance(typed_config, dict) else {}
+        if typed_config.get("cardType") == "groupbuy_product" and isinstance(structured_data, dict):
+            product_name = str(structured_data.get("productName") or "").strip()
+            if product_name:
+                title = product_name
+                summary = self._truncate(product_name, 120)
         return UserNoteDraftPayload(
             ownerUserId=owner_user_id,
             title=title,
@@ -414,7 +420,8 @@ class SkillRouterService:
                 "recognitionConfidence": {"level": "high", "score": property_score, "matchedFields": sorted(property_fields.keys())},
                 "tags": ["房产", "房源"],
             }
-        if self._is_high_confidence_groupbuy(body, groupbuy_fields, groupbuy_score, property_score):
+        parser_hints = content.metadata.get("parserHints", []) if isinstance(content.metadata, dict) else []
+        if self._is_high_confidence_groupbuy(body, groupbuy_fields, groupbuy_score, property_score, parser_hints):
             data = self._build_groupbuy_data(title, body, groupbuy_fields, images)
             return {
                 "cardType": "groupbuy_product",
@@ -482,13 +489,15 @@ class SkillRouterService:
         has_price = "price" in fields or bool(re.search(r"\d+\s*(?:元/月|/月|每月|万|元)", text))
         return score >= 5 and score >= groupbuy_score + 1 and has_price and has_location and has_shape and len(matched) >= 3
 
-    def _is_high_confidence_groupbuy(self, text: str, fields: dict, score: int, property_score: int) -> bool:
+    def _is_high_confidence_groupbuy(self, text: str, fields: dict, score: int, property_score: int, parser_hints: list[str] | None = None) -> bool:
         required = {"productName", "price", "spec", "deadline", "pickupMethod", "pickupLocation"}
         matched = required.intersection(fields.keys())
-        has_product = "productName" in fields or bool(re.search(r"(商品|团购|拼单|规格|现摘|现发)", text))
+        has_parser_hint = "groupbuy_product" in (parser_hints or [])
+        has_product = "productName" in fields or bool(re.search(r"(商品|团购|拼单|规格|现摘|现发|鸡蛋|草莓|水果|礼篮|礼盒|活动|优惠)", text))
         has_price = "price" in fields or bool(PRICE_PATTERN.search(text))
-        has_delivery = bool({"pickupMethod", "pickupLocation", "deadline", "spec"}.intersection(fields.keys())) or bool(re.search(r"(自提|配送|包邮|取货|截止|接龙|规格)", text))
-        return score >= 5 and score > property_score and has_product and has_price and has_delivery and len(matched) >= 2
+        has_delivery = bool({"pickupMethod", "pickupLocation", "deadline", "spec"}.intersection(fields.keys())) or bool(re.search(r"(自提|配送|包邮|取货|截止|接龙|规格|斤|盒|箱|份|个|礼篮|礼盒)", text))
+        has_enough_fields = len(matched) >= 2 or (has_parser_hint and score >= 5)
+        return score >= 5 and score > property_score and has_product and (has_price or has_parser_hint) and has_delivery and has_enough_fields
 
     def _score_property(self, text: str, fields: dict) -> int:
         score = len(fields)
@@ -519,7 +528,7 @@ class SkillRouterService:
 
     def _score_groupbuy(self, text: str, fields: dict) -> int:
         score = len(fields)
-        keywords = ["团购", "拼单", "包邮", "自提", "接龙", "截止", "取货", "现摘", "现发", "规格"]
+        keywords = ["团购", "拼单", "包邮", "自提", "接龙", "截止", "取货", "现摘", "现发", "规格", "优惠", "活动", "斤", "盒", "箱", "份", "个", "鸡蛋", "草莓", "水果", "礼篮", "礼盒"]
         score += sum(1 for keyword in keywords if keyword in text)
         if "price" in fields or PRICE_PATTERN.search(text):
             score += 1
@@ -543,9 +552,9 @@ class SkillRouterService:
 
     def _build_groupbuy_data(self, title: str, body: str, fields: dict, images: list[str]) -> dict:
         return {
-            "productName": fields.get("productName") or title,
+            "productName": fields.get("productName") or self._infer_groupbuy_product_name(body) or title,
             "price": self._clean_price(fields.get("price", "")) or self._first_price(body),
-            "spec": fields.get("spec", ""),
+            "spec": fields.get("spec", "") or self._infer_groupbuy_spec(body),
             "deadline": fields.get("deadline", ""),
             "pickupMethod": fields.get("pickupMethod", ""),
             "pickupLocation": fields.get("pickupLocation", ""),
@@ -555,6 +564,26 @@ class SkillRouterService:
             "images": images,
             "rawText": body,
         }
+
+    def _infer_groupbuy_product_name(self, text: str) -> str:
+        preferred_patterns = [
+            r"([\u4e00-\u9fffA-Za-z0-9]{1,12}鸡蛋)",
+            r"([\u4e00-\u9fffA-Za-z0-9]{1,12}草莓)",
+            r"([\u4e00-\u9fffA-Za-z0-9]{1,12}(?:水果|礼篮|礼盒|牛肉|羊肉|蛋糕))",
+        ]
+        for pattern in preferred_patterns:
+            match = re.search(pattern, text)
+            if match:
+                return re.sub(r"^(?:我们的|咱们的|精选|新鲜|现摘)", "", match.group(1).strip("，。,.、 "))
+        return ""
+
+    def _infer_groupbuy_spec(self, text: str) -> str:
+        specs = []
+        for pattern in [r"\d+(?:\.\d+)?\s*(?:斤|盒|箱|份|包|瓶|袋)", r"约\s*\d+\s*多个?"]:
+            match = re.search(pattern, text)
+            if match:
+                specs.append(match.group(0).strip())
+        return "，".join(dict.fromkeys(specs))
 
     def _first_price(self, text: str) -> str:
         for line in text.splitlines():

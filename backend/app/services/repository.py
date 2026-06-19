@@ -16,6 +16,8 @@ from app.models.domain import (
     ImportBatch,
     ImportNotification,
     LeadReminder,
+    MessageRecord,
+    MessageThread,
     MediaRetryJob,
     RawMessage,
     RelayEntry,
@@ -178,6 +180,24 @@ class AppRepository(Protocol):
         viewer_user_id: str | None = None,
         anonymous_id: str | None = None,
     ) -> list[CustomerAction]:
+        ...
+
+    def get_customer_action(self, action_id: str) -> CustomerAction | None:
+        ...
+
+    def save_message_thread(self, thread: MessageThread) -> None:
+        ...
+
+    def get_message_thread(self, thread_id: str) -> MessageThread | None:
+        ...
+
+    def list_message_threads_for_user(self, user_id: str) -> list[MessageThread]:
+        ...
+
+    def save_message_record(self, record: MessageRecord) -> None:
+        ...
+
+    def list_message_records_for_thread(self, thread_id: str) -> list[MessageRecord]:
         ...
 
     def save_import_notification(self, notification: ImportNotification) -> None:
@@ -550,6 +570,36 @@ class JsonRepository:
             actions = [item for item in actions if item.anonymousId == anonymous_id]
         return sorted(actions, key=lambda item: item.createdAt, reverse=True)
 
+    def get_customer_action(self, action_id: str) -> CustomerAction | None:
+        return next((item for item in self.load().customer_actions if item.id == action_id), None)
+
+    def save_message_thread(self, thread: MessageThread) -> None:
+        state = self.load()
+        state.message_threads = [item for item in state.message_threads if item.id != thread.id]
+        state.message_threads.append(thread)
+        self.save(state)
+
+    def get_message_thread(self, thread_id: str) -> MessageThread | None:
+        return next((item for item in self.load().message_threads if item.id == thread_id), None)
+
+    def list_message_threads_for_user(self, user_id: str) -> list[MessageThread]:
+        threads = [
+            item
+            for item in self.load().message_threads
+            if user_id in item.participantUserIds or item.ownerUserId == user_id or item.buyerUserId == user_id
+        ]
+        return sorted(threads, key=lambda item: item.lastMessageAt or item.updatedAt, reverse=True)
+
+    def save_message_record(self, record: MessageRecord) -> None:
+        state = self.load()
+        state.message_records = [item for item in state.message_records if item.id != record.id]
+        state.message_records.append(record)
+        self.save(state)
+
+    def list_message_records_for_thread(self, thread_id: str) -> list[MessageRecord]:
+        records = [item for item in self.load().message_records if item.threadId == thread_id]
+        return sorted(records, key=lambda item: item.createdAt)
+
     def save_import_notification(self, notification: ImportNotification) -> None:
         state = self.load()
         state.import_notifications = [item for item in state.import_notifications if item.id != notification.id]
@@ -766,6 +816,8 @@ class PostgresRepository:
         "relay_entries": "relay_entries",
         "lead_reminders": "lead_reminders",
         "customer_actions": "customer_actions",
+        "message_threads": "message_threads",
+        "message_records": "message_records",
         "categories": "categories",
         "topics": "topics",
         "import_notifications": "import_notifications",
@@ -857,6 +909,18 @@ class PostgresRepository:
             ("viewer_user_id", "text", "viewerUserId"),
             ("anonymous_id", "text", "anonymousId"),
             ("action_key", "text", "actionKey"),
+        ],
+        "message_threads": [
+            ("note_id", "text", "noteId"),
+            ("order_action_id", "text", "orderActionId"),
+            ("owner_user_id", "text", "ownerUserId"),
+            ("buyer_user_id", "text", "buyerUserId"),
+            ("last_message_at", "timestamptz", "lastMessageAt"),
+            ("status", "text", "status"),
+        ],
+        "message_records": [
+            ("thread_id", "text", "threadId"),
+            ("sender_user_id", "text", "senderUserId"),
         ],
         "categories": [
             ("owner_user_id", "text", "ownerUserId"),
@@ -984,6 +1048,15 @@ class PostgresRepository:
             ("idx_customer_actions_owner_time", "owner_user_id, created_at"),
             ("idx_customer_actions_note_viewer", "note_id, viewer_user_id, action_key"),
             ("idx_customer_actions_note_anonymous", "note_id, anonymous_id, action_key"),
+        ],
+        "message_threads": [
+            ("idx_message_threads_owner_time", "owner_user_id, last_message_at"),
+            ("idx_message_threads_buyer_time", "buyer_user_id, last_message_at"),
+            ("idx_message_threads_note", "note_id"),
+            ("idx_message_threads_order", "order_action_id"),
+        ],
+        "message_records": [
+            ("idx_message_records_thread_time", "thread_id, created_at"),
         ],
         "topics": [
             ("idx_topics_owner_name", "owner_user_id, name"),
@@ -1351,6 +1424,33 @@ class PostgresRepository:
         )
         return [CustomerAction.model_validate(row) for row in rows]
 
+    def get_customer_action(self, action_id: str) -> CustomerAction | None:
+        payload = self.get_payload_by_id("customer_actions", action_id)
+        return CustomerAction.model_validate(payload) if payload else None
+
+    def save_message_thread(self, thread: MessageThread) -> None:
+        self._save_model("message_threads", thread)
+
+    def get_message_thread(self, thread_id: str) -> MessageThread | None:
+        payload = self.get_payload_by_id("message_threads", thread_id)
+        return MessageThread.model_validate(payload) if payload else None
+
+    def list_message_threads_for_user(self, user_id: str) -> list[MessageThread]:
+        rows = self._list_payloads(
+            "message_threads",
+            "owner_user_id = %s or buyer_user_id = %s or payload->'participantUserIds' ? %s",
+            (user_id, user_id, user_id),
+            "coalesce(last_message_at, updated_at) desc, id desc",
+        )
+        return [MessageThread.model_validate(row) for row in rows]
+
+    def save_message_record(self, record: MessageRecord) -> None:
+        self._save_model("message_records", record)
+
+    def list_message_records_for_thread(self, thread_id: str) -> list[MessageRecord]:
+        rows = self._list_payloads("message_records", "thread_id = %s", (thread_id,), "created_at asc, id asc")
+        return [MessageRecord.model_validate(row) for row in rows]
+
     def save_import_notification(self, notification: ImportNotification) -> None:
         self._save_model("import_notifications", notification)
 
@@ -1700,6 +1800,13 @@ class PostgresRepository:
                         conn.execute(f"alter table {table_name} add column if not exists {column_name} {column_type}")
                     for index_name, expression in self.INDEXES.get(table_name, []):
                         conn.execute(f"create index if not exists {index_name} on {table_name} ({expression})")
+                conn.execute(
+                    """
+                    create unique index if not exists uq_users_openid
+                    on users (openid)
+                    where openid is not null
+                    """
+                )
                 conn.execute(
                     """
                     create unique index if not exists uq_raw_messages_wecom_msg_id

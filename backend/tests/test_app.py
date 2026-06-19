@@ -4,6 +4,9 @@ from app.api.dependencies import get_app_service, get_sync_task_queue, get_wecom
 from app.core.config import settings
 from app.services.media_storage_service import MediaStorageService
 from app.services.media_processing_service import MediaProcessingService
+from app.models.domain import UserNote
+from app.services.helpers import new_id
+from app.services.time_utils import now_iso
 from app.services.wecom_archive_worker import WecomArchiveWorker
 from app.services.wecom_client import DownloadedMedia
 from io import BytesIO
@@ -81,12 +84,13 @@ def test_create_note_demo_data_for_owner(client):
 
     assert response.status_code == 200
     data = response.json()["data"]
-    assert len(data["notes"]) == 3
+    assert len(data["notes"]) == 4
     assert data["leadsCreated"] == 2
-    assert data["actionsCreated"] == 3
+    assert data["actionsCreated"] == 4
     notes = client.get("/api/notes", params={"ownerUserId": user["id"]}).json()["data"]
-    assert len(notes) == 3
+    assert len(notes) == 4
     assert all(item["ownerUserId"] == user["id"] for item in notes)
+    assert any(item["visibilityConfig"]["cardType"] == "groupbuy_product" for item in data["notes"])
     action_note = next(item for item in data["notes"] if "测试房源A" in item["title"])
     action_rows = client.get(
         f"/api/notes/{action_note['id']}/customer-actions",
@@ -532,6 +536,70 @@ def test_wecom_archive_process_parses_note_items(client, monkeypatch):
     assert "碧桂园城市之光" in note["body"]
     assert "位置：湖南省长沙市雨花区嘉雨路碧桂园城市之光" in note["body"]
     assert note["media"][0]["mediaId"] == "sdk-file-001"
+
+
+def test_wecom_archive_process_parses_groupbuy_chatrecord_items(client, monkeypatch):
+    monkeypatch.setattr(settings, "admin_token", "archive-admin")
+    payload = {
+        "corpId": "ww_archive_chatrecord_groupbuy",
+        "messages": [
+            {
+                "seq": 303,
+                "msgid": "archive_chatrecord_groupbuy_001",
+                "action": "send",
+                "from": "wm_customer",
+                "tolist": ["user_sales"],
+                "msgtime": 1781725152786,
+                "msgtype": "chatrecord",
+                "decryptedPayload": {
+                    "msgid": "archive_chatrecord_groupbuy_001",
+                    "action": "send",
+                    "from": "wm_customer",
+                    "tolist": ["user_sales"],
+                    "msgtime": 1781725152786,
+                    "msgtype": "chatrecord",
+                    "chatrecord": {
+                        "title": "群聊的聊天记录",
+                        "item": [
+                            {
+                                "type": "ChatRecordText",
+                                "content": "{\"content\":\"连续一个月，鸡蛋行情都是上涨状态，活动也是给大家争取了很久，还有优惠。4斤不多，约40多个，会配小礼篮。\"}",
+                                "msgtime": 1779852781,
+                            },
+                            {
+                                "type": "ChatRecordText",
+                                "content": "{\"content\":\"[图片]\"}",
+                                "msgtime": 1779852783,
+                            },
+                            {
+                                "type": "ChatRecordText",
+                                "content": "{\"content\":\"挑食宝宝救星来啦！\\n我们的白凤乌鸡蛋\\n精选种鸡，白凤乌鸡\\n简单一煮，蛋香十足\"}",
+                                "msgtime": 1779852800,
+                            },
+                        ],
+                    },
+                },
+            }
+        ],
+    }
+
+    saved = client.post("/api/wecom/archive/mock-messages", json=payload, headers={"X-Admin-Token": "archive-admin"})
+    processed = client.post("/api/wecom/archive/process", headers={"X-Admin-Token": "archive-admin"})
+    pending = client.get("/api/imports/pending").json()["data"]
+
+    assert saved.status_code == 200
+    assert processed.status_code == 200
+    assert processed.json()["data"]["processedCount"] == 1
+    note_id = processed.json()["data"]["processed"][0]["noteId"]
+    generated = next(item for item in pending if item["generatedNote"] and item["generatedNote"]["id"] == note_id)
+    note = generated["generatedNote"]
+    config = note["visibilityConfig"]
+    assert "白凤乌鸡蛋" in note["body"]
+    assert "[图片]" not in note["body"]
+    assert config["cardType"] == "groupbuy_product"
+    assert config["systemCategory"] == "团购"
+    assert config["structuredData"]["productName"] == "白凤乌鸡蛋"
+    assert config["structuredData"]["spec"] == "4斤，约40多个"
 
 
 def test_wecom_archive_process_handles_miniapp_card(client, monkeypatch):
@@ -1787,6 +1855,247 @@ def test_import_creates_claimable_user_note_and_note_crud(client):
         params={"ownerUserId": login["id"], "includeDeleted": True},
     ).json()["data"]
     assert deleted_visible[0]["status"] == "deleted"
+
+
+def test_groupbuy_product_relay_intent_uses_customer_actions_without_leads(client):
+    service = client.app.dependency_overrides[get_app_service]()
+    owner = client.post("/api/auth/mock-login", json={"nickname": "团长"}).json()["data"]
+    now = now_iso()
+    note = UserNote(
+        id=new_id("note"),
+        ownerUserId=owner["id"],
+        status="active",
+        title="丹东草莓团购",
+        summary="丹东草莓，按规格接龙。",
+        body="丹东草莓 3斤装 39.9元，小区自提。",
+        phone="13800008888",
+        locationText="小区门口",
+        visibilityConfig={
+            "cardType": "groupbuy_product",
+            "cardState": "generated",
+            "contentMode": "generated_card",
+            "systemCategory": "团购",
+            "structuredData": {
+                "productName": "丹东草莓",
+                "price": "39.9元",
+                "spec": "3斤装",
+                "pickupMethod": "小区自提",
+                "pickupLocation": "小区门口",
+                "contact": "13800008888",
+                "skuConfig": {
+                    "attributeGroups": [
+                        {
+                            "id": "taste",
+                            "name": "口味",
+                            "options": [
+                                {"id": "sweet", "label": "甜口"},
+                                {"id": "sour", "label": "酸甜"},
+                            ],
+                        },
+                        {
+                            "id": "size",
+                            "name": "规格",
+                            "options": [
+                                {"id": "3jin", "label": "3斤装"},
+                            ],
+                        },
+                    ],
+                    "skus": [
+                        {"id": "sku_1", "key": "sweet|3jin", "name": "甜口 / 3斤装", "price": "39.9元", "soldOut": False},
+                        {"id": "sku_2", "key": "sour|3jin", "name": "酸甜 / 3斤装", "price": "42.9元", "soldOut": True},
+                    ],
+                },
+            },
+            "conversionConfig": {
+                "showContactPhone": True,
+                "enableLightScrm": False,
+                "collectLeads": False,
+                "enableAppointment": False,
+                "enablePrivateConsultation": False,
+                "enableSharePoster": True,
+                "enableGroupRelay": True,
+                "enablePaymentPlaceholder": False,
+            },
+        },
+        createdAt=now,
+        updatedAt=now,
+    )
+    service.repo.save_user_note(note)
+    viewer = client.post("/api/auth/mock-login", json={"nickname": "买家"}).json()["data"]
+
+    action_config = client.get(f"/api/notes/{note.id}/customer-actions/config", params={"viewerUserId": viewer["id"]})
+    assert action_config.status_code == 200
+    actions = {item["key"]: item for item in action_config.json()["data"]["actions"]}
+    assert set(actions) == {"relay-intent"}
+    assert actions["relay-intent"]["skuConfig"]["skus"][1]["soldOut"] is True
+
+    sold_out = client.post(
+        f"/api/notes/{note.id}/customer-actions/relay-intent",
+        json={
+            "viewerUserId": viewer["id"],
+            "nickname": viewer["nickname"],
+            "avatarUrl": viewer["avatarUrl"],
+            "payload": {"skuKey": "sour|3jin", "quantity": 1, "phone": "13900003333", "address": "小区门口"},
+        },
+    )
+    assert sold_out.status_code == 400
+
+    submitted = client.post(
+        f"/api/notes/{note.id}/customer-actions/relay-intent",
+        json={
+            "viewerUserId": viewer["id"],
+            "nickname": viewer["nickname"],
+            "avatarUrl": viewer["avatarUrl"],
+            "payload": {"skuKey": "sweet|3jin", "quantity": 2, "phone": "13900003333", "address": "小区门口", "wechat": "wx_buyer", "remark": "下午自提"},
+        },
+    )
+    assert submitted.status_code == 200
+    assert submitted.json()["data"]["projection"] == {}
+    assert submitted.json()["data"]["action"]["payload"]["skuName"] == "甜口 / 3斤装"
+    assert submitted.json()["data"]["action"]["payload"]["name"] == "买家"
+    assert submitted.json()["data"]["action"]["payload"]["avatarUrl"] == viewer["avatarUrl"]
+    resubmitted_config = client.get(f"/api/notes/{note.id}/customer-actions/config", params={"viewerUserId": viewer["id"]})
+    resubmitted_action = resubmitted_config.json()["data"]["actions"][0]
+    assert resubmitted_action["submitted"] is True
+    assert resubmitted_action["submittedPayload"]["skuKey"] == "sweet|3jin"
+    assert resubmitted_action["submittedPayload"]["quantity"] == 2
+    assert resubmitted_action["submittedPayload"]["phone"] == "13900003333"
+    assert resubmitted_action["submittedPayload"]["address"] == "小区门口"
+
+    duplicate = client.post(
+        f"/api/notes/{note.id}/customer-actions/relay-intent",
+        json={"viewerUserId": viewer["id"], "payload": {"skuKey": "sweet|3jin", "quantity": 1, "phone": "13900003333", "address": "小区门口"}},
+    )
+    assert duplicate.status_code == 409
+    assert client.get("/api/lead-reminders", params={"ownerUserId": owner["id"]}).json()["data"] == []
+
+    owner_actions = client.get(f"/api/notes/{note.id}/customer-actions", params={"ownerUserId": owner["id"]})
+    assert owner_actions.status_code == 200
+    data = owner_actions.json()["data"]
+    assert data["cardType"] == "groupbuy_product"
+    assert data["summary"]["orderIntent"] == 1
+    assert data["summary"]["relayIntent"] == 1
+    assert data["summary"]["leads"] == 0
+    assert data["actions"][0]["customerName"] == "买家"
+    assert data["actions"][0]["customerAvatarUrl"] == viewer["avatarUrl"]
+    assert data["actions"][0]["displayRows"][0] == {"label": "规格", "value": "甜口 / 3斤装"}
+    assert {"label": "地址", "value": "小区门口"} in data["actions"][0]["displayRows"]
+
+    disabled_note = note.model_copy(deep=True)
+    disabled_note.id = new_id("note")
+    disabled_note.visibilityConfig["conversionConfig"]["enableGroupRelay"] = False
+    service.repo.save_user_note(disabled_note)
+    disabled = client.post(
+        f"/api/notes/{disabled_note.id}/customer-actions/relay-intent",
+        json={"viewerUserId": viewer["id"], "payload": {"skuKey": "sweet|3jin", "quantity": 1, "phone": "13900003333", "address": "小区门口"}},
+    )
+    assert disabled.status_code == 400
+
+    disabled_config = client.get(f"/api/notes/{disabled_note.id}/customer-actions/config", params={"viewerUserId": viewer["id"]})
+    disabled_actions = {item["key"]: item for item in disabled_config.json()["data"]["actions"]}
+    assert set(disabled_actions) == {"order-intent"}
+    order = client.post(
+        f"/api/notes/{disabled_note.id}/customer-actions/order-intent",
+        json={
+            "viewerUserId": viewer["id"],
+            "nickname": viewer["nickname"],
+            "avatarUrl": viewer["avatarUrl"],
+            "payload": {"skuKey": "sweet|3jin", "quantity": 3, "phone": "13900003333", "address": "小区门口", "remark": "放门卫"},
+        },
+    )
+    assert order.status_code == 200
+    assert order.json()["data"]["projection"] == {}
+    assert order.json()["data"]["statusText"] == "已下单 甜口 / 3斤装 x 3"
+    order_id = order.json()["data"]["action"]["id"]
+    disabled_owner_actions = client.get(f"/api/notes/{disabled_note.id}/customer-actions", params={"ownerUserId": owner["id"]})
+    disabled_data = disabled_owner_actions.json()["data"]
+    assert disabled_data["summary"]["orderIntent"] == 1
+    assert disabled_data["summary"]["relayIntent"] == 0
+    assert disabled_data["summary"]["leads"] == 0
+    assert disabled_data["actions"][0]["actionKey"] == "order-intent"
+    assert {"label": "地址", "value": "小区门口"} in disabled_data["actions"][0]["displayRows"]
+    assert {"label": "备注", "value": "放门卫"} in disabled_data["actions"][0]["displayRows"]
+
+    buyer_orders = client.get("/api/orders", params={"userId": viewer["id"], "role": "buyer"})
+    assert buyer_orders.status_code == 200
+    buyer_order_ids = {item["id"] for item in buyer_orders.json()["data"]["orders"]}
+    assert order_id in buyer_order_ids
+
+    seller_orders = client.get("/api/orders", params={"userId": owner["id"], "role": "seller"})
+    assert seller_orders.status_code == 200
+    seller_order = next(item for item in seller_orders.json()["data"]["orders"] if item["id"] == order_id)
+    assert seller_order["address"] == "小区门口"
+    assert seller_order["phone"] == "13900003333"
+    assert seller_order["remark"] == "放门卫"
+
+    outsider = client.post("/api/auth/mock-login", json={"nickname": "路人"}).json()["data"]
+    forbidden_order = client.get(f"/api/orders/{order_id}", params={"userId": outsider["id"]})
+    assert forbidden_order.status_code == 403
+
+    updated_status = client.patch(
+        f"/api/orders/{order_id}/status",
+        json={"userId": owner["id"], "status": "contacted"},
+    )
+    assert updated_status.status_code == 200
+    assert updated_status.json()["data"]["status"] == "contacted"
+    buyer_status_update = client.patch(
+        f"/api/orders/{order_id}/status",
+        json={"userId": viewer["id"], "status": "completed"},
+    )
+    assert buyer_status_update.status_code == 403
+
+    thread = client.post(
+        "/api/messages/threads",
+        json={
+            "userId": viewer["id"],
+            "noteId": disabled_note.id,
+            "orderActionId": order_id,
+            "content": "老板，下午可以自提吗？",
+        },
+    )
+    assert thread.status_code == 200
+    thread_id = thread.json()["data"]["id"]
+    thread_data = thread.json()["data"]
+    assert thread_data["participants"][owner["id"]]["role"] == "owner"
+    assert thread_data["participants"][viewer["id"]]["role"] == "buyer"
+    assert thread_data["participants"][viewer["id"]]["nickname"] == viewer["nickname"]
+    owner_threads = client.get("/api/messages/threads", params={"userId": owner["id"]})
+    assert owner_threads.json()["data"]["unreadTotal"] == 1
+    messages = client.get(f"/api/messages/threads/{thread_id}/messages", params={"userId": owner["id"]})
+    assert messages.status_code == 200
+    assert messages.json()["data"]["messages"][0]["content"] == "老板，下午可以自提吗？"
+    assert messages.json()["data"]["thread"]["participants"][viewer["id"]]["avatarUrl"] == viewer["avatarUrl"]
+    read = client.post(f"/api/messages/threads/{thread_id}/read", json={"userId": owner["id"]})
+    assert read.status_code == 200
+    assert read.json()["data"]["unreadCount"] == 0
+    reply = client.post(
+        f"/api/messages/threads/{thread_id}/messages",
+        json={"userId": owner["id"], "content": "可以，到了发消息。"},
+    )
+    assert reply.status_code == 200
+    outsider_messages = client.get(f"/api/messages/threads/{thread_id}/messages", params={"userId": outsider["id"]})
+    assert outsider_messages.status_code == 403
+
+
+def test_demo_data_includes_product_relay_mock_for_current_user(client):
+    owner = client.post("/api/auth/mock-login", json={"nickname": "演示团长"}).json()["data"]
+    created = client.post("/api/notes/demo-data", params={"ownerUserId": owner["id"]})
+    assert created.status_code == 200
+    notes = created.json()["data"]["notes"]
+    product = next(item for item in notes if item["visibilityConfig"]["cardType"] == "groupbuy_product")
+    assert product["ownerUserId"] == owner["id"]
+    assert product["visibilityConfig"]["conversionConfig"]["enableGroupRelay"] is True
+
+    listed = client.get("/api/notes", params={"ownerUserId": owner["id"]}).json()["data"]
+    assert any(item["id"] == product["id"] for item in listed)
+
+    owner_actions = client.get(f"/api/notes/{product['id']}/customer-actions", params={"ownerUserId": owner["id"]})
+    assert owner_actions.status_code == 200
+    action_data = owner_actions.json()["data"]
+    assert action_data["summary"]["orderIntent"] == 1
+    assert action_data["summary"]["relayIntent"] == 1
+    assert action_data["summary"]["leads"] == 0
+    assert action_data["actions"][0]["payload"]["skuName"] == "甜口 / 3斤装"
 
 
 def test_manual_create_card_flow(client):

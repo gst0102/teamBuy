@@ -5,6 +5,7 @@ from urllib.parse import parse_qs, urlparse
 
 from app.models.domain import ImportBatch, RawMessage, WecomArchiveMessage
 from app.schemas.skills import ContentLinkPayload, ContentMediaPayload, ContentObjectPayload, ContentParticipantPayload
+from app.services.archive_message_parsers import ArchiveMessageParserRegistry
 
 
 BEIKE_CITY_SLUGS = {
@@ -13,6 +14,9 @@ BEIKE_CITY_SLUGS = {
 
 
 class ContentObjectAdapter:
+    def __init__(self, archive_parser_registry: ArchiveMessageParserRegistry | None = None):
+        self.archive_parser_registry = archive_parser_registry or ArchiveMessageParserRegistry()
+
     def from_wecom_batch(self, batch: ImportBatch, messages: list[RawMessage]) -> ContentObjectPayload:
         text_blocks: list[str] = []
         media: list[ContentMediaPayload] = []
@@ -74,65 +78,20 @@ class ContentObjectAdapter:
 
     def from_wecom_archive_message(self, message: WecomArchiveMessage) -> ContentObjectPayload:
         payload = message.decryptedPayload or message.rawPayload
-        text_blocks: list[str] = []
-        media: list[ContentMediaPayload] = []
-        links: list[ContentLinkPayload] = []
-
         msg_type = message.msgType or payload.get("msgtype") or "unknown"
-        if msg_type == "text":
-            content = payload.get("text", {}).get("content") if isinstance(payload.get("text"), dict) else payload.get("content")
-            if content:
-                text_blocks.append(str(content).strip())
-        elif msg_type == "link":
-            link = payload.get("link") if isinstance(payload.get("link"), dict) else payload
-            links.append(
-                ContentLinkPayload(
-                    url=str(link.get("link_url") or link.get("url") or "").strip(),
-                    title=str(link.get("title") or "").strip() or None,
-                    description=str(link.get("description") or "").strip() or None,
-                    coverUrl=str(link.get("image_url") or link.get("thumbUrl") or "").strip() or None,
-                )
-            )
-        elif msg_type in {"image", "video", "file"}:
-            media_id = self._archive_media_id(payload, msg_type)
-            media.append(
-                ContentMediaPayload(
-                    type=msg_type,
-                    url=None,
-                    mediaId=media_id,
-                    title=str(payload.get("filename") or payload.get("file", {}).get("filename") or "").strip() or None,
-                    sourceRef=message.id,
-                )
-            )
-            text_blocks.append(f"收到{msg_type}素材，媒体稍后转存。")
-        elif msg_type == "location":
-            location = payload.get("location") if isinstance(payload.get("location"), dict) else payload
-            label = str(location.get("address") or location.get("title") or "").strip()
-            if label:
-                text_blocks.append(f"位置：{label}")
-        elif msg_type == "note":
-            self._append_archive_note_parts(message, payload, text_blocks, media, links)
-        elif msg_type == "weapp":
-            miniapp_payload = payload.get("weapp") if isinstance(payload.get("weapp"), dict) else payload
-            miniapp = self._miniapp_metadata(miniapp_payload)
-            text_blocks.extend(self._miniapp_text_blocks(miniapp))
-        else:
-            text = payload.get("content") or payload.get("text")
-            if text:
-                text_blocks.append(str(text).strip())
+        parse_result = self.archive_parser_registry.parse(message, payload, msg_type)
+        text_blocks = parse_result.text_blocks
+        media = parse_result.media
+        links = parse_result.links
 
-        title = self._archive_title(payload, msg_type, text_blocks, links)
-        if msg_type == "weapp":
-            miniapp_payload = payload.get("weapp") if isinstance(payload.get("weapp"), dict) else payload
-            miniapp = self._miniapp_metadata(miniapp_payload)
-            title = miniapp.get("title") or title
+        title = parse_result.title or self._archive_title(payload, msg_type, text_blocks, links)
         return ContentObjectPayload(
-            sourceType="link_article" if msg_type == "link" else "miniapp_card" if msg_type == "weapp" else "wecom_thread",
+            sourceType=parse_result.source_type or ("link_article" if msg_type == "link" else "miniapp_card" if msg_type == "weapp" else "wecom_thread"),
             title=title,
             textBlocks=[item for item in text_blocks if item],
             media=media,
             links=[link for link in links if link.url],
-            metadata={"miniapp": miniapp} if msg_type == "weapp" else {},
+            metadata=parse_result.metadata,
             participants=[
                 ContentParticipantPayload(id=message.fromUser, role="from_user"),
                 *[ContentParticipantPayload(id=item, role="to_user") for item in message.toList],

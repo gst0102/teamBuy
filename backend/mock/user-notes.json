@@ -1,0 +1,119 @@
+[
+  {
+    "id": "note_seed_groupbuy_product_001",
+    "ownerUserId": "user_seed_owner",
+    "importBatchId": null,
+    "sourceCardId": null,
+    "status": "active",
+    "title": "周末现摘草莓商品展示",
+    "summary": "多规格草莓商品展示，可开启团购接龙。",
+    "body": "周末现摘草莓，支持 1 斤尝鲜装和 3 斤家庭装。团长可在商品工作台调整 SKU、售罄状态和接龙开关。",
+    "coverUrl": "https://images.unsplash.com/photo-1464965911861-746a04b4bca6?auto=format&fit=crop&w=900&q=80",
+    "media": [
+      {
+        "id": "note_media_seed_strawberry_001",
+        "type": "image",
+        "url": "https://images.unsplash.com/photo-1464965911861-746a04b4bca6?auto=format&fit=crop&w=900&q=80",
+        "sortOrder": 1
+      }
+    ],
+    "categoryIds": [
+      "cat_seed_group"
+    ],
+    "phone": "13900000000",
+    "locationText": "社区自提点",
+    "sourceRefs": [],
+    "visibilityConfig": {
+      "cardType": "groupbuy_product",
+      "cardState": "generated",
+      "structuredData": {
+        "productName": "周末现摘草莓",
+        "price": "28-78 元",
+        "spec": "按口味和规格选择",
+        "deliveryMethod": "社区自提 / 同城配送",
+        "pickupLocation": "社区自提点，具体地址群内通知",
+        "contactPhone": "13900000000",
+        "stockNote": "数量有限，售罄 SKU 不可接龙",
+        "deadline": "",
+        "skuConfig": {
+          "attributeGroups": [
+            {
+              "id": "group_flavor",
+              "name": "口味",
+              "options": [
+                {
+                  "id": "flavor_sweet",
+                  "label": "甜口"
+                },
+                {
+                  "id": "flavor_sour_sweet",
+                  "label": "酸甜"
+                }
+              ]
+            },
+            {
+              "id": "group_size",
+              "name": "规格",
+              "options": [
+                {
+                  "id": "size_1jin",
+                  "label": "1斤装"
+                },
+                {
+                  "id": "size_3jin",
+                  "label": "3斤装"
+                }
+              ]
+            }
+          ],
+          "skus": [
+            {
+              "id": "sku_sweet_1jin",
+              "key": "flavor_sweet|size_1jin",
+              "name": "甜口 / 1斤装",
+              "price": "28",
+              "description": "适合尝鲜",
+              "soldOut": false
+            },
+            {
+              "id": "sku_sweet_3jin",
+              "key": "flavor_sweet|size_3jin",
+              "name": "甜口 / 3斤装",
+              "price": "78",
+              "description": "家庭分享装",
+              "soldOut": false
+            },
+            {
+              "id": "sku_sour_sweet_1jin",
+              "key": "flavor_sour_sweet|size_1jin",
+              "name": "酸甜 / 1斤装",
+              "price": "26",
+              "description": "口感更清爽",
+              "soldOut": true
+            },
+            {
+              "id": "sku_sour_sweet_3jin",
+              "key": "flavor_sour_sweet|size_3jin",
+              "name": "酸甜 / 3斤装",
+              "price": "72",
+              "description": "适合做果酱",
+              "soldOut": false
+            }
+          ]
+        }
+      },
+      "conversionConfig": {
+        "showContactPhone": true,
+        "enableLightScrm": false,
+        "collectLeads": false,
+        "enableAppointment": false,
+        "enablePrivateChat": false,
+        "enableGroupRelay": true,
+        "enableSharePoster": true,
+        "enablePaymentPlaceholder": false
+      }
+    },
+    "createdAt": "2026-06-19T10:00:00+08:00",
+    "updatedAt": "2026-06-19T10:00:00+08:00"
+  }
+]

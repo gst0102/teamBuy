@@ -101,6 +101,28 @@ create table if not exists customer_actions (
     updated_at timestamptz not null default now()
 );
 
+create table if not exists message_threads (
+    id text primary key,
+    payload jsonb not null,
+    note_id text,
+    order_action_id text,
+    owner_user_id text,
+    buyer_user_id text,
+    last_message_at timestamptz,
+    status text,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+create table if not exists message_records (
+    id text primary key,
+    payload jsonb not null,
+    thread_id text,
+    sender_user_id text,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
 create table if not exists categories (
     id text primary key,
     payload jsonb not null,
@@ -229,6 +251,7 @@ create table if not exists wecom_archive_messages (
 create index if not exists idx_import_batches_status on import_batches (status);
 create index if not exists idx_wecom_identity_bindings_source_external on wecom_identity_bindings (source_type, external_user_id);
 create index if not exists idx_wecom_identity_bindings_owner on wecom_identity_bindings (owner_user_id, updated_at);
+create unique index if not exists uq_users_openid on users (openid) where openid is not null;
 create unique index if not exists uq_wecom_identity_bindings_source_external on wecom_identity_bindings (source_type, external_user_id);
 create index if not exists idx_import_batches_conversation on import_batches (external_user_id, conversation_id, started_at);
 create index if not exists idx_import_batches_claimed_by on import_batches (claimed_by_user_id);
@@ -252,6 +275,11 @@ create index if not exists idx_customer_actions_note_time on customer_actions (n
 create index if not exists idx_customer_actions_owner_time on customer_actions (owner_user_id, created_at);
 create index if not exists idx_customer_actions_note_viewer on customer_actions (note_id, viewer_user_id, action_key);
 create index if not exists idx_customer_actions_note_anonymous on customer_actions (note_id, anonymous_id, action_key);
+create index if not exists idx_message_threads_owner_time on message_threads (owner_user_id, last_message_at);
+create index if not exists idx_message_threads_buyer_time on message_threads (buyer_user_id, last_message_at);
+create index if not exists idx_message_threads_note on message_threads (note_id);
+create index if not exists idx_message_threads_order on message_threads (order_action_id);
+create index if not exists idx_message_records_thread_time on message_records (thread_id, created_at);
 create index if not exists idx_sync_cursors_open_kfid on sync_cursors (open_kfid);
 create index if not exists idx_sync_cursors_last_synced on sync_cursors (last_synced_at);
 create unique index if not exists uq_sync_cursors_open_kfid on sync_cursors (open_kfid);

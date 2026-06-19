@@ -9,7 +9,7 @@ import httpx
 from fastapi import HTTPException, status
 
 from app.core.config import settings
-from app.models.domain import AppState, Card, CardMedia, Category, CustomerAction, ImportBatch, LeadFollowUpLog, LeadReminder, MediaRetryJob, RawMessage, RelayConfig, RelayEntry, SkillRun, SyncCursor, Topic, User, UserNote, ViewEvent, WecomArchiveCursor, WecomArchiveMessage, WecomIdentityBinding
+from app.models.domain import AppState, Card, CardMedia, Category, CustomerAction, ImportBatch, LeadFollowUpLog, LeadReminder, MessageRecord, MessageThread, MediaRetryJob, RawMessage, RelayConfig, RelayEntry, SkillRun, SyncCursor, Topic, User, UserNote, ViewEvent, WecomArchiveCursor, WecomArchiveMessage, WecomIdentityBinding
 from app.schemas.auth import MockLoginRequest, WechatLoginRequest
 from app.schemas.categories import CategoryCreateRequest
 from app.schemas.cards import CardCreateRequest, CardUpdateRequest, CreateRelayRequest, LeadReminderUpdateRequest, LeadReminderUpsertRequest, RecordViewRequest
@@ -54,8 +54,8 @@ PROPERTY_CONVERSION_DEFAULTS = {
 }
 GROUPBUY_CONVERSION_DEFAULTS = {
     "showContactPhone": True,
-    "enableLightScrm": True,
-    "collectLeads": True,
+    "enableLightScrm": False,
+    "collectLeads": False,
     "enableAppointment": False,
     "enablePrivateConsultation": False,
     "enableSharePoster": True,
@@ -65,6 +65,7 @@ GROUPBUY_CONVERSION_DEFAULTS = {
 CUSTOMER_ACTION_LABELS = {
     "lead-contact": "留下电话/微信",
     "appointment": "预约看房",
+    "order-intent": "商品下单",
     "relay-intent": "参与接龙",
     "consult-click": "咨询动作",
     "navigation-click": "地图定位",
@@ -73,7 +74,7 @@ CUSTOMER_ACTION_LABELS = {
 CUSTOMER_ACTION_FIELDS = {
     "lead-contact": [
         {"key": "name", "label": "姓名", "type": "text", "required": False},
-        {"key": "phone", "label": "电话", "type": "phone", "required": False},
+        {"key": "phone", "label": "电话", "type": "phone", "required": True},
         {"key": "wechat", "label": "微信号", "type": "text", "required": False},
         {"key": "remark", "label": "备注", "type": "textarea", "required": False},
     ],
@@ -82,7 +83,25 @@ CUSTOMER_ACTION_FIELDS = {
         {"key": "time", "label": "时间", "type": "time", "required": True},
         {"key": "remark", "label": "备注", "type": "text", "required": False},
     ],
+    "order-intent": [
+        {"key": "receiverName", "label": "收货人", "type": "text", "required": False},
+        {"key": "quantity", "label": "数量", "type": "number", "required": True},
+        {"key": "phone", "label": "电话", "type": "phone", "required": True},
+        {"key": "address", "label": "地址", "type": "text", "required": True},
+        {"key": "wechat", "label": "微信号", "type": "text", "required": False},
+        {"key": "remark", "label": "备注", "type": "textarea", "required": False},
+    ],
+    "relay-intent": [
+        {"key": "receiverName", "label": "收货人", "type": "text", "required": False},
+        {"key": "quantity", "label": "数量", "type": "number", "required": True},
+        {"key": "phone", "label": "电话", "type": "phone", "required": True},
+        {"key": "address", "label": "地址", "type": "text", "required": True},
+        {"key": "wechat", "label": "微信号", "type": "text", "required": False},
+        {"key": "remark", "label": "备注", "type": "textarea", "required": False},
+    ],
 }
+PRODUCT_ORDER_ACTION_KEYS = {"order-intent", "relay-intent"}
+ORDER_STATUSES = {"submitted", "contacted", "completed", "cancelled"}
 
 
 class AppService:
@@ -1735,6 +1754,108 @@ class AppService:
                 )
                 self.repo.save_customer_action(appointment_action)
                 actions.append(appointment_action)
+        product_note = UserNote(
+            id=new_id("note"),
+            ownerUserId=owner_user_id,
+            status="active",
+            title="测试商品 周末现摘草莓",
+            summary="用于测试商品展示、SKU 售罄和团购接龙。",
+            body="周末现摘草莓，支持多规格选择；售罄 SKU 不可提交，接龙不进入 SCRM。",
+            coverUrl="https://images.unsplash.com/photo-1464965911861-746a04b4bca6?auto=format&fit=crop&w=900&q=80",
+            media=[
+                {
+                    "id": new_id("media"),
+                    "type": "image",
+                    "url": "https://images.unsplash.com/photo-1464965911861-746a04b4bca6?auto=format&fit=crop&w=900&q=80",
+                    "sortOrder": 1,
+                }
+            ],
+            categoryIds=[],
+            phone="13800001004",
+            locationText="社区自提点",
+            visibilityConfig={
+                "cardType": "groupbuy_product",
+                "cardState": "generated",
+                "contentMode": "generated_card",
+                "tags": ["商品", "团购", "演示数据"],
+                "conversionConfig": {
+                    "showContactPhone": True,
+                    "enableLightScrm": False,
+                    "collectLeads": False,
+                    "enableAppointment": False,
+                    "enablePrivateConsultation": False,
+                    "enableSharePoster": True,
+                    "enableGroupRelay": True,
+                    "enablePaymentPlaceholder": False,
+                },
+                "structuredData": {
+                    "productName": "周末现摘草莓",
+                    "price": "28-78 元",
+                    "spec": "按口味和规格选择",
+                    "deliveryMethod": "社区自提 / 同城配送",
+                    "pickupLocation": "社区自提点，具体地址群内通知",
+                    "contactPhone": "13800001004",
+                    "stockNote": "数量有限，售罄 SKU 不可接龙",
+                    "deadline": "",
+                    "skuConfig": {
+                        "attributeGroups": [
+                            {
+                                "id": "taste",
+                                "name": "口味",
+                                "options": [
+                                    {"id": "sweet", "label": "甜口"},
+                                    {"id": "sour_sweet", "label": "酸甜"},
+                                ],
+                            },
+                            {
+                                "id": "size",
+                                "name": "规格",
+                                "options": [
+                                    {"id": "one_jin", "label": "1斤装"},
+                                    {"id": "three_jin", "label": "3斤装"},
+                                ],
+                            },
+                        ],
+                        "skus": [
+                            {"id": "sku_sweet_one", "key": "sweet|one_jin", "name": "甜口 / 1斤装", "price": "28", "description": "适合尝鲜", "soldOut": False},
+                            {"id": "sku_sweet_three", "key": "sweet|three_jin", "name": "甜口 / 3斤装", "price": "78", "description": "家庭分享装", "soldOut": False},
+                            {"id": "sku_sour_one", "key": "sour_sweet|one_jin", "name": "酸甜 / 1斤装", "price": "26", "description": "口感清爽", "soldOut": True},
+                            {"id": "sku_sour_three", "key": "sour_sweet|three_jin", "name": "酸甜 / 3斤装", "price": "72", "description": "适合做果酱", "soldOut": False},
+                        ],
+                    },
+                },
+            },
+            createdAt=now,
+            updatedAt=now,
+        )
+        self.repo.save_user_note(product_note)
+        notes.append(product_note)
+        relay_action = CustomerAction(
+            id=new_id("action"),
+            ownerUserId=owner_user_id,
+            noteId=product_note.id,
+            sourceCardId=None,
+            viewerUserId=new_id("viewer"),
+            actionKey="relay-intent",
+            actionLabel="参与接龙",
+            payload={
+                "skuKey": "sweet|three_jin",
+                "skuId": "sku_sweet_three",
+                "skuName": "甜口 / 3斤装",
+                "skuPrice": "78",
+                "quantity": 2,
+                "phone": "13800138000",
+                "wechat": "berry_fan",
+                "remark": "周六下午自提",
+                "name": "李小莓",
+                "avatarUrl": "https://example.com/avatar-demo.png",
+            },
+            projectionRefs={},
+            createdAt=now,
+            updatedAt=now,
+        )
+        self.repo.save_customer_action(relay_action)
+        actions.append(relay_action)
         return {
             "notes": [item.model_dump() for item in notes],
             "actionsCreated": len(actions),
@@ -1751,6 +1872,13 @@ class AppService:
         config = self._normalize_note_visibility_config(note.visibilityConfig)
         actions = self._available_customer_actions(config)
         submitted = self._submitted_customer_actions(note_id, viewer_user_id, anonymous_id)
+        def submitted_for_action(action_key: str) -> dict:
+            if action_key in PRODUCT_ORDER_ACTION_KEYS:
+                return submitted.get(action_key) or next(
+                    (submitted.get(key) for key in PRODUCT_ORDER_ACTION_KEYS if submitted.get(key)),
+                    {},
+                )
+            return submitted.get(action_key, {})
         return {
             "noteId": note.id,
             "ownerUserId": note.ownerUserId,
@@ -1758,9 +1886,10 @@ class AppService:
             "actions": [
                 {
                     **item,
-                    "submitted": item["key"] in submitted,
-                    "statusText": submitted.get(item["key"], {}).get("statusText", ""),
-                    "submittedAt": submitted.get(item["key"], {}).get("createdAt"),
+                    "submitted": bool(submitted_for_action(item["key"])),
+                    "statusText": submitted_for_action(item["key"]).get("statusText", ""),
+                    "submittedAt": submitted_for_action(item["key"]).get("createdAt"),
+                    "submittedPayload": submitted_for_action(item["key"]).get("payload", {}),
                 }
                 for item in actions
             ],
@@ -1770,6 +1899,8 @@ class AppService:
         note = self._get_active_note(note_id)
         if note.ownerUserId != owner_user_id:
             raise HTTPException(status_code=403, detail="仅发布者可查看客户动作")
+        config = self._normalize_note_visibility_config(note.visibilityConfig)
+        card_type = config.get("cardType", "text_note")
         actions = self.repo.list_customer_actions_for_note(note_id)
         projected_lead_ids = {
             str((action.projectionRefs or {}).get("leadReminderId") or "")
@@ -1789,25 +1920,33 @@ class AppService:
             lead = lead_status_by_id.get(lead_id)
             row = action.model_dump()
             row["customerName"] = action.payload.get("name") or (lead.get("nickname") if lead else "") or "客户"
+            row["customerAvatarUrl"] = action.payload.get("avatarUrl") or (lead.get("avatarUrl") if lead else None)
             row["leadReminderId"] = lead_id
             row["leadStatus"] = lead.get("status") if lead else None
             row["leadStatusText"] = self._lead_status_text(lead.get("status")) if lead else ""
             row["statusText"] = self._customer_action_status_text(action.actionKey, action.payload)
+            row["displayRows"] = self._customer_action_display_rows(action)
             action_rows.append(row)
+        order_count = sum(1 for item in actions if item.actionKey in PRODUCT_ORDER_ACTION_KEYS)
+        relay_count = sum(1 for item in actions if item.actionKey == "relay-intent")
         summary = {
             "total": len(actions),
             "leadContact": sum(1 for item in actions if item.actionKey == "lead-contact"),
             "appointment": sum(1 for item in actions if item.actionKey == "appointment"),
+            "orderIntent": order_count,
+            "relayIntent": relay_count,
             "consult": sum(1 for item in actions if item.actionKey == "consult-click"),
             "leads": len(lead_rows),
             "pending": pending_count,
-            "hasUnread": pending_count > 0,
+            "hasUnread": pending_count > 0 or order_count > 0,
             "latestActionAt": actions[0].createdAt if actions else None,
+            "mode": "product_relay" if card_type == "groupbuy_product" else "customer_actions",
         }
         return {
             "noteId": note.id,
             "ownerUserId": note.ownerUserId,
             "sourceCardId": note.sourceCardId,
+            "cardType": card_type,
             "summary": summary,
             "actions": action_rows,
             "leads": lead_rows,
@@ -1819,10 +1958,25 @@ class AppService:
         allowed_keys = {item["key"] for item in self._available_customer_actions(config)}
         if action_key not in allowed_keys:
             raise HTTPException(status_code=400, detail="当前资料未启用该客户动作")
-        if action_key not in {"lead-contact", "appointment"}:
+        if action_key not in {"lead-contact", "appointment", "order-intent", "relay-intent"}:
             raise HTTPException(status_code=400, detail="该客户动作暂未接入持久化")
         viewer_key = self._customer_viewer_key(payload.viewerUserId, payload.anonymousId)
-        clean_payload = self._normalize_customer_action_payload(action_key, payload.payload)
+        if action_key in PRODUCT_ORDER_ACTION_KEYS:
+            existing = next(
+                (
+                    item
+                    for item in self.repo.list_customer_actions_for_note(note_id, payload.viewerUserId, payload.anonymousId)
+                    if item.actionKey in PRODUCT_ORDER_ACTION_KEYS
+                ),
+                None,
+            )
+            if existing:
+                raise HTTPException(status_code=409, detail="你已经提交过下单")
+        clean_payload = self._normalize_customer_action_payload(action_key, payload.payload, config)
+        if action_key in PRODUCT_ORDER_ACTION_KEYS:
+            clean_payload["name"] = (payload.nickname or payload.payload.get("name") or "微信客户").strip()
+            if payload.avatarUrl or payload.payload.get("avatarUrl"):
+                clean_payload["avatarUrl"] = payload.avatarUrl or payload.payload.get("avatarUrl")
         now = now_iso()
         action = CustomerAction(
             id=new_id("action"),
@@ -1838,8 +1992,10 @@ class AppService:
             createdAt=now,
             updatedAt=now,
         )
-        reminder = self._project_customer_action_to_lead(note, action, payload, viewer_key)
-        action.projectionRefs = {"leadReminderId": reminder.id}
+        reminder = None
+        if action_key in {"lead-contact", "appointment"}:
+            reminder = self._project_customer_action_to_lead(note, action, payload, viewer_key)
+            action.projectionRefs = {"leadReminderId": reminder.id}
         self.repo.save_customer_action(action)
         return {
             "action": action.model_dump(),
@@ -1847,7 +2003,7 @@ class AppService:
                 "leadReminderId": reminder.id,
                 "status": reminder.status,
                 "nextFollowUpAt": reminder.nextFollowUpAt,
-            },
+            } if reminder else {},
             "statusText": self._customer_action_status_text(action_key, clean_payload),
         }
 
@@ -1877,6 +2033,17 @@ class AppService:
                 "submitText": "提交预约",
                 "fields": CUSTOMER_ACTION_FIELDS["appointment"],
             })
+        if card_type == "groupbuy_product":
+            structured_data = config.get("structuredData") or {}
+            action_key = "relay-intent" if conversion.get("enableGroupRelay") else "order-intent"
+            actions.append({
+                "key": action_key,
+                "label": "参与接龙" if action_key == "relay-intent" else "商品下单",
+                "formTitle": "选择商品规格",
+                "submitText": "下单并接龙" if action_key == "relay-intent" else "下单",
+                "fields": CUSTOMER_ACTION_FIELDS[action_key],
+                "skuConfig": self._normalize_sku_config(structured_data),
+            })
         return actions
 
     def _submitted_customer_actions(
@@ -1892,6 +2059,7 @@ class AppService:
             submitted.setdefault(action.actionKey, {
                 "createdAt": action.createdAt,
                 "statusText": self._customer_action_status_text(action.actionKey, action.payload),
+                "payload": action.payload,
             })
         return submitted
 
@@ -1901,7 +2069,7 @@ class AppService:
             raise HTTPException(status_code=400, detail="缺少客户身份")
         return viewer_key
 
-    def _normalize_customer_action_payload(self, action_key: str, payload: dict) -> dict:
+    def _normalize_customer_action_payload(self, action_key: str, payload: dict, config: dict | None = None) -> dict:
         data = payload if isinstance(payload, dict) else {}
         if action_key == "lead-contact":
             phone = str(data.get("phone") or "").strip()
@@ -1924,7 +2092,93 @@ class AppService:
                 "time": time,
                 "remark": str(data.get("remark") or "").strip(),
             }
+        if action_key in PRODUCT_ORDER_ACTION_KEYS:
+            sku_config = self._normalize_sku_config((config or {}).get("structuredData") or {})
+            sku_key = str(data.get("skuKey") or "").strip()
+            sku = next((item for item in sku_config["skus"] if item.get("key") == sku_key or item.get("id") == sku_key), None)
+            if not sku:
+                raise HTTPException(status_code=400, detail="请选择商品规格")
+            if sku.get("soldOut"):
+                raise HTTPException(status_code=400, detail="该规格已售罄")
+            quantity = str(data.get("quantity") or "1").strip()
+            try:
+                quantity_number = int(quantity)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail="数量必须是整数") from exc
+            if quantity_number < 1:
+                raise HTTPException(status_code=400, detail="数量至少为 1")
+            phone = str(data.get("phone") or "").strip()
+            address = str(data.get("address") or "").strip()
+            if not phone:
+                raise HTTPException(status_code=400, detail="请填写联系电话")
+            if not address:
+                raise HTTPException(status_code=400, detail="请填写地址")
+            order_status = str(data.get("orderStatus") or "submitted").strip() or "submitted"
+            if order_status not in ORDER_STATUSES:
+                order_status = "submitted"
+            return {
+                "skuKey": sku.get("key") or sku.get("id"),
+                "skuId": sku.get("id") or sku.get("key"),
+                "skuName": sku.get("name") or "默认规格",
+                "skuPrice": sku.get("price") or "",
+                "quantity": quantity_number,
+                "receiverName": str(data.get("receiverName") or "").strip(),
+                "phone": phone,
+                "address": address,
+                "wechat": str(data.get("wechat") or "").strip(),
+                "remark": str(data.get("remark") or "").strip(),
+                "orderStatus": order_status,
+            }
         return dict(data)
+
+    def _normalize_sku_config(self, structured_data: dict) -> dict:
+        config = structured_data.get("skuConfig") if isinstance(structured_data, dict) else {}
+        config = config if isinstance(config, dict) else {}
+        groups = []
+        for group_index, group in enumerate(config.get("attributeGroups") or []):
+            if not isinstance(group, dict):
+                continue
+            options = [
+                {
+                    "id": str(option.get("id") or f"option_{group_index}_{option_index}"),
+                    "label": str(option.get("label") or option.get("name") or "").strip(),
+                }
+                for option_index, option in enumerate(group.get("options") or [])
+                if isinstance(option, dict) and str(option.get("label") or option.get("name") or "").strip()
+            ]
+            if options:
+                groups.append({
+                    "id": str(group.get("id") or f"group_{group_index}"),
+                    "name": str(group.get("name") or f"属性{group_index + 1}").strip(),
+                    "options": options,
+                })
+        skus = []
+        for index, sku in enumerate(config.get("skus") or []):
+            if not isinstance(sku, dict):
+                continue
+            key = str(sku.get("key") or sku.get("id") or "").strip()
+            name = str(sku.get("name") or "").strip()
+            if not key and not name:
+                continue
+            skus.append({
+                "id": str(sku.get("id") or key or f"sku_{index}"),
+                "key": key or str(sku.get("id") or f"sku_{index}"),
+                "name": name or key or "默认规格",
+                "price": str(sku.get("price") or structured_data.get("price") or "").strip(),
+                "description": str(sku.get("description") or "").strip(),
+                "soldOut": bool(sku.get("soldOut")),
+            })
+        if not skus:
+            default_name = str(structured_data.get("spec") or structured_data.get("productName") or "默认规格").strip()
+            skus = [{
+                "id": "default",
+                "key": "default",
+                "name": default_name,
+                "price": str(structured_data.get("price") or "").strip(),
+                "description": str(structured_data.get("pickupMethod") or "").strip(),
+                "soldOut": False,
+            }]
+        return {"attributeGroups": groups, "skus": skus}
 
     def _project_customer_action_to_lead(
         self,
@@ -2002,7 +2256,266 @@ class AppService:
             return "已提交联系方式"
         if action_key == "appointment":
             return f"已预约 {payload.get('date', '')} {payload.get('time', '')}".strip()
+        if action_key == "order-intent":
+            sku = payload.get("skuName") or "商品"
+            quantity = payload.get("quantity") or 1
+            return f"已下单 {sku} x {quantity}"
+        if action_key == "relay-intent":
+            sku = payload.get("skuName") or "商品"
+            quantity = payload.get("quantity") or 1
+            return f"已接龙 {sku} x {quantity}"
         return "已记录"
+
+    def _customer_action_display_rows(self, action: CustomerAction) -> list[dict]:
+        payload = action.payload or {}
+        if action.actionKey in PRODUCT_ORDER_ACTION_KEYS:
+            rows = [
+                ("规格", payload.get("skuName")),
+                ("单价", payload.get("skuPrice")),
+                ("数量", payload.get("quantity")),
+                ("收货人", payload.get("receiverName")),
+                ("地址", payload.get("address")),
+                ("电话", payload.get("phone")),
+                ("微信", payload.get("wechat")),
+                ("备注", payload.get("remark")),
+            ]
+            return [{"label": label, "value": str(value)} for label, value in rows if value not in (None, "")]
+        rows = [
+            ("姓名", payload.get("name")),
+            ("电话", payload.get("phone")),
+            ("微信", payload.get("wechat")),
+            ("预约", " ".join(str(payload.get(key) or "") for key in ("date", "time")).strip()),
+            ("备注", payload.get("remark")),
+        ]
+        return [{"label": label, "value": str(value)} for label, value in rows if value]
+
+    def list_orders(self, user_id: str, role: str) -> dict:
+        if role not in {"buyer", "seller"}:
+            raise HTTPException(status_code=400, detail="订单角色不正确")
+        rows = [
+            self._build_order_row(note, action, role)
+            for note, action in self._iter_order_actions()
+            if (role == "buyer" and action.viewerUserId == user_id)
+            or (role == "seller" and action.ownerUserId == user_id)
+        ]
+        return {"role": role, "orders": rows}
+
+    def get_order(self, order_id: str, user_id: str) -> dict:
+        note, action, role = self._get_order_for_user(order_id, user_id)
+        return self._build_order_row(note, action, role)
+
+    def update_order_status(self, order_id: str, user_id: str, status_value: str) -> dict:
+        note, action, role = self._get_order_for_user(order_id, user_id)
+        if role != "seller":
+            raise HTTPException(status_code=403, detail="仅商家可更新订单状态")
+        if status_value not in ORDER_STATUSES:
+            raise HTTPException(status_code=400, detail="订单状态不正确")
+        action.payload = {**(action.payload or {}), "orderStatus": status_value}
+        action.updatedAt = now_iso()
+        self.repo.save_customer_action(action)
+        return self._build_order_row(note, action, role)
+
+    def _iter_order_actions(self) -> list[tuple[UserNote, CustomerAction]]:
+        rows: list[tuple[UserNote, CustomerAction]] = []
+        for note in self.repo.list_all_user_notes(include_deleted=False):
+            config = self._normalize_note_visibility_config(note.visibilityConfig)
+            if config.get("cardType") != "groupbuy_product":
+                continue
+            for action in self.repo.list_customer_actions_for_note(note.id):
+                if action.actionKey in PRODUCT_ORDER_ACTION_KEYS:
+                    rows.append((note, action))
+        return sorted(rows, key=lambda row: row[1].createdAt, reverse=True)
+
+    def _get_order_for_user(self, order_id: str, user_id: str) -> tuple[UserNote, CustomerAction, str]:
+        action = self.repo.get_customer_action(order_id)
+        if not action or action.actionKey not in PRODUCT_ORDER_ACTION_KEYS:
+            raise HTTPException(status_code=404, detail="订单不存在")
+        note = self._get_active_note(action.noteId)
+        if action.ownerUserId == user_id:
+            return note, action, "seller"
+        if action.viewerUserId == user_id:
+            return note, action, "buyer"
+        raise HTTPException(status_code=403, detail="无权查看该订单")
+
+    def _build_order_row(self, note: UserNote, action: CustomerAction, role: str) -> dict:
+        config = self._normalize_note_visibility_config(note.visibilityConfig)
+        structured_data = config.get("structuredData") or {}
+        payload = action.payload or {}
+        status_value = payload.get("orderStatus") or "submitted"
+        status_labels = {
+            "submitted": "已下单",
+            "contacted": "已联系",
+            "completed": "已完成",
+            "cancelled": "已取消",
+        }
+        return {
+            "id": action.id,
+            "actionKey": action.actionKey,
+            "role": role,
+            "noteId": note.id,
+            "sellerUserId": action.ownerUserId,
+            "buyerUserId": action.viewerUserId,
+            "buyerName": payload.get("name") or "微信用户",
+            "buyerAvatarUrl": payload.get("avatarUrl") or "",
+            "title": structured_data.get("productName") or note.title,
+            "coverUrl": note.coverUrl,
+            "skuName": payload.get("skuName") or "默认规格",
+            "skuPrice": payload.get("skuPrice") or "",
+            "quantity": payload.get("quantity") or 1,
+            "receiverName": payload.get("receiverName") or "",
+            "phone": payload.get("phone") or "",
+            "address": payload.get("address") or "",
+            "wechat": payload.get("wechat") or "",
+            "remark": payload.get("remark") or "",
+            "status": status_value,
+            "statusText": status_labels.get(status_value, "已下单"),
+            "createdAt": action.createdAt,
+            "updatedAt": action.updatedAt,
+        }
+
+    def list_message_threads(self, user_id: str) -> dict:
+        threads = [self._build_message_thread_row(thread, user_id) for thread in self.repo.list_message_threads_for_user(user_id)]
+        return {
+            "threads": threads,
+            "unreadTotal": sum(item.get("unreadCount", 0) for item in threads),
+        }
+
+    def create_message_thread(self, payload: dict) -> dict:
+        user_id = str(payload.get("userId") or "").strip()
+        note_id = str(payload.get("noteId") or "").strip()
+        order_action_id = str(payload.get("orderActionId") or "").strip() or None
+        buyer_user_id = str(payload.get("buyerUserId") or "").strip() or None
+        content = str(payload.get("content") or "").strip()
+        if not user_id or not note_id:
+            raise HTTPException(status_code=400, detail="缺少会话参数")
+        note = self._get_active_note(note_id)
+        order_action = self.repo.get_customer_action(order_action_id) if order_action_id else None
+        if order_action:
+            if order_action.noteId != note.id or order_action.actionKey not in PRODUCT_ORDER_ACTION_KEYS:
+                raise HTTPException(status_code=400, detail="订单不属于当前资料")
+            buyer_user_id = order_action.viewerUserId
+            if user_id not in {note.ownerUserId, order_action.viewerUserId}:
+                raise HTTPException(status_code=403, detail="无权打开该订单会话")
+        elif user_id == note.ownerUserId:
+            if not buyer_user_id:
+                raise HTTPException(status_code=400, detail="缺少买家身份")
+        else:
+            buyer_user_id = user_id
+        if not buyer_user_id:
+            raise HTTPException(status_code=400, detail="缺少买家身份")
+        participant_ids = sorted({note.ownerUserId, buyer_user_id})
+        thread = next(
+            (
+                item
+                for item in self.repo.list_message_threads_for_user(user_id)
+                if item.noteId == note.id
+                and item.orderActionId == order_action_id
+                and item.ownerUserId == note.ownerUserId
+                and item.buyerUserId == buyer_user_id
+            ),
+            None,
+        )
+        now = now_iso()
+        if not thread:
+            thread = MessageThread(
+                id=new_id("thread"),
+                noteId=note.id,
+                orderActionId=order_action_id,
+                ownerUserId=note.ownerUserId,
+                buyerUserId=buyer_user_id,
+                participantUserIds=participant_ids,
+                title=note.title,
+                unreadByUser={user_id: 0},
+                createdAt=now,
+                updatedAt=now,
+            )
+            self.repo.save_message_thread(thread)
+        if content:
+            self._append_message(thread, user_id, content)
+            thread = self.repo.get_message_thread(thread.id) or thread
+        return self._build_message_thread_row(thread, user_id)
+
+    def list_thread_messages(self, thread_id: str, user_id: str) -> dict:
+        thread = self._get_thread_for_user(thread_id, user_id)
+        return {
+            "thread": self._build_message_thread_row(thread, user_id),
+            "messages": [item.model_dump() for item in self.repo.list_message_records_for_thread(thread.id)],
+        }
+
+    def send_thread_message(self, thread_id: str, user_id: str, content: str) -> dict:
+        thread = self._get_thread_for_user(thread_id, user_id)
+        record = self._append_message(thread, user_id, content)
+        thread = self.repo.get_message_thread(thread.id) or thread
+        return {
+            "thread": self._build_message_thread_row(thread, user_id),
+            "message": record.model_dump(),
+        }
+
+    def mark_message_thread_read(self, thread_id: str, user_id: str) -> dict:
+        thread = self._get_thread_for_user(thread_id, user_id)
+        thread.unreadByUser = {**(thread.unreadByUser or {}), user_id: 0}
+        thread.updatedAt = now_iso()
+        self.repo.save_message_thread(thread)
+        return self._build_message_thread_row(thread, user_id)
+
+    def _append_message(self, thread: MessageThread, sender_user_id: str, content: str) -> MessageRecord:
+        text = str(content or "").strip()
+        if not text:
+            raise HTTPException(status_code=400, detail="消息不能为空")
+        if sender_user_id not in set(thread.participantUserIds):
+            raise HTTPException(status_code=403, detail="无权发送消息")
+        now = now_iso()
+        record = MessageRecord(id=new_id("msg"), threadId=thread.id, senderUserId=sender_user_id, content=text, createdAt=now)
+        unread = dict(thread.unreadByUser or {})
+        for participant_id in thread.participantUserIds:
+            unread[participant_id] = 0 if participant_id == sender_user_id else int(unread.get(participant_id, 0)) + 1
+        thread.lastMessage = text
+        thread.lastMessageAt = now
+        thread.unreadByUser = unread
+        thread.updatedAt = now
+        self.repo.save_message_record(record)
+        self.repo.save_message_thread(thread)
+        return record
+
+    def _get_thread_for_user(self, thread_id: str, user_id: str) -> MessageThread:
+        thread = self.repo.get_message_thread(thread_id)
+        if not thread:
+            raise HTTPException(status_code=404, detail="会话不存在")
+        if user_id not in set(thread.participantUserIds):
+            raise HTTPException(status_code=403, detail="无权查看该会话")
+        return thread
+
+    def _build_message_thread_row(self, thread: MessageThread, user_id: str) -> dict:
+        note = self.repo.get_user_note(thread.noteId)
+        order = self.repo.get_customer_action(thread.orderActionId) if thread.orderActionId else None
+        owner = self.repo.get_user(thread.ownerUserId)
+        buyer = self.repo.get_user(thread.buyerUserId)
+        order_payload = order.payload if order else {}
+        participants = {
+            thread.ownerUserId: {
+                "userId": thread.ownerUserId,
+                "role": "owner",
+                "nickname": owner.nickname if owner else "发布者",
+                "avatarUrl": owner.avatarUrl if owner else "",
+            },
+            thread.buyerUserId: {
+                "userId": thread.buyerUserId,
+                "role": "buyer",
+                "nickname": (buyer.nickname if buyer else "") or order_payload.get("name") or "客户",
+                "avatarUrl": (buyer.avatarUrl if buyer else "") or order_payload.get("avatarUrl") or "",
+            },
+        }
+        return {
+            **thread.model_dump(),
+            "noteTitle": note.title if note else thread.title,
+            "noteCoverUrl": note.coverUrl if note else "",
+            "orderStatus": (order.payload or {}).get("orderStatus", "submitted") if order else "",
+            "orderSkuName": (order.payload or {}).get("skuName", "") if order else "",
+            "peerUserId": thread.ownerUserId if user_id == thread.buyerUserId else thread.buyerUserId,
+            "participants": participants,
+            "currentUserId": user_id,
+            "unreadCount": int((thread.unreadByUser or {}).get(user_id, 0)),
+        }
 
     def delete_user_note(self, note_id: str, owner_user_id: str) -> dict:
         note = self.get_user_note(note_id, owner_user_id)

@@ -12,9 +12,12 @@ MOCK_FILES = {
     "import_batches": "import-batches.json",
     "raw_messages": "raw-messages.json",
     "cards": "cards.json",
+    "user_notes": "user-notes.json",
     "view_events": "view-events.json",
     "relay_entries": "relays.json",
     "customer_actions": "customer-actions.json",
+    "message_threads": "message-threads.json",
+    "message_records": "message-records.json",
     "categories": "categories.json",
     "import_notifications": "import-notifications.json",
 }

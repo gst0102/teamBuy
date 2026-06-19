@@ -1,1 +1,27 @@
-[]
+[
+  {
+    "id": "action_seed_relay_001",
+    "ownerUserId": "user_seed_owner",
+    "noteId": "note_seed_groupbuy_product_001",
+    "sourceCardId": null,
+    "viewerUserId": "user_seed_customer",
+    "anonymousId": null,
+    "actionKey": "relay-intent",
+    "actionLabel": "参与接龙",
+    "payload": {
+      "skuKey": "flavor_sweet|size_3jin",
+      "skuId": "sku_sweet_3jin",
+      "skuName": "甜口 / 3斤装",
+      "skuPrice": "78",
+      "quantity": 2,
+      "phone": "13800138000",
+      "wechat": "berry_fan",
+      "remark": "周六下午自提",
+      "name": "李小莓",
+      "avatarUrl": "https://example.com/avatar-customer.png"
+    },
+    "projectionRefs": {},
+    "createdAt": "2026-06-19T10:20:00+08:00",
+    "updatedAt": "2026-06-19T10:20:00+08:00"
+  }
+]
