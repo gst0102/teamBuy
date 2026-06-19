@@ -1,5 +1,39 @@
 # 2026-06-20
 
+## 本次补充：归档 parser 插件化、识别解释和中置信人工确认
+
+背景：
+
+- 用户要求把“企业微信归档 parser 插件化收口、类型识别可解释、中置信人工确认入口”一次完成。
+
+完成内容：
+
+- 企业微信会话归档 parser registry 收口：
+  - 每个 archive parser 有稳定 `name` 和 `msg_types`。
+  - `ArchiveMessageParserRegistry` 支持显式注册、重复 msgtype 拦截和 `supported_types()`。
+  - 解析结果 metadata 自动写入 `archiveParser` 和 `archiveMsgType`，未知类型走 fallback 并记录 `unsupportedArchiveMsgType`。
+- 类型识别可解释：
+  - `content-to-note` 的 `visibilityConfig` 新增 `recognitionExplanation`。
+  - 高置信和中/低置信都会记录候选类型、分数、命中字段、可读信号、parser hints 和摘要说明。
+  - `typeSuggestions` 扩展 `score`、`matchedFields`、`signals` 和 `reason`，方便前端展示“为什么像房源/商品”。
+- 中置信人工确认入口：
+  - 后端新增 `POST /api/notes/{note_id}/confirm-type`。
+  - 支持确认成 `property_listing`、`groupbuy_product` 或 `text_note`。
+  - 确认时统一重建 `cardType/cardState/structuredData/conversionConfig`，清空 `typeSuggestions`，写入 `recognitionConfidence.level=manual` 和 `recognitionExplanation.manualConfirmation`。
+  - 确认成房源/商品/普通笔记时会保留原始正文、图片和 `structuredData.miniapp`，避免贝壳原小程序入口丢失。
+  - 小程序 `note-edit` 的中置信按钮改为调用后端确认接口，不再前端本地拼完整结构。
+  - 中置信提示展示识别摘要、命中信号和置信度。
+
+验证：
+
+- `node --check miniprogram/pages/note-edit/index.js && node --check miniprogram/services/api.js`：通过。
+- `/Users/yiyi/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3 -m compileall backend/app backend/tests`：通过。
+- `/Users/yiyi/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3 -m pytest backend/tests/test_app.py -q -k 'archive_parser_registry or miniapp_card'`：3 passed。
+- 小程序所有 `.js` 执行 `node --check`：通过。
+- 小程序所有 `.json` 解析检查：通过。
+- `/Users/yiyi/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3 -m pytest backend/tests -q`：104 passed。
+- `git diff --check`：通过。
+
 ## 本次补充：当前改动分组提交与部署前验证
 
 背景：

@@ -7,6 +7,10 @@
 本地状态：当前订单 / 消息 / 商品 P1 / 站内消息左右气泡已完成两组代码提交；仍需排除微信开发者工具自动改动 `miniprogram/project.config.json` 和未跟踪 PDF `企业微信客服服务须知.pdf`。
 
 最新补充：
+- 2026-06-20 新增归档 parser 插件化收口：archive parser 现在有稳定 `name/msg_types`，registry 显式注册并给解析结果 metadata 写入 `archiveParser/archiveMsgType`。
+- 2026-06-20 新增类型识别可解释：`visibilityConfig.recognitionExplanation` 记录候选类型、分数、命中字段、可读信号、parser hints 和摘要；`typeSuggestions` 也带 `score/matchedFields/signals/reason`。
+- 2026-06-20 新增中置信人工确认接口：`POST /api/notes/{note_id}/confirm-type`，支持确认成房源、商品或普通笔记；确认后清空 `typeSuggestions`，写入 manual 识别记录，并保留原文、图片和 `structuredData.miniapp`。
+- 小程序 `note-edit` 中置信按钮已改为调用后端确认接口，并展示识别摘要和命中信号，不再前端本地拼完整类型转换结构。
 - 2026-06-20 收口：已完成当前大 diff 复核，未跟踪 PDF 不纳入提交，`miniprogram/project.config.json` 暂不纳入提交。
 - 已提交后端能力：`feat: add lightweight orders and messaging backend`，包含订单接口、消息接口、消息模型、归档 parser、schema、测试和 mock 数据。
 - 已提交小程序体验：`feat: add miniapp orders and messaging flows`，包含订单页、消息页、消息入口组件、商品 SKU/名单体验、客户页和我的页入口。

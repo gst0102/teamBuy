@@ -1,5 +1,19 @@
 # Pitfalls
 
+## 2026-06-20：中置信资料不要只在前端本地切类型
+
+问题：
+- 中置信资料通常还不是正式房源/商品模板，只是 `typeSuggestions` 里有候选。
+- 如果前端自己拼 `cardType/structuredData/conversionConfig` 并保存，不同页面容易拼出不一致结构。
+- 小程序卡片确认成房源时，最容易丢掉 `structuredData.miniapp.pagePath/houseCode/appid`，导致客户页无法打开原小程序。
+- 识别为什么给出建议也会丢失，后续测试只能黑盒猜规则。
+
+规避方式：
+- 前端中置信按钮必须调用 `POST /api/notes/{note_id}/confirm-type`。
+- 后端统一重建类型结构，并写入 `recognitionConfidence.level=manual` 和 `recognitionExplanation.manualConfirmation`。
+- `typeSuggestions` 只作为提示，不作为已生效业务模板。
+- 切成任何类型都要保留原始正文、图片和 `miniapp` 元数据。
+
 ## 2026-06-20：收口提交前要区分 mock 运行态、工具配置和外部资料
 
 问题：
