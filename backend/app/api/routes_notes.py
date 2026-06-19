@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Query
 
 from app.api.dependencies import get_app_service
 from app.schemas.common import ApiResponse
-from app.schemas.notes import CustomerActionSubmitRequest, TopicCreateRequest, TopicNoteRequest, UserNoteUpdateRequest
+from app.schemas.notes import CustomerActionSubmitRequest, NoteTypeConfirmRequest, TopicCreateRequest, TopicNoteRequest, UserNoteUpdateRequest
 from app.services.app_service import AppService
 
 
@@ -92,6 +92,11 @@ def organize_note(note_id: str, ownerUserId: str = Query(...), service: AppServi
 @router.post("/{note_id}/generate", response_model=ApiResponse[dict])
 def generate_note(note_id: str, ownerUserId: str = Query(...), service: AppService = Depends(get_app_service)):
     return ApiResponse(data=service.generate_note_result(note_id, ownerUserId).model_dump())
+
+
+@router.post("/{note_id}/confirm-type", response_model=ApiResponse[dict])
+def confirm_note_type(note_id: str, payload: NoteTypeConfirmRequest, service: AppService = Depends(get_app_service)):
+    return ApiResponse(data=service.confirm_note_type(note_id, payload).model_dump())
 
 
 @router.get("/{note_id}/customer-actions/config", response_model=ApiResponse[dict])

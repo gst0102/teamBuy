@@ -288,6 +288,17 @@ function generateNote(noteId, ownerUserId) {
   }));
 }
 
+function confirmNoteType(noteId, payload) {
+  return request({
+    url: `/api/notes/${noteId}/confirm-type`,
+    method: "POST",
+    data: payload
+  }).then(async (res) => ({
+    ...res,
+    data: await normalizeAndCacheNote(res.data)
+  }));
+}
+
 function deleteNote(noteId, ownerUserId) {
   return request({
     url: `/api/notes/${noteId}?ownerUserId=${ownerUserId}`,
@@ -550,6 +561,7 @@ module.exports = {
   updateNote,
   organizeNote,
   generateNote,
+  confirmNoteType,
   deleteNote,
   fetchCards,
   fetchCard,

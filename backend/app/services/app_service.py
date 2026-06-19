@@ -13,7 +13,7 @@ from app.models.domain import AppState, Card, CardMedia, Category, CustomerActio
 from app.schemas.auth import MockLoginRequest, WechatLoginRequest
 from app.schemas.categories import CategoryCreateRequest
 from app.schemas.cards import CardCreateRequest, CardUpdateRequest, CreateRelayRequest, LeadReminderUpdateRequest, LeadReminderUpsertRequest, RecordViewRequest
-from app.schemas.notes import CustomerActionSubmitRequest, TopicCreateRequest, UserNoteUpdateRequest
+from app.schemas.notes import CustomerActionSubmitRequest, NoteTypeConfirmRequest, TopicCreateRequest, UserNoteUpdateRequest
 from app.schemas.skills import ContentObjectPayload
 from app.services.card_parser_service import CardParserService
 from app.services.content_object_adapter import ContentObjectAdapter
@@ -42,6 +42,7 @@ CONVERSION_CONFIG_KEYS = {
     "enableGroupRelay",
     "enablePaymentPlaceholder",
 }
+CONFIRMABLE_CARD_TYPES = {"property_listing", "groupbuy_product", "text_note"}
 PROPERTY_CONVERSION_DEFAULTS = {
     "showContactPhone": True,
     "enableLightScrm": True,
@@ -1439,6 +1440,119 @@ class AppService:
         note.updatedAt = now_iso()
         self.repo.save_user_note(note)
         return note
+
+    def confirm_note_type(self, note_id: str, payload: NoteTypeConfirmRequest) -> UserNote:
+        note = self.get_user_note(note_id, payload.ownerUserId)
+        card_type = payload.cardType.strip()
+        if card_type not in CONFIRMABLE_CARD_TYPES:
+            raise HTTPException(status_code=400, detail="不支持确认成该资料类型")
+        current_config = self._normalize_note_visibility_config(note.visibilityConfig)
+        structured_data = self._build_confirmed_structured_data(note, current_config, card_type)
+        system_category = "房源" if card_type == "property_listing" else "团购" if card_type == "groupbuy_product" else current_config.get("systemCategory", "待整理")
+        extra_tags = ["房产", "房源"] if card_type == "property_listing" else ["团购", "商品"] if card_type == "groupbuy_product" else ["待整理"]
+        conversion_config = self._confirmed_conversion_config(card_type, current_config)
+        previous_explanation = current_config.get("recognitionExplanation") if isinstance(current_config.get("recognitionExplanation"), dict) else {}
+        config = {
+            **current_config,
+            "contentMode": "note" if card_type == "text_note" else "structured_card",
+            "cardType": card_type,
+            "cardState": "collected" if card_type == "text_note" else "generated",
+            "systemCategory": system_category,
+            "structuredData": structured_data,
+            "conversionConfig": conversion_config,
+            "typeSuggestions": [],
+            "recognitionConfidence": {
+                "level": "manual",
+                "selectedType": card_type,
+                "confirmedAt": now_iso(),
+            },
+            "recognitionExplanation": {
+                **previous_explanation,
+                "level": "manual",
+                "selectedType": card_type,
+                "selectedLabel": self._card_type_label(card_type),
+                "manualConfirmation": {
+                    "cardType": card_type,
+                    "label": self._card_type_label(card_type),
+                    "confirmedAt": now_iso(),
+                },
+            },
+            "tags": self._unique_strings([*current_config.get("tags", []), *extra_tags]),
+        }
+        note.visibilityConfig = self._normalize_note_visibility_config(config)
+        note.updatedAt = now_iso()
+        self.repo.save_user_note(note)
+        return note
+
+    def _build_confirmed_structured_data(self, note: UserNote, config: dict, card_type: str) -> dict:
+        current = dict(config.get("structuredData") or {})
+        miniapp = current.get("miniapp") if isinstance(current.get("miniapp"), dict) else None
+        preserved = {"miniapp": miniapp} if miniapp else {}
+        images = self._note_image_urls(note)
+        if card_type == "property_listing":
+            return {
+                **preserved,
+                "community": current.get("community") or note.title,
+                "layout": current.get("layout", ""),
+                "area": current.get("area", ""),
+                "price": current.get("price", ""),
+                "utilities": current.get("utilities", ""),
+                "businessArea": current.get("businessArea", ""),
+                "address": current.get("address") or note.locationText or "",
+                "serviceFee": current.get("serviceFee", ""),
+                "contact": current.get("contact") or note.phone or "",
+                "propertyStatus": current.get("propertyStatus") or "active",
+                "remark": current.get("remark") or note.summary or note.body,
+                "images": images,
+                "rawText": current.get("rawText") or note.body,
+            }
+        if card_type == "groupbuy_product":
+            sku_config = current.get("skuConfig") if isinstance(current.get("skuConfig"), dict) else {}
+            return {
+                **preserved,
+                "productName": current.get("productName") or note.title,
+                "price": current.get("price", ""),
+                "spec": current.get("spec", ""),
+                "deadline": current.get("deadline", ""),
+                "pickupMethod": current.get("pickupMethod", ""),
+                "pickupLocation": current.get("pickupLocation") or note.locationText or "",
+                "stockNote": current.get("stockNote", ""),
+                "contact": current.get("contact") or note.phone or "",
+                "remark": current.get("remark") or note.summary or note.body,
+                "skuConfig": sku_config,
+                "images": images,
+                "rawText": current.get("rawText") or note.body,
+            }
+        return {
+            **preserved,
+            "rawText": current.get("rawText") or note.body,
+            "images": images,
+        }
+
+    def _confirmed_conversion_config(self, card_type: str, config: dict) -> dict:
+        source_type = config.get("sourceType")
+        if card_type == "property_listing" and source_type == "miniapp":
+            defaults = dict(PROPERTY_CONVERSION_DEFAULTS)
+            defaults["showContactPhone"] = False
+        else:
+            defaults = self._default_conversion_config(card_type)
+        incoming = config.get("conversionConfig") if isinstance(config.get("conversionConfig"), dict) else {}
+        result = dict(defaults)
+        for key in CONVERSION_CONFIG_KEYS:
+            if key in incoming:
+                result[key] = bool(incoming.get(key))
+        return result
+
+    def _note_image_urls(self, note: UserNote) -> list[str]:
+        urls = [note.coverUrl, *[item.get("url") for item in note.media if isinstance(item, dict) and item.get("type") == "image"]]
+        return self._unique_strings([item for item in urls if item])
+
+    def _card_type_label(self, card_type: str) -> str:
+        return {
+            "property_listing": "房源",
+            "groupbuy_product": "商品",
+            "text_note": "普通笔记",
+        }.get(card_type, "资料")
 
     def _enabled_conversion_features(self, card_type: str, config: dict) -> list[str]:
         labels = {

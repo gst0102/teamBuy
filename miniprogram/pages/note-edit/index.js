@@ -449,14 +449,17 @@ function hydrateFeaturePresets(config) {
 function buildSuggestionButtons(suggestions) {
   const labels = {
     property_listing: "房源",
-    groupbuy_product: "团购",
+    groupbuy_product: "商品",
     text_note: "普通笔记"
   };
   return (Array.isArray(suggestions) ? suggestions : [])
     .filter((item) => item && item.cardType && item.cardType !== "text_note")
     .map((item) => ({
       cardType: item.cardType,
-      label: labels[item.cardType] || item.label || "确认类型"
+      label: labels[item.cardType] || item.label || "确认类型",
+      reason: item.reason || "",
+      signalsText: Array.isArray(item.signals) && item.signals.length ? item.signals.slice(0, 4).join("、") : "",
+      confidenceText: item.confidence ? `${Math.round(Number(item.confidence) * 100)}%` : ""
     }));
 }
 
@@ -867,6 +870,7 @@ Page({
     conversionOptions: [],
     featurePresets: hydrateFeaturePresets({}),
     suggestionButtons: [],
+    recognitionExplanation: {},
     hiddenSections: {},
     uploadDateText: "",
     noteCreatedAt: "",
@@ -1029,6 +1033,7 @@ Page({
       conversionOptions,
       featurePresets: hydrateFeaturePresets(conversionConfig),
       suggestionButtons: buildSuggestionButtons(effectiveConfig.typeSuggestions),
+      recognitionExplanation: effectiveConfig.recognitionExplanation || {},
       hiddenSections: hiddenSectionMap(effectiveConfig),
       uploadDateText: formatUploadDate(note.createdAt),
       noteCreatedAt: note.createdAt || "",
@@ -1377,36 +1382,15 @@ Page({
   },
   async handleConvertType(event) {
     const cardType = event.currentTarget.dataset.type || "text_note";
-    const { form } = this.data;
-    const current = this.data.structuredData || {};
-    const systemCategory = cardType === "property_listing" ? "房源" : cardType === "groupbuy_product" ? "团购" : "待整理";
-    const tags = cardType === "property_listing" ? ["房产", "房源"] : cardType === "groupbuy_product" ? ["团购", "商品"] : ["待整理"];
-    const conversionConfig = defaultConversionConfig(cardType);
-    const config = {
-      ...(form.visibilityConfig || {}),
-      contentMode: cardType === "text_note" ? "note" : "structured_card",
-      cardType,
-      cardState: cardType === "text_note" ? "collected" : "generated",
-      systemCategory,
-      structuredData: buildStructuredDataForType(cardType, form, current),
-      conversionConfig,
-      typeSuggestions: [],
-      recognitionConfidence: { level: "manual" },
-      tags: Array.from(new Set([...(form.visibilityConfig || {}).tags || [], ...tags]))
-    };
-    this.setData({
-      "form.visibilityConfig": config,
-      structuredData: config.structuredData,
-      conversionConfig,
-      saving: true
-    });
+    const { user, noteId } = this.data;
+    if (!user || !noteId) return;
+    this.setData({ saving: true });
     try {
-      await this.handleSaveOnly();
-      this.applyLoadedNote({
-        ...form,
-        visibilityConfig: config,
-        createdAt: this.data.noteCreatedAt || new Date().toISOString()
+      const res = await api.confirmNoteType(noteId, {
+        ownerUserId: user.id,
+        cardType
       });
+      this.applyLoadedNote(res.data || {});
       wx.showToast({ title: "已切换", icon: "success" });
     } catch (error) {
       wx.showToast({ title: error.detail || error.message || "切换失败", icon: "none" });

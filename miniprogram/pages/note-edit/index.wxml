@@ -75,12 +75,19 @@
 
     <view class="suggest-panel" wx:if="{{!isProperty && !isGroupbuy && suggestionButtons.length}}">
       <view class="suggest-title">这条资料像是？</view>
-      <view class="suggest-text">识别结果不够确定，点一下即可切成对应工作台。</view>
+      <view class="suggest-text">{{recognitionExplanation.summary || '识别结果不够确定，点一下即可切成对应工作台。'}}</view>
       <view class="suggest-actions">
         <block wx:for="{{suggestionButtons}}" wx:key="cardType">
-          <button data-type="{{item.cardType}}" bindtap="handleConvertType">{{item.label}}</button>
+          <button class="suggest-action" data-type="{{item.cardType}}" bindtap="handleConvertType">
+            <text class="suggest-action-title">{{item.label}}</text>
+            <text class="suggest-action-meta" wx:if="{{item.signalsText}}">{{item.signalsText}}</text>
+            <text class="suggest-action-meta" wx:elif="{{item.confidenceText}}">置信度 {{item.confidenceText}}</text>
+          </button>
         </block>
-        <button data-type="text_note" bindtap="handleConvertType">普通笔记</button>
+        <button class="suggest-action muted" data-type="text_note" bindtap="handleConvertType">
+          <text class="suggest-action-title">普通笔记</text>
+          <text class="suggest-action-meta">保留原文</text>
+        </button>
       </view>
     </view>
 

@@ -48,6 +48,32 @@ GROUPBUY_FIELD_ALIASES = {
     "contact": ["电话", "联系电话", "联系方式", "联系人"],
 }
 
+CARD_TYPE_LABELS = {
+    "property_listing": "房源",
+    "groupbuy_product": "商品",
+    "text_note": "普通笔记",
+    "image_ocr": "图片资料",
+}
+
+FIELD_LABELS = {
+    "community": "小区/楼盘",
+    "layout": "户型",
+    "area": "面积",
+    "price": "价格",
+    "utilities": "水电/物业",
+    "businessArea": "商圈/区域",
+    "address": "地址/位置",
+    "serviceFee": "服务费",
+    "remark": "描述/备注",
+    "contact": "联系方式",
+    "productName": "商品名",
+    "spec": "规格",
+    "deadline": "截止时间",
+    "pickupMethod": "取货/配送",
+    "pickupLocation": "取货地点",
+    "stockNote": "库存说明",
+}
+
 PROPERTY_CONVERSION_DEFAULTS = {
     "showContactPhone": True,
     "enableLightScrm": True,
@@ -368,6 +394,7 @@ class SkillRouterService:
             "conversionConfig": self._default_conversion_config(detection["cardType"], content.sourceType, detection["typeSuggestions"]),
             "typeSuggestions": detection["typeSuggestions"],
             "recognitionConfidence": detection["recognitionConfidence"],
+            "recognitionExplanation": detection["recognitionExplanation"],
             "sourceType": self._note_source_type(content),
             "systemCategory": "小程序" if content.sourceType == "miniapp_card" and detection["systemCategory"] == "待整理" else detection["systemCategory"],
             "tags": rule_tags,
@@ -409,6 +436,7 @@ class SkillRouterService:
         property_score = self._score_property(body, property_fields)
         groupbuy_score = self._score_groupbuy(body, groupbuy_fields)
         images = [media.url for media in content.media if media.type == "image" and media.url]
+        parser_hints = content.metadata.get("parserHints", []) if isinstance(content.metadata, dict) else []
 
         if self._is_high_confidence_property(body, property_fields, property_score, groupbuy_score):
             data = self._build_property_data(title, body, property_fields, images)
@@ -418,9 +446,18 @@ class SkillRouterService:
                 "structuredData": data,
                 "typeSuggestions": [],
                 "recognitionConfidence": {"level": "high", "score": property_score, "matchedFields": sorted(property_fields.keys())},
+                "recognitionExplanation": self._recognition_explanation(
+                    selected_type="property_listing",
+                    level="high",
+                    source_type=content.sourceType,
+                    property_score=property_score,
+                    groupbuy_score=groupbuy_score,
+                    property_fields=property_fields,
+                    groupbuy_fields=groupbuy_fields,
+                    parser_hints=parser_hints,
+                ),
                 "tags": ["房产", "房源"],
             }
-        parser_hints = content.metadata.get("parserHints", []) if isinstance(content.metadata, dict) else []
         if self._is_high_confidence_groupbuy(body, groupbuy_fields, groupbuy_score, property_score, parser_hints):
             data = self._build_groupbuy_data(title, body, groupbuy_fields, images)
             return {
@@ -429,14 +466,24 @@ class SkillRouterService:
                 "structuredData": data,
                 "typeSuggestions": [],
                 "recognitionConfidence": {"level": "high", "score": groupbuy_score, "matchedFields": sorted(groupbuy_fields.keys())},
+                "recognitionExplanation": self._recognition_explanation(
+                    selected_type="groupbuy_product",
+                    level="high",
+                    source_type=content.sourceType,
+                    property_score=property_score,
+                    groupbuy_score=groupbuy_score,
+                    property_fields=property_fields,
+                    groupbuy_fields=groupbuy_fields,
+                    parser_hints=parser_hints,
+                ),
                 "tags": ["团购", "商品"],
             }
 
         suggestions = []
         if property_score >= 2:
-            suggestions.append({"cardType": "property_listing", "label": "可能是房源信息", "confidence": min(property_score / 6, 0.75)})
+            suggestions.append(self._type_suggestion("property_listing", property_score, property_fields, "命中房源相关字段或关键词"))
         if groupbuy_score >= 2:
-            suggestions.append({"cardType": "groupbuy_product", "label": "可能是团购商品", "confidence": min(groupbuy_score / 6, 0.75)})
+            suggestions.append(self._type_suggestion("groupbuy_product", groupbuy_score, groupbuy_fields, "命中商品/团购相关字段或关键词"))
         card_type = "image_ocr" if content.media and not body.strip() else "text_note"
         return {
             "cardType": card_type,
@@ -452,8 +499,90 @@ class SkillRouterService:
                     "groupbuy": sorted(groupbuy_fields.keys()),
                 },
             },
+            "recognitionExplanation": self._recognition_explanation(
+                selected_type=card_type,
+                level="medium" if suggestions else "low",
+                source_type=content.sourceType,
+                property_score=property_score,
+                groupbuy_score=groupbuy_score,
+                property_fields=property_fields,
+                groupbuy_fields=groupbuy_fields,
+                parser_hints=parser_hints,
+            ),
             "tags": [],
         }
+
+    def _type_suggestion(self, card_type: str, score: int, fields: dict, reason: str) -> dict:
+        matched_fields = sorted(fields.keys())
+        return {
+            "cardType": card_type,
+            "label": f"可能是{CARD_TYPE_LABELS.get(card_type, '资料')}",
+            "confidence": min(score / 6, 0.75),
+            "score": score,
+            "matchedFields": matched_fields,
+            "signals": self._field_signal_labels(matched_fields),
+            "reason": reason,
+        }
+
+    def _recognition_explanation(
+        self,
+        selected_type: str,
+        level: str,
+        source_type: str,
+        property_score: int,
+        groupbuy_score: int,
+        property_fields: dict,
+        groupbuy_fields: dict,
+        parser_hints: list[str],
+    ) -> dict:
+        property_matched = sorted(property_fields.keys())
+        groupbuy_matched = sorted(groupbuy_fields.keys())
+        candidates = [
+            {
+                "cardType": "property_listing",
+                "label": CARD_TYPE_LABELS["property_listing"],
+                "score": property_score,
+                "matchedFields": property_matched,
+                "signals": self._field_signal_labels(property_matched),
+                "reason": self._candidate_reason("property_listing", property_score, property_matched),
+            },
+            {
+                "cardType": "groupbuy_product",
+                "label": CARD_TYPE_LABELS["groupbuy_product"],
+                "score": groupbuy_score,
+                "matchedFields": groupbuy_matched,
+                "signals": self._field_signal_labels(groupbuy_matched),
+                "reason": self._candidate_reason("groupbuy_product", groupbuy_score, groupbuy_matched),
+            },
+        ]
+        return {
+            "level": level,
+            "selectedType": selected_type,
+            "selectedLabel": CARD_TYPE_LABELS.get(selected_type, "资料"),
+            "sourceType": source_type,
+            "parserHints": parser_hints,
+            "candidates": candidates,
+            "summary": self._recognition_summary(level, selected_type, candidates),
+        }
+
+    def _candidate_reason(self, card_type: str, score: int, matched_fields: list[str]) -> str:
+        label = CARD_TYPE_LABELS.get(card_type, "资料")
+        if matched_fields:
+            signals = "、".join(self._field_signal_labels(matched_fields)[:4])
+            return f"{label}分 {score}，命中 {signals}"
+        return f"{label}分 {score}，未命中稳定字段"
+
+    def _recognition_summary(self, level: str, selected_type: str, candidates: list[dict]) -> str:
+        if level == "high":
+            return f"已高置信识别为{CARD_TYPE_LABELS.get(selected_type, '资料')}。"
+        if level == "medium":
+            visible = [item for item in candidates if item["score"] >= 2]
+            labels = " / ".join(item["label"] for item in visible) or "资料"
+            return f"识别不够确定，建议人工确认：{labels}。"
+        return "未命中足够稳定的类型信号，先按普通资料保存。"
+
+    def _field_signal_labels(self, fields: list[str]) -> list[str]:
+        return [FIELD_LABELS.get(field, field) for field in fields]
 
     def _extract_fields(self, text: str, aliases: dict[str, list[str]]) -> dict:
         alias_to_key = {alias: key for key, names in aliases.items() for alias in names}

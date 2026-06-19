@@ -29,6 +29,11 @@ class TopicNoteRequest(BaseModel):
     ownerUserId: str
 
 
+class NoteTypeConfirmRequest(BaseModel):
+    ownerUserId: str
+    cardType: str
+
+
 class CustomerActionSubmitRequest(BaseModel):
     viewerUserId: str | None = None
     anonymousId: str | None = None

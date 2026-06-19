@@ -4,7 +4,8 @@ from app.api.dependencies import get_app_service, get_sync_task_queue, get_wecom
 from app.core.config import settings
 from app.services.media_storage_service import MediaStorageService
 from app.services.media_processing_service import MediaProcessingService
-from app.models.domain import UserNote
+from app.models.domain import UserNote, WecomArchiveMessage
+from app.services.archive_message_parsers import ArchiveMessageParser, ArchiveMessageParserRegistry, ArchiveParseResult
 from app.services.helpers import new_id
 from app.services.time_utils import now_iso
 from app.services.wecom_archive_worker import WecomArchiveWorker
@@ -129,6 +130,40 @@ def test_wecom_archive_worker_run_once_pulls_then_processes():
 
     assert result == {"pull": {"savedCount": 1}, "process": {"processedCount": 1}}
     assert fake_service.calls == [("pull", fake_client, 20), ("process", 20, fake_client)]
+
+
+def test_archive_parser_registry_uses_explicit_parser_metadata():
+    class CustomTextParser(ArchiveMessageParser):
+        name = "custom-text"
+        msg_types = {"text"}
+
+        def parse(self, message, payload, msg_type):
+            return ArchiveParseResult(text_blocks=["custom text"])
+
+    registry = ArchiveMessageParserRegistry(parsers=[CustomTextParser()])
+    message = WecomArchiveMessage(
+        id="archive_registry_001",
+        corpId="ww_registry",
+        seq=1,
+        msgId="archive_registry_msg_001",
+        action="send",
+        fromUser="wm_customer",
+        toList=["user_sales"],
+        msgTime="2026-06-20T10:00:00+08:00",
+        msgType="text",
+        rawPayload={"msgtype": "text"},
+        decryptedPayload={"msgtype": "text", "text": {"content": "hello"}},
+        processed=False,
+        createdAt=now_iso(),
+        updatedAt=now_iso(),
+    )
+
+    result = registry.parse(message, message.decryptedPayload, "text")
+
+    assert registry.supported_types() == ["text"]
+    assert result.text_blocks == ["custom text"]
+    assert result.metadata["archiveParser"] == "custom-text"
+    assert result.metadata["archiveMsgType"] == "text"
 
 
 def test_wecom_callback_get_verify(client):
@@ -657,7 +692,12 @@ def test_wecom_archive_process_handles_miniapp_card(client, monkeypatch):
     assert config["systemCategory"] == "小程序"
     assert "小程序" in config["tags"]
     assert "贝壳找房" in config["tags"]
-    assert any(item["cardType"] == "property_listing" for item in config["typeSuggestions"])
+    suggestion = next(item for item in config["typeSuggestions"] if item["cardType"] == "property_listing")
+    assert suggestion["reason"]
+    assert "score" in suggestion
+    assert config["recognitionExplanation"]["level"] == "medium"
+    assert config["recognitionExplanation"]["selectedType"] == "text_note"
+    assert any(item["cardType"] == "property_listing" for item in config["recognitionExplanation"]["candidates"])
     assert config["structuredData"]["miniapp"]["houseCode"] == "101137825091"
     assert config["structuredData"]["miniapp"]["pagePath"].startswith("subpackages/ershoufang/pages/esfDetail")
     assert config["structuredData"]["miniapp"]["webUrl"] == "https://m.ke.com/baotou/ershoufang/101137825091.html"
@@ -667,6 +707,23 @@ def test_wecom_archive_process_handles_miniapp_card(client, monkeypatch):
     assert config["conversionConfig"]["enableAppointment"] is True
     assert config["conversionConfig"]["enablePrivateConsultation"] is True
     assert config["conversionConfig"]["showContactPhone"] is False
+
+    login = client.post("/api/auth/mock-login", json={"nickname": "房源确认用户"}).json()["data"]
+    claim = client.post(f"/api/imports/{generated['id']}/claim", json={"userId": login["id"]})
+    confirmed = client.post(
+        f"/api/notes/{claim.json()['data']['note']['id']}/confirm-type",
+        json={"ownerUserId": login["id"], "cardType": "property_listing"},
+    )
+
+    assert confirmed.status_code == 200
+    confirmed_config = confirmed.json()["data"]["visibilityConfig"]
+    assert confirmed_config["cardType"] == "property_listing"
+    assert confirmed_config["cardState"] == "generated"
+    assert confirmed_config["typeSuggestions"] == []
+    assert confirmed_config["recognitionConfidence"]["level"] == "manual"
+    assert confirmed_config["recognitionExplanation"]["manualConfirmation"]["cardType"] == "property_listing"
+    assert confirmed_config["structuredData"]["miniapp"]["houseCode"] == "101137825091"
+    assert confirmed_config["conversionConfig"]["showContactPhone"] is False
 
 
 def test_wecom_archive_process_groups_nearby_messages(client, monkeypatch):

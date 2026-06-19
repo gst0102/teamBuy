@@ -26,6 +26,7 @@ class ArchiveParseResult:
 
 
 class ArchiveMessageParser:
+    name = "base"
     msg_types: set[str] = set()
 
     def can_parse(self, msg_type: str) -> bool:
@@ -36,6 +37,7 @@ class ArchiveMessageParser:
 
 
 class TextArchiveParser(ArchiveMessageParser):
+    name = "text"
     msg_types = {"text"}
 
     def parse(self, message: WecomArchiveMessage, payload: dict, msg_type: str) -> ArchiveParseResult:
@@ -45,6 +47,7 @@ class TextArchiveParser(ArchiveMessageParser):
 
 
 class LinkArchiveParser(ArchiveMessageParser):
+    name = "link"
     msg_types = {"link"}
 
     def parse(self, message: WecomArchiveMessage, payload: dict, msg_type: str) -> ArchiveParseResult:
@@ -63,6 +66,7 @@ class LinkArchiveParser(ArchiveMessageParser):
 
 
 class MediaArchiveParser(ArchiveMessageParser):
+    name = "media"
     msg_types = {"image", "video", "file"}
 
     def parse(self, message: WecomArchiveMessage, payload: dict, msg_type: str) -> ArchiveParseResult:
@@ -81,6 +85,7 @@ class MediaArchiveParser(ArchiveMessageParser):
 
 
 class LocationArchiveParser(ArchiveMessageParser):
+    name = "location"
     msg_types = {"location"}
 
     def parse(self, message: WecomArchiveMessage, payload: dict, msg_type: str) -> ArchiveParseResult:
@@ -90,6 +95,7 @@ class LocationArchiveParser(ArchiveMessageParser):
 
 
 class NoteArchiveParser(ArchiveMessageParser):
+    name = "note"
     msg_types = {"note"}
 
     def parse(self, message: WecomArchiveMessage, payload: dict, msg_type: str) -> ArchiveParseResult:
@@ -110,6 +116,7 @@ class NoteArchiveParser(ArchiveMessageParser):
 
 
 class ChatRecordArchiveParser(ArchiveMessageParser):
+    name = "chatrecord"
     msg_types = {"chatrecord"}
 
     def parse(self, message: WecomArchiveMessage, payload: dict, msg_type: str) -> ArchiveParseResult:
@@ -151,6 +158,7 @@ class ChatRecordArchiveParser(ArchiveMessageParser):
 
 
 class WeappArchiveParser(ArchiveMessageParser):
+    name = "weapp"
     msg_types = {"weapp"}
 
     def parse(self, message: WecomArchiveMessage, payload: dict, msg_type: str) -> ArchiveParseResult:
@@ -165,6 +173,8 @@ class WeappArchiveParser(ArchiveMessageParser):
 
 
 class FallbackArchiveParser(ArchiveMessageParser):
+    name = "fallback"
+
     def parse(self, message: WecomArchiveMessage, payload: dict, msg_type: str) -> ArchiveParseResult:
         text = payload.get("content") or payload.get("text")
         return ArchiveParseResult(text_blocks=[str(text).strip()] if text else [])
@@ -172,22 +182,47 @@ class FallbackArchiveParser(ArchiveMessageParser):
 
 class ArchiveMessageParserRegistry:
     def __init__(self, parsers: list[ArchiveMessageParser] | None = None):
-        self.parsers = parsers or [
-            TextArchiveParser(),
-            LinkArchiveParser(),
-            MediaArchiveParser(),
-            LocationArchiveParser(),
-            NoteArchiveParser(),
-            ChatRecordArchiveParser(),
-            WeappArchiveParser(),
-        ]
+        self.parsers: list[ArchiveMessageParser] = []
+        self.parsers_by_type: dict[str, ArchiveMessageParser] = {}
         self.fallback = FallbackArchiveParser()
+        for parser in parsers or default_archive_parsers():
+            self.register(parser)
+
+    def register(self, parser: ArchiveMessageParser) -> None:
+        if not parser.msg_types:
+            raise ValueError(f"Archive parser {parser.name} must declare msg_types")
+        for msg_type in parser.msg_types:
+            if msg_type in self.parsers_by_type:
+                existing = self.parsers_by_type[msg_type]
+                raise ValueError(f"Archive msg_type {msg_type} already registered by {existing.name}")
+            self.parsers_by_type[msg_type] = parser
+        self.parsers.append(parser)
+
+    def supported_types(self) -> list[str]:
+        return sorted(self.parsers_by_type.keys())
 
     def parse(self, message: WecomArchiveMessage, payload: dict, msg_type: str) -> ArchiveParseResult:
-        for parser in self.parsers:
-            if parser.can_parse(msg_type):
-                return parser.parse(message, payload, msg_type)
-        return self.fallback.parse(message, payload, msg_type)
+        parser = self.parsers_by_type.get(msg_type) or self.fallback
+        result = parser.parse(message, payload, msg_type)
+        result.metadata = dict(result.metadata or {})
+        result.metadata.setdefault("archiveParser", parser.name)
+        result.metadata.setdefault("archiveMsgType", msg_type)
+        if parser is self.fallback:
+            result.metadata.setdefault("parserHints", [])
+            result.metadata["unsupportedArchiveMsgType"] = msg_type
+        return result
+
+
+def default_archive_parsers() -> list[ArchiveMessageParser]:
+    return [
+        TextArchiveParser(),
+        LinkArchiveParser(),
+        MediaArchiveParser(),
+        LocationArchiveParser(),
+        NoteArchiveParser(),
+        ChatRecordArchiveParser(),
+        WeappArchiveParser(),
+    ]
 
 
 def append_item_parts(result: ArchiveParseResult, part_type: str | None, content: dict, source_ref: str) -> None:
