@@ -19,6 +19,7 @@ from app.services.card_parser_service import CardParserService
 from app.services.import_notification_service import ImportNotificationService
 from app.services.media_storage_service import MediaStorageService
 from app.services.message_aggregator import MessageAggregator
+from app.services.ocr_service import OcrService
 from app.services.repository import JsonRepository
 from app.services.wecom_message_normalizer import WecomMessageNormalizer
 from app.services.wecom_mock_service import WecomMockService
@@ -38,6 +39,7 @@ def client(tmp_path: Path):
         aggregator=MessageAggregator(),
         notification_service=ImportNotificationService(),
         normalizer=WecomMessageNormalizer(),
+        ocr_service=OcrService(provider="mock", mock_text=""),
     )
 
     app.dependency_overrides[get_app_service] = lambda: service

@@ -6,7 +6,10 @@
       <view class="notes-title">我的笔记</view>
       <view class="notes-subtitle">从企业微信和手动整理沉淀的资料</view>
     </view>
-    <view class="notes-count">{{notes.length}}</view>
+    <view class="notes-tools">
+      <button class="ocr-btn" loading="{{ocrUploading}}" disabled="{{ocrUploading}}" bindtap="handleOcrUpload">图片识别</button>
+      <view class="notes-count">{{notes.length}}</view>
+    </view>
   </view>
 
   <view class="search-box">

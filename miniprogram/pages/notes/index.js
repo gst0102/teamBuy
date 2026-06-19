@@ -134,6 +134,7 @@ const SOURCE_FILTERS = [
   { label: "全部", value: "" },
   { label: "笔记", value: "note" },
   { label: "链接", value: "link" },
+  { label: "图片识别", value: "ocr" },
   { label: "图片与视频", value: "media" },
   { label: "语音", value: "voice" },
   { label: "位置", value: "location" },
@@ -167,7 +168,8 @@ Page({
     ],
     tagFilters: [],
     topics: [],
-    loading: false
+    loading: false,
+    ocrUploading: false
   },
   onLoad(options) {
     this.setData({ activeTopicId: options.topicId || "" });
@@ -210,6 +212,47 @@ Page({
   },
   handleSearch() {
     this.loadNotes();
+  },
+  handleOcrUpload() {
+    const { user, ocrUploading } = this.data;
+    if (!user) {
+      wx.reLaunch({ url: "/pages/login/index" });
+      return;
+    }
+    if (ocrUploading) return;
+    wx.chooseMedia({
+      count: 1,
+      mediaType: ["image"],
+      sourceType: ["album", "camera"],
+      success: ({ tempFiles = [] }) => {
+        const file = tempFiles[0];
+        if (!file || !file.tempFilePath) return;
+        this.uploadOcrImage(file.tempFilePath);
+      }
+    });
+  },
+  async uploadOcrImage(filePath) {
+    const { user } = this.data;
+    if (!user || !filePath) return;
+    this.setData({ ocrUploading: true });
+    wx.showLoading({ title: "识别中" });
+    try {
+      const result = await api.uploadOcrImage({ filePath, ownerUserId: user.id });
+      wx.hideLoading();
+      const note = result.note || {};
+      const message = result.ocr && result.ocr.configured ? "已生成笔记" : "图片已保存";
+      wx.showToast({ title: message, icon: "success" });
+      if (note.id) {
+        wx.navigateTo({ url: `/pages/note-edit/index?id=${note.id}` });
+      } else {
+        this.loadNotes();
+      }
+    } catch (error) {
+      wx.hideLoading();
+      wx.showToast({ title: error.detail || error.errMsg || "识别失败", icon: "none" });
+    } finally {
+      this.setData({ ocrUploading: false });
+    }
   },
   toggleCategories() {
     this.setData({ showAllCategories: !this.data.showAllCategories });

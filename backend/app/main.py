@@ -12,6 +12,7 @@ from app.api.routes_imports import router as imports_router
 from app.api.routes_location import router as location_router
 from app.api.routes_messages import router as messages_router
 from app.api.routes_notes import router as notes_router
+from app.api.routes_ocr import router as ocr_router
 from app.api.routes_orders import router as orders_router
 from app.api.routes_skills import router as skills_router
 from app.api.routes_wecom import recover_persisted_sync_tasks, router as wecom_router
@@ -47,6 +48,7 @@ app.include_router(cards_router)
 app.include_router(wecom_router)
 app.include_router(skills_router)
 app.include_router(notes_router)
+app.include_router(ocr_router)
 app.include_router(orders_router)
 app.include_router(messages_router)
 app.include_router(location_router)

@@ -14,7 +14,7 @@ from app.schemas.auth import MockLoginRequest, WechatLoginRequest
 from app.schemas.categories import CategoryCreateRequest
 from app.schemas.cards import CardCreateRequest, CardUpdateRequest, CreateRelayRequest, LeadReminderUpdateRequest, LeadReminderUpsertRequest, RecordViewRequest
 from app.schemas.notes import CustomerActionSubmitRequest, NoteTypeConfirmRequest, TopicCreateRequest, UserNoteUpdateRequest
-from app.schemas.skills import ContentObjectPayload
+from app.schemas.skills import ContentMediaPayload, ContentObjectPayload
 from app.services.card_parser_service import CardParserService
 from app.services.content_object_adapter import ContentObjectAdapter
 from app.services.helpers import mask_nickname, new_id
@@ -22,6 +22,7 @@ from app.services.import_notification_service import ImportNotificationService
 from app.services.media_storage_service import MediaStorageService
 from app.services.media_processing_service import MediaProcessingService
 from app.services.message_aggregator import MessageAggregator
+from app.services.ocr_service import OcrService
 from app.services.repository import AppRepository
 from app.services.skill_router_service import SkillRouterService
 from app.services.time_utils import SHANGHAI, date_key, now_iso, parse_iso
@@ -118,6 +119,7 @@ class AppService:
         media_processing_service: MediaProcessingService | None = None,
         skill_router_service: SkillRouterService | None = None,
         content_object_adapter: ContentObjectAdapter | None = None,
+        ocr_service: OcrService | None = None,
     ):
         self.repo = repo
         self.wecom_mock_service = wecom_mock_service
@@ -129,6 +131,12 @@ class AppService:
         self.normalizer = normalizer
         self.skill_router_service = skill_router_service or SkillRouterService()
         self.content_object_adapter = content_object_adapter or ContentObjectAdapter()
+        self.ocr_service = ocr_service or OcrService(
+            provider=settings.ocr_provider,
+            language=settings.ocr_language,
+            tesseract_bin=settings.ocr_tesseract_bin,
+            mock_text=settings.ocr_mock_text,
+        )
 
     def _load(self) -> AppState:
         return self.repo.load()
@@ -1067,6 +1075,124 @@ class AppService:
             content_type=processed.content_type,
             filename=processed.filename,
         )
+
+    def create_ocr_note_from_image(
+        self,
+        owner_user_id: str,
+        content: bytes,
+        filename: str | None = None,
+        content_type: str | None = None,
+    ) -> dict:
+        if not self.repo.get_user(owner_user_id):
+            raise HTTPException(status_code=404, detail="用户不存在")
+        if not content:
+            raise HTTPException(status_code=400, detail="图片不能为空")
+        ocr_result = self.ocr_service.extract_text(content, filename)
+        storage = self.media_storage_service
+        if storage.storage_mode == "mock":
+            storage = MediaStorageService(
+                storage_mode="local",
+                storage_dir=settings.media_storage_dir,
+                public_url_prefix=settings.media_public_url_prefix,
+            )
+        processed = self.media_processing_service.process_upload(
+            media_type="image",
+            content=content,
+            content_type=content_type,
+            filename=filename,
+        )
+        stored_url = storage.store_bytes(
+            media_id=new_id("ocr_image"),
+            media_type="image",
+            content=processed.content,
+            content_type=processed.content_type,
+            filename=processed.filename,
+        )
+        recognized_text = ocr_result.text.strip()
+        content_object = ContentObjectPayload(
+            sourceType="image_ocr",
+            title="图片文字识别",
+            textBlocks=[recognized_text] if recognized_text else [],
+            media=[
+                ContentMediaPayload(
+                    type="image",
+                    url=stored_url,
+                    title=filename or "ocr-image",
+                )
+            ],
+            metadata={
+                "ocr": {
+                    "provider": ocr_result.provider,
+                    "configured": ocr_result.configured,
+                    "confidence": ocr_result.confidence,
+                    "details": ocr_result.details,
+                    "textLength": len(recognized_text),
+                }
+            },
+        )
+        note_result = self.skill_router_service.run_content_to_note(owner_user_id, content_object)
+        now = now_iso()
+        note = UserNote(
+            id=new_id("note"),
+            ownerUserId=owner_user_id,
+            importBatchId=None,
+            sourceCardId=None,
+            status="active",
+            title=note_result.noteDraft.title if recognized_text else "图片文字识别",
+            summary=note_result.noteDraft.summary if recognized_text else "图片已保存，暂未识别到文字，可手动补充。",
+            body=note_result.noteDraft.body if recognized_text else "图片已保存，暂未识别到文字，可手动补充。",
+            coverUrl=stored_url,
+            media=[item.model_dump() for item in note_result.noteDraft.media],
+            categoryIds=note_result.noteDraft.categoryIds,
+            phone=note_result.noteDraft.phone,
+            locationText=note_result.noteDraft.locationText,
+            sourceRefs=note_result.noteDraft.sourceRefs,
+            visibilityConfig=self._ocr_visibility_config(note_result.noteDraft.visibilityConfig, ocr_result, recognized_text),
+            createdAt=now,
+            updatedAt=now,
+        )
+        skill_run = SkillRun.model_validate(note_result.skillRun.model_dump())
+        skill_run.outputRef = note.id
+        skill_run.inputSnapshot = {
+            **skill_run.inputSnapshot,
+            "ocr": {
+                "provider": ocr_result.provider,
+                "configured": ocr_result.configured,
+                "confidence": ocr_result.confidence,
+                "textLength": len(recognized_text),
+            },
+        }
+        self.repo.save_user_note(note)
+        self.repo.save_skill_run(skill_run)
+        return {
+            "note": note.model_dump(),
+            "ocr": {
+                "text": recognized_text,
+                "provider": ocr_result.provider,
+                "configured": ocr_result.configured,
+                "confidence": ocr_result.confidence,
+                "details": ocr_result.details,
+            },
+        }
+
+    def _ocr_visibility_config(self, config: dict, ocr_result, recognized_text: str) -> dict:
+        normalized = self._normalize_note_visibility_config(config)
+        normalized["sourceType"] = "ocr"
+        normalized["systemCategory"] = normalized.get("systemCategory") if normalized.get("cardType") in {"property_listing", "groupbuy_product"} else "图片"
+        tags = self._unique_strings([*normalized.get("tags", []), "图片识别"])
+        normalized["tags"] = tags
+        structured_data = dict(normalized.get("structuredData") or {})
+        structured_data["ocr"] = {
+            "provider": ocr_result.provider,
+            "configured": ocr_result.configured,
+            "confidence": ocr_result.confidence,
+            "details": ocr_result.details,
+            "text": recognized_text,
+        }
+        if recognized_text:
+            structured_data.setdefault("rawText", recognized_text)
+        normalized["structuredData"] = structured_data
+        return normalized
 
     def save_media_retry_failure(
         self,

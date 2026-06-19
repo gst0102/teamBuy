@@ -35,6 +35,29 @@
   font-weight: 700;
 }
 
+.notes-tools {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+}
+
+.ocr-btn {
+  height: 64rpx;
+  min-width: 148rpx;
+  margin: 0;
+  padding: 0 20rpx;
+  border-radius: 8rpx;
+  background: #11924d;
+  color: #fff;
+  font-size: 24rpx;
+  font-weight: 800;
+  line-height: 64rpx;
+}
+
+.ocr-btn::after {
+  border: 0;
+}
+
 .search-box {
   margin-bottom: 24rpx;
 }

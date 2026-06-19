@@ -398,6 +398,38 @@ function uploadAsset({ filePath, mediaType = "image", ownerUserId = "" }) {
   });
 }
 
+function uploadOcrImage({ filePath, ownerUserId = "" }) {
+  const app = getApp();
+  return new Promise((resolve, reject) => {
+    wx.uploadFile({
+      url: `${app.globalData.apiBaseUrl}/api/ocr/image-to-note`,
+      filePath,
+      name: "file",
+      formData: {
+        ownerUserId
+      },
+      success(res) {
+        let data = {};
+        try {
+          data = JSON.parse(res.data);
+        } catch (error) {
+          reject({ detail: "OCR 返回解析失败" });
+          return;
+        }
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          resolve({
+            ...data.data,
+            note: normalizeNotePayload(data.data && data.data.note)
+          });
+          return;
+        }
+        reject(data);
+      },
+      fail: reject
+    });
+  });
+}
+
 function updateCard(cardId, payload) {
   return request({
     url: `/api/cards/${cardId}`,
@@ -570,6 +602,7 @@ module.exports = {
   deleteCategory,
   createCard,
   uploadAsset,
+  uploadOcrImage,
   updateCard,
   deleteCard,
   publishCard,

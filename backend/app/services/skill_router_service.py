@@ -740,7 +740,7 @@ class SkillRouterService:
         if content.sourceType == "chat_thread":
             return "chat"
         if content.sourceType == "image_ocr":
-            return "media"
+            return "ocr"
         if content.sourceType == "miniapp_card":
             return "miniapp"
         return "note"

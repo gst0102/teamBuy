@@ -6,6 +6,7 @@ from app.services.media_storage_service import MediaStorageService
 from app.services.media_processing_service import MediaProcessingService
 from app.models.domain import UserNote, WecomArchiveMessage
 from app.services.archive_message_parsers import ArchiveMessageParser, ArchiveMessageParserRegistry, ArchiveParseResult
+from app.services.ocr_service import OcrService
 from app.services.helpers import new_id
 from app.services.time_utils import now_iso
 from app.services.wecom_archive_worker import WecomArchiveWorker
@@ -164,6 +165,40 @@ def test_archive_parser_registry_uses_explicit_parser_metadata():
     assert result.text_blocks == ["custom text"]
     assert result.metadata["archiveParser"] == "custom-text"
     assert result.metadata["archiveMsgType"] == "text"
+
+
+def test_ocr_image_upload_creates_note_via_content_to_note(client):
+    service = client.app.dependency_overrides[get_app_service]()
+    service.ocr_service = OcrService(
+        provider="mock",
+        mock_text="小区：碧桂园城市之光\n户型：公寓一房\n面积：42平\n价格：1600元/月\n位置：万家丽地铁口",
+    )
+    login = client.post("/api/auth/mock-login", json={"nickname": "OCR 用户"}).json()["data"]
+    image = Image.new("RGB", (200, 120), color="white")
+    buffer = BytesIO()
+    image.save(buffer, format="PNG")
+    buffer.seek(0)
+
+    response = client.post(
+        "/api/ocr/image-to-note",
+        data={"ownerUserId": login["id"]},
+        files={"file": ("house.png", buffer.getvalue(), "image/png")},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()["data"]
+    note = payload["note"]
+    config = note["visibilityConfig"]
+    assert payload["ocr"]["provider"] == "mock"
+    assert payload["ocr"]["configured"] is True
+    assert note["ownerUserId"] == login["id"]
+    assert note["status"] == "active"
+    assert note["coverUrl"].startswith("/media/")
+    assert config["sourceType"] == "ocr"
+    assert config["cardType"] == "property_listing"
+    assert config["structuredData"]["ocr"]["text"].startswith("小区：碧桂园城市之光")
+    assert config["structuredData"]["community"] == "碧桂园城市之光"
+    assert "图片识别" in config["tags"]
 
 
 def test_wecom_callback_get_verify(client):
