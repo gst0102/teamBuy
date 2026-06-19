@@ -1,6 +1,6 @@
 # Project Memory
 
-更新时间：2026-06-19
+更新时间：2026-06-20
 
 ## 1. 产品定位
 
@@ -39,6 +39,7 @@ teamBuy 是一个面向微信群私域场景的小程序工具，核心能力是
 - 不做收款、订单、支付、分账这类资金链路。
 - 不依赖聊天上下文，重要信息必须沉淀到仓库文档。
 - 小步开发、小步验收，避免新窗口重新理解项目。
+- 小程序体验版/上传/提交审核由用户在微信开发者工具中手动完成；Codex 默认不要反复尝试 CLI 上传，只做实现和自动化检查。
 
 ## 4. 技术偏好
 
@@ -58,7 +59,10 @@ teamBuy 是一个面向微信群私域场景的小程序工具，核心能力是
 - 多类型资料卡：资料整理助手不是单一笔记工具，而是多类型信息结构化系统。统一流程是“收藏 -> 编辑 -> 整理 -> 生成”，但 `cardType` 决定数据结构和行为能力。URL/公众号文章是链接卡/阅读卡，普通文字是文本卡，房源是字段卡，团购是商品卡，图片/截图后续是 OCR 卡。第一版不新建房源/团购表，继续用 `UserNote.visibilityConfig.cardType/cardState/structuredData/typeSuggestions` 兼容扩展；架构文档见 `docs/stage2-docs/12-typed-content-card-architecture.md`。
 - 房源/团购小程序前台体验已从显性的 4 态流程收敛为“两层工作台”：高置信资料直接展示可分享、可留资、可预约/接龙、可跟进的结果工作台；用户只做板块级编辑、隐藏、恢复和功能组调整。4 态仅保留为后台生命周期语义，不再作为主 UI。中置信资料在普通卡片上轻提示确认类型，低置信资料直接当普通笔记。
 - 房源地图定位规则：客户页不展示经纬度数字；房源默认地址优先通过后端腾讯地图地理编码解析为 `structuredData.mapLocation`，再在编辑页/客户页展示地图和小房子标记。地图 Key 只允许放后端 `TENCENT_MAP_KEY`，解析失败时用微信原生选点兜底，不伪造坐标。
-- 转化配置：房源/团购从编辑态到生成态需要保存 `conversionConfig`，用于控制是否展示联系电话、是否开启轻 SCRM、是否收集线索、房源预约看房/私聊咨询、团购接龙、分享图入口和下单按钮预留。该配置不属于房源/商品本体字段，不应混入 `structuredData`。
+- 商品展示规则：现有 `groupbuy_product` 暂作兼容类型，但产品口径是“商品展示基座 + 可选团购接龙”。商品字段放 `structuredData`，SKU 属性组和组合 SKU 放 `structuredData.skuConfig`，截止时间选填；`conversionConfig.enableGroupRelay` 只控制提交后叫下单名单还是接龙名单。商品轻订单复用 `customer_actions.order-intent / relay-intent`，电话和地址必填，买家/商家订单中心只是客户动作视图，不新增正式订单表；两者都不投影到 `lead_reminders`，不进入轻 SCRM。本阶段不做地图、支付、库存扣减、核销或分账，后续正式交易另起 `order-core`。
+- 商品 P1 体验规则：客户页有 SKU 属性组时按分组按钮选择，组合 SKU 仍是提交和后端校验实体；已提交订单/接龙通过客户动作配置接口回显 `submittedPayload`，用于恢复客户已选 SKU、数量和联系方式；团长名单可按 SKU 筛选，筛选只影响展示和复制汇总。
+- 站内消息规则：第一版是异步文本留言，不做实时 IM。会话写入 `message_threads`，消息写入 `message_records`，线程绑定 `noteId`，可选绑定商品轻订单 `orderActionId`；商品页、房源页、订单页、资料详情和我的页都可以进入消息专区，支持未读和已读。前端入口必须优先走 `miniprogram/plugins/message-plugin` 和 `components/message-entry`，后续新场景不要在业务页里重复手写 `createMessageThread`。
+- 转化配置：房源/商品展示从编辑态到生成态需要保存 `conversionConfig`，用于控制是否展示联系电话、是否开启轻 SCRM、是否收集线索、房源预约看房/私聊咨询、商品团购接龙、分享图入口和下单按钮预留。该配置不属于房源/商品本体字段，不应混入 `structuredData`。
 - 客户页动作持久化是下一阶段重点，并必须做成 `customer-action-plugin` 这类可复用插件。房源、团购、普通笔记只决定默认启用哪些动作；动作提交统一落通用记录，再投影到线索、预约、接龙和跟进。第一版已落地 `lead-contact` 和 `appointment`：客户页提交电话/微信或预约后会写入 `customer_actions`，并投影到 `lead_reminders`。发布者查看时，房源资料详情“轻 SCRM”板块是单房源客户动作主入口，可按 noteId 查看留资、预约和线索；全局线索列表保留为跨资料待办。长标题是房产中介主动展示卖点的方式，不拆字段、不改标题，只做排版容错。
 - 房产场景继续围绕工作台效率优化：房源状态用 `structuredData.propertyStatus` 管理推广中 / 已租 / 暂停推广，客户页按状态关闭新增转化动作；图片/视频排序属于资料展示状态，调整后必须立即保存；电话拨号后应提示是否标记已联系，并写入跟进记录。
 - 旧资源详情页策略：当前兼容旧 `Card`、`card-view`、`card-edit` 暂不删除，但已认领导入资料必须优先走新 `UserNote` 资料卡链路。后端 Card 响应通过 `sourceNoteId` 映射到新笔记，小程序资源入口有 `sourceNoteId` 时打开 `pages/note-edit/index`；旧页面只作为历史回退和客户分享临时展示。

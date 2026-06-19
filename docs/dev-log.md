@@ -1,4 +1,111 @@
+# 2026-06-20
+
+## 本次补充：当前改动分组提交与部署前验证
+
+背景：
+
+- 用户要求把当前建议顺序中的 1 到 5 一起执行：复核 diff、确认特殊文件、运行验证、分组提交、部署生产后端。
+
+完成内容：
+
+- 已复核当前 diff 范围，并确认未跟踪的 `企业微信客服服务须知.pdf` 不纳入提交。
+- 已确认 `miniprogram/project.config.json` 主要是微信开发者工具自动补充配置与换行变化，本轮暂不纳入提交。
+- 已将后端订单、消息、归档 parser、schema、测试和 mock 数据提交为 `feat: add lightweight orders and messaging backend`。
+- 已将小程序订单、消息、消息入口组件、商品 SKU/名单体验、我的页和客户页体验提交为 `feat: add miniapp orders and messaging flows`。
+
+验证：
+
+- 小程序所有 `.js` 执行 `node --check`：通过。
+- 小程序所有 `.json` 解析检查：通过。
+- `/Users/yiyi/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3 -m compileall backend/app backend/tests`：通过。
+- `/Users/yiyi/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3 -m pytest backend/tests/test_app.py -q`：66 passed。
+- `/Users/yiyi/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3 -m pytest backend/tests -q`：103 passed。
+- `git diff --check`：通过。
+
+## 本次补充：站内消息左右气泡
+
+背景：
+
+- 用户反馈站内消息里用户和团长头像/聊天气泡都在左侧，不像微信聊天。
+
+完成内容：
+
+- 后端消息线程返回 `participants`，包含发布者和买家的 userId、角色、昵称和头像。
+- 小程序消息详情页按当前登录用户判断 `mine`：自己的消息在右侧，绿色气泡，头像在右；对方消息在左侧，白色气泡，头像在左，并显示对方昵称。
+- 修正真机/平板上“我的消息仍贴左侧”的布局问题：不再使用 `row-reverse + justify-content:flex-end` 反转主轴，而是整行右对齐，只把我的头像单独排序到气泡右侧。
+- 消息测试补充参与者信息断言，避免后续接口漏掉头像昵称。
+
+验证：
+
+- 小程序所有 `.js` 执行 `node --check`：通过。
+- 小程序所有 `.json` 解析检查：通过。
+- `/Users/yiyi/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3 -m pytest backend/tests/test_app.py -q`：66 passed。
+- `/Users/yiyi/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3 -m compileall backend/app backend/tests`：通过。
+- `git diff --check`：通过。
+
+## 本次补充：商品 P1 体验、名单筛选与小程序上传约定
+
+背景：
+
+- 用户确认小程序体验版/上传由自己在微信开发者工具完成，Codex 不要每次浪费 token 尝试 CLI 上传。
+- 商品 P0 已基本跑通，需要把 P1 里工作量较小的体验补齐并统一测试。
+
+完成内容：
+
+- `AGENTS.md` 新增“小程序上传约定”：默认不再尝试微信开发者工具 CLI 预览/上传；Codex 只做实现、静态检查、JSON 校验和后端测试，上传由用户手动完成。
+- 客户页商品 SKU 选择从单纯组合卡片增强为属性组按钮：有属性组时按口味、规格、配送方式等分组点选；无属性组时保留原组合 SKU 卡片兜底。
+- SKU 选项售罄体验优化：某个选项只要仍有可买组合就不整体置灰，点击后自动切到可买组合；完全无可买组合才禁用。
+- 客户再次进入商品客户页时，后端配置接口会回传 `submittedPayload`，前端恢复已提交的 SKU、数量、电话、地址、微信和备注。
+- 团长 `note-actions` 商品下单/接龙名单增加 SKU 筛选；复制汇总、复制单条和发消息均按当前筛选列表执行。
+- 后端测试补充已提交轻订单配置回显断言，覆盖 SKU、数量、电话和地址。
+
+验证：
+
+- 小程序所有 `.js` 执行 `node --check`：通过。
+- 小程序所有 `.json` 解析检查：通过。
+- `/Users/yiyi/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3 -m pytest backend/tests/test_app.py -q`：66 passed。
+- `/Users/yiyi/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3 -m compileall backend/app backend/tests`：通过。
+- `git diff --check`：通过。
+- 未尝试微信开发者工具 CLI 上传，符合本轮新约定。
+
 # 2026-06-19
+
+## 本次补充：商品展示基座 + 团购 SKU 接龙
+
+背景：
+
+- 用户确认团购场景应先做成商品展示：团长配置商品字段和多 SKU，只有打开团购开关后客户页才出现接龙。
+- 本轮不做 SCRM、地图、支付、订单、库存扣减、核销和分账；截止时间选填。
+
+完成内容：
+
+- 后端扩展 `relay-intent` 客户动作：写入 `customer_actions`，不投影到 `lead_reminders`。
+- 后端新增商品 SKU 配置归一化，支持 `structuredData.skuConfig.attributeGroups/skus`，并在客户动作配置接口返回给客户页。
+- 后端提交接龙时校验 `conversionConfig.enableGroupRelay`、SKU 是否售罄、同一客户同一商品是否已提交。
+- 小程序商品工作台文案从“团购工作台”调整为“商品展示工作台”，并新增 SKU 属性组、选项和组合 SKU 编辑。
+- 小程序商品主价格按 SKU 自动显示价格区间；截止时间为空时不展示。
+- 客户页未开启团购时只展示商品；开启后显示 SKU 选择、数量、电话 / 微信、备注和提交按钮。
+- 团长端 `note-actions` 针对商品展示为“接龙名单”，展示头像、昵称、SKU、数量、联系方式、备注和提交时间，并支持复制汇总、复制单条和电话拨号。
+- 我的笔记商品卡轻 SCRM 摘要改为“接龙 N / 接龙名单”，避免把商品接龙误写成客户线索。
+- 已补本地 mock 商品样例 `note_seed_groupbuy_product_001`：含 SKU 属性组、售罄 SKU、已提交接龙样例；运行态中 `lead_reminders=0`，可验证接龙不进入 SCRM。
+- “我的”页生成测试数据入口已从 3 条房源扩展为 3 条房源 + 1 条商品，会生成到当前登录用户名下，避免 seed owner 和设备本地用户不一致导致看不到商品 mock。
+- 接龙提交会把客户昵称和头像写入 `relay-intent` payload，团长名单可展示头像和昵称。
+- 小程序主联调地址恢复为生产 `https://teambuy.lifelove.top`；本地 mock 只作为开发辅助，不作为企业微信客服生产链路验收口径。
+- 商品接龙名单页面已按移动端 rpx 布局修正：头像 / 昵称 / 状态稳定排布，操作按钮改为小胶囊；商品工作台顶部动作支持窄屏换行，避免按钮文案被裁切。
+- 本地 mock 环境下“微信登录”不再伪装成 mock 身份；真实微信登录需要线上 HTTPS 后端和 AppSecret，本地测试请使用“本地 mock 登录”。
+- 商品工作台底部标签 / 专题输入在手机上改为上下布局，避免按钮溢出屏幕；iPad / 宽屏继续并排。
+- SKU 新增属性和选项时不再把“属性 N / 选项 N”写入真实值，只作为输入提示；空选项会保留在编辑态，填写后才参与组合 SKU 生成。
+- 商品“价格”从基础字段前置位置移出：有 SKU 时使用组合 SKU 的价格；未设置 SKU 属性时才显示“单一价格”兜底字段。
+- 资料详情底部“删除 / 保存”改为 flex `space-between` 左右分布，清除小程序按钮默认 margin 避免真机错位。
+
+验证：
+
+- 小程序所有 `.js` 执行 `node --check`：通过。
+- 小程序所有 `.json` 解析检查：通过。
+- `pytest backend/tests -q`：102 项通过。
+- `python -m compileall backend/app backend/tests`：通过。
+- `git diff --check`：通过。
+- 本地 `runtime-state.json` 已验证：1 条商品资料、1 条 `relay-intent`、0 条 `lead_reminders`。
 
 ## 本次补充：customer-action-plugin 第一版落地
 
@@ -2323,3 +2430,121 @@
   - `/tmp/teambuy-pytest-venv312/bin/python -m compileall backend/app backend/tests`：通过。
   - `/tmp/teambuy-pytest-venv312/bin/python -m pytest backend/tests -q`：100 passed。
   - 直接运行项目根目录 `.venv/bin/python -m pytest` 会因该虚拟环境 Python 版本较低触发 `dataclass(slots=True)` 报错，本轮已改用 Python 3.12 测试环境完成回归。
+
+### 2026-06-19：生产微信登录与 chatrecord 商品解析修复
+
+- 生产处理：
+  - 服务器 `backend/.env` 已补 `WECHAT_MINIAPP_APPID` / `WECHAT_MINIAPP_SECRET`，后端已重建并重启。
+  - 真机微信登录已能通过 `/api/auth/wechat-login` 换取真实 openid；当前生产用户为 `user_25ec00a0f0`。
+  - 企业微信外部联系人绑定已从旧本地测试用户 `user_08e8927ed8` 迁到真实用户 `user_25ec00a0f0`。
+  - 2026-06-19 当天误归属的 4 条企业微信导入已迁移到真实用户。
+- 解析器处理：
+  - 新增 `archive_message_parsers.py`，把企业微信归档消息解析拆成注册式 parser。
+  - 新增 `ChatRecordArchiveParser`，支持解析 `chatrecord.item[]` 中的 `ChatRecordText`，过滤 `[图片]` / `[视频]` 占位。
+  - 对商品/团购聊天记录写入 `parserHints=["groupbuy_product"]`，后续由 `content-to-note` 生成商品卡。
+  - 商品团购识别支持无价格但有商品、活动、规格/数量等信号的聊天记录；可提取 `白凤乌鸡蛋`、`4斤，约40多个`。
+  - 生产已原地修复两条旧 `chatrecord` 笔记：标题为“白凤乌鸡蛋”，类型为 `groupbuy_product / 团购`。
+- 小程序体验：
+  - 商品工作台重排为“商品信息 / 图片与视频 / 规格与价格 / 自提配送 / 团购接龙”。
+  - 客户页商品卡先展示规格与价格；开启团购接龙后才显示提交入口。
+  - 图片缩略图保持普通图片原样 `aspectFill`，封面角标只改红色文字，不再使用额外背景。
+- 验证：
+  - 生产 `/health` 正常。
+  - 生产 `GET /api/notes?ownerUserId=user_25ec00a0f0&sort=collected` 已返回“白凤乌鸡蛋 / groupbuy_product / 团购”。
+  - 本地后端全量测试：103 passed。
+  - 小程序相关 JS 语法检查通过。
+  - `git diff --check` 通过。
+
+### 2026-06-19：商品下单意向出口补齐
+
+- 用户确认：
+  - 商品/团购客户预览页不管是否开启接龙，都必须默认有 SKU 点选和下单按钮。
+  - 客户提交后，客户自己和团长都必须有明确出口查看下单情况。
+- 已调整：
+  - 后端新增 `order-intent` 客户动作，用于未开启接龙时的商品下单意向。
+  - 开启接龙时继续使用 `relay-intent`；关闭接龙时使用 `order-intent`。
+  - 两种动作都写入 `customer_actions`，都不投影到 `lead_reminders`，不进入 SCRM。
+  - 同一客户同一商品只允许提交一条商品下单/接龙意向，防止重复刷名单。
+  - 客户预览页默认展示 SKU 点选、数量和“下单 / 下单并接龙”按钮；提交后显示已下单的 SKU 和数量状态。
+  - 团长在资料详情页可通过“查看下单 / 接龙名单”进入明细。
+  - 团长在“我的笔记”商品卡可看到“下单 N”入口。
+  - 客户动作页对商品资料展示“商品下单名单 / 商品接龙名单”，支持复制汇总、复制单条、复制电话/微信和拨号。
+- 2026-06-19 追加：
+  - 生产后端已同步 `order-intent` 相关代码并重建重启。
+  - 生产商品笔记已确认返回 `order-intent / 下单` 或 `relay-intent / 下单并接龙`。
+  - 客户预览页下单区域已下移到页面底部动作区后方，即“电话咨询 / 留下电话微信”下面。
+- 验证：
+  - 后端全量测试：66 passed。
+  - 小程序相关 JS 语法检查通过。
+  - 小程序 JSON 解析检查通过。
+  - `git diff --check` 通过。
+  - 生产 `/health` 正常。
+
+### 2026-06-19：商品轻订单中心 + 站内消息 + 我的页重构
+
+- 用户确认：
+  - 第一版只做轻订单，不做支付、库存扣减、物流、退款、核销。
+  - 商品下单必须补齐地址、电话、数量、SKU；微信号和备注可选。
+  - 买家和商家都需要订单中心；双方都需要小程序内异步留言入口。
+- 已调整：
+  - 后端新增轻订单查询接口：买家看自己的下单，商家看自己资料收到的下单，商家可更新状态。
+  - 轻订单继续复用 `customer_actions.order-intent / relay-intent`，不新增正式订单表。
+  - 下单 payload 扩展 `receiverName / phone / address / wechat / remark`，其中电话和地址为必填。
+  - 后端新增 `message_threads` / `message_records`，支持 note 级、订单级站内文本留言、未读数和已读。
+  - 小程序新增“我的订单 / 商家订单中心 / 订单详情 / 消息专区 / 站内消息”页面。
+  - 客户预览页商品下单区固定在底部动作区后，展示数量、电话、地址、微信和备注。
+  - 商品/房源客户页增加“发消息”；商品名单页每条下单增加“发消息”。
+  - 资料详情商品区/房源区增加“消息中心”；我的笔记房源/商品卡增加“消息”入口。
+  - 我的页按“会员服务 / 笔记区域 / 线索订单 / 消息专区 / 开发测试”重构。
+- 验证：
+  - 后端全量测试：66 passed。
+  - 小程序相关 JS 语法检查通过。
+  - 小程序 JSON 解析检查通过。
+  - `git diff --check` 通过。
+
+### 2026-06-19：站内消息前端插件化
+
+- 用户确认：
+  - 趁当前代码还不复杂，先把消息入口插件化，避免后续新场景重复改页面。
+- 已调整：
+  - 新增 `miniprogram/plugins/message-plugin/index.js`，统一封装打开会话、打开消息中心、读取未读数。
+  - 新增 `miniprogram/components/message-entry`，统一渲染“发消息 / 消息中心 / 未读数”入口。
+  - 订单详情、商品下单/接龙名单、资料详情、我的笔记卡片、我的页消息专区改用统一组件。
+  - 客户预览页动态动作继续调用同一个 `messagePlugin.openMessageThread`，不再手写创建会话和跳转。
+- 验证：
+  - 小程序消息插件、消息入口组件和相关页面 JS 语法检查通过。
+  - 小程序 JSON 解析检查通过。
+  - 后端全量测试：66 passed。
+  - `git diff --check` 通过。
+
+### 2026-06-20：客户预览下单弹层与我的页宫格优化
+
+- 用户反馈：
+  - 商品客户预览页地址、电话、备注都铺在同一页，页面太长。
+  - 我的页会员服务、笔记区域、线索/订单用单行列表展示，页面太长也不好看。
+  - 我的订单 / 商家订单中心在未部署接口时显示英文 not found，不够清楚。
+- 已调整：
+  - 商品客户预览页正文只保留 SKU 和下单入口；点击下单后弹出底部表单填写数量、电话、地址、微信、备注。
+  - 我的页会员服务、笔记区域、线索/订单、测试入口改成 4 列图标宫格，超过 4 个自动换行。
+  - 订单中心增加中文空态和错误态；后端订单接口未部署时提示“订单接口还没有更新到当前后端”。
+- 验证：
+  - 小程序相关 JS 语法检查通过。
+  - 小程序 JSON 解析检查通过。
+  - 后端全量测试：66 passed。
+  - `git diff --check` 通过。
+
+### 2026-06-20：订单与消息后端生产部署
+
+- 已部署：
+  - 已用 rsync 同步 `backend/` 到生产服务器 `/home/ubuntu/teamBuy/backend/`，排除生产 `.env`、`secrets/` 和媒体目录。
+  - 同步前已在生产服务器备份 `backend/app`、`backend/tests`、`backend/mock`、`docker-compose.yml` 到 `/home/ubuntu/teamBuy-deploy-backups/`。
+  - 已重建并重启生产 `teambuy-backend` 容器。
+- 公网验证：
+  - `GET /health`：200，Postgres configured。
+  - `GET /api/orders?userId=user_test&role=buyer`：200，返回空订单列表，不再是路由级 Not Found。
+  - `GET /api/messages/threads?userId=user_test`：200，返回空会话列表。
+  - `GET /api/notes/note_not_exists/customer-actions?ownerUserId=user_test`：返回业务级“笔记不存在”，客户动作路由正常。
+  - 真实生产用户 `user_25ec00a0f0` 可返回商品笔记、买家订单、商家订单和订单详情。
+- 注意：
+  - 生产中少量旧测试订单在电话/地址必填上线前创建，可能显示空电话或空地址；新提交会被后端强校验。
+  - 小程序上传未完成：本机微信开发者工具 CLI 被“服务端口关闭”安全设置拦截，需要在开发者工具 GUI 里打开“设置 -> 安全设置 -> 服务端口”后再上传/预览。
