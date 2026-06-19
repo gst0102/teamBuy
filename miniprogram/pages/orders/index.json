@@ -1,0 +1,6 @@
+{
+  "usingComponents": {
+    "custom-nav": "/components/custom-nav/index"
+  },
+  "navigationBarTitleText": "订单中心"
+}

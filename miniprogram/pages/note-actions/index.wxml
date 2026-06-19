@@ -1,8 +1,8 @@
 <view class="page">
   <view class="summary-band">
     <view>
-      <text>{{summary.total}}</text>
-      <text>客户动作</text>
+      <text>{{isProductRelay ? summary.orderIntent : summary.total}}</text>
+      <text>{{isProductRelay ? '下单' : '客户动作'}}</text>
     </view>
     <view>
       <text>{{summary.leadContact}}</text>
@@ -18,6 +18,43 @@
     </view>
   </view>
 
+  <view class="section" wx:if="{{isProductRelay}}">
+    <view class="section-title">{{productListTitle}}</view>
+    <view class="sku-filter-row" wx:if="{{skuFilters.length > 1}}">
+      <text class="sku-filter {{!selectedSkuFilter ? 'active' : ''}}" data-key="" bindtap="handleSkuFilter">全部 {{relayActions.length}}</text>
+      <block wx:for="{{skuFilters}}" wx:key="key">
+        <text class="sku-filter {{selectedSkuFilter === item.key ? 'active' : ''}}" data-key="{{item.key}}" bindtap="handleSkuFilter">{{item.label}} {{item.count}}</text>
+      </block>
+    </view>
+    <button class="plain-btn summary-copy-btn" wx:if="{{filteredRelayActions.length}}" bindtap="handleCopyRelaySummary">复制汇总</button>
+    <view class="empty" wx:if="{{!loading && !filteredRelayActions.length}}">{{selectedSkuFilter ? '当前规格暂无记录' : productEmptyText}}</view>
+    <block wx:for="{{filteredRelayActions}}" wx:key="id">
+      <view class="action-item">
+        <view class="item-head">
+          <view class="relay-person">
+            <image class="relay-avatar" wx:if="{{item.customerAvatarUrl || item.payload.avatarUrl}}" src="{{item.customerAvatarUrl || item.payload.avatarUrl}}" mode="aspectFill" />
+            <view class="relay-main">
+              <view class="item-title">{{item.customerName}}</view>
+              <view class="item-time">{{item.createdText}}</view>
+            </view>
+          </view>
+          <view class="status-pill">{{item.actionKey === 'relay-intent' ? '已接龙' : '已下单'}}</view>
+        </view>
+        <view class="detail-lines">
+          <text wx:for="{{item.details}}" wx:key="*this">{{item}}</text>
+        </view>
+        <view class="relay-buttons">
+          <button class="plain-btn" data-index="{{index}}" bindtap="handleCopyRelay">复制这条</button>
+          <button class="plain-btn" wx:if="{{item.payload.phone}}" data-value="{{item.payload.phone}}" bindtap="handleCopyContact">复制电话</button>
+          <button class="plain-btn" wx:if="{{item.payload.wechat}}" data-value="{{item.payload.wechat}}" bindtap="handleCopyContact">复制微信</button>
+          <button class="plain-btn" wx:if="{{item.payload.phone}}" data-phone="{{item.payload.phone}}" bindtap="handleCallPhone">拨号</button>
+          <message-entry variant="pill" title="发消息" desc="" note-id="{{noteId}}" order-action-id="{{item.id}}" />
+        </view>
+      </view>
+    </block>
+  </view>
+
+  <block wx:if="{{!isProductRelay}}">
   <view class="section">
     <view class="section-title">新线索 / 待跟进</view>
     <view class="empty" wx:if="{{!loading && !pendingLeads.length}}">暂无待跟进线索</view>
@@ -60,7 +97,9 @@
       </view>
     </block>
   </view>
+  </block>
 
+  <block wx:if="{{!isProductRelay}}">
   <view class="section">
     <view class="section-title">已联系 / 已归档</view>
     <view class="empty" wx:if="{{!loading && !finishedLeads.length}}">暂无已处理线索</view>
@@ -103,4 +142,5 @@
       </view>
     </block>
   </view>
+  </block>
 </view>

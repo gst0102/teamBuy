@@ -1,4 +1,5 @@
 const api = require("../../services/api");
+const messagePlugin = require("../../plugins/message-plugin/index");
 const { getCurrentUser } = require("../../utils/dashboard");
 
 const TEMPLATE_META = {
@@ -97,7 +98,6 @@ const PROPERTY_FIELDS = [
 
 const GROUPBUY_FIELDS = [
   { key: "productName", label: "商品名", placeholder: "例如：丹东草莓" },
-  { key: "price", label: "价格", placeholder: "例如：39.9元" },
   { key: "spec", label: "规格", placeholder: "例如：3斤装" },
   { key: "deadline", label: "截止时间", placeholder: "例如：今晚22点" },
   { key: "pickupMethod", label: "自提 / 配送", placeholder: "例如：包邮到家 / 小区自提", quickOptions: ["包邮到家", "小区自提", "门店自提", "统一配送"] },
@@ -106,15 +106,27 @@ const GROUPBUY_FIELDS = [
   { key: "contact", label: "联系方式", placeholder: "可选" }
 ];
 
+const PRODUCT_INFO_FIELDS = [
+  { key: "productName", label: "商品标题", placeholder: "例如：白凤乌鸡蛋 / 丹东草莓" }
+];
+
+const PRODUCT_FULFILLMENT_FIELDS = [
+  { key: "pickupMethod", label: "自提 / 配送", placeholder: "例如：包邮到家 / 小区自提", quickOptions: ["包邮到家", "小区自提", "门店自提", "统一配送"] },
+  { key: "pickupLocation", label: "取货地点", placeholder: "可选" },
+  { key: "deadline", label: "截止时间", placeholder: "可选，例如：今晚22点" },
+  { key: "stockNote", label: "库存备注", placeholder: "可选", quickOptions: ["限量", "售完即止", "库存充足"] },
+  { key: "contact", label: "联系方式", placeholder: "可选" }
+];
+
 const CONVERSION_OPTIONS = [
   { key: "showContactPhone", label: "展示联系电话", desc: "生成页展示电话或联系按钮", property: true, groupbuy: true },
-  { key: "enableLightScrm", label: "轻 SCRM 跟进", desc: "记录浏览、收藏、咨询等转化行为", property: true, groupbuy: true },
-  { key: "collectLeads", label: "收集线索", desc: "允许用户提交联系方式和备注", property: true, groupbuy: true },
+  { key: "enableLightScrm", label: "轻 SCRM 跟进", desc: "记录浏览、收藏、咨询等转化行为", property: true, groupbuy: false },
+  { key: "collectLeads", label: "收集线索", desc: "允许用户提交联系方式和备注", property: true, groupbuy: false },
   { key: "enableAppointment", label: "预约看房", desc: "房源页展示预约看房入口", property: true, groupbuy: false },
   { key: "enablePrivateConsultation", label: "私聊咨询", desc: "房源页展示私聊咨询入口", property: true, groupbuy: false },
   { key: "enableSharePoster", label: "保存分享图", desc: "保留可保存到相册的图片素材入口", property: true, groupbuy: true },
   { key: "enableGroupRelay", label: "团购接龙", desc: "团购页展示接龙/报名入口", property: false, groupbuy: true },
-  { key: "enablePaymentPlaceholder", label: "下单按钮预留", desc: "只展示预留入口，不接真实支付", property: false, groupbuy: true }
+  { key: "enablePaymentPlaceholder", label: "下单按钮预留", desc: "只展示预留入口，不接真实支付", property: false, groupbuy: false }
 ];
 
 const PROPERTY_STATUS_OPTIONS = [
@@ -306,8 +318,8 @@ function defaultConversionConfig(cardType) {
   if (cardType === "groupbuy_product") {
     return {
       showContactPhone: true,
-      enableLightScrm: true,
-      collectLeads: true,
+      enableLightScrm: false,
+      collectLeads: false,
       enableAppointment: false,
       enablePrivateConsultation: false,
       enableSharePoster: true,
@@ -331,6 +343,89 @@ function defaultMiniappConversionConfig(structuredData) {
     enableGroupRelay: false,
     enablePaymentPlaceholder: false
   };
+}
+
+function makeLocalId(prefix) {
+  return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
+}
+
+function normalizeSkuConfig(structuredData) {
+  const source = (structuredData && structuredData.skuConfig) || {};
+  const attributeGroups = Array.isArray(source.attributeGroups)
+    ? source.attributeGroups.map((group, groupIndex) => ({
+        id: group.id || makeLocalId("group"),
+        name: group.name || "",
+        options: (Array.isArray(group.options) ? group.options : []).map((option) => ({
+          id: option.id || makeLocalId("option"),
+          label: option.label || option.name || ""
+        }))
+      }))
+    : [];
+  const existingSkus = Array.isArray(source.skus) ? source.skus : [];
+  const comboGroups = attributeGroups
+    .map((group) => ({
+      ...group,
+      options: (group.options || []).filter((option) => option.label)
+    }))
+    .filter((group) => group.options.length);
+  if (!comboGroups.length) {
+    return {
+      attributeGroups,
+      skus: attributeGroups.length ? [] : existingSkus.length ? existingSkus : [{
+        id: "default",
+        key: "default",
+        name: structuredData.spec || structuredData.productName || "默认规格",
+        price: structuredData.price || "",
+        description: structuredData.pickupMethod || "",
+        soldOut: false
+      }]
+    };
+  }
+  const combos = comboGroups.reduce((rows, group) => {
+    const options = group.options || [];
+    if (!rows.length) return options.map((option) => ({ optionIds: [option.id], labels: [option.label] }));
+    return rows.flatMap((row) => options.map((option) => ({
+      optionIds: [...row.optionIds, option.id],
+      labels: [...row.labels, option.label]
+    })));
+  }, []);
+  const existingByKey = existingSkus.reduce((map, sku) => {
+    map[sku.key || sku.id] = sku;
+    return map;
+  }, {});
+  return {
+    attributeGroups,
+    skus: combos.map((combo, index) => {
+      const key = combo.optionIds.join("|");
+      const existing = existingByKey[key] || {};
+      const name = combo.labels.join(" / ");
+      return {
+        id: existing.id || `sku_${index}_${key}`,
+        key,
+        optionIds: combo.optionIds,
+        optionLabels: combo.labels,
+        name,
+        price: existing.price || structuredData.price || "",
+        description: existing.description || "",
+        soldOut: Boolean(existing.soldOut)
+      };
+    })
+  };
+}
+
+function buildPriceRange(skuConfig, fallback) {
+  const prices = (skuConfig.skus || [])
+    .filter((sku) => !sku.soldOut && sku.price)
+    .map((sku) => String(sku.price).trim())
+    .filter(Boolean);
+  const unique = Array.from(new Set(prices));
+  if (!unique.length) return fallback || "";
+  if (unique.length === 1) return unique[0];
+  return `${unique[0]} - ${unique[unique.length - 1]}`;
+}
+
+function buildProductPriceText(structuredData) {
+  return buildPriceRange(normalizeSkuConfig(structuredData), structuredData.price);
 }
 
 function hydrateConversionOptions(cardType, config) {
@@ -434,7 +529,8 @@ function buildKeyChips(cardType, structuredData, config) {
     if (structuredData.businessArea) chips.push(structuredData.businessArea);
   } else if (cardType === "groupbuy_product") {
     chips.push("团购候选");
-    if (structuredData.price) chips.push(structuredData.price);
+    const priceText = buildProductPriceText(structuredData);
+    if (priceText) chips.push(priceText);
     if (structuredData.spec) chips.push(structuredData.spec);
     if (structuredData.pickupMethod) chips.push(structuredData.pickupMethod);
   }
@@ -463,8 +559,7 @@ function buildMissingWarnings(cardType, structuredData) {
       ]
     : [
         ["contact", "联系方式待确认"],
-        ["pickupLocation", "取货地点待确认"],
-        ["deadline", "截止时间待确认"]
+        ["pickupLocation", "取货地点待确认"]
       ];
   return checks.filter(([key]) => !structuredData[key]).map(([, label]) => label);
 }
@@ -501,7 +596,8 @@ function buildDisplaySubtitle(cardType, form, structuredData) {
     return [structuredData.price, structuredData.layout, structuredData.area, structuredData.businessArea].filter(Boolean).join(" · ") || form.summary || "房源信息";
   }
   if (cardType === "groupbuy_product") {
-    return [structuredData.price, structuredData.spec, structuredData.pickupMethod].filter(Boolean).join(" · ") || form.summary || "团购信息";
+    const skuConfig = normalizeSkuConfig(structuredData);
+    return [buildPriceRange(skuConfig, structuredData.price), structuredData.spec, structuredData.pickupMethod].filter(Boolean).join(" · ") || form.summary || "商品信息";
   }
   return form.summary || "";
 }
@@ -518,9 +614,10 @@ function buildShareText(cardType, form, structuredData) {
     ].filter(Boolean).join("\n");
   }
   if (cardType === "groupbuy_product") {
+    const priceText = buildProductPriceText(structuredData);
     return [
       structuredData.productName || form.title,
-      structuredData.price ? `价格：${structuredData.price}` : "",
+      priceText ? `价格：${priceText}` : "",
       structuredData.spec ? `规格：${structuredData.spec}` : "",
       structuredData.pickupMethod ? `取货：${structuredData.pickupMethod}` : "",
       structuredData.deadline ? `截止：${structuredData.deadline}` : "",
@@ -543,9 +640,10 @@ function buildCustomerTalkText(cardType, form, structuredData) {
     ].filter(Boolean).join("\n");
   }
   if (cardType === "groupbuy_product") {
+    const priceText = buildProductPriceText(structuredData);
     return [
       structuredData.productName || form.title,
-      [structuredData.price, structuredData.spec].filter(Boolean).join(" · "),
+      [priceText, structuredData.spec].filter(Boolean).join(" · "),
       structuredData.pickupMethod ? `取货：${structuredData.pickupMethod}` : "",
       structuredData.deadline ? `截止：${structuredData.deadline}` : "",
       structuredData.remark || form.summary,
@@ -588,6 +686,7 @@ function buildStructuredDataForType(cardType, form, current) {
       stockNote: current.stockNote || "",
       contact: current.contact || form.phone || "",
       remark: current.remark || form.summary || form.body,
+      skuConfig: normalizeSkuConfig(current),
       images,
       rawText: current.rawText || form.body
     };
@@ -763,6 +862,7 @@ Page({
     generatedActions: [],
     miniappInfo: buildMiniappInfo({}),
     structuredData: {},
+    skuConfig: normalizeSkuConfig({}),
     conversionConfig: {},
     conversionOptions: [],
     featurePresets: hydrateFeaturePresets({}),
@@ -779,6 +879,8 @@ Page({
     geocodingAddress: false,
     propertyFields: hydrateFields(PROPERTY_FIELDS, {}),
     groupbuyFields: hydrateFields(GROUPBUY_FIELDS, {}),
+    productInfoFields: hydrateFields(PRODUCT_INFO_FIELDS, {}),
+    productFulfillmentFields: hydrateFields(PRODUCT_FULFILLMENT_FIELDS, {}),
     topics: [],
     tagDraft: "",
     topicDraft: "",
@@ -876,6 +978,9 @@ Page({
       structuredData.propertyStatus = normalizePropertyStatus(structuredData.propertyStatus);
       rememberPropertyCity([structuredData.address, structuredData.community, structuredData.businessArea, note.title, note.body].filter(Boolean).join(" "));
     }
+    if (cardType === "groupbuy_product") {
+      structuredData.skuConfig = normalizeSkuConfig(structuredData);
+    }
     const cardState = normalizeCardState(config.cardState);
     const miniappInfo = buildMiniappInfo(structuredData);
     const conversionConfig = {
@@ -918,6 +1023,7 @@ Page({
       generatedActions: buildGeneratedActions(structuredData, enabledActionLabels),
       cardTypeLabel: CARD_TYPES[cardType] || "资料卡",
       structuredData,
+      skuConfig: structuredData.skuConfig || normalizeSkuConfig(structuredData),
       miniappInfo,
       conversionConfig,
       conversionOptions,
@@ -934,6 +1040,8 @@ Page({
       mapPreview: buildMapPreview(structuredData),
       propertyFields: hydrateFields(PROPERTY_FIELDS, structuredData),
       groupbuyFields: hydrateFields(GROUPBUY_FIELDS, structuredData),
+      productInfoFields: hydrateFields(PRODUCT_INFO_FIELDS, structuredData),
+      productFulfillmentFields: hydrateFields(PRODUCT_FULFILLMENT_FIELDS, structuredData),
       suggestedTagOptions: buildSuggestedTagOptions(cardType, structuredData, form, effectiveConfig),
       suggestedTopicOptions: buildSuggestedTopicOptions(cardType, structuredData, form, this.data.topics, effectiveConfig),
       bookmark: buildBookmark(note)
@@ -998,6 +1106,8 @@ Page({
       structuredData,
       propertyFields: hydrateFields(PROPERTY_FIELDS, structuredData),
       groupbuyFields: hydrateFields(GROUPBUY_FIELDS, structuredData),
+      productInfoFields: hydrateFields(PRODUCT_INFO_FIELDS, structuredData),
+      productFulfillmentFields: hydrateFields(PRODUCT_FULFILLMENT_FIELDS, structuredData),
       displayTitle: buildDisplayTitle(cardType, this.data.form, structuredData),
       displaySubtitle: buildDisplaySubtitle(cardType, this.data.form, structuredData),
       suggestedTagOptions: buildSuggestedTagOptions(cardType, structuredData, this.data.form, config),
@@ -1017,6 +1127,8 @@ Page({
       structuredData,
       propertyFields: hydrateFields(PROPERTY_FIELDS, structuredData),
       groupbuyFields: hydrateFields(GROUPBUY_FIELDS, structuredData),
+      productInfoFields: hydrateFields(PRODUCT_INFO_FIELDS, structuredData),
+      productFulfillmentFields: hydrateFields(PRODUCT_FULFILLMENT_FIELDS, structuredData),
       displayTitle: buildDisplayTitle(cardType, this.data.form, structuredData),
       displaySubtitle: buildDisplaySubtitle(cardType, this.data.form, structuredData),
       suggestedTagOptions: buildSuggestedTagOptions(cardType, structuredData, this.data.form, config),
@@ -1024,6 +1136,88 @@ Page({
       mapPreview: buildMapPreview(structuredData),
       "form.visibilityConfig": config
     });
+  },
+  applySkuConfig(skuConfig) {
+    const structuredData = {
+      ...(this.data.structuredData || {}),
+      skuConfig: normalizeSkuConfig({ ...(this.data.structuredData || {}), skuConfig })
+    };
+    const config = { ...(this.data.form.visibilityConfig || {}), structuredData, cardState: "editing" };
+    this.setData({
+      structuredData,
+      skuConfig: structuredData.skuConfig,
+      displaySubtitle: buildDisplaySubtitle(config.cardType || "groupbuy_product", this.data.form, structuredData),
+      "form.visibilityConfig": config
+    });
+  },
+  handleAddSkuGroup() {
+    const skuConfig = normalizeSkuConfig(this.data.structuredData || {});
+    skuConfig.attributeGroups.push({
+      id: makeLocalId("group"),
+      name: "",
+      options: [
+        { id: makeLocalId("option"), label: "" },
+        { id: makeLocalId("option"), label: "" }
+      ]
+    });
+    this.applySkuConfig(skuConfig);
+  },
+  handleSkuGroupName(event) {
+    const index = Number(event.currentTarget.dataset.index);
+    const skuConfig = normalizeSkuConfig(this.data.structuredData || {});
+    if (!skuConfig.attributeGroups[index]) return;
+    skuConfig.attributeGroups[index].name = event.detail.value;
+    this.applySkuConfig(skuConfig);
+  },
+  handleDeleteSkuGroup(event) {
+    const index = Number(event.currentTarget.dataset.index);
+    const skuConfig = normalizeSkuConfig(this.data.structuredData || {});
+    skuConfig.attributeGroups.splice(index, 1);
+    this.applySkuConfig(skuConfig);
+  },
+  handleAddSkuOption(event) {
+    const groupIndex = Number(event.currentTarget.dataset.groupIndex);
+    const skuConfig = normalizeSkuConfig(this.data.structuredData || {});
+    const group = skuConfig.attributeGroups[groupIndex];
+    if (!group) return;
+    group.options.push({ id: makeLocalId("option"), label: "" });
+    this.applySkuConfig(skuConfig);
+  },
+  handleSkuOptionLabel(event) {
+    const groupIndex = Number(event.currentTarget.dataset.groupIndex);
+    const optionIndex = Number(event.currentTarget.dataset.optionIndex);
+    const skuConfig = normalizeSkuConfig(this.data.structuredData || {});
+    const option = skuConfig.attributeGroups[groupIndex] && skuConfig.attributeGroups[groupIndex].options[optionIndex];
+    if (!option) return;
+    option.label = event.detail.value;
+    this.applySkuConfig(skuConfig);
+  },
+  handleDeleteSkuOption(event) {
+    const groupIndex = Number(event.currentTarget.dataset.groupIndex);
+    const optionIndex = Number(event.currentTarget.dataset.optionIndex);
+    const skuConfig = normalizeSkuConfig(this.data.structuredData || {});
+    const group = skuConfig.attributeGroups[groupIndex];
+    if (!group) return;
+    group.options.splice(optionIndex, 1);
+    if (!group.options.length) {
+      skuConfig.attributeGroups.splice(groupIndex, 1);
+    }
+    this.applySkuConfig(skuConfig);
+  },
+  handleSkuFieldInput(event) {
+    const index = Number(event.currentTarget.dataset.index);
+    const key = event.currentTarget.dataset.key;
+    const skuConfig = normalizeSkuConfig(this.data.structuredData || {});
+    if (!skuConfig.skus[index] || !key) return;
+    skuConfig.skus[index][key] = event.detail.value;
+    this.applySkuConfig(skuConfig);
+  },
+  handleSkuSoldOut(event) {
+    const index = Number(event.currentTarget.dataset.index);
+    const skuConfig = normalizeSkuConfig(this.data.structuredData || {});
+    if (!skuConfig.skus[index]) return;
+    skuConfig.skus[index].soldOut = Boolean(event.detail.value);
+    this.applySkuConfig(skuConfig);
   },
   handleChooseLocation() {
     const defaultAddress = buildMapAddress(this.data.structuredData || {});
@@ -1284,6 +1478,9 @@ Page({
       }
     });
     wx.navigateTo({ url: `/pages/note-actions/index?id=${this.data.noteId}` });
+  },
+  handleOpenMessages() {
+    messagePlugin.openMessageCenter();
   },
   async handleSetCover(event) {
     const url = event.currentTarget.dataset.url;
@@ -1604,15 +1801,23 @@ Page({
   },
   async handleSaveOnly() {
     const { user, noteId, form } = this.data;
-    if (!form.title.trim()) {
+    const structuredData = this.data.structuredData || {};
+    const cardType = (form.visibilityConfig && form.visibilityConfig.cardType) || "text_note";
+    const primaryTitle = cardType === "property_listing"
+      ? structuredData.community || form.title
+      : cardType === "groupbuy_product"
+        ? structuredData.productName || form.title
+        : form.title;
+    const title = String(primaryTitle || "").trim();
+    if (!title) {
       throw new Error("标题不能为空");
     }
     rememberContactPhone((this.data.structuredData || {}).contact || form.phone);
     await api.updateNote(noteId, {
       ownerUserId: user.id,
       ...form,
-      title: form.title.trim(),
-      body: form.body.trim() || form.title.trim()
+      title,
+      body: form.body.trim() || title
     });
   },
   initFloatingSave() {

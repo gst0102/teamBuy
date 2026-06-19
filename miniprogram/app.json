@@ -19,7 +19,11 @@
     "pages/note-edit/index",
     "pages/note-actions/index",
     "pages/note-preview/index",
-    "pages/note-poster/index"
+    "pages/note-poster/index",
+    "pages/orders/index",
+    "pages/order-detail/index",
+    "pages/messages/index",
+    "pages/message-thread/index"
   ],
   "window": {
     "navigationBarTitleText": "\u8d44\u6599\u6574\u7406\u52a9\u624b",

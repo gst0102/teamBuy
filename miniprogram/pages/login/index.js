@@ -3,13 +3,17 @@ const api = require("../../services/api");
 Page({
   data: {
     nickname: "微信用户",
-    avatarUrl: "https://example.com/avatar-local.png"
+    avatarUrl: "https://example.com/avatar-local.png",
+    allowMockLogin: false
   },
   onLoad() {
     const app = getApp();
     if (app.globalData.currentUser) {
       wx.switchTab({ url: "/pages/home/index" });
+      return;
     }
+    const baseUrl = (app.globalData && app.globalData.apiBaseUrl) || "";
+    this.setData({ allowMockLogin: !/^https:\/\//i.test(baseUrl) });
   },
   handleNicknameChange(event) {
     this.setData({ nickname: event.detail.value });
@@ -36,8 +40,12 @@ Page({
   },
   saveLogin(user) {
     const app = getApp();
-    app.globalData.currentUser = user;
-    wx.setStorageSync("currentUser", user);
+    const userWithBase = {
+      ...user,
+      apiBaseUrl: app.globalData.apiBaseUrl
+    };
+    app.globalData.currentUser = userWithBase;
+    wx.setStorageSync("currentUser", userWithBase);
     wx.switchTab({ url: "/pages/home/index" });
   },
   async loginWithLocalIdentity() {
@@ -49,6 +57,16 @@ Page({
     this.saveLogin(res.data);
   },
   async handleWechatLogin() {
+    const app = getApp();
+    const baseUrl = (app.globalData && app.globalData.apiBaseUrl) || "";
+    if (!/^https:\/\//i.test(baseUrl)) {
+      wx.showModal({
+        title: "当前是本地后端",
+        content: "微信登录需要连接线上 HTTPS 后端并配置 AppSecret。本地测试请点“本地 mock 登录”。",
+        showCancel: false
+      });
+      return;
+    }
     try {
       const code = await this.requestWxCode();
       const res = await api.wechatLogin({
@@ -60,10 +78,9 @@ Page({
     } catch (error) {
       if ((error.detail || "").includes("微信登录未配置")) {
         wx.showModal({
-          title: "使用测试身份",
-          content: "后端还未配置小程序 AppSecret，本次先使用这台设备的测试身份，数据不会和其他手机混在一起。",
-          showCancel: false,
-          success: () => this.loginWithLocalIdentity()
+          title: "微信登录未配置",
+          content: "线上后端缺少小程序 AppID/AppSecret，不能使用测试身份代替。请先配置后再登录。",
+          showCancel: false
         });
         return;
       }
@@ -75,10 +92,23 @@ Page({
     }
   },
   async handleMockLogin() {
+    if (!this.data.allowMockLogin) {
+      wx.showModal({
+        title: "仅限本地测试",
+        content: "当前连接的是线上后端，不能使用本地 mock 身份。",
+        showCancel: false
+      });
+      return;
+    }
     try {
       await this.loginWithLocalIdentity();
     } catch (error) {
-      wx.showToast({ title: "登录失败", icon: "none" });
+      const message = error.detail || error.errMsg || "请确认手机和电脑在同一 Wi-Fi，且本地后端已启动";
+      wx.showModal({
+        title: "登录失败",
+        content: message,
+        showCancel: false
+      });
     }
   }
 });

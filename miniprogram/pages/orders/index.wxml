@@ -1,0 +1,32 @@
+<view class="page">
+  <custom-nav title="{{title}}" />
+
+  <view class="empty error" wx:if="{{!loading && errorText}}">
+    <view>{{errorText}}</view>
+    <button bindtap="handleRetry">重新加载</button>
+  </view>
+  <view class="empty" wx:elif="{{!loading && !orders.length}}">
+    <view>{{role === 'seller' ? '暂无收到的商品订单' : '暂无购买订单'}}</view>
+    <text>{{role === 'seller' ? '客户下单后会出现在这里。' : '你在商品页下单后会出现在这里。'}}</text>
+  </view>
+  <block wx:for="{{orders}}" wx:key="id">
+    <view class="order-card" data-id="{{item.id}}" bindtap="handleOpenOrder">
+      <image wx:if="{{item.coverUrl}}" class="cover" src="{{item.coverUrl}}" mode="aspectFill" />
+      <view wx:else class="cover placeholder">商</view>
+      <view class="main">
+        <view class="topline">
+          <text class="title">{{item.title}}</text>
+          <text class="status">{{item.statusText}}</text>
+        </view>
+        <view class="summary">{{item.summary}}</view>
+        <view class="info" wx:if="{{item.address}}">地址：{{item.address}}</view>
+        <view class="info" wx:if="{{item.contactText}}">联系：{{item.contactText}}</view>
+        <view class="info" wx:if="{{item.remark}}">备注：{{item.remark}}</view>
+        <view class="meta">
+          <text>{{role === 'seller' ? item.buyerName : '商家'}}</text>
+          <text>{{item.createdText}}</text>
+        </view>
+      </view>
+    </view>
+  </block>
+</view>

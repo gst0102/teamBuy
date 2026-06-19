@@ -1,0 +1,30 @@
+<view class="page">
+  <custom-nav title="站内消息" />
+
+  <view class="thread-head" wx:if="{{thread}}">
+    <view class="title">{{thread.noteTitle || thread.title}}</view>
+    <view class="subtitle">{{thread.orderSkuName ? '订单：' + thread.orderSkuName : '资料咨询'}}</view>
+  </view>
+
+  <scroll-view class="message-list" scroll-y>
+    <view class="empty" wx:if="{{!messages.length}}">还没有消息，先发一句吧</view>
+    <block wx:for="{{messages}}" wx:key="id">
+      <view class="message-row {{item.mine ? 'mine' : ''}}">
+        <image wx:if="{{item.senderAvatarUrl}}" class="avatar" src="{{item.senderAvatarUrl}}" mode="aspectFill" />
+        <view wx:else class="avatar avatar-placeholder">{{item.senderInitial}}</view>
+        <view class="message-main">
+          <view class="sender-name" wx:if="{{!item.mine}}">{{item.senderName}}</view>
+          <view class="bubble">
+            <text>{{item.content}}</text>
+            <view>{{item.timeText}}</view>
+          </view>
+        </view>
+      </view>
+    </block>
+  </scroll-view>
+
+  <view class="composer">
+    <input value="{{inputText}}" bindinput="handleInput" placeholder="输入消息" confirm-type="send" bindconfirm="handleSend" />
+    <button loading="{{sending}}" bindtap="handleSend">发送</button>
+  </view>
+</view>

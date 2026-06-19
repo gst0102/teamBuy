@@ -1,8 +1,7 @@
 {
-  "navigationBarTitleText": "\u7b14\u8bb0\u8be6\u60c5",
-  "navigationStyle": "custom",
   "usingComponents": {
     "custom-nav": "/components/custom-nav/index",
     "message-entry": "/components/message-entry/index"
-  }
+  },
+  "navigationBarTitleText": "订单详情"
 }

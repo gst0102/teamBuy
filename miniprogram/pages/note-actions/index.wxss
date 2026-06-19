@@ -68,10 +68,25 @@
   gap: 16rpx;
 }
 
+.relay-person {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+}
+
+.relay-main {
+  flex: 1;
+  min-width: 0;
+}
+
 .item-title {
   color: #172033;
   font-size: 30rpx;
   font-weight: 900;
+  line-height: 1.25;
+  word-break: break-all;
 }
 
 .item-time {
@@ -140,6 +155,82 @@
 }
 
 .plain-btn::after {
+  border: 0;
+}
+
+.summary-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  min-width: 188rpx;
+  height: 58rpx;
+  min-height: 58rpx;
+  margin: 0 0 14rpx;
+  padding: 0 22rpx;
+  border-radius: 999rpx;
+  background: #e8f7ef;
+  line-height: 58rpx;
+  box-sizing: border-box;
+}
+
+.sku-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  margin: 0 0 16rpx;
+}
+
+.sku-filter {
+  max-width: 100%;
+  padding: 10rpx 18rpx;
+  border-radius: 999rpx;
+  background: #ffffff;
+  color: #64748b;
+  font-size: 23rpx;
+  font-weight: 800;
+  line-height: 1.25;
+  box-sizing: border-box;
+  word-break: break-all;
+}
+
+.sku-filter.active {
+  background: #e8f7ef;
+  color: #11924d;
+}
+
+.relay-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  margin-top: 16rpx;
+}
+
+.relay-avatar {
+  flex: 0 0 auto;
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 50%;
+  background: #edf2f7;
+}
+
+.relay-buttons .plain-btn {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 128rpx;
+  height: 56rpx;
+  min-height: 56rpx;
+  margin: 0;
+  padding: 0 18rpx;
+  border-radius: 999rpx;
+  background: #eef8f2;
+  font-size: 23rpx;
+  line-height: 56rpx;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.relay-buttons .plain-btn::after {
   border: 0;
 }
 

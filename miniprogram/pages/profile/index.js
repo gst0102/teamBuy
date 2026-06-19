@@ -1,4 +1,5 @@
 const api = require("../../services/api");
+const messagePlugin = require("../../plugins/message-plugin/index");
 const { buildDashboard, getCurrentUser } = require("../../utils/dashboard");
 
 Page({
@@ -6,7 +7,8 @@ Page({
     user: null,
     totalResources: 0,
     totalPv: 0,
-    totalRelay: 0
+    totalRelay: 0,
+    messageUnread: 0
   },
   onShow() {
     const currentUser = getCurrentUser();
@@ -27,6 +29,8 @@ Page({
         totalPv: dashboard.totalPv,
         totalRelay: dashboard.totalRelay
       });
+      const messageUnread = await messagePlugin.fetchUnreadTotal(currentUser.id);
+      this.setData({ messageUnread });
     } catch (error) {
       wx.showToast({ title: "我的数据加载失败", icon: "none" });
     }
@@ -43,6 +47,15 @@ Page({
   handleGoCustomers() {
     wx.navigateTo({ url: "/pages/customers/index" });
   },
+  handleGoBuyerOrders() {
+    wx.navigateTo({ url: "/pages/orders/index?role=buyer" });
+  },
+  handleGoSellerOrders() {
+    wx.navigateTo({ url: "/pages/orders/index?role=seller" });
+  },
+  handleGoMessages() {
+    messagePlugin.openMessageCenter();
+  },
   async handleCreateDemoData() {
     const currentUser = getCurrentUser();
     if (!currentUser) {
@@ -55,7 +68,7 @@ Page({
       wx.hideLoading();
       wx.showModal({
         title: "测试数据已生成",
-        content: `已生成 ${(res.data.notes || []).length} 条房源、${res.data.leadsCreated || 0} 条线索。可以去“我的笔记”或“待联系线索”测试。`,
+        content: `已生成 ${(res.data.notes || []).length} 条资料、${res.data.leadsCreated || 0} 条线索。可以去“我的笔记”测试房源和商品接龙。`,
         showCancel: false,
         success: () => this.loadProfileStats()
       });

@@ -1,0 +1,7 @@
+<button class="message-entry {{variant}} {{disabled ? 'disabled' : ''}}" bindtap="handleTap">
+  <view class="message-title">
+    <text>{{title}}</text>
+    <text class="message-unread" wx:if="{{unreadCount}}">{{unreadCount}}</text>
+  </view>
+  <view class="message-desc" wx:if="{{desc}}">{{desc}}</view>
+</button>

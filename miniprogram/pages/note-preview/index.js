@@ -1,4 +1,5 @@
 const api = require("../../services/api");
+const messagePlugin = require("../../plugins/message-plugin/index");
 const { getCurrentUser } = require("../../utils/dashboard");
 
 const LAST_LEAD_PHONE_KEY = "teambuy:lastLeadPhone";
@@ -97,6 +98,106 @@ function buildAvailability(data, isProperty) {
   return null;
 }
 
+function normalizeSkuConfig(data) {
+  const source = (data && data.skuConfig) || {};
+  const skus = Array.isArray(source.skus) ? source.skus : [];
+  const attributeGroups = Array.isArray(source.attributeGroups)
+    ? source.attributeGroups.map((group, groupIndex) => ({
+        id: group.id || `group_${groupIndex}`,
+        name: group.name || `规格${groupIndex + 1}`,
+        options: (Array.isArray(group.options) ? group.options : []).map((option, optionIndex) => ({
+          id: option.id || `option_${groupIndex}_${optionIndex}`,
+          label: option.label || option.name || ""
+        })).filter((option) => option.label)
+      })).filter((group) => group.options.length)
+    : [];
+  if (skus.length) {
+    return {
+      attributeGroups,
+      skus: skus.map((sku, index) => ({
+        id: sku.id || sku.key || `sku_${index}`,
+        key: sku.key || sku.id || `sku_${index}`,
+        optionIds: Array.isArray(sku.optionIds) && sku.optionIds.length
+          ? sku.optionIds
+          : String(sku.key || sku.id || `sku_${index}`).split("|").filter(Boolean),
+        optionLabels: Array.isArray(sku.optionLabels) ? sku.optionLabels : [],
+        name: sku.name || "默认规格",
+        price: sku.price || data.price || "",
+        description: sku.description || "",
+        soldOut: Boolean(sku.soldOut)
+      }))
+    };
+  }
+  return {
+    attributeGroups: [],
+    skus: [{
+      id: "default",
+      key: "default",
+      name: data.spec || data.productName || "默认规格",
+      price: data.price || "",
+      description: data.pickupMethod || "",
+      soldOut: false
+    }]
+  };
+}
+
+function skuOptionIds(sku) {
+  if (Array.isArray(sku.optionIds) && sku.optionIds.length) return sku.optionIds;
+  return String(sku.key || sku.id || "").split("|").filter(Boolean);
+}
+
+function buildSelectedSkuOptions(skuConfig, skuKey) {
+  const groups = skuConfig.attributeGroups || [];
+  const sku = (skuConfig.skus || []).find((item) => item.key === skuKey || item.id === skuKey);
+  const ids = sku ? skuOptionIds(sku) : [];
+  return groups.reduce((result, group, index) => {
+    if (ids[index]) result[group.id] = ids[index];
+    return result;
+  }, {});
+}
+
+function findSkuBySelectedOptions(skuConfig, selectedOptions) {
+  const groups = skuConfig.attributeGroups || [];
+  if (!groups.length) return null;
+  const selectedIds = groups.map((group) => selectedOptions[group.id]).filter(Boolean);
+  if (selectedIds.length !== groups.length) return null;
+  return (skuConfig.skus || []).find((sku) => {
+    const ids = skuOptionIds(sku);
+    return groups.every((group, index) => ids[index] === selectedOptions[group.id]);
+  }) || null;
+}
+
+function buildSkuSelectionGroups(skuConfig, selectedOptions) {
+  const groups = skuConfig.attributeGroups || [];
+  const skus = skuConfig.skus || [];
+  return groups.map((group, groupIndex) => ({
+    ...group,
+    options: (group.options || []).map((option) => {
+      const available = skus.some((sku) => {
+        if (sku.soldOut) return false;
+        const ids = skuOptionIds(sku);
+        return ids[groupIndex] === option.id;
+      });
+      return {
+        ...option,
+        active: selectedOptions[group.id] === option.id,
+        disabled: !available
+      };
+    })
+  }));
+}
+
+function buildProductPriceText(skuConfig, fallback) {
+  const prices = (skuConfig.skus || [])
+    .filter((sku) => !sku.soldOut && sku.price)
+    .map((sku) => String(sku.price || "").trim())
+    .filter(Boolean);
+  const unique = Array.from(new Set(prices));
+  if (!unique.length) return fallback || "";
+  if (unique.length === 1) return unique[0];
+  return `${unique[0]} - ${unique[unique.length - 1]}`;
+}
+
 function buildView(note) {
   const config = note.visibilityConfig || {};
   const data = config.structuredData || {};
@@ -105,17 +206,19 @@ function buildView(note) {
   const isProperty = cardType === "property_listing";
   const isGroupbuy = cardType === "groupbuy_product";
   const isMiniapp = miniapp.visible && config.sourceType === "miniapp";
+  const skuConfig = normalizeSkuConfig(data);
+  const productPriceText = buildProductPriceText(skuConfig, data.price);
   const title = isProperty ? data.community || note.title : isGroupbuy ? data.productName || note.title : miniapp.title || note.title;
   const subtitle = isProperty
     ? [data.price, data.layout, data.area].filter(Boolean).join(" · ")
     : isGroupbuy
-      ? [data.price, data.spec, data.pickupMethod].filter(Boolean).join(" · ")
+      ? [productPriceText, data.spec, data.pickupMethod].filter(Boolean).join(" · ")
       : isMiniapp ? [miniapp.sourceName, miniapp.houseCode ? `房源编码 ${miniapp.houseCode}` : ""].filter(Boolean).join(" · ") : note.summary || "";
   const mapLocation = buildMapLocation(data);
   const coverUrl = note.coverUrl || ((note.media || []).find((item) => item.type === "image") || {}).url || "";
   const galleryImages = buildGalleryImages(note, coverUrl);
   const galleryVideos = buildGalleryVideos(note);
-  const address = data.address || data.businessArea || data.pickupLocation || "";
+  const address = isProperty ? data.address || data.businessArea || "" : data.pickupLocation || "";
   const contact = data.contact || note.phone || "";
   const rows = isProperty
     ? [
@@ -128,7 +231,7 @@ function buildView(note) {
       ]
     : isGroupbuy
       ? [
-          ["价格", data.price],
+          ["价格", productPriceText],
           ["规格", data.spec],
           ["取货方式", data.pickupMethod],
           ["取货地点", data.pickupLocation],
@@ -147,12 +250,16 @@ function buildView(note) {
   if (canConvert && conversion.collectLeads) actions.push({ key: "lead", title: "留下电话/微信", desc: "方便发布者回访" });
   if (canConvert && conversion.enableAppointment) actions.push({ key: "appointment", title: "预约看房", desc: "选择日期和时间" });
   if (canConvert && conversion.enablePrivateConsultation) actions.push({ key: "private", title: "微信咨询", desc: "复制发布者微信/电话" });
+  if (canConvert && (isProperty || isGroupbuy)) actions.push({ key: "message", title: "发消息", desc: "站内留言给发布者" });
   if (isProperty && address) actions.push({ key: "map", title: "地图定位", desc: mapLocation.hasPoint ? "打开腾讯地图" : "按地址搜索" });
-  if (canConvert && conversion.enableGroupRelay) actions.push({ key: "relay", title: "参与接龙", desc: "提交购买意向" });
   return {
     title,
+    ownerUserId: note.ownerUserId || "",
     subtitle,
-    badge: isProperty ? "房源" : isGroupbuy ? "团购" : isMiniapp ? "小程序房源" : "资料",
+    isGroupbuy,
+    enableGroupRelay: Boolean(conversion.enableGroupRelay),
+    orderButtonText: conversion.enableGroupRelay ? "下单并接龙" : "下单",
+    badge: isProperty ? "房源" : isGroupbuy ? "商品" : isMiniapp ? "小程序房源" : "资料",
     coverUrl,
     galleryImages,
     galleryVideos,
@@ -160,6 +267,9 @@ function buildView(note) {
     remark: data.remark || note.summary || note.body || "",
     availability,
     actions,
+    hasMap: isProperty && Boolean(address),
+    skuConfig,
+    selectedSku: (skuConfig.skus || []).find((item) => !item.soldOut) || (skuConfig.skus || [])[0] || null,
     miniapp,
     contact,
     address,
@@ -290,6 +400,21 @@ Page({
     leadSubmittedText: "",
     appointmentText: "",
     relaySubmitted: false,
+    productOrderSubmitted: false,
+    productOrderStatusText: "",
+    showRelayForm: false,
+    showOrderSheet: false,
+    selectedSkuKey: "",
+    selectedSkuOptions: {},
+    skuSelectionGroups: [],
+    relayDraft: {
+      quantity: 1,
+      receiverName: "",
+      phone: "",
+      address: "",
+      wechat: "",
+      remark: ""
+    },
     actionStatus: {},
     submittingAction: ""
   },
@@ -316,6 +441,14 @@ Page({
       const view = buildView(res.data || {});
       rememberPropertyCity(`${view.address} ${view.title}`);
       this.setData({ view }, () => {
+        const sku = view.selectedSku || {};
+        const selectedSkuOptions = buildSelectedSkuOptions(view.skuConfig || {}, sku.key || "");
+        this.setData({
+          selectedSkuKey: sku.key || "",
+          selectedSkuOptions,
+          skuSelectionGroups: buildSkuSelectionGroups(view.skuConfig || {}, selectedSkuOptions),
+          "relayDraft.phone": readLastLeadPhone()
+        });
         this.resolveMapFromAddress();
       });
       await this.loadCustomerActionConfig();
@@ -330,16 +463,40 @@ Page({
       const res = await api.fetchCustomerActionConfig(noteId, { viewerUserId: user.id });
       const actions = (res.data && res.data.actions) || [];
       const actionStatus = {};
+      let submittedPayload = null;
       actions.forEach((item) => {
         if (item.submitted) {
           actionStatus[item.key] = item.statusText || "已提交";
+          if (item.key === "order-intent" || item.key === "relay-intent") {
+            submittedPayload = item.submittedPayload || null;
+          }
         }
       });
-      this.setData({
+      const updateData = {
         actionStatus,
         leadSubmittedText: actionStatus["lead-contact"] || "",
-        appointmentText: (actionStatus.appointment || "").replace(/^已预约\s*/, "")
-      });
+        appointmentText: (actionStatus.appointment || "").replace(/^已预约\s*/, ""),
+        relaySubmitted: Boolean(actionStatus["relay-intent"]),
+        productOrderSubmitted: Boolean(actionStatus["order-intent"] || actionStatus["relay-intent"]),
+        productOrderStatusText: actionStatus["order-intent"] || actionStatus["relay-intent"] || ""
+      };
+      if (submittedPayload && submittedPayload.skuKey) {
+        const view = this.data.view || {};
+        const selectedSkuOptions = buildSelectedSkuOptions(view.skuConfig || {}, submittedPayload.skuKey);
+        updateData.selectedSkuKey = submittedPayload.skuKey;
+        updateData.selectedSkuOptions = selectedSkuOptions;
+        updateData.skuSelectionGroups = buildSkuSelectionGroups(view.skuConfig || {}, selectedSkuOptions);
+        updateData.relayDraft = {
+          ...this.data.relayDraft,
+          quantity: submittedPayload.quantity || this.data.relayDraft.quantity,
+          receiverName: submittedPayload.receiverName || "",
+          phone: submittedPayload.phone || this.data.relayDraft.phone,
+          address: submittedPayload.address || "",
+          wechat: submittedPayload.wechat || "",
+          remark: submittedPayload.remark || ""
+        };
+      }
+      this.setData(updateData);
     } catch (error) {
       this.setData({ actionStatus: {} });
     }
@@ -347,7 +504,7 @@ Page({
   async resolveMapFromAddress() {
     const view = this.data.view || {};
     const location = view.mapLocation || {};
-    if (this.data.resolvingMap || location.hasPoint || !view.address) return;
+    if (this.data.resolvingMap || location.hasPoint || !view.address || !view.hasMap) return;
     const mapAddress = enrichAddressWithCity(view.address);
     this.setData({ resolvingMap: true });
     try {
@@ -398,10 +555,149 @@ Page({
       this.handleOpenMap();
       return;
     }
-    if (key === "relay") {
-      this.setData({ relaySubmitted: true });
-      wx.showToast({ title: "已记录接龙意向", icon: "success" });
+    if (key === "message") {
+      this.handleOpenMessage();
+      return;
     }
+    if (key === "relay") {
+      this.setData({ showRelayForm: !this.data.showRelayForm });
+    }
+  },
+  noop() {},
+  handleSelectSku(event) {
+    const key = event.currentTarget.dataset.key;
+    const soldOut = event.currentTarget.dataset.soldOut;
+    if (soldOut === true || soldOut === "true") {
+      wx.showToast({ title: "该规格已售罄", icon: "none" });
+      return;
+    }
+    const view = this.data.view || {};
+    const selectedSkuOptions = buildSelectedSkuOptions(view.skuConfig || {}, key);
+    this.setData({
+      selectedSkuKey: key,
+      selectedSkuOptions,
+      skuSelectionGroups: buildSkuSelectionGroups(view.skuConfig || {}, selectedSkuOptions)
+    });
+  },
+  handleSelectSkuOption(event) {
+    const groupId = event.currentTarget.dataset.groupId;
+    const groupIndex = Number(event.currentTarget.dataset.groupIndex);
+    const optionId = event.currentTarget.dataset.optionId;
+    const disabled = event.currentTarget.dataset.disabled;
+    if (disabled === true || disabled === "true") {
+      wx.showToast({ title: "该选项已售罄", icon: "none" });
+      return;
+    }
+    const view = this.data.view || {};
+    const skuConfig = view.skuConfig || {};
+    const selectedSkuOptions = {
+      ...(this.data.selectedSkuOptions || {}),
+      [groupId]: optionId
+    };
+    let selectedSku = findSkuBySelectedOptions(skuConfig, selectedSkuOptions);
+    if (!selectedSku || selectedSku.soldOut) {
+      selectedSku = (skuConfig.skus || []).find((sku) => {
+        const ids = skuOptionIds(sku);
+        return !sku.soldOut && ids[groupIndex] === optionId;
+      });
+      if (selectedSku) {
+        Object.assign(selectedSkuOptions, buildSelectedSkuOptions(skuConfig, selectedSku.key));
+      }
+    }
+    this.setData({
+      selectedSkuKey: selectedSku && !selectedSku.soldOut ? selectedSku.key : "",
+      selectedSkuOptions,
+      skuSelectionGroups: buildSkuSelectionGroups(skuConfig, selectedSkuOptions)
+    });
+  },
+  handleOpenOrderSheet() {
+    const view = this.data.view || {};
+    const { selectedSkuKey } = this.data;
+    if (!selectedSkuKey) {
+      wx.showToast({ title: "请选择规格", icon: "none" });
+      return;
+    }
+    const selectedSku = ((view.skuConfig && view.skuConfig.skus) || []).find((item) => item.key === selectedSkuKey);
+    if (selectedSku && selectedSku.soldOut) {
+      wx.showToast({ title: "该规格已售罄", icon: "none" });
+      return;
+    }
+    this.setData({ showOrderSheet: true });
+  },
+  handleCloseOrderSheet() {
+    if (this.data.submittingAction) return;
+    this.setData({ showOrderSheet: false });
+  },
+  handleRelayInput(event) {
+    const key = event.currentTarget.dataset.key;
+    this.setData({ [`relayDraft.${key}`]: event.detail.value });
+  },
+  async handleSubmitProductOrder() {
+    const view = this.data.view || {};
+    const { selectedSkuKey, relayDraft } = this.data;
+    if (!selectedSkuKey) {
+      wx.showToast({ title: "请选择规格", icon: "none" });
+      return;
+    }
+    const selectedSku = ((view.skuConfig && view.skuConfig.skus) || []).find((item) => item.key === selectedSkuKey);
+    if (selectedSku && selectedSku.soldOut) {
+      wx.showToast({ title: "该规格已售罄", icon: "none" });
+      return;
+    }
+    const quantity = Number(relayDraft.quantity);
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      wx.showToast({ title: "请填写数量", icon: "none" });
+      return;
+    }
+    if (!String(relayDraft.phone || "").trim()) {
+      wx.showToast({ title: "请填写电话", icon: "none" });
+      return;
+    }
+    if (!String(relayDraft.address || "").trim()) {
+      wx.showToast({ title: "请填写地址", icon: "none" });
+      return;
+    }
+    await this.handleSubmitProductIntent(view.enableGroupRelay ? "relay-intent" : "order-intent");
+  },
+  async handleSubmitProductIntent(actionKey) {
+    const { user, noteId, selectedSkuKey, relayDraft } = this.data;
+    if (!user || !noteId || this.data.submittingAction) return;
+    if (!selectedSkuKey) {
+      wx.showToast({ title: "请选择规格", icon: "none" });
+      return;
+    }
+    this.setData({ submittingAction: actionKey });
+    try {
+      const res = await api.submitCustomerAction(noteId, actionKey, {
+        viewerUserId: user.id,
+        nickname: user.nickname || "微信用户",
+        avatarUrl: user.avatarUrl || "",
+        payload: {
+          ...relayDraft,
+          skuKey: selectedSkuKey
+        }
+      });
+      rememberLeadPhone(relayDraft.phone);
+      const statusText = (res.data && res.data.statusText) || (actionKey === "relay-intent" ? "已提交接龙" : "已下单");
+      this.setData({
+        showRelayForm: false,
+        showOrderSheet: false,
+        relaySubmitted: actionKey === "relay-intent",
+        productOrderSubmitted: true,
+        productOrderStatusText: statusText,
+        [`actionStatus.${actionKey}`]: statusText
+      });
+      wx.showToast({ title: actionKey === "relay-intent" ? "已提交接龙" : "已下单", icon: "success" });
+    } catch (error) {
+      wx.showToast({ title: error.detail || "提交失败", icon: "none" });
+    } finally {
+      this.setData({ submittingAction: "" });
+    }
+  },
+  async handleOpenMessage() {
+    const { user, noteId } = this.data;
+    if (!user || !noteId) return;
+    await messagePlugin.openMessageThread({ noteId, buyerUserId: user.id });
   },
   openWechatLocation(location, view) {
     wx.openLocation({

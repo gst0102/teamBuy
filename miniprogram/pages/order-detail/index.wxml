@@ -1,0 +1,36 @@
+<view class="page">
+  <custom-nav title="订单详情" />
+
+  <view class="hero" wx:if="{{order}}">
+    <image wx:if="{{order.coverUrl}}" class="cover" src="{{order.coverUrl}}" mode="aspectFill" />
+    <view wx:else class="cover placeholder">商</view>
+    <view class="hero-main">
+      <view class="title">{{order.title}}</view>
+      <view class="status">{{order.statusText}}</view>
+    </view>
+  </view>
+
+  <view class="panel" wx:if="{{order}}">
+    <block wx:for="{{rows}}" wx:key="0">
+      <view class="row">
+        <text>{{item[0]}}</text>
+        <text>{{item[1]}}</text>
+      </view>
+    </block>
+  </view>
+
+  <view class="panel" wx:if="{{role === 'seller' && order}}">
+    <view class="section-title">订单状态</view>
+    <view class="status-grid">
+      <block wx:for="{{statusOptions}}" wx:key="value">
+        <button class="{{order.status === item.value ? 'active' : ''}}" data-status="{{item.value}}" bindtap="handleSetStatus">{{item.label}}</button>
+      </block>
+    </view>
+  </view>
+
+  <view class="action-bar" wx:if="{{order}}">
+    <message-entry variant="row" title="发消息" desc="" note-id="{{order.noteId}}" order-action-id="{{order.id}}" />
+    <button wx:if="{{role === 'seller'}}" bindtap="handleCallPhone">拨号</button>
+    <button wx:if="{{role === 'seller'}}" bindtap="handleCopyAddress">复制地址</button>
+  </view>
+</view>

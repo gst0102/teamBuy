@@ -1,3 +1,6 @@
 {
-  "navigationBarTitleText": "客户动作"
+  "navigationBarTitleText": "客户动作",
+  "usingComponents": {
+    "message-entry": "/components/message-entry/index"
+  }
 }

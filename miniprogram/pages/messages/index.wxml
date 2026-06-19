@@ -1,0 +1,31 @@
+<view class="page">
+  <custom-nav title="消息专区" />
+
+  <view class="summary">
+    <view>
+      <text>{{unreadTotal}}</text>
+      <text>未读消息</text>
+    </view>
+    <view>
+      <text>{{threads.length}}</text>
+      <text>会话</text>
+    </view>
+  </view>
+
+  <view class="empty" wx:if="{{!loading && !threads.length}}">暂无站内消息</view>
+  <block wx:for="{{threads}}" wx:key="id">
+    <view class="thread-card" data-id="{{item.id}}" bindtap="handleOpenThread">
+      <image wx:if="{{item.noteCoverUrl}}" class="cover" src="{{item.noteCoverUrl}}" mode="aspectFill" />
+      <view wx:else class="cover placeholder">信</view>
+      <view class="thread-main">
+        <view class="topline">
+          <text class="title">{{item.titleText}}</text>
+          <text class="time">{{item.timeText}}</text>
+        </view>
+        <view class="subtitle">{{item.subtitle}}</view>
+        <view class="last">{{item.lastText}}</view>
+      </view>
+      <view class="unread" wx:if="{{item.unreadCount}}">{{item.unreadCount}}</view>
+    </view>
+  </block>
+</view>

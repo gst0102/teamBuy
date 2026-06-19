@@ -10,14 +10,6 @@
     <button class="edit-btn" bindtap="handleSettingsPlaceholder">编辑资料</button>
   </view>
 
-  <view class="member-card" bindtap="handleMemberPlaceholder">
-    <view>
-      <view class="member-title">Pro 会员</view>
-      <view class="member-desc">更多资源容量、访问记录和自动整理权益</view>
-    </view>
-    <view class="member-btn">即将开放</view>
-  </view>
-
   <view class="panel">
     <view class="stat-grid">
       <view class="stat-item">
@@ -43,46 +35,82 @@
     </view>
   </view>
 
-  <view class="panel menu-panel">
-    <view class="menu-item" bindtap="handleGoLibrary">
-      <text>我的资源库</text>
-      <text class="menu-arrow">></text>
+  <view class="profile-section">
+    <view class="section-title">会员服务</view>
+    <view class="panel icon-grid">
+      <view class="icon-item" bindtap="handleMemberPlaceholder">
+        <view class="icon-badge green">会</view>
+        <text>会员中心</text>
+      </view>
+      <view class="icon-item" bindtap="handleMemberPlaceholder">
+        <view class="icon-badge blue">邀</view>
+        <text>邀请好友</text>
+      </view>
+      <view class="icon-item" bindtap="handleSettingsPlaceholder">
+        <view class="icon-badge gray">设</view>
+        <text>设置中心</text>
+      </view>
     </view>
-    <view class="menu-item" bindtap="handleGoNotes">
-      <text>我的笔记</text>
-      <text class="menu-arrow">></text>
+  </view>
+
+  <view class="profile-section">
+    <view class="section-title">笔记区域</view>
+    <view class="panel icon-grid">
+      <view class="icon-item" bindtap="handleGoLibrary">
+        <view class="icon-badge blue">库</view>
+        <text>资源库</text>
+      </view>
+      <view class="icon-item" bindtap="handleGoNotes">
+        <view class="icon-badge green">记</view>
+        <text>我的笔记</text>
+      </view>
+      <view class="icon-item" bindtap="handleGoTopics">
+        <view class="icon-badge orange">题</view>
+        <text>专题</text>
+      </view>
+      <view class="icon-item" bindtap="handleGoVisits">
+        <view class="icon-badge purple">访</view>
+        <text>访问记录</text>
+      </view>
     </view>
-    <view class="menu-item" bindtap="handleGoTopics">
-      <text>专题</text>
-      <text class="menu-arrow">></text>
+  </view>
+
+  <view class="profile-section">
+    <view class="section-title">线索 / 订单</view>
+    <view class="panel icon-grid">
+      <view class="icon-item" bindtap="handleGoLeads">
+        <view class="icon-badge orange">联</view>
+        <text>待联系</text>
+      </view>
+      <view class="icon-item" bindtap="handleGoCustomers">
+        <view class="icon-badge blue">客</view>
+        <text>客户库</text>
+      </view>
+      <view class="icon-item" bindtap="handleGoBuyerOrders">
+        <view class="icon-badge green">买</view>
+        <text>我的订单</text>
+      </view>
+      <view class="icon-item" bindtap="handleGoSellerOrders">
+        <view class="icon-badge purple">卖</view>
+        <text>商家订单</text>
+      </view>
     </view>
-    <view class="menu-item" bindtap="handleGoVisits">
-      <text>访问记录</text>
-      <text class="menu-arrow">></text>
+  </view>
+
+  <view class="profile-section">
+    <view class="section-title">消息专区</view>
+    <view class="panel menu-panel">
+      <message-entry mode="center" variant="row" title="站内消息" desc="{{messageUnread ? messageUnread + ' 条未读' : '查看会话列表'}}" unread-count="{{messageUnread}}" />
     </view>
-    <view class="menu-item" bindtap="handleGoLeads">
-      <text>待联系线索</text>
-      <text class="menu-arrow">></text>
-    </view>
-    <view class="menu-item" bindtap="handleGoCustomers">
-      <text>客户资料库</text>
-      <text class="menu-arrow">></text>
-    </view>
-    <view class="menu-item demo-item" bindtap="handleCreateDemoData">
-      <text>生成测试房源数据</text>
-      <text class="menu-arrow">3套房源</text>
-    </view>
-    <view class="menu-item" bindtap="handleMemberPlaceholder">
-      <text>会员中心</text>
-      <text class="menu-arrow">即将开放</text>
-    </view>
-    <view class="menu-item" bindtap="handleMemberPlaceholder">
-      <text>邀请好友</text>
-      <text class="menu-arrow">即将开放</text>
-    </view>
-    <view class="menu-item" bindtap="handleSettingsPlaceholder">
-      <text>设置中心</text>
-      <text class="menu-arrow">></text>
+  </view>
+
+  <view class="profile-section">
+    <view class="section-title">开发 / 测试</view>
+    <view class="panel icon-grid">
+      <view class="icon-item demo-item" bindtap="handleCreateDemoData">
+        <view class="icon-badge green">测</view>
+        <text>测试数据</text>
+      </view>
     </view>
   </view>
 

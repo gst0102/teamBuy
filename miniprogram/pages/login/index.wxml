@@ -10,6 +10,6 @@
     <view class="field-label" style="margin-top: 24rpx;">昵称</view>
     <input class="field-input" value="{{nickname}}" bindinput="handleNicknameChange" />
     <button class="primary-btn" bindtap="handleWechatLogin">微信登录</button>
-    <button class="secondary-btn" bindtap="handleMockLogin">本地 mock 登录</button>
+    <button wx:if="{{allowMockLogin}}" class="secondary-btn" bindtap="handleMockLogin">本地 mock 登录</button>
   </view>
 </view>

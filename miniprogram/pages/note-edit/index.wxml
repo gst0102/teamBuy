@@ -37,7 +37,7 @@
   <block wx:if="{{!isBookmark}}">
     <view class="workbench-hero {{isGroupbuy ? 'groupbuy' : ''}}" wx:if="{{isProperty || isGroupbuy}}">
       <view class="hero-topline">
-        <text>{{isProperty ? '房源工作台' : '团购工作台'}}</text>
+        <text>{{isProperty ? '房源工作台' : '商品展示工作台'}}</text>
         <text>{{uploadDateText}}</text>
       </view>
       <view class="hero-title">{{displayTitle}}</view>
@@ -84,10 +84,10 @@
       </view>
     </view>
 
-    <view class="form-panel block-panel" wx:if="{{isProperty || isGroupbuy}}">
+    <view class="form-panel block-panel" wx:if="{{isProperty}}">
       <view class="block-head">
         <view>
-          <view class="section-title">{{isProperty ? '房源卡' : '商品卡'}}</view>
+          <view class="section-title">房源卡</view>
           <view class="section-hint">这是客户第一眼看到的核心信息。</view>
         </view>
         <button class="text-btn" data-section="fieldCard" bindtap="handleToggleSection">{{hiddenSections.fieldCard ? '恢复' : '隐藏'}}</button>
@@ -124,21 +124,8 @@
             </view>
           </block>
         </block>
-        <block wx:if="{{isGroupbuy}}">
-          <block wx:for="{{groupbuyFields}}" wx:key="key">
-            <view class="field">
-              <view class="label">{{item.label}}</view>
-              <input class="input" value="{{item.value}}" data-key="{{item.key}}" bindinput="handleStructuredInput" placeholder="{{item.placeholder}}" />
-              <view class="quick-options" wx:if="{{item.quickOptions.length}}">
-                <block wx:for="{{item.quickOptions}}" wx:for-item="option" wx:key="*this">
-                  <text data-key="{{item.key}}" data-value="{{option}}" bindtap="handleQuickFieldOption">{{option}}</text>
-                </block>
-              </view>
-            </view>
-          </block>
-        </block>
         <view class="field">
-          <view class="label">{{isProperty ? '备注 / 亮点' : '备注 / 卖点'}}</view>
+          <view class="label">备注 / 亮点</view>
           <textarea class="textarea small" value="{{structuredData.remark}}" data-key="remark" bindinput="handleStructuredInput" placeholder="补充客户需要知道的信息"></textarea>
         </view>
         <view class="field" wx:if="{{isProperty}}">
@@ -148,6 +135,29 @@
               <text class="{{item.className}}" data-status="{{item.value}}" bindtap="handleSetPropertyStatus">{{item.label}}</text>
             </block>
           </view>
+        </view>
+      </view>
+      <view class="hidden-tip" wx:else>这个板块已隐藏，客户页不展示。</view>
+    </view>
+
+    <view class="form-panel block-panel" wx:if="{{isGroupbuy}}">
+      <view class="block-head">
+        <view>
+          <view class="section-title">商品信息</view>
+          <view class="section-hint">客户第一眼看到的商品标题和卖点，价格放到规格里。</view>
+        </view>
+        <button class="text-btn" data-section="fieldCard" bindtap="handleToggleSection">{{hiddenSections.fieldCard ? '恢复' : '隐藏'}}</button>
+      </view>
+      <view wx:if="{{!hiddenSections.fieldCard}}">
+        <block wx:for="{{productInfoFields}}" wx:key="key">
+          <view class="field">
+            <view class="label">{{item.label}}</view>
+            <input class="input" value="{{item.value}}" data-key="{{item.key}}" bindinput="handleStructuredInput" placeholder="{{item.placeholder}}" />
+          </view>
+        </block>
+        <view class="field">
+          <view class="label">商品简介 / 卖点</view>
+          <textarea class="textarea small" value="{{structuredData.remark}}" data-key="remark" bindinput="handleStructuredInput" placeholder="例如：新鲜现摘、按规格选择、售罄 SKU 不可接龙"></textarea>
         </view>
       </view>
       <view class="hidden-tip" wx:else>这个板块已隐藏，客户页不展示。</view>
@@ -170,7 +180,7 @@
             <image wx:if="{{item.type === 'image'}}" src="{{item.url}}" mode="aspectFill" data-url="{{item.url}}" bindtap="handlePreviewMedia"></image>
             <video wx:elif="{{item.type === 'video'}}" src="{{item.url}}" controls object-fit="cover"></video>
             <view wx:else class="media-video">素材</view>
-            <view class="media-badge {{item.label === '封面' ? 'cover' : ''}}">{{item.label}}</view>
+            <view class="media-badge {{item.label === '封面' ? 'is-cover-badge' : ''}}">{{item.label}}</view>
             <view class="media-actions">
               <text wx:if="{{item.type === 'image' && item.source !== 'cover'}}" data-url="{{item.url}}" bindtap="handleSetCover">设封面</text>
               <text wx:if="{{item.source === 'media' && item.canMoveUp}}" data-index="{{item.index}}" data-direction="up" bindtap="handleMoveMedia">上移</text>
@@ -187,7 +197,109 @@
       <view class="hidden-tip" wx:if="{{hiddenSections.media}}">这个板块已隐藏，客户页不展示。</view>
     </view>
 
-    <view class="form-panel block-panel">
+    <view class="form-panel block-panel" wx:if="{{isGroupbuy}}">
+      <view class="block-head">
+        <view>
+          <view class="section-title">规格与价格</view>
+          <view class="section-hint">有 SKU 时按组合展示价格；没有 SKU 时使用单一价格。</view>
+        </view>
+      </view>
+      <view class="sku-panel">
+        <view class="sku-head">
+          <view>
+            <view class="sku-title">SKU 属性组合</view>
+            <view class="sku-hint">例如：口味、规格、配送方式。</view>
+          </view>
+          <button class="text-btn" bindtap="handleAddSkuGroup">加属性</button>
+        </view>
+        <block wx:for="{{structuredData.skuConfig.attributeGroups}}" wx:key="id" wx:for-index="groupIndex">
+          <view class="sku-group">
+            <view class="sku-group-head">
+              <input value="{{item.name}}" data-index="{{groupIndex}}" bindinput="handleSkuGroupName" placeholder="属性名，例如：口味" />
+              <text data-index="{{groupIndex}}" bindtap="handleDeleteSkuGroup">删除</text>
+            </view>
+            <block wx:for="{{item.options}}" wx:key="id" wx:for-item="option" wx:for-index="optionIndex">
+              <view class="sku-option-row">
+                <input value="{{option.label}}" data-group-index="{{groupIndex}}" data-option-index="{{optionIndex}}" bindinput="handleSkuOptionLabel" placeholder="选项名，例如：甜口" />
+                <text data-group-index="{{groupIndex}}" data-option-index="{{optionIndex}}" bindtap="handleDeleteSkuOption">删除</text>
+              </view>
+            </block>
+            <button class="plain-mini-btn" data-group-index="{{groupIndex}}" bindtap="handleAddSkuOption">+ 加选项</button>
+          </view>
+        </block>
+        <view class="single-price-field" wx:if="{{!structuredData.skuConfig.attributeGroups.length}}">
+          <view class="label">单一价格</view>
+          <input class="input" value="{{structuredData.price}}" data-key="price" bindinput="handleStructuredInput" placeholder="没有 SKU 时填写，例如：58" />
+        </view>
+        <view class="sku-list-title" wx:if="{{structuredData.skuConfig.skus.length}}">组合 SKU</view>
+        <block wx:for="{{structuredData.skuConfig.skus}}" wx:key="id">
+          <view class="sku-card">
+            <view class="sku-name">{{item.name}}</view>
+            <view class="sku-grid">
+              <input value="{{item.price}}" data-index="{{index}}" data-key="price" bindinput="handleSkuFieldInput" placeholder="价格" />
+              <input value="{{item.description}}" data-index="{{index}}" data-key="description" bindinput="handleSkuFieldInput" placeholder="说明，可选" />
+            </view>
+            <view class="sku-soldout">
+              <text>售罄</text>
+              <switch checked="{{item.soldOut}}" color="#11924d" data-index="{{index}}" bindchange="handleSkuSoldOut" />
+            </view>
+          </view>
+        </block>
+        <view class="sku-empty" wx:if="{{!structuredData.skuConfig.attributeGroups.length}}">未添加 SKU 属性时，客户页只展示单一价格。</view>
+      </view>
+    </view>
+
+    <view class="form-panel block-panel" wx:if="{{isGroupbuy}}">
+      <view class="block-head">
+        <view>
+          <view class="section-title">自提 / 配送</view>
+          <view class="section-hint">填写取货、配送、截止时间和联系方式；截止时间可选。</view>
+        </view>
+      </view>
+      <block wx:for="{{productFulfillmentFields}}" wx:key="key">
+        <view class="field">
+          <view class="label">{{item.label}}</view>
+          <input class="input" value="{{item.value}}" data-key="{{item.key}}" bindinput="handleStructuredInput" placeholder="{{item.placeholder}}" />
+          <view class="quick-options" wx:if="{{item.quickOptions.length}}">
+            <block wx:for="{{item.quickOptions}}" wx:for-item="option" wx:key="*this">
+              <text data-key="{{item.key}}" data-value="{{option}}" bindtap="handleQuickFieldOption">{{option}}</text>
+            </block>
+          </view>
+        </view>
+      </block>
+    </view>
+
+    <view class="form-panel block-panel" wx:if="{{isGroupbuy}}">
+      <view class="block-head">
+        <view>
+          <view class="scrm-title-row">
+            <view class="section-title">下单 / 接龙</view>
+            <view class="scrm-alert-dot" wx:if="{{scrmSummary.hasUnread}}"></view>
+          </view>
+          <view class="section-hint">客户默认可选 SKU 下单；打开接龙后，下单会进入接龙名单，不进入 SCRM。</view>
+        </view>
+      </view>
+      <view class="switch-row">
+        <view class="switch-text">
+          <view class="switch-label">启用团购接龙</view>
+          <view class="switch-desc">关闭后仍可下单，团长在下单名单查看。</view>
+        </view>
+        <switch checked="{{conversionConfig.enableGroupRelay}}" color="#11924d" data-key="enableGroupRelay" bindchange="handleConversionToggle" />
+      </view>
+      <view class="scrm-grid">
+        <view><text>{{scrmSummary.orderIntent || 0}}</text><text>下单</text></view>
+        <view><text>{{scrmSummary.leadContact}}</text><text>留资</text></view>
+        <view><text>{{scrmSummary.pending}}</text><text>待跟进</text></view>
+        <button class="scrm-entry {{scrmSummary.hasUnread ? 'is-hot' : ''}}" bindtap="handleOpenCustomerActions">
+          <text>查看下单 / 接龙名单</text>
+          <text>{{scrmSummary.latestText}}</text>
+          <view class="scrm-entry-dot" wx:if="{{scrmSummary.hasUnread}}"></view>
+        </button>
+        <message-entry class="scrm-entry-component" mode="center" variant="row" title="消息中心" desc="查看买家站内留言与订单沟通" />
+      </view>
+    </view>
+
+    <view class="form-panel block-panel" wx:if="{{!isGroupbuy}}">
       <view class="block-head">
         <view>
           <view class="section-title">{{isProperty || isGroupbuy ? '功能组' : '+ 添加功能'}}</view>
@@ -212,7 +324,7 @@
       </view>
     </view>
 
-    <view class="form-panel block-panel" wx:if="{{isProperty || isGroupbuy}}">
+    <view class="form-panel block-panel" wx:if="{{isProperty}}">
       <view class="block-head">
         <view>
           <view class="scrm-title-row">
@@ -232,11 +344,12 @@
           <text>{{scrmSummary.latestText}}</text>
           <view class="scrm-entry-dot" wx:if="{{scrmSummary.hasUnread}}"></view>
         </button>
+        <message-entry class="scrm-entry-component" mode="center" variant="row" title="消息中心" desc="查看房源咨询和站内留言" />
       </view>
       <view class="hidden-tip" wx:else>这个板块已隐藏，客户页不展示。</view>
     </view>
 
-    <view class="form-panel">
+    <view class="form-panel" wx:if="{{!isProperty && !isGroupbuy}}">
       <view class="section-title">基础信息</view>
       <view class="field">
         <view class="label">标题</view>

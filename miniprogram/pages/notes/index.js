@@ -1,4 +1,5 @@
 const api = require("../../services/api");
+const messagePlugin = require("../../plugins/message-plugin/index");
 const { getCurrentUser } = require("../../utils/dashboard");
 
 function formatDateTime(value) {
@@ -297,7 +298,9 @@ Page({
           id: note.id,
           summary,
           hasUnread: hasUnreadCustomerAction(summary, user.id, note.id),
-          label: summary.pending ? `待跟进 ${summary.pending}` : summary.leads ? `客户 ${summary.leads}` : "客户信息"
+          label: note.isGroupbuy
+            ? summary.orderIntent ? `下单 ${summary.orderIntent}` : "下单名单"
+            : summary.pending ? `待跟进 ${summary.pending}` : summary.leads ? `客户 ${summary.leads}` : "客户信息"
         };
       } catch (error) {
         return { id: note.id, summary: null, hasUnread: false };
@@ -323,6 +326,9 @@ Page({
       notes: this.data.notes.map((note) => note.id === noteId ? { ...note, scrmHasUnread: false } : note)
     });
     wx.navigateTo({ url: `/pages/note-actions/index?id=${noteId}` });
+  },
+  handleOpenMessages() {
+    messagePlugin.openMessageCenter();
   },
   openSourceUrl(url, title = "原文链接") {
     if (!url) return;

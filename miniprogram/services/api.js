@@ -206,6 +206,57 @@ function submitCustomerAction(noteId, actionKey, payload = {}) {
   });
 }
 
+function fetchOrders(params = {}) {
+  const query = [];
+  if (params.userId) query.push(`userId=${encodeURIComponent(params.userId)}`);
+  if (params.role) query.push(`role=${encodeURIComponent(params.role)}`);
+  return request({ url: `/api/orders?${query.join("&")}` });
+}
+
+function fetchOrder(orderId, userId) {
+  return request({ url: `/api/orders/${orderId}?userId=${encodeURIComponent(userId)}` });
+}
+
+function updateOrderStatus(orderId, payload) {
+  return request({
+    url: `/api/orders/${orderId}/status`,
+    method: "PATCH",
+    data: payload
+  });
+}
+
+function fetchMessageThreads(userId) {
+  return request({ url: `/api/messages/threads?userId=${encodeURIComponent(userId)}` });
+}
+
+function createMessageThread(payload) {
+  return request({
+    url: "/api/messages/threads",
+    method: "POST",
+    data: payload
+  });
+}
+
+function fetchThreadMessages(threadId, userId) {
+  return request({ url: `/api/messages/threads/${threadId}/messages?userId=${encodeURIComponent(userId)}` });
+}
+
+function sendThreadMessage(threadId, payload) {
+  return request({
+    url: `/api/messages/threads/${threadId}/messages`,
+    method: "POST",
+    data: payload
+  });
+}
+
+function markThreadRead(threadId, userId) {
+  return request({
+    url: `/api/messages/threads/${threadId}/read`,
+    method: "POST",
+    data: { userId }
+  });
+}
+
 function updateNote(noteId, payload) {
   return request({
     url: `/api/notes/${noteId}`,
@@ -488,6 +539,14 @@ module.exports = {
   fetchCustomerActionConfig,
   fetchNoteCustomerActions,
   submitCustomerAction,
+  fetchOrders,
+  fetchOrder,
+  updateOrderStatus,
+  fetchMessageThreads,
+  createMessageThread,
+  fetchThreadMessages,
+  sendThreadMessage,
+  markThreadRead,
   updateNote,
   organizeNote,
   generateNote,

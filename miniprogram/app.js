@@ -9,7 +9,9 @@ App({
   onLaunch() {
     this.globalData.buttonPosition = cacheButtonPosition();
     const user = wx.getStorageSync("currentUser");
-    if (user && user.openid === "openid_本地测试用户") {
+    const isProductionApi = /^https:\/\//i.test(this.globalData.apiBaseUrl || "");
+    const isMockUser = user && (user.openid === "openid_本地测试用户" || /^mock_/.test(user.openid || ""));
+    if (user && ((isProductionApi && isMockUser) || user.apiBaseUrl !== this.globalData.apiBaseUrl)) {
       wx.removeStorageSync("currentUser");
       return;
     }
