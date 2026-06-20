@@ -85,6 +85,33 @@ docker compose logs -f backend
 
 The compose stack starts `postgres` and `backend`. Keep real secrets in `backend/.env`; Compose overrides `DATABASE_URL` so the backend container connects to the `postgres` service instead of `127.0.0.1`.
 
+### 开发期挂载模式
+
+开发期如果只是改后端 Python 代码，优先使用挂载模式，避免每次修改都重建镜像：
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build backend
+docker compose -f docker-compose.yml -f docker-compose.dev.yml logs -f backend
+```
+
+`docker-compose.dev.yml` 使用 `backend/Dockerfile.dev`，镜像只安装系统库和 Python 依赖，不把源码 `COPY` 进镜像。运行时会挂载：
+
+- `backend/app -> /app/app`
+- `backend/tests -> /app/tests`
+- `backend/mock -> /app/mock`
+- `backend/secrets -> /app/secrets:ro`
+
+因此普通代码改动会由 `uvicorn --reload` 自动加载；只有 `requirements.txt`、系统库或 OCR 依赖变化时才需要重新 build。
+
+生产上线前应重新设计独立生产 Dockerfile/镜像发布流程，不直接使用开发期挂载模式。
+
+安全清理 Docker 构建缓存时，优先只清 build cache 和悬空镜像，不要带 `--volumes`：
+
+```bash
+docker builder prune -af --filter "until=24h"
+docker image prune -f
+```
+
 ## 关键文件
 
 - `app/main.py`：FastAPI 入口
