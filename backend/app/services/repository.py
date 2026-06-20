@@ -838,6 +838,7 @@ class PostgresRepository:
             ("source_type", "text", "sourceType"),
             ("external_user_id", "text", "externalUserId"),
             ("owner_user_id", "text", "ownerUserId"),
+            ("owner_openid", "text", "ownerOpenid"),
             ("bind_source", "text", "bindSource"),
             ("first_import_batch_id", "text", "firstImportBatchId"),
             ("last_import_batch_id", "text", "lastImportBatchId"),

@@ -47,6 +47,7 @@ class WecomIdentityBinding(BaseModel):
     sourceType: str = "wecom_archive"
     externalUserId: str
     ownerUserId: str
+    ownerOpenid: str | None = None
     bindSource: str = "claim_import"
     firstImportBatchId: str | None = None
     lastImportBatchId: str | None = None

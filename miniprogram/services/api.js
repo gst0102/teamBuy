@@ -398,11 +398,11 @@ function uploadAsset({ filePath, mediaType = "image", ownerUserId = "" }) {
   });
 }
 
-function uploadOcrImage({ filePath, ownerUserId = "" }) {
+function uploadImageNote({ filePath, ownerUserId = "" }) {
   const app = getApp();
   return new Promise((resolve, reject) => {
     wx.uploadFile({
-      url: `${app.globalData.apiBaseUrl}/api/ocr/image-to-note`,
+      url: `${app.globalData.apiBaseUrl}/api/ocr/images`,
       filePath,
       name: "file",
       formData: {
@@ -413,7 +413,7 @@ function uploadOcrImage({ filePath, ownerUserId = "" }) {
         try {
           data = JSON.parse(res.data);
         } catch (error) {
-          reject({ detail: "OCR 返回解析失败" });
+          reject({ detail: "图片保存返回解析失败" });
           return;
         }
         if (res.statusCode >= 200 && res.statusCode < 300) {
@@ -428,6 +428,20 @@ function uploadOcrImage({ filePath, ownerUserId = "" }) {
       fail: reject
     });
   });
+}
+
+function recognizeNoteImage(noteId, ownerUserId) {
+  return request({
+    url: `/api/ocr/notes/${noteId}/recognize`,
+    method: "POST",
+    data: { ownerUserId }
+  }).then(async (res) => ({
+    ...res,
+    data: {
+      ...res.data,
+      note: await normalizeAndCacheNote(res.data && res.data.note)
+    }
+  }));
 }
 
 function updateCard(cardId, payload) {
@@ -602,7 +616,8 @@ module.exports = {
   deleteCategory,
   createCard,
   uploadAsset,
-  uploadOcrImage,
+  uploadImageNote,
+  recognizeNoteImage,
   updateCard,
   deleteCard,
   publishCard,

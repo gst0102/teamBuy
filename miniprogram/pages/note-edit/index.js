@@ -20,6 +20,7 @@ const TEMPLATE_META = {
 const SOURCE_TYPES = [
   { label: "笔记", value: "note" },
   { label: "链接", value: "link" },
+  { label: "图片资料", value: "ocr" },
   { label: "图片与视频", value: "media" },
   { label: "语音", value: "voice" },
   { label: "位置", value: "location" },
@@ -241,6 +242,36 @@ function buildMiniappInfo(structuredData) {
     houseCode,
     cityId: miniapp.cityId || "",
     buttonText: sourceName.includes("贝壳") ? "查看贝壳原房源" : "打开原小程序"
+  };
+}
+
+function buildOcrInfo(config, structuredData) {
+  const ocr = (structuredData && structuredData.ocr) || {};
+  const visible = config.sourceType === "ocr" || config.cardType === "image_ocr" || Boolean(ocr.status || ocr.text);
+  const status = ocr.status || (ocr.text ? "done" : "pending");
+  const statusLabels = {
+    pending: "图片已保存",
+    done: "已识别文字",
+    not_configured: "OCR 引擎未配置",
+    empty: "未识别到文字"
+  };
+  const reason = (ocr.details && ocr.details.reason) || "";
+  return {
+    visible,
+    status,
+    title: statusLabels[status] || "图片资料",
+    provider: ocr.provider || "",
+    configured: Boolean(ocr.configured),
+    textPreview: ocr.text || structuredData.rawText || "",
+    reason,
+    buttonText: status === "done" ? "重新识别图片文字" : "识别图片文字",
+    hint: status === "done"
+      ? "识别结果已进入资料字段，可继续人工校对。"
+      : status === "not_configured"
+        ? "图片已保存，可以先手动补文字和字段；配置 PaddleOCR 或 Tesseract 后可再识别。"
+        : status === "empty"
+          ? "图片已保存，但本次没有提取到文字，可手动补充或重新上传更清晰图片。"
+          : "先保存原图，需要文字时再识别。"
   };
 }
 
@@ -864,6 +895,7 @@ Page({
     enabledActionLabels: [],
     generatedActions: [],
     miniappInfo: buildMiniappInfo({}),
+    ocrInfo: buildOcrInfo({}, {}),
     structuredData: {},
     skuConfig: normalizeSkuConfig({}),
     conversionConfig: {},
@@ -897,6 +929,7 @@ Page({
     saveFloatLastY: 260,
     saveFloatMovable: false,
     uploadingMedia: false,
+    ocrRecognizing: false,
     saving: false
   },
   onLoad(options) {
@@ -1008,6 +1041,7 @@ Page({
       visibilityConfig: effectiveConfig
     };
     const mediaItems = buildMediaItems(form);
+    const ocrInfo = buildOcrInfo(effectiveConfig, structuredData);
     this.setData({
       form,
       isBookmark,
@@ -1029,6 +1063,7 @@ Page({
       structuredData,
       skuConfig: structuredData.skuConfig || normalizeSkuConfig(structuredData),
       miniappInfo,
+      ocrInfo,
       conversionConfig,
       conversionOptions,
       featurePresets: hydrateFeaturePresets(conversionConfig),
@@ -1053,6 +1088,33 @@ Page({
     }, () => {
       this.autoResolveMapLocation({ silent: true });
     });
+  },
+  async handleRecognizeOcr() {
+    const { user, noteId, ocrRecognizing } = this.data;
+    if (!user || !noteId || ocrRecognizing) return;
+    this.setData({ ocrRecognizing: true });
+    wx.showLoading({ title: "识别中" });
+    try {
+      const res = await api.recognizeNoteImage(noteId, user.id);
+      const payload = res.data || {};
+      const note = payload.note || {};
+      const ocr = payload.ocr || {};
+      this.applyLoadedNote(note);
+      this.loadNoteCustomerActions();
+      wx.hideLoading();
+      if (ocr.text) {
+        wx.showToast({ title: "已识别", icon: "success" });
+      } else if (ocr.configured) {
+        wx.showToast({ title: "未识别到文字", icon: "none" });
+      } else {
+        wx.showToast({ title: "图片已保存，可手动补", icon: "none" });
+      }
+    } catch (error) {
+      wx.hideLoading();
+      wx.showToast({ title: error.detail || error.errMsg || "识别失败", icon: "none" });
+    } finally {
+      this.setData({ ocrRecognizing: false });
+    }
   },
   async handleStartEdit() {
     const config = { ...(this.data.form.visibilityConfig || {}), cardState: "editing" };

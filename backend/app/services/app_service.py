@@ -4,6 +4,8 @@ import json
 import re
 from collections import defaultdict
 from datetime import datetime, timedelta
+from pathlib import Path
+from urllib.parse import unquote, urlparse
 from uuid import uuid4
 import httpx
 from fastapi import HTTPException, status
@@ -14,7 +16,14 @@ from app.schemas.auth import MockLoginRequest, WechatLoginRequest
 from app.schemas.categories import CategoryCreateRequest
 from app.schemas.cards import CardCreateRequest, CardUpdateRequest, CreateRelayRequest, LeadReminderUpdateRequest, LeadReminderUpsertRequest, RecordViewRequest
 from app.schemas.notes import CustomerActionSubmitRequest, NoteTypeConfirmRequest, TopicCreateRequest, UserNoteUpdateRequest
-from app.schemas.skills import ContentMediaPayload, ContentObjectPayload
+from app.schemas.skills import (
+    ContentMediaPayload,
+    ContentObjectPayload,
+    IntentResultPayload,
+    RunContentToNoteResponse,
+    SkillRunPayload,
+    UserNoteDraftPayload,
+)
 from app.services.card_parser_service import CardParserService
 from app.services.content_object_adapter import ContentObjectAdapter
 from app.services.helpers import mask_nickname, new_id
@@ -918,9 +927,80 @@ class AppService:
         return metadata
 
     def _run_import_skill(self, owner_user_id: str, content_object: ContentObjectPayload):
+        if self._should_save_import_as_image_note(content_object):
+            return self._build_image_import_note_result(owner_user_id, content_object)
         if self._should_light_bookmark(content_object):
             return self.skill_router_service.run_link_bookmark(owner_user_id, content_object)
         return self.skill_router_service.run_content_to_note(owner_user_id, content_object)
+
+    def _should_save_import_as_image_note(self, content_object: ContentObjectPayload) -> bool:
+        has_text = any(self._is_meaningful_import_text(block) for block in content_object.textBlocks)
+        has_links = any(str(link.url or "").strip() for link in content_object.links)
+        if has_text or has_links or not content_object.media:
+            return False
+        if any(item.type != "image" for item in content_object.media):
+            return False
+        return any(item.url for item in content_object.media)
+
+    def _is_meaningful_import_text(self, text: str | None) -> bool:
+        normalized = str(text or "").strip()
+        return bool(normalized) and normalized not in {"收到image素材，媒体稍后转存。"}
+
+    def _build_image_import_note_result(
+        self,
+        owner_user_id: str,
+        content_object: ContentObjectPayload,
+    ) -> RunContentToNoteResponse:
+        first_image = next(item for item in content_object.media if item.type == "image" and item.url)
+        visibility_config = self._image_note_visibility_config(first_image.url or "", first_image.title)
+        structured_data = dict(visibility_config.get("structuredData") or {})
+        structured_data["images"] = [item.url for item in content_object.media if item.type == "image" and item.url]
+        structured_data["sourceRefs"] = content_object.sourceRefs or content_object.rawMessageIds
+        visibility_config["structuredData"] = structured_data
+        now = now_iso()
+        note = UserNoteDraftPayload(
+            ownerUserId=owner_user_id,
+            title=self._image_import_title(content_object, first_image),
+            summary="图片已保存，可按需识别文字。",
+            body="图片已保存。你可以直接手动补充正文和字段，也可以点击识别图片文字后再整理。",
+            coverUrl=first_image.url,
+            media=content_object.media,
+            categoryIds=[],
+            sourceRefs=content_object.sourceRefs or content_object.rawMessageIds,
+            visibilityConfig=visibility_config,
+        )
+        run = SkillRunPayload(
+            id=new_id("skill_run"),
+            skillId="image-note-ingest",
+            status="success",
+            inputSnapshot={
+                **content_object.model_dump(),
+                "imageNoteMode": "save_only_until_user_recognizes",
+            },
+            outputRef=None,
+            modelProvider="rule",
+            startedAt=now,
+            endedAt=now,
+        )
+        intent = IntentResultPayload(
+            intent="content_to_note",
+            skillId="image-note-ingest",
+            confidence=1,
+            source="rule",
+            needsConfirm=False,
+            inputAdapter="input.image-media",
+            message="纯图片导入已保存为待识别图片资料",
+        )
+        return RunContentToNoteResponse(intent=intent, skillRun=run, noteDraft=note)
+
+    def _image_import_title(self, content_object: ContentObjectPayload, first_image: ContentMediaPayload) -> str:
+        image_title = str(first_image.title or "").strip()
+        if image_title:
+            return image_title
+        title = str(content_object.title or "").strip()
+        if title and title not in {"未命名素材", "企业微信image归档"}:
+            return title
+        return "图片资料"
 
     def _should_light_bookmark(self, content_object: ContentObjectPayload) -> bool:
         if content_object.sourceType != "link_article" or not content_object.links:
@@ -935,6 +1015,9 @@ class AppService:
         binding = self.repo.get_wecom_identity_binding(WECOM_EXTERNAL_BINDING_SOURCE, external_user_id)
         if not binding:
             return "unclaimed"
+        if binding.ownerOpenid:
+            user = self.repo.get_user_by_openid(binding.ownerOpenid)
+            return user.id if user else "unclaimed"
         if not self.repo.get_user(binding.ownerUserId):
             return "unclaimed"
         return binding.ownerUserId
@@ -958,11 +1041,13 @@ class AppService:
             return None
         now = now_iso()
         existing = self.repo.get_wecom_identity_binding(WECOM_EXTERNAL_BINDING_SOURCE, external_user_id)
+        owner = self.repo.get_user(owner_user_id)
         binding = WecomIdentityBinding(
             id=existing.id if existing else f"wecom_identity_{new_id('bind')}",
             sourceType=WECOM_EXTERNAL_BINDING_SOURCE,
             externalUserId=external_user_id,
             ownerUserId=owner_user_id,
+            ownerOpenid=owner.openid if owner else existing.ownerOpenid if existing else None,
             bindSource=bind_source,
             firstImportBatchId=existing.firstImportBatchId if existing else import_batch_id,
             lastImportBatchId=import_batch_id or (existing.lastImportBatchId if existing else None),
@@ -1083,32 +1168,74 @@ class AppService:
         filename: str | None = None,
         content_type: str | None = None,
     ) -> dict:
+        note_data = self.create_image_note_from_upload(
+            owner_user_id=owner_user_id,
+            content=content,
+            filename=filename,
+            content_type=content_type,
+        )
+        note_id = note_data["note"]["id"]
+        return self.recognize_ocr_note_image(note_id, owner_user_id)
+
+    def create_image_note_from_upload(
+        self,
+        owner_user_id: str,
+        content: bytes,
+        filename: str | None = None,
+        content_type: str | None = None,
+    ) -> dict:
         if not self.repo.get_user(owner_user_id):
             raise HTTPException(status_code=404, detail="用户不存在")
         if not content:
             raise HTTPException(status_code=400, detail="图片不能为空")
-        ocr_result = self.ocr_service.extract_text(content, filename)
-        storage = self.media_storage_service
-        if storage.storage_mode == "mock":
-            storage = MediaStorageService(
-                storage_mode="local",
-                storage_dir=settings.media_storage_dir,
-                public_url_prefix=settings.media_public_url_prefix,
-            )
-        processed = self.media_processing_service.process_upload(
-            media_type="image",
-            content=content,
-            content_type=content_type,
-            filename=filename,
+        stored_url = self._store_uploaded_ocr_image(content, filename, content_type)
+        now = now_iso()
+        media = [self._image_media_payload(stored_url, filename)]
+        note = UserNote(
+            id=new_id("note"),
+            ownerUserId=owner_user_id,
+            importBatchId=None,
+            sourceCardId=None,
+            status="active",
+            title="图片资料",
+            summary="图片已保存，可按需识别文字。",
+            body="图片已保存。你可以直接手动补充正文和字段，也可以点击识别图片文字后再整理。",
+            coverUrl=stored_url,
+            media=media,
+            categoryIds=[],
+            phone=None,
+            locationText=None,
+            sourceRefs=[],
+            visibilityConfig=self._image_note_visibility_config(stored_url, filename),
+            createdAt=now,
+            updatedAt=now,
         )
-        stored_url = storage.store_bytes(
-            media_id=new_id("ocr_image"),
-            media_type="image",
-            content=processed.content,
-            content_type=processed.content_type,
-            filename=processed.filename,
-        )
+        self.repo.save_user_note(note)
+        return {
+            "note": note.model_dump(),
+            "ocr": {
+                "status": "pending",
+                "text": "",
+                "provider": "",
+                "configured": False,
+                "confidence": None,
+                "details": {"reason": "图片已保存，等待用户主动识别。"},
+            },
+        }
+
+    def recognize_ocr_note_image(self, note_id: str, owner_user_id: str) -> dict:
+        note = self.get_user_note(note_id, owner_user_id)
+        image_content, image_name = self._load_note_image_bytes(note)
+        ocr_result = self.ocr_service.extract_text(image_content, image_name)
         recognized_text = ocr_result.text.strip()
+        if not recognized_text:
+            note.visibilityConfig = self._ocr_visibility_config(note.visibilityConfig, ocr_result, recognized_text)
+            note.updatedAt = now_iso()
+            self.repo.save_user_note(note)
+            return {
+                "note": note.model_dump(),
+                "ocr": self._ocr_response_payload(ocr_result, recognized_text),
+            }
         content_object = ContentObjectPayload(
             sourceType="image_ocr",
             title="图片文字识别",
@@ -1116,8 +1243,8 @@ class AppService:
             media=[
                 ContentMediaPayload(
                     type="image",
-                    url=stored_url,
-                    title=filename or "ocr-image",
+                    url=note.coverUrl or self._first_note_image_url(note),
+                    title=image_name or "ocr-image",
                 )
             ],
             metadata={
@@ -1132,25 +1259,21 @@ class AppService:
         )
         note_result = self.skill_router_service.run_content_to_note(owner_user_id, content_object)
         now = now_iso()
-        note = UserNote(
-            id=new_id("note"),
-            ownerUserId=owner_user_id,
-            importBatchId=None,
-            sourceCardId=None,
-            status="active",
-            title=note_result.noteDraft.title if recognized_text else "图片文字识别",
-            summary=note_result.noteDraft.summary if recognized_text else "图片已保存，暂未识别到文字，可手动补充。",
-            body=note_result.noteDraft.body if recognized_text else "图片已保存，暂未识别到文字，可手动补充。",
-            coverUrl=stored_url,
-            media=[item.model_dump() for item in note_result.noteDraft.media],
-            categoryIds=note_result.noteDraft.categoryIds,
-            phone=note_result.noteDraft.phone,
-            locationText=note_result.noteDraft.locationText,
-            sourceRefs=note_result.noteDraft.sourceRefs,
-            visibilityConfig=self._ocr_visibility_config(note_result.noteDraft.visibilityConfig, ocr_result, recognized_text),
-            createdAt=now,
-            updatedAt=now,
-        )
+        existing_cover = note.coverUrl
+        existing_media = note.media or []
+        note.title = note_result.noteDraft.title
+        note.summary = note_result.noteDraft.summary
+        note.body = note_result.noteDraft.body
+        note.coverUrl = existing_cover
+        note.media = existing_media or [item.model_dump() for item in note_result.noteDraft.media]
+        note.categoryIds = note_result.noteDraft.categoryIds
+        note.phone = note_result.noteDraft.phone
+        note.locationText = note_result.noteDraft.locationText
+        note.sourceRefs = note_result.noteDraft.sourceRefs
+        draft_config = self._preserve_ocr_image_refs(note_result.noteDraft.visibilityConfig, note.visibilityConfig)
+        note.visibilityConfig = self._ocr_visibility_config(draft_config, ocr_result, recognized_text)
+        note.status = "active"
+        note.updatedAt = now
         skill_run = SkillRun.model_validate(note_result.skillRun.model_dump())
         skill_run.outputRef = note.id
         skill_run.inputSnapshot = {
@@ -1166,13 +1289,7 @@ class AppService:
         self.repo.save_skill_run(skill_run)
         return {
             "note": note.model_dump(),
-            "ocr": {
-                "text": recognized_text,
-                "provider": ocr_result.provider,
-                "configured": ocr_result.configured,
-                "confidence": ocr_result.confidence,
-                "details": ocr_result.details,
-            },
+            "ocr": self._ocr_response_payload(ocr_result, recognized_text),
         }
 
     def _ocr_visibility_config(self, config: dict, ocr_result, recognized_text: str) -> dict:
@@ -1183,16 +1300,135 @@ class AppService:
         normalized["tags"] = tags
         structured_data = dict(normalized.get("structuredData") or {})
         structured_data["ocr"] = {
+            "status": self._ocr_status(ocr_result, recognized_text),
             "provider": ocr_result.provider,
             "configured": ocr_result.configured,
             "confidence": ocr_result.confidence,
             "details": ocr_result.details,
             "text": recognized_text,
+            "textLength": len(recognized_text),
         }
         if recognized_text:
             structured_data.setdefault("rawText", recognized_text)
         normalized["structuredData"] = structured_data
         return normalized
+
+    def _store_uploaded_ocr_image(self, content: bytes, filename: str | None, content_type: str | None) -> str:
+        storage = self.media_storage_service
+        if storage.storage_mode == "mock":
+            storage = MediaStorageService(
+                storage_mode="local",
+                storage_dir=settings.media_storage_dir,
+                public_url_prefix=settings.media_public_url_prefix,
+            )
+        processed = self.media_processing_service.process_upload(
+            media_type="image",
+            content=content,
+            content_type=content_type,
+            filename=filename,
+        )
+        return storage.store_bytes(
+            media_id=new_id("ocr_image"),
+            media_type="image",
+            content=processed.content,
+            content_type=processed.content_type,
+            filename=processed.filename,
+        )
+
+    def _image_media_payload(self, url: str, filename: str | None = None) -> dict:
+        return {
+            "type": "image",
+            "url": url,
+            "title": filename or "图片资料",
+        }
+
+    def _image_note_visibility_config(self, stored_url: str, filename: str | None = None) -> dict:
+        normalized = self._normalize_note_visibility_config(
+            {
+                "cardType": "image_ocr",
+                "cardState": "collected",
+                "sourceType": "ocr",
+                "systemCategory": "图片",
+                "tags": ["图片", "图片识别", "待整理"],
+                "structuredData": {
+                    "images": [stored_url],
+                    "rawText": "",
+                    "ocr": {
+                        "status": "pending",
+                        "provider": "",
+                        "configured": False,
+                        "confidence": None,
+                        "details": {"reason": "图片已保存，等待用户主动识别。"},
+                        "text": "",
+                        "textLength": 0,
+                        "filename": filename or "",
+                    },
+                },
+            }
+        )
+        normalized["conversionConfig"] = {key: False for key in CONVERSION_CONFIG_KEYS}
+        return normalized
+
+    def _preserve_ocr_image_refs(self, draft_config: dict, previous_config: dict) -> dict:
+        result = dict(draft_config or {})
+        draft_data = dict(result.get("structuredData") or {})
+        previous_data = (previous_config or {}).get("structuredData") or {}
+        if isinstance(previous_data, dict) and previous_data.get("images") and not draft_data.get("images"):
+            draft_data["images"] = previous_data.get("images")
+        result["structuredData"] = draft_data
+        return result
+
+    def _ocr_response_payload(self, ocr_result, recognized_text: str) -> dict:
+        return {
+            "status": self._ocr_status(ocr_result, recognized_text),
+            "text": recognized_text,
+            "provider": ocr_result.provider,
+            "configured": ocr_result.configured,
+            "confidence": ocr_result.confidence,
+            "details": ocr_result.details,
+        }
+
+    def _ocr_status(self, ocr_result, recognized_text: str) -> str:
+        if recognized_text:
+            return "done"
+        return "empty" if ocr_result.configured else "not_configured"
+
+    def _load_note_image_bytes(self, note: UserNote) -> tuple[bytes, str]:
+        image_url = self._first_note_image_url(note)
+        if not image_url:
+            raise HTTPException(status_code=400, detail="当前资料没有可识别的图片")
+        local_path = self._local_media_path_from_url(image_url)
+        if local_path and local_path.exists():
+            return local_path.read_bytes(), local_path.name
+        if image_url.startswith("http://") or image_url.startswith("https://"):
+            try:
+                response = httpx.get(image_url, timeout=15)
+                response.raise_for_status()
+            except Exception as exc:
+                raise HTTPException(status_code=400, detail=f"图片读取失败：{exc}") from exc
+            return response.content, Path(urlparse(image_url).path).name or "ocr-image"
+        raise HTTPException(status_code=400, detail="图片文件不可读取，请重新上传图片")
+
+    def _first_note_image_url(self, note: UserNote) -> str:
+        if note.coverUrl:
+            return note.coverUrl
+        for item in note.media or []:
+            if item.get("type") == "image" and item.get("url"):
+                return str(item.get("url"))
+        structured_data = (note.visibilityConfig or {}).get("structuredData") or {}
+        images = structured_data.get("images") if isinstance(structured_data, dict) else []
+        return str(images[0]) if images else ""
+
+    def _local_media_path_from_url(self, image_url: str) -> Path | None:
+        parsed = urlparse(image_url)
+        path_value = unquote(parsed.path if parsed.scheme else image_url)
+        prefix = settings.media_public_url_prefix.rstrip("/") or "/media"
+        if not path_value.startswith(f"{prefix}/"):
+            return None
+        file_name = path_value[len(prefix) + 1 :]
+        if not file_name or "/" in file_name or "\\" in file_name:
+            return None
+        return settings.media_storage_dir / file_name
 
     def save_media_retry_failure(
         self,

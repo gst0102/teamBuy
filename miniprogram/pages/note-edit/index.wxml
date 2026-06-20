@@ -73,6 +73,22 @@
       </view>
     </view>
 
+    <view class="ocr-panel" wx:if="{{ocrInfo.visible}}">
+      <view class="ocr-head">
+        <view>
+          <view class="ocr-mark">图片资料</view>
+          <view class="ocr-title">{{ocrInfo.title}}</view>
+          <view class="ocr-hint">{{ocrInfo.hint}}</view>
+        </view>
+        <button class="ocr-action" loading="{{ocrRecognizing}}" disabled="{{ocrRecognizing}}" bindtap="handleRecognizeOcr">{{ocrInfo.buttonText}}</button>
+      </view>
+      <view class="ocr-meta" wx:if="{{ocrInfo.provider || ocrInfo.reason}}">
+        <text wx:if="{{ocrInfo.provider}}">引擎 {{ocrInfo.provider}}</text>
+        <text wx:if="{{ocrInfo.reason}}">{{ocrInfo.reason}}</text>
+      </view>
+      <view class="ocr-text" wx:if="{{ocrInfo.textPreview}}">{{ocrInfo.textPreview}}</view>
+    </view>
+
     <view class="suggest-panel" wx:if="{{!isProperty && !isGroupbuy && suggestionButtons.length}}">
       <view class="suggest-title">这条资料像是？</view>
       <view class="suggest-text">{{recognitionExplanation.summary || '识别结果不够确定，点一下即可切成对应工作台。'}}</view>

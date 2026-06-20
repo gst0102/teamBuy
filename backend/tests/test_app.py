@@ -4,7 +4,7 @@ from app.api.dependencies import get_app_service, get_sync_task_queue, get_wecom
 from app.core.config import settings
 from app.services.media_storage_service import MediaStorageService
 from app.services.media_processing_service import MediaProcessingService
-from app.models.domain import UserNote, WecomArchiveMessage
+from app.models.domain import UserNote, WecomArchiveMessage, WecomIdentityBinding
 from app.services.archive_message_parsers import ArchiveMessageParser, ArchiveMessageParserRegistry, ArchiveParseResult
 from app.services.ocr_service import OcrService
 from app.services.helpers import new_id
@@ -167,38 +167,90 @@ def test_archive_parser_registry_uses_explicit_parser_metadata():
     assert result.metadata["archiveMsgType"] == "text"
 
 
-def test_ocr_image_upload_creates_note_via_content_to_note(client):
+def test_ocr_image_save_then_recognize_via_content_to_note(client):
     service = client.app.dependency_overrides[get_app_service]()
-    service.ocr_service = OcrService(
-        provider="mock",
-        mock_text="小区：碧桂园城市之光\n户型：公寓一房\n面积：42平\n价格：1600元/月\n位置：万家丽地铁口",
-    )
     login = client.post("/api/auth/mock-login", json={"nickname": "OCR 用户"}).json()["data"]
     image = Image.new("RGB", (200, 120), color="white")
     buffer = BytesIO()
     image.save(buffer, format="PNG")
     buffer.seek(0)
 
-    response = client.post(
-        "/api/ocr/image-to-note",
+    save_response = client.post(
+        "/api/ocr/images",
         data={"ownerUserId": login["id"]},
         files={"file": ("house.png", buffer.getvalue(), "image/png")},
     )
 
-    assert response.status_code == 200
-    payload = response.json()["data"]
+    assert save_response.status_code == 200
+    saved_payload = save_response.json()["data"]
+    saved_note = saved_payload["note"]
+    saved_config = saved_note["visibilityConfig"]
+    assert saved_note["ownerUserId"] == login["id"]
+    assert saved_note["status"] == "active"
+    assert saved_note["coverUrl"].startswith("/media/")
+    assert saved_config["sourceType"] == "ocr"
+    assert saved_config["cardType"] == "image_ocr"
+    assert saved_config["structuredData"]["ocr"]["status"] == "pending"
+
+    service.ocr_service = OcrService(
+        provider="mock",
+        mock_text="小区：碧桂园城市之光\n户型：公寓一房\n面积：42平\n价格：1600元/月\n位置：万家丽地铁口",
+    )
+    recognize_response = client.post(
+        f"/api/ocr/notes/{saved_note['id']}/recognize",
+        json={"ownerUserId": login["id"]},
+    )
+
+    assert recognize_response.status_code == 200
+    payload = recognize_response.json()["data"]
     note = payload["note"]
     config = note["visibilityConfig"]
     assert payload["ocr"]["provider"] == "mock"
     assert payload["ocr"]["configured"] is True
+    assert payload["ocr"]["status"] == "done"
+    assert note["id"] == saved_note["id"]
     assert note["ownerUserId"] == login["id"]
     assert note["status"] == "active"
     assert note["coverUrl"].startswith("/media/")
     assert config["sourceType"] == "ocr"
     assert config["cardType"] == "property_listing"
+    assert config["structuredData"]["ocr"]["status"] == "done"
     assert config["structuredData"]["ocr"]["text"].startswith("小区：碧桂园城市之光")
     assert config["structuredData"]["community"] == "碧桂园城市之光"
     assert "图片识别" in config["tags"]
+
+
+def test_ocr_unconfigured_keeps_saved_image_note(client):
+    service = client.app.dependency_overrides[get_app_service]()
+    service.ocr_service = OcrService(provider="none")
+    login = client.post("/api/auth/mock-login", json={"nickname": "OCR 未配置用户"}).json()["data"]
+    image = Image.new("RGB", (160, 90), color="white")
+    buffer = BytesIO()
+    image.save(buffer, format="PNG")
+
+    save_response = client.post(
+        "/api/ocr/images",
+        data={"ownerUserId": login["id"]},
+        files={"file": ("image.png", buffer.getvalue(), "image/png")},
+    )
+    note = save_response.json()["data"]["note"]
+
+    response = client.post(
+        f"/api/ocr/notes/{note['id']}/recognize",
+        json={"ownerUserId": login["id"]},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()["data"]
+    updated_note = payload["note"]
+    config = updated_note["visibilityConfig"]
+    assert payload["ocr"]["configured"] is False
+    assert payload["ocr"]["status"] == "not_configured"
+    assert updated_note["id"] == note["id"]
+    assert updated_note["coverUrl"].startswith("/media/")
+    assert config["cardType"] == "image_ocr"
+    assert config["structuredData"]["ocr"]["status"] == "not_configured"
+    assert config["structuredData"]["ocr"]["text"] == ""
 
 
 def test_wecom_callback_get_verify(client):
@@ -552,6 +604,39 @@ def test_wecom_archive_process_auto_assigns_bound_external_user(client, monkeypa
     assert not any(item["generatedNote"] and item["generatedNote"]["id"] == note_id for item in pending_after)
 
 
+def test_wecom_identity_mapping_resolves_owner_by_openid(client):
+    login = client.post(
+        "/api/auth/mock-login",
+        json={"nickname": "OpenID 用户", "openid": "openid_identity_owner"},
+    ).json()["data"]
+    service = client.app.dependency_overrides[get_app_service]()
+    service.repo.save_wecom_identity_binding(
+        WecomIdentityBinding(
+            id="wecom_identity_openid_first",
+            sourceType="wecom_external_user",
+            externalUserId="external_openid_first",
+            ownerUserId="stale_internal_user",
+            ownerOpenid=login["openid"],
+            bindSource="claim_import",
+            firstImportBatchId=None,
+            lastImportBatchId=None,
+            createdAt=now_iso(),
+            updatedAt=now_iso(),
+        )
+    )
+
+    response = client.post(
+        "/api/wecom/mock-sync",
+        json={"externalUserId": "external_openid_first", "conversationId": "conv_openid_first", "fixture": "note"},
+    )
+    notes = client.get("/api/notes", params={"ownerUserId": login["id"]}).json()["data"]
+    pending = client.get("/api/imports/pending").json()["data"]
+
+    assert response.status_code == 200
+    assert any("城南花园" in item["body"] and item["ownerUserId"] == login["id"] for item in notes)
+    assert not any(item["externalUserId"] == "external_openid_first" for item in pending)
+
+
 def test_wecom_archive_process_parses_note_items(client, monkeypatch):
     monkeypatch.setattr(settings, "admin_token", "archive-admin")
     payload = {
@@ -899,6 +984,63 @@ def test_wecom_archive_process_downloads_and_attaches_image_media(client, monkey
     assert len(list(media_dir.iterdir())) == 1
 
 
+def test_wecom_archive_pure_image_saves_pending_ocr_note(client, monkeypatch, tmp_path):
+    class FakeArchiveClient:
+        def download_media(self, media_id):
+            return DownloadedMedia(make_test_image_bytes(), "image/png", "archive-ocr.png")
+
+    monkeypatch.setattr(settings, "admin_token", "archive-admin")
+    service = client.app.dependency_overrides[get_app_service]()
+    media_dir = tmp_path / "archive-ocr-media"
+    service.media_storage_service = MediaStorageService("local", media_dir, "/media")
+    client.app.dependency_overrides[get_wecom_archive_client] = lambda: FakeArchiveClient()
+    payload = {
+        "corpId": "ww_archive_ocr_image",
+        "messages": [
+            {
+                "seq": 505,
+                "msgid": "archive_ocr_image_001",
+                "action": "send",
+                "from": "wm_customer",
+                "tolist": ["user_sales"],
+                "msgtime": 1781725350000,
+                "msgtype": "image",
+                "decryptedPayload": {
+                    "msgid": "archive_ocr_image_001",
+                    "action": "send",
+                    "from": "wm_customer",
+                    "tolist": ["user_sales"],
+                    "msgtime": 1781725350000,
+                    "msgtype": "image",
+                    "image": {"sdkfileid": "archive-ocr-image-sdk", "md5sum": "image-md5", "filesize": 1024},
+                },
+            },
+        ],
+    }
+
+    saved = client.post("/api/wecom/archive/mock-messages", json=payload, headers={"X-Admin-Token": "archive-admin"})
+    processed = client.post("/api/wecom/archive/process", headers={"X-Admin-Token": "archive-admin"})
+    pending = client.get("/api/imports/pending").json()["data"]
+
+    assert saved.status_code == 200
+    assert processed.status_code == 200
+    result = processed.json()["data"]
+    assert result["processedCount"] == 1
+    assert result["processed"][0]["media"]["downloadedCount"] == 1
+    note_id = result["processed"][0]["noteId"]
+    generated = next(item for item in pending if item["generatedNote"] and item["generatedNote"]["id"] == note_id)
+    note = generated["generatedNote"]
+    card = generated["generatedCard"]
+    config = note["visibilityConfig"]
+    assert note["body"].startswith("图片已保存")
+    assert note["media"][0]["mediaId"] == "archive-ocr-image-sdk"
+    assert note["media"][0]["url"].startswith("/media/")
+    assert card["coverUrl"] == note["media"][0]["url"]
+    assert config["cardType"] == "image_ocr"
+    assert config["sourceType"] == "ocr"
+    assert config["structuredData"]["ocr"]["status"] == "pending"
+
+
 def test_wecom_archive_media_download_failure_keeps_note_and_records_retry(client, monkeypatch):
     class FailingArchiveClient:
         def download_media(self, media_id):
@@ -1203,6 +1345,54 @@ def test_real_sync_downloads_and_stores_image_video_media(client, monkeypatch, t
     assert card["coverUrl"].startswith("/media/")
     assert any(item["type"] == "video" and item["url"].startswith("/media/") for item in card["media"])
     assert len(list(media_dir.iterdir())) == 2
+
+
+def test_real_sync_pure_image_saves_pending_ocr_note(client, monkeypatch, tmp_path):
+    class FakeWecomClient:
+        async def sync_msg(self, cursor=None, token=None, limit=None):
+            return {
+                "errcode": 0,
+                "errmsg": "ok",
+                "next_cursor": "cursor_ocr_image_done",
+                "has_more": 0,
+                "msg_list": [
+                    {
+                        "msgid": "ocr_image_msg",
+                        "open_kfid": "wk_ocr_image",
+                        "external_userid": "external_ocr_image",
+                        "send_time": 1780848010,
+                        "msgtype": "image",
+                        "image": {"media_id": "media_ocr_image_001", "filename": "chat-screenshot.png"},
+                    },
+                ],
+            }
+
+        async def download_media(self, media_id):
+            return DownloadedMedia(make_test_image_bytes(), "image/png", "chat-screenshot.png")
+
+    monkeypatch.setattr(settings, "wecom_use_mock", False)
+    monkeypatch.setattr(settings, "wecom_open_kfid", "wk_ocr_image")
+    service = client.app.dependency_overrides[get_app_service]()
+    media_dir = tmp_path / "ocr-image-media"
+    service.media_storage_service = MediaStorageService("local", media_dir, "/media")
+    client.app.dependency_overrides[get_wecom_client] = lambda: FakeWecomClient()
+
+    response = client.post("/api/wecom/real-sync")
+
+    assert response.status_code == 200
+    pending = client.get("/api/imports/pending").json()["data"]
+    latest = pending[-1]
+    note = latest["generatedNote"]
+    card = latest["generatedCard"]
+    config = note["visibilityConfig"]
+    assert note["body"].startswith("图片已保存")
+    assert note["media"][0]["mediaId"] == "media_ocr_image_001"
+    assert note["media"][0]["url"].startswith("/media/")
+    assert card["coverUrl"] == note["media"][0]["url"]
+    assert config["cardType"] == "image_ocr"
+    assert config["sourceType"] == "ocr"
+    assert config["structuredData"]["ocr"]["status"] == "pending"
+    assert config["structuredData"]["images"] == [note["media"][0]["url"]]
 
 
 def test_real_sync_records_media_retry_job_without_blocking_import(client, monkeypatch):

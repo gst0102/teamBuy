@@ -3,6 +3,8 @@ from __future__ import annotations
 import shutil
 import subprocess
 import tempfile
+import json
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -55,38 +57,37 @@ class OcrService:
         )
 
     def _try_paddle(self, content: bytes) -> OcrResult:
-        try:
-            from paddleocr import PaddleOCR  # type: ignore
-        except Exception:
-            return OcrResult(text="", provider="paddle", configured=False, confidence=0, details={"reason": "paddleocr 未安装"})
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
             tmp.write(content)
             tmp_path = Path(tmp.name)
         try:
-            ocr = PaddleOCR(use_angle_cls=True, lang="ch", show_log=False)
-            raw = ocr.ocr(str(tmp_path), cls=True)
+            completed = subprocess.run(
+                [sys.executable, "-m", "app.services.paddle_ocr_worker", str(tmp_path)],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+        except subprocess.TimeoutExpired:
+            return OcrResult(text="", provider="paddle", configured=False, confidence=0, details={"reason": "paddleocr 执行超时"})
         except Exception as exc:
             return OcrResult(text="", provider="paddle", configured=False, confidence=0, details={"reason": str(exc)})
         finally:
             tmp_path.unlink(missing_ok=True)
-        lines: list[str] = []
-        confidences: list[float] = []
-        for page in raw or []:
-            for item in page or []:
-                if not isinstance(item, (list, tuple)) or len(item) < 2:
-                    continue
-                value = item[1]
-                if isinstance(value, (list, tuple)) and value:
-                    text = str(value[0] or "").strip()
-                    if text:
-                        lines.append(text)
-                    if len(value) > 1:
-                        try:
-                            confidences.append(float(value[1]))
-                        except (TypeError, ValueError):
-                            pass
-        confidence = sum(confidences) / len(confidences) if confidences else None
-        return OcrResult(text="\n".join(lines), provider="paddle", configured=True, confidence=confidence, details={"lineCount": len(lines)})
+        if completed.returncode != 0:
+            reason = completed.stderr.strip() or completed.stdout.strip() or "paddleocr 子进程异常退出"
+            return OcrResult(text="", provider="paddle", configured=False, confidence=0, details={"reason": reason[-1000:]})
+        try:
+            payload = json.loads(completed.stdout.strip() or "{}")
+        except json.JSONDecodeError:
+            return OcrResult(text="", provider="paddle", configured=False, confidence=0, details={"reason": "paddleocr 返回解析失败"})
+        return OcrResult(
+            text=str(payload.get("text") or ""),
+            provider="paddle",
+            configured=bool(payload.get("configured")),
+            confidence=payload.get("confidence"),
+            details=payload.get("details") if isinstance(payload.get("details"), dict) else {},
+        )
 
     def _try_tesseract(self, content: bytes, filename: str | None) -> OcrResult:
         executable = shutil.which(self.tesseract_bin)
