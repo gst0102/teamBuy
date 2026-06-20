@@ -104,6 +104,119 @@ def test_create_note_demo_data_for_owner(client):
     assert action_rows["summary"]["pending"] == 1
 
 
+def test_showcase_builder_create_publish_public_and_archive(client):
+    owner = client.post("/api/auth/mock-login", json={"nickname": "展示页店主", "openid": "openid_showcase_owner"}).json()["data"]
+    notes = client.post("/api/notes/demo-data", params={"ownerUserId": owner["id"]}).json()["data"]["notes"]
+    note_ids = [item["id"] for item in notes[:2]]
+
+    draft = client.post(
+        "/api/showcases",
+        json={
+            "ownerUserId": owner["id"],
+            "name": "依依好房精选",
+            "description": "近期主推房源和商品",
+            "shareTitle": "本周精选资料",
+            "contactConfig": {"phone": "13800138000", "wechat": "wx-yiyi"},
+            "displayConfig": {"groupBy": "cardType", "showTags": True},
+            "items": [
+                {"noteId": note_ids[0], "sortOrder": 2, "sectionTitle": "房源"},
+                {"noteId": note_ids[1], "sortOrder": 1, "sectionTitle": "房源"},
+                {"noteId": notes[2]["id"], "sortOrder": 3, "visible": False},
+            ],
+        },
+    )
+    assert draft.status_code == 200
+    showcase = draft.json()["data"]
+    assert showcase["status"] == "draft"
+    assert len(showcase["items"]) == 3
+
+    private_list = client.get("/api/showcases", params={"ownerUserId": owner["id"]})
+    assert private_list.status_code == 200
+    assert private_list.json()["data"][0]["itemCount"] == 2
+
+    public_before_publish = client.get(f"/api/showcases/public/{showcase['id']}")
+    assert public_before_publish.status_code == 404
+
+    published = client.post(f"/api/showcases/{showcase['id']}/publish", json={"ownerUserId": owner["id"]})
+    assert published.status_code == 200
+    assert published.json()["data"]["status"] == "published"
+
+    public = client.get(f"/api/showcases/public/{showcase['id']}")
+    assert public.status_code == 200
+    public_data = public.json()["data"]
+    assert public_data["name"] == "依依好房精选"
+    assert public_data["shareTitle"] == "本周精选资料"
+    assert [item["noteId"] for item in public_data["items"]] == [note_ids[1], note_ids[0]]
+    assert public_data["items"][0]["cardType"]
+    assert "ownerUserId" not in public_data["items"][0]
+    assert notes[2]["id"] not in [item["noteId"] for item in public_data["items"]]
+
+    deleted = client.delete(f"/api/notes/{note_ids[1]}", params={"ownerUserId": owner["id"]})
+    assert deleted.status_code == 200
+    public_after_delete = client.get(f"/api/showcases/public/{showcase['id']}")
+    assert [item["noteId"] for item in public_after_delete.json()["data"]["items"]] == [note_ids[0]]
+
+    archived = client.post(f"/api/showcases/{showcase['id']}/archive", json={"ownerUserId": owner["id"]})
+    assert archived.status_code == 200
+    assert archived.json()["data"]["status"] == "archived"
+    assert client.get(f"/api/showcases/public/{showcase['id']}").status_code == 404
+
+
+def test_showcase_rejects_other_users_notes_and_empty_publish(client):
+    owner = client.post("/api/auth/mock-login", json={"nickname": "展示页店主B", "openid": "openid_showcase_owner_b"}).json()["data"]
+    other = client.post("/api/auth/mock-login", json={"nickname": "其他人", "openid": "openid_showcase_other"}).json()["data"]
+    other_note = client.post("/api/notes/demo-data", params={"ownerUserId": other["id"]}).json()["data"]["notes"][0]
+
+    forbidden = client.post(
+        "/api/showcases",
+        json={
+            "ownerUserId": owner["id"],
+            "name": "越权展示页",
+            "items": [{"noteId": other_note["id"]}],
+        },
+    )
+    assert forbidden.status_code == 403
+
+    empty = client.post(
+        "/api/showcases",
+        json={
+            "ownerUserId": owner["id"],
+            "name": "空展示页",
+            "items": [],
+        },
+    ).json()["data"]
+    publish_empty = client.post(f"/api/showcases/{empty['id']}/publish", json={"ownerUserId": owner["id"]})
+    assert publish_empty.status_code == 400
+    assert "至少选择一条有效资料" in publish_empty.json()["detail"]
+
+
+def test_showcase_public_reads_latest_note_summary(client):
+    owner = client.post("/api/auth/mock-login", json={"nickname": "展示页店主C", "openid": "openid_showcase_owner_c"}).json()["data"]
+    note = client.post("/api/notes/demo-data", params={"ownerUserId": owner["id"]}).json()["data"]["notes"][0]
+    showcase = client.post(
+        "/api/showcases",
+        json={
+            "ownerUserId": owner["id"],
+            "name": "实时资料展示页",
+            "items": [{"noteId": note["id"]}],
+        },
+    ).json()["data"]
+    client.post(f"/api/showcases/{showcase['id']}/publish", json={"ownerUserId": owner["id"]})
+
+    updated = dict(note)
+    updated["title"] = "更新后的房源标题"
+    updated["summary"] = "更新后的摘要"
+    updated["body"] = note["body"]
+    update_response = client.put(f"/api/notes/{note['id']}", json=updated)
+    assert update_response.status_code == 200
+
+    public = client.get(f"/api/showcases/public/{showcase['id']}")
+    assert public.status_code == 200
+    item = public.json()["data"]["items"][0]
+    assert item["title"] == "更新后的房源标题"
+    assert item["summary"] == "更新后的摘要"
+
+
 def test_wecom_archive_worker_run_once_pulls_then_processes():
     class FakeService:
         def __init__(self):

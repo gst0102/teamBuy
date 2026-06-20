@@ -46,6 +46,20 @@ function normalizeAndCacheNote(note) {
   return withCachedMedia(normalizeNotePayload(note));
 }
 
+function normalizeShowcasePayload(showcase) {
+  if (!showcase || typeof showcase !== "object") return showcase;
+  return {
+    ...showcase,
+    bannerUrl: toAbsoluteUrl(showcase.bannerUrl),
+    items: Array.isArray(showcase.items)
+      ? showcase.items.map((item) => ({
+          ...item,
+          coverUrl: toAbsoluteUrl(item.coverUrl)
+        }))
+      : showcase.items
+  };
+}
+
 function normalizeAndCacheCards(cards) {
   return withCachedCards((cards || []).map(normalizeCardPayload));
 }
@@ -444,6 +458,77 @@ function recognizeNoteImage(noteId, ownerUserId) {
   }));
 }
 
+function fetchShowcases(ownerUserId) {
+  return request({
+    url: `/api/showcases?ownerUserId=${encodeURIComponent(ownerUserId)}`
+  }).then((res) => ({
+    ...res,
+    data: Array.isArray(res.data) ? res.data.map(normalizeShowcasePayload) : res.data
+  }));
+}
+
+function createShowcase(payload) {
+  return request({
+    url: "/api/showcases",
+    method: "POST",
+    data: payload
+  }).then((res) => ({
+    ...res,
+    data: normalizeShowcasePayload(res.data)
+  }));
+}
+
+function fetchShowcase(showcaseId, ownerUserId) {
+  return request({
+    url: `/api/showcases/${showcaseId}?ownerUserId=${encodeURIComponent(ownerUserId)}`
+  }).then((res) => ({
+    ...res,
+    data: normalizeShowcasePayload(res.data)
+  }));
+}
+
+function updateShowcase(showcaseId, payload) {
+  return request({
+    url: `/api/showcases/${showcaseId}`,
+    method: "PUT",
+    data: payload
+  }).then((res) => ({
+    ...res,
+    data: normalizeShowcasePayload(res.data)
+  }));
+}
+
+function publishShowcase(showcaseId, ownerUserId) {
+  return request({
+    url: `/api/showcases/${showcaseId}/publish`,
+    method: "POST",
+    data: { ownerUserId }
+  }).then((res) => ({
+    ...res,
+    data: normalizeShowcasePayload(res.data)
+  }));
+}
+
+function archiveShowcase(showcaseId, ownerUserId) {
+  return request({
+    url: `/api/showcases/${showcaseId}/archive`,
+    method: "POST",
+    data: { ownerUserId }
+  }).then((res) => ({
+    ...res,
+    data: normalizeShowcasePayload(res.data)
+  }));
+}
+
+function fetchPublicShowcase(showcaseId) {
+  return request({
+    url: `/api/showcases/public/${showcaseId}`
+  }).then((res) => ({
+    ...res,
+    data: normalizeShowcasePayload(res.data)
+  }));
+}
+
 function updateCard(cardId, payload) {
   return request({
     url: `/api/cards/${cardId}`,
@@ -618,6 +703,13 @@ module.exports = {
   uploadAsset,
   uploadImageNote,
   recognizeNoteImage,
+  fetchShowcases,
+  createShowcase,
+  fetchShowcase,
+  updateShowcase,
+  publishShowcase,
+  archiveShowcase,
+  fetchPublicShowcase,
   updateCard,
   deleteCard,
   publishCard,

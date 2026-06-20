@@ -68,6 +68,10 @@
         <view class="icon-badge orange">题</view>
         <text>专题</text>
       </view>
+      <view class="icon-item" bindtap="handleGoShowcases">
+        <view class="icon-badge blue">展</view>
+        <text>展示页</text>
+      </view>
       <view class="icon-item" bindtap="handleGoVisits">
         <view class="icon-badge purple">访</view>
         <text>访问记录</text>

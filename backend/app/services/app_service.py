@@ -11,11 +11,12 @@ import httpx
 from fastapi import HTTPException, status
 
 from app.core.config import settings
-from app.models.domain import AppState, Card, CardMedia, Category, CustomerAction, ImportBatch, LeadFollowUpLog, LeadReminder, MessageRecord, MessageThread, MediaRetryJob, RawMessage, RelayConfig, RelayEntry, SkillRun, SyncCursor, Topic, User, UserNote, ViewEvent, WecomArchiveCursor, WecomArchiveMessage, WecomIdentityBinding
+from app.models.domain import AppState, Card, CardMedia, Category, CustomerAction, ImportBatch, LeadFollowUpLog, LeadReminder, MessageRecord, MessageThread, MediaRetryJob, RawMessage, RelayConfig, RelayEntry, ShowcaseItem, ShowcasePage, SkillRun, SyncCursor, Topic, User, UserNote, ViewEvent, WecomArchiveCursor, WecomArchiveMessage, WecomIdentityBinding
 from app.schemas.auth import MockLoginRequest, WechatLoginRequest
 from app.schemas.categories import CategoryCreateRequest
 from app.schemas.cards import CardCreateRequest, CardUpdateRequest, CreateRelayRequest, LeadReminderUpdateRequest, LeadReminderUpsertRequest, RecordViewRequest
 from app.schemas.notes import CustomerActionSubmitRequest, NoteTypeConfirmRequest, TopicCreateRequest, UserNoteUpdateRequest
+from app.schemas.showcases import ShowcasePageRequest
 from app.schemas.skills import (
     ContentMediaPayload,
     ContentObjectPayload,
@@ -1667,6 +1668,194 @@ class AppService:
         if note.ownerUserId != owner_user_id:
             raise HTTPException(status_code=403, detail="仅笔记拥有者可查看")
         return note
+
+    def list_showcases(self, owner_user_id: str) -> list[dict]:
+        if not self.repo.get_user(owner_user_id):
+            raise HTTPException(status_code=404, detail="用户不存在")
+        return [self._showcase_owner_payload(item) for item in self.repo.list_showcase_pages(owner_user_id)]
+
+    def create_showcase(self, payload: ShowcasePageRequest) -> ShowcasePage:
+        self._ensure_showcase_owner(payload.ownerUserId)
+        now = now_iso()
+        showcase = ShowcasePage(
+            id=new_id("showcase"),
+            ownerUserId=payload.ownerUserId,
+            status="draft",
+            name=self._clean_showcase_name(payload.name),
+            description=self._clean_optional_text(payload.description),
+            bannerUrl=self._clean_optional_text(payload.bannerUrl),
+            templateId=self._clean_optional_text(payload.templateId) or "classic_grid",
+            shareTitle=self._clean_optional_text(payload.shareTitle),
+            contactConfig=self._normalize_showcase_contact_config(payload.contactConfig),
+            displayConfig=self._normalize_showcase_display_config(payload.displayConfig),
+            items=self._normalize_showcase_items(payload.ownerUserId, payload.items),
+            publishedAt=None,
+            createdAt=now,
+            updatedAt=now,
+        )
+        self.repo.save_showcase_page(showcase)
+        return showcase
+
+    def get_showcase_for_owner(self, showcase_id: str, owner_user_id: str) -> ShowcasePage:
+        showcase = self.repo.get_showcase_page(showcase_id)
+        if not showcase:
+            raise HTTPException(status_code=404, detail="展示页不存在")
+        if showcase.ownerUserId != owner_user_id:
+            raise HTTPException(status_code=403, detail="仅展示页拥有者可查看")
+        return showcase
+
+    def update_showcase(self, showcase_id: str, payload: ShowcasePageRequest) -> ShowcasePage:
+        showcase = self.get_showcase_for_owner(showcase_id, payload.ownerUserId)
+        showcase.name = self._clean_showcase_name(payload.name)
+        showcase.description = self._clean_optional_text(payload.description)
+        showcase.bannerUrl = self._clean_optional_text(payload.bannerUrl)
+        showcase.templateId = self._clean_optional_text(payload.templateId) or "classic_grid"
+        showcase.shareTitle = self._clean_optional_text(payload.shareTitle)
+        showcase.contactConfig = self._normalize_showcase_contact_config(payload.contactConfig)
+        showcase.displayConfig = self._normalize_showcase_display_config(payload.displayConfig)
+        showcase.items = self._normalize_showcase_items(payload.ownerUserId, payload.items)
+        showcase.updatedAt = now_iso()
+        self.repo.save_showcase_page(showcase)
+        return showcase
+
+    def publish_showcase(self, showcase_id: str, owner_user_id: str) -> ShowcasePage:
+        showcase = self.get_showcase_for_owner(showcase_id, owner_user_id)
+        valid_items = self._valid_showcase_items(showcase)
+        if not self._clean_optional_text(showcase.name):
+            raise HTTPException(status_code=400, detail="展示页名称不能为空")
+        if not valid_items:
+            raise HTTPException(status_code=400, detail="请至少选择一条有效资料后再发布")
+        now = now_iso()
+        showcase.status = "published"
+        showcase.items = valid_items
+        showcase.publishedAt = showcase.publishedAt or now
+        showcase.updatedAt = now
+        self.repo.save_showcase_page(showcase)
+        return showcase
+
+    def archive_showcase(self, showcase_id: str, owner_user_id: str) -> ShowcasePage:
+        showcase = self.get_showcase_for_owner(showcase_id, owner_user_id)
+        showcase.status = "archived"
+        showcase.updatedAt = now_iso()
+        self.repo.save_showcase_page(showcase)
+        return showcase
+
+    def get_public_showcase(self, showcase_id: str) -> dict:
+        showcase = self.repo.get_showcase_page(showcase_id)
+        if not showcase or showcase.status != "published":
+            raise HTTPException(status_code=404, detail="展示页不存在或未发布")
+        items = self._public_showcase_items(showcase)
+        return {
+            "id": showcase.id,
+            "name": showcase.name,
+            "description": showcase.description,
+            "bannerUrl": showcase.bannerUrl,
+            "templateId": showcase.templateId,
+            "shareTitle": showcase.shareTitle or showcase.name,
+            "contactConfig": showcase.contactConfig,
+            "displayConfig": showcase.displayConfig,
+            "items": items,
+            "publishedAt": showcase.publishedAt,
+            "updatedAt": showcase.updatedAt,
+        }
+
+    def _ensure_showcase_owner(self, owner_user_id: str) -> None:
+        if not self.repo.get_user(owner_user_id):
+            raise HTTPException(status_code=404, detail="用户不存在")
+
+    def _showcase_owner_payload(self, showcase: ShowcasePage) -> dict:
+        payload = showcase.model_dump()
+        payload["itemCount"] = len(self._valid_showcase_items(showcase))
+        payload["sharePath"] = f"/pages/showcase-view/index?id={showcase.id}"
+        return payload
+
+    def _clean_showcase_name(self, name: str) -> str:
+        cleaned = str(name or "").strip()
+        if not cleaned:
+            raise HTTPException(status_code=400, detail="展示页名称不能为空")
+        return cleaned[:80]
+
+    def _clean_optional_text(self, value: str | None) -> str | None:
+        cleaned = str(value or "").strip()
+        return cleaned or None
+
+    def _normalize_showcase_contact_config(self, config: dict | None) -> dict:
+        source = config if isinstance(config, dict) else {}
+        return {
+            "phone": self._clean_optional_text(source.get("phone")),
+            "wechat": self._clean_optional_text(source.get("wechat")),
+            "contactText": self._clean_optional_text(source.get("contactText")) or "欢迎联系我了解详情",
+            "showPhone": bool(source.get("showPhone", True)),
+            "showWechat": bool(source.get("showWechat", True)),
+        }
+
+    def _normalize_showcase_display_config(self, config: dict | None) -> dict:
+        source = config if isinstance(config, dict) else {}
+        group_by = str(source.get("groupBy") or "none").strip()
+        if group_by not in {"none", "cardType", "tag", "custom"}:
+            group_by = "none"
+        return {
+            "groupBy": group_by,
+            "showSearch": bool(source.get("showSearch", False)),
+            "showTags": bool(source.get("showTags", True)),
+            "primaryColor": str(source.get("primaryColor") or "#1677ff").strip()[:24],
+        }
+
+    def _normalize_showcase_items(self, owner_user_id: str, items: list) -> list[ShowcaseItem]:
+        normalized: list[ShowcaseItem] = []
+        seen: set[str] = set()
+        for index, item in enumerate(items or []):
+            note_id = str(getattr(item, "noteId", "") or "").strip()
+            if not note_id or note_id in seen:
+                continue
+            note = self.repo.get_user_note(note_id)
+            if not note or note.status == "deleted":
+                raise HTTPException(status_code=400, detail=f"资料不存在或已删除：{note_id}")
+            if note.ownerUserId != owner_user_id:
+                raise HTTPException(status_code=403, detail="不能选择其他用户的资料")
+            seen.add(note_id)
+            normalized.append(
+                ShowcaseItem(
+                    noteId=note_id,
+                    sortOrder=getattr(item, "sortOrder", index),
+                    sectionTitle=self._clean_optional_text(getattr(item, "sectionTitle", None)),
+                    displayTitle=self._clean_optional_text(getattr(item, "displayTitle", None)),
+                    visible=bool(getattr(item, "visible", True)),
+                    fieldConfig=getattr(item, "fieldConfig", {}) if isinstance(getattr(item, "fieldConfig", {}), dict) else {},
+                )
+            )
+        return sorted(normalized, key=lambda row: row.sortOrder)
+
+    def _valid_showcase_items(self, showcase: ShowcasePage) -> list[ShowcaseItem]:
+        valid: list[ShowcaseItem] = []
+        for item in sorted(showcase.items, key=lambda row: row.sortOrder):
+            note = self.repo.get_user_note(item.noteId)
+            if item.visible and note and note.status != "deleted" and note.ownerUserId == showcase.ownerUserId:
+                valid.append(item)
+        return valid
+
+    def _public_showcase_items(self, showcase: ShowcasePage) -> list[dict]:
+        rows: list[dict] = []
+        for item in self._valid_showcase_items(showcase):
+            note = self.repo.get_user_note(item.noteId)
+            if note:
+                rows.append(self._showcase_note_summary(note, item))
+        return rows
+
+    def _showcase_note_summary(self, note: UserNote, item: ShowcaseItem) -> dict:
+        config = note.visibilityConfig or {}
+        return {
+            "noteId": note.id,
+            "title": item.displayTitle or note.title,
+            "summary": note.summary,
+            "coverUrl": note.coverUrl,
+            "sectionTitle": item.sectionTitle,
+            "sortOrder": item.sortOrder,
+            "cardType": config.get("cardType", "text_note"),
+            "systemCategory": config.get("systemCategory", ""),
+            "tags": self._note_tags(note),
+            "updatedAt": note.updatedAt,
+        }
 
     def update_user_note(self, note_id: str, payload: UserNoteUpdateRequest) -> UserNote:
         note = self.get_user_note(note_id, payload.ownerUserId)

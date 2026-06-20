@@ -29,6 +29,7 @@ CustomerActionKey = Literal[
     "external-open",
 ]
 MessageThreadStatus = Literal["active", "archived"]
+ShowcaseStatus = Literal["draft", "published", "archived"]
 
 
 class User(BaseModel):
@@ -144,6 +145,32 @@ class UserNote(BaseModel):
     locationText: str | None = None
     sourceRefs: list[str] = Field(default_factory=list)
     visibilityConfig: dict = Field(default_factory=dict)
+    createdAt: str
+    updatedAt: str
+
+
+class ShowcaseItem(BaseModel):
+    noteId: str
+    sortOrder: int = 0
+    sectionTitle: str | None = None
+    displayTitle: str | None = None
+    visible: bool = True
+    fieldConfig: dict = Field(default_factory=dict)
+
+
+class ShowcasePage(BaseModel):
+    id: str
+    ownerUserId: str
+    status: ShowcaseStatus = "draft"
+    name: str
+    description: str | None = None
+    bannerUrl: str | None = None
+    templateId: str = "classic_grid"
+    shareTitle: str | None = None
+    contactConfig: dict = Field(default_factory=dict)
+    displayConfig: dict = Field(default_factory=dict)
+    items: list[ShowcaseItem] = Field(default_factory=list)
+    publishedAt: str | None = None
     createdAt: str
     updatedAt: str
 
@@ -386,6 +413,7 @@ class AppState(BaseModel):
     raw_messages: list[RawMessage] = Field(default_factory=list)
     cards: list[Card] = Field(default_factory=list)
     user_notes: list[UserNote] = Field(default_factory=list)
+    showcase_pages: list[ShowcasePage] = Field(default_factory=list)
     view_events: list[ViewEvent] = Field(default_factory=list)
     relay_entries: list[RelayEntry] = Field(default_factory=list)
     lead_reminders: list[LeadReminder] = Field(default_factory=list)

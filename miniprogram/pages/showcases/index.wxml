@@ -1,0 +1,37 @@
+<view class="page-shell">
+  <custom-nav title="展示页" />
+
+  <view class="toolbar">
+    <view>
+      <view class="page-title">展示页</view>
+      <view class="page-sub">把多条资料组合成一个客户可打开的小程序页面</view>
+    </view>
+    <button class="primary-btn" bindtap="handleCreate">新建</button>
+  </view>
+
+  <view wx:if="{{loading}}" class="empty">加载中...</view>
+
+  <view wx:elif="{{!showcases.length}}" class="empty">
+    <view class="empty-title">还没有展示页</view>
+    <view class="empty-sub">先新建一个，把常用房源、商品或资料放进去。</view>
+    <button class="primary-btn wide" bindtap="handleCreate">新建展示页</button>
+  </view>
+
+  <view wx:else class="list">
+    <view wx:for="{{showcases}}" wx:key="id" class="showcase-row">
+      <image wx:if="{{item.bannerUrl}}" class="banner" src="{{item.bannerUrl}}" mode="aspectFill"></image>
+      <view wx:else class="banner fallback">{{item.initial}}</view>
+      <view class="row-main" bindtap="handleEdit" data-id="{{item.id}}">
+        <view class="row-title">{{item.name}}</view>
+        <view class="row-desc">{{item.descText}}</view>
+        <view class="meta-line">
+          <text class="status {{item.status}}">{{item.statusText}}</text>
+          <text>{{item.itemCountText}}</text>
+        </view>
+      </view>
+      <view class="row-actions">
+        <button class="ghost-btn" bindtap="handlePreview" data-id="{{item.id}}">预览</button>
+      </view>
+    </view>
+  </view>
+</view>

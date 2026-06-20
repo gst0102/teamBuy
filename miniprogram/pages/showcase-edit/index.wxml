@@ -1,0 +1,92 @@
+<view class="page-shell">
+  <custom-nav title="编辑展示页" />
+
+  <view class="status-bar">
+    <text class="status {{status}}">{{status === 'published' ? '已发布' : status === 'archived' ? '已下架' : '草稿'}}</text>
+    <text class="count">{{selectedRows.length}} 条资料</text>
+  </view>
+
+  <view class="section">
+    <view class="section-title">基础信息</view>
+    <input class="input" value="{{name}}" placeholder="店名或展示页名称" bindinput="updateField" data-key="name" />
+    <textarea class="textarea" value="{{description}}" placeholder="简介" bindinput="updateField" data-key="description"></textarea>
+    <input class="input" value="{{shareTitle}}" placeholder="分享标题" bindinput="updateField" data-key="shareTitle" />
+    <view class="banner-upload">
+      <image wx:if="{{bannerUrl}}" class="banner-preview" src="{{bannerUrl}}" mode="aspectFill"></image>
+      <view wx:else class="banner-preview banner-empty">banner</view>
+      <view class="banner-main">
+        <input class="input banner-input" value="{{bannerUrl}}" placeholder="banner 图片地址" bindinput="updateField" data-key="bannerUrl" />
+        <button class="upload-btn" bindtap="handleBannerUpload">上传图片</button>
+      </view>
+    </view>
+  </view>
+
+  <view class="section">
+    <view class="section-title">联系方式</view>
+    <input class="input" value="{{phone}}" placeholder="联系电话" type="number" bindinput="updateField" data-key="phone" />
+    <input class="input" value="{{wechat}}" placeholder="微信号" bindinput="updateField" data-key="wechat" />
+    <input class="input" value="{{contactText}}" placeholder="联系文案" bindinput="updateField" data-key="contactText" />
+  </view>
+
+  <view class="section">
+    <view class="section-title">展示方式</view>
+    <radio-group class="radio-row" bindchange="handleGroupChange">
+      <label class="radio-item"><radio value="none" checked="{{groupBy === 'none'}}" />不分组</label>
+      <label class="radio-item"><radio value="cardType" checked="{{groupBy === 'cardType'}}" />按类型</label>
+      <label class="radio-item"><radio value="tag" checked="{{groupBy === 'tag'}}" />按标签</label>
+      <label class="radio-item"><radio value="custom" checked="{{groupBy === 'custom'}}" />自定义</label>
+    </radio-group>
+  </view>
+
+  <view class="section">
+    <view class="section-head">
+      <view class="section-title">已选资料</view>
+      <text class="hint">上移 / 下移会影响客户页顺序</text>
+    </view>
+    <view wx:if="{{!selectedRows.length}}" class="empty-line">还没有选择资料</view>
+    <view wx:for="{{selectedRows}}" wx:key="noteId" class="selected-row">
+      <image wx:if="{{item.coverUrl}}" class="thumb" src="{{item.coverUrl}}" mode="aspectFill"></image>
+      <view wx:else class="thumb fallback">{{item.badge}}</view>
+      <view class="selected-main">
+        <view class="selected-title">{{item.title}}</view>
+        <view class="selected-summary">{{item.summary}}</view>
+        <view class="row-meta">
+          <text>{{item.badge}}</text>
+          <text>{{item.visibleText}}</text>
+        </view>
+        <input class="inline-input" value="{{item.displayTitle}}" placeholder="展示标题，留空用资料标题" bindinput="updateSelectedField" data-id="{{item.noteId}}" data-key="displayTitle" />
+        <input class="inline-input" value="{{item.sectionTitle}}" placeholder="自定义分组，选自定义分组时生效" bindinput="updateSelectedField" data-id="{{item.noteId}}" data-key="sectionTitle" />
+      </view>
+      <view class="mini-actions">
+        <button bindtap="moveSelected" data-id="{{item.noteId}}" data-direction="up">↑</button>
+        <button bindtap="moveSelected" data-id="{{item.noteId}}" data-direction="down">↓</button>
+        <button bindtap="toggleSelectedVisible" data-id="{{item.noteId}}">{{item.visible === false ? '显' : '隐'}}</button>
+        <button bindtap="removeSelected" data-id="{{item.noteId}}">删</button>
+      </view>
+    </view>
+  </view>
+
+  <view class="section">
+    <view class="section-title">资料库</view>
+    <view wx:if="{{loading}}" class="empty-line">加载中...</view>
+    <view wx:elif="{{!notes.length}}" class="empty-line">暂无资料</view>
+    <view wx:else class="note-list">
+      <view wx:for="{{notes}}" wx:key="id" class="note-row" bindtap="toggleNote" data-id="{{item.id}}">
+        <image wx:if="{{item.coverUrl}}" class="thumb" src="{{item.coverUrl}}" mode="aspectFill"></image>
+        <view wx:else class="thumb fallback">{{item.badge}}</view>
+        <view class="note-main">
+          <view class="note-title">{{item.title}}</view>
+          <view class="note-summary">{{item.summary}}</view>
+        </view>
+        <view class="select-pill {{item.selected ? 'active' : ''}}">{{item.selectedText}}</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="bottom-actions">
+    <button class="ghost-btn" bindtap="handleSave" loading="{{saving}}">保存</button>
+    <button class="ghost-btn" bindtap="handlePreview">预览</button>
+    <button wx:if="{{status === 'published'}}" class="warn-btn" bindtap="handleArchive">下架</button>
+    <button wx:else class="primary-btn" bindtap="handlePublish">发布</button>
+  </view>
+</view>

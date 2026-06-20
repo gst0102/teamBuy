@@ -4,7 +4,7 @@
 
 工作目录：`/Users/yiyi/Desktop/Desktop/myprojects/teamBuy`
 
-当前分支：`main...origin/main [ahead 14]`
+当前分支：`main...origin/main [ahead 17]`，并有 P1 展示页构建器 V1 未提交改动。
 
 ## 1. 项目背景与目标
 
@@ -27,7 +27,7 @@
 
 ## 2. 当前阶段目标
 
-P0 主链路已经基本闭环，当前刚完成以下关键收口：
+P0 主链路已经基本闭环，当前已进入 P1，并完成展示页构建器 V1 第一版：
 
 - OCR 两段式：先保存图片资料，用户再主动识别图片文字。
 - 企业微信纯图片导入：无正文、无链接、仅图片且图片已转存时，先生成 `image_ocr` 图片资料，状态 `pending`。
@@ -35,8 +35,12 @@ P0 主链路已经基本闭环，当前刚完成以下关键收口：
 - identity-core P0 收窄：小程序微信 `openid` 是唯一身份锚点；企业微信 `external_userid` 只做内部来源映射，不做用户侧解绑/改绑/绑定管理。
 - 企业微信真实图片 OCR 闭环已跑通。
 - Docker 开发期改为可挂载模式，减少反复 build 产生的缓存压力。
+- 展示页构建器 V1：发布者可从资料库勾选多条资料，配置店名/简介/banner/联系方式/排序，保存草稿、预览、发布和下架。
+- 后端新增 `ShowcasePage/ShowcaseItem` 与 `/api/showcases`，公开接口只允许访问 `published` 展示页，并实时读取 `UserNote` 摘要，不复制资料正文。
+- 小程序新增 `pages/showcases/index`、`pages/showcase-edit/index`、`pages/showcase-view/index`，并在“我的”页增加展示页入口；构建页支持 banner 上传、资料排序、隐藏、移除、展示标题和自定义分组标题。
+- 本轮自动化验证：后端编译通过，小程序 JS/JSON 检查通过，`git diff --check` 通过，后端全量测试 `112 passed`。
 
-下一阶段建议进入 P1，优先做“展示页构建器 V1”，让用户从资料库勾选多条资料，配置店名/简介/banner/联系方式并生成可分享的小程序展示页。
+下一阶段建议先做展示页真机人工验收，再根据体验补 banner 上传、分享路径验证、展示页数量权益计数和对象存储。
 
 ## 3. 已完成的功能
 

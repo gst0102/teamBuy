@@ -83,6 +83,9 @@ Page({
   handleGoTopics() {
     wx.navigateTo({ url: "/pages/topics/index" });
   },
+  handleGoShowcases() {
+    wx.navigateTo({ url: "/pages/showcases/index" });
+  },
   handleMemberPlaceholder() {
     wx.showToast({ title: "会员权益将在 v0.2 开放", icon: "none" });
   },

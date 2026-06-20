@@ -1,0 +1,174 @@
+page {
+  background: #f5f7fb;
+}
+
+.page-shell {
+  min-height: 100vh;
+  padding: 24rpx;
+  box-sizing: border-box;
+}
+
+.empty {
+  padding: 80rpx 24rpx;
+  text-align: center;
+  color: #7b8494;
+  font-size: 28rpx;
+}
+
+.hero {
+  overflow: hidden;
+  background: #fff;
+  border: 1rpx solid #e6ebf2;
+  border-radius: 8rpx;
+}
+
+.hero-image {
+  width: 100%;
+  height: 260rpx;
+  display: block;
+}
+
+.fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 32rpx;
+  box-sizing: border-box;
+  color: #1677ff;
+  background: #eef5ff;
+  font-size: 40rpx;
+  font-weight: 700;
+  text-align: center;
+}
+
+.hero-main {
+  padding: 24rpx;
+}
+
+.hero-title {
+  font-size: 40rpx;
+  font-weight: 700;
+  color: #182334;
+  line-height: 1.25;
+}
+
+.hero-desc {
+  margin-top: 12rpx;
+  font-size: 26rpx;
+  color: #697386;
+  line-height: 1.55;
+}
+
+.contact {
+  margin-top: 18rpx;
+  padding: 20rpx;
+  background: #fff;
+  border: 1rpx solid #e6ebf2;
+  border-radius: 8rpx;
+}
+
+.contact-text {
+  font-size: 26rpx;
+  color: #344054;
+  line-height: 1.5;
+}
+
+.contact-actions {
+  display: flex;
+  gap: 14rpx;
+  margin-top: 18rpx;
+}
+
+.contact-actions button {
+  flex: 1;
+  height: 72rpx;
+  margin: 0;
+  border-radius: 8rpx;
+  line-height: 72rpx;
+  color: #fff;
+  background: #1677ff;
+  font-size: 26rpx;
+}
+
+.section {
+  margin-top: 24rpx;
+}
+
+.section-title {
+  margin-bottom: 12rpx;
+  font-size: 30rpx;
+  font-weight: 700;
+  color: #1f2a3d;
+}
+
+.note-row {
+  display: flex;
+  gap: 18rpx;
+  align-items: center;
+  margin-bottom: 14rpx;
+  padding: 18rpx;
+  background: #fff;
+  border: 1rpx solid #e6ebf2;
+  border-radius: 8rpx;
+}
+
+.cover {
+  width: 126rpx;
+  height: 126rpx;
+  border-radius: 8rpx;
+  flex: 0 0 126rpx;
+}
+
+.fallback-small {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #1677ff;
+  background: #eef5ff;
+  font-size: 24rpx;
+}
+
+.note-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.note-title {
+  font-size: 30rpx;
+  font-weight: 700;
+  color: #1f2a3d;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.note-summary {
+  margin-top: 8rpx;
+  font-size: 24rpx;
+  color: #697386;
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.tag-line {
+  display: flex;
+  gap: 12rpx;
+  align-items: center;
+  margin-top: 10rpx;
+  font-size: 22rpx;
+  color: #8a94a6;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.badge {
+  flex: 0 0 auto;
+  padding: 4rpx 12rpx;
+  border-radius: 8rpx;
+  color: #1677ff;
+  background: #eef5ff;
+}

@@ -1,0 +1,42 @@
+<view class="page-shell">
+  <custom-nav title="展示页" />
+
+  <view wx:if="{{loading}}" class="empty">加载中...</view>
+
+  <view wx:elif="{{page}}">
+    <view class="hero">
+      <image wx:if="{{page.bannerUrl}}" class="hero-image" src="{{page.bannerUrl}}" mode="aspectFill"></image>
+      <view wx:else class="hero-image fallback">{{page.name}}</view>
+      <view class="hero-main">
+        <view class="hero-title">{{page.name}}</view>
+        <view class="hero-desc">{{page.description}}</view>
+      </view>
+    </view>
+
+    <view class="contact" wx:if="{{page.contactConfig.phone || page.contactConfig.wechat || page.contactConfig.contactText}}">
+      <view class="contact-text">{{page.contactConfig.contactText}}</view>
+      <view class="contact-actions">
+        <button wx:if="{{page.contactConfig.showPhone && page.contactConfig.phone}}" bindtap="callPhone">电话咨询</button>
+        <button wx:if="{{page.contactConfig.showWechat && page.contactConfig.wechat}}" bindtap="copyWechat">复制微信</button>
+      </view>
+    </view>
+
+    <view wx:if="{{!sections.length}}" class="empty">暂无可展示资料</view>
+
+    <view wx:for="{{sections}}" wx:key="title" class="section">
+      <view class="section-title">{{item.title}}</view>
+      <view wx:for="{{item.items}}" wx:for-item="note" wx:key="noteId" class="note-row" bindtap="openNote" data-id="{{note.noteId}}">
+        <image wx:if="{{note.coverUrl}}" class="cover" src="{{note.coverUrl}}" mode="aspectFill"></image>
+        <view wx:else class="cover fallback-small">{{note.badge}}</view>
+        <view class="note-main">
+          <view class="note-title">{{note.title}}</view>
+          <view class="note-summary">{{note.summary}}</view>
+          <view class="tag-line">
+            <text class="badge">{{note.badge}}</text>
+            <text wx:if="{{note.tagText}}">{{note.tagText}}</text>
+          </view>
+        </view>
+      </view>
+    </view>
+  </view>
+</view>

@@ -4,9 +4,16 @@
 工作目录：`/Users/yiyi/Desktop/Desktop/myprojects/teamBuy`
 当前分支：`main`  
 当前最新提交：以 `git log -1 --oneline` 为准。
-本地状态：当前订单 / 消息 / 商品 P1 / 站内消息左右气泡已完成两组代码提交；仍需排除微信开发者工具自动改动 `miniprogram/project.config.json` 和未跟踪 PDF `企业微信客服服务须知.pdf`。
+本地状态：P1 展示页构建器 V1 已实现但尚未提交；仍需排除微信开发者工具自动改动 `miniprogram/project.config.json` 和未跟踪 PDF `企业微信客服服务须知.pdf`。
 
 最新补充：
+- 2026-06-20 进入 P1 展示页构建器 V1：已先补开发文档 `docs/stage2-docs/13-showcase-builder-v1.md` 和测试清单 `docs/qa/展示页构建器V1_测试清单与验收标准.md`。
+- 后端新增 `ShowcasePage/ShowcaseItem` 和 `/api/showcases`：支持展示页列表、创建草稿、owner 详情、更新、发布、下架和公开访问已发布展示页。
+- 展示页只保存 `noteId`、排序和配置，不复制资料正文；公开接口实时读取 active `UserNote` 摘要，草稿和下架页不可公开访问。
+- 后端已覆盖展示页创建、越权资料拒绝、空资料发布拒绝、发布后公开访问、下架后不可访问、资料更新后读取最新摘要。
+- 小程序新增 `pages/showcases/index`、`pages/showcase-edit/index`、`pages/showcase-view/index`，并在“我的”页增加展示页入口；构建页支持 banner 上传、资料排序、隐藏、移除、展示标题和自定义分组标题。
+- 本轮验证：后端编译通过，小程序全量 JS 检查通过，小程序 JSON 解析通过，`git diff --check` 通过，后端全量测试 `112 passed`。
+- 小程序体验版仍由用户在微信开发者工具中手动上传；真机分享、banner 裁切、电话拨号、复制微信号需要人工确认。
 - 2026-06-20 修复 PaddleOCR 识别接口 502：06:33 测试图片保存成功，但识别请求让 Uvicorn 主进程退出，Nginx 返回 502；已改为 PaddleOCR 子进程隔离执行。
 - 生产公网 `POST /api/ocr/notes/note_af53dd1a18/recognize` 已复测 200，后端容器未再重启；该笔资料 OCR 已完成，置信度约 0.94，并给出“可能是商品”的中置信提示。
 - 2026-06-20 已部署 OCR 两段式接口到生产，并启用 PaddleOCR：生产 `OCR_PROVIDER=paddle`，依赖为 `paddlepaddle==3.3.1`、`paddleocr==2.10.0`。

@@ -21,6 +21,7 @@ from app.models.domain import (
     MediaRetryJob,
     RawMessage,
     RelayEntry,
+    ShowcasePage,
     SkillRun,
     SyncCursor,
     SyncTask,
@@ -82,6 +83,15 @@ class AppRepository(Protocol):
         ...
 
     def save_user_note(self, note: UserNote) -> None:
+        ...
+
+    def list_showcase_pages(self, owner_user_id: str) -> list[ShowcasePage]:
+        ...
+
+    def get_showcase_page(self, showcase_id: str) -> ShowcasePage | None:
+        ...
+
+    def save_showcase_page(self, showcase: ShowcasePage) -> None:
         ...
 
     def save_raw_messages(self, messages: list[RawMessage]) -> None:
@@ -380,6 +390,19 @@ class JsonRepository:
         state = self.load()
         state.user_notes = [item for item in state.user_notes if item.id != note.id]
         state.user_notes.append(note)
+        self.save(state)
+
+    def list_showcase_pages(self, owner_user_id: str) -> list[ShowcasePage]:
+        pages = [item for item in self.load().showcase_pages if item.ownerUserId == owner_user_id]
+        return sorted(pages, key=lambda item: item.updatedAt, reverse=True)
+
+    def get_showcase_page(self, showcase_id: str) -> ShowcasePage | None:
+        return next((item for item in self.load().showcase_pages if item.id == showcase_id), None)
+
+    def save_showcase_page(self, showcase: ShowcasePage) -> None:
+        state = self.load()
+        state.showcase_pages = [item for item in state.showcase_pages if item.id != showcase.id]
+        state.showcase_pages.append(showcase)
         self.save(state)
 
     def save_raw_messages(self, messages: list[RawMessage]) -> None:
@@ -812,6 +835,7 @@ class PostgresRepository:
         "raw_messages": "raw_messages",
         "cards": "cards",
         "user_notes": "user_notes",
+        "showcase_pages": "showcase_pages",
         "view_events": "view_events",
         "relay_entries": "relay_entries",
         "lead_reminders": "lead_reminders",
@@ -880,6 +904,12 @@ class PostgresRepository:
             ("source_card_id", "text", "sourceCardId"),
             ("status", "text", "status"),
             ("title", "text", "title"),
+        ],
+        "showcase_pages": [
+            ("owner_user_id", "text", "ownerUserId"),
+            ("status", "text", "status"),
+            ("name", "text", "name"),
+            ("published_at", "timestamptz", "publishedAt"),
         ],
         "view_events": [
             ("card_id", "text", "cardId"),
@@ -1028,6 +1058,10 @@ class PostgresRepository:
             ("idx_user_notes_import_batch", "import_batch_id"),
             ("idx_user_notes_source_card", "source_card_id"),
             ("idx_user_notes_title", "title"),
+        ],
+        "showcase_pages": [
+            ("idx_showcase_pages_owner_status", "owner_user_id, status, updated_at"),
+            ("idx_showcase_pages_published", "status, published_at"),
         ],
         "view_events": [
             ("idx_view_events_card_time", "card_id, viewed_at"),
@@ -1204,6 +1238,22 @@ class PostgresRepository:
 
     def save_user_note(self, note: UserNote) -> None:
         self._save_model("user_notes", note)
+
+    def list_showcase_pages(self, owner_user_id: str) -> list[ShowcasePage]:
+        rows = self._list_payloads(
+            "showcase_pages",
+            "owner_user_id = %s",
+            (owner_user_id,),
+            "updated_at desc, id desc",
+        )
+        return [ShowcasePage.model_validate(row) for row in rows]
+
+    def get_showcase_page(self, showcase_id: str) -> ShowcasePage | None:
+        payload = self.get_payload_by_id("showcase_pages", showcase_id)
+        return ShowcasePage.model_validate(payload) if payload else None
+
+    def save_showcase_page(self, showcase: ShowcasePage) -> None:
+        self._save_model("showcase_pages", showcase)
 
     def save_raw_messages(self, messages: list[RawMessage]) -> None:
         with psycopg.connect(self.database_url) as conn:
