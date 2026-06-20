@@ -6,16 +6,20 @@
 
 选择：
 
-- OCR 第一版新增 `POST /api/ocr/image-to-note`，图片上传后先识别文字，再统一进入 `ContentObject.sourceType=image_ocr -> content-to-note -> UserNote`。
-- OCR 结果保存到 `visibilityConfig.structuredData.ocr`，资料来源标记为 `sourceType=ocr`，标签包含 `图片识别`。
+- OCR 采用两段式：`POST /api/ocr/images` 先保存图片资料，用户在资料编辑页主动点“识别图片文字”后再调用 `POST /api/ocr/notes/{note_id}/recognize`。
+- 识别成功后才进入 `ContentObject.sourceType=image_ocr -> content-to-note -> UserNote`，并在原资料上更新为房源/团购/文本等 typed card。
+- 兼容保留旧 `POST /api/ocr/image-to-note`，但小程序默认不再上传即识别。
+- OCR 结果保存到 `visibilityConfig.structuredData.ocr`，资料来源标记为 `sourceType=ocr`，标签包含 `图片识别`，状态区分 `pending/done/empty/not_configured`。
 - OCR 引擎做成可替换 provider：`auto / paddle / tesseract / mock`。
-- 当前代码不强制引入 PaddleOCR 或云 OCR SDK 依赖；生产部署时可按服务器环境安装 PaddleOCR 或 Tesseract，再通过环境变量启用。
+- 当前生产优先启用 PaddleOCR，依赖固定为 `paddlepaddle==3.3.1`、`paddleocr==2.10.0`，并通过 `OCR_PROVIDER=paddle` 启用。
+- Docker 内使用 headless OpenCV，避免服务端为了 OCR 引入完整桌面图形库。
 - OCR 未配置或识别为空时，仍保存图片资料，允许用户手动补正文和字段。
 
 原因：
 
 - OCR 是资料输入能力，不应绕开已有 typed card、识别解释和中置信人工确认机制。
-- PaddleOCR 依赖较重，直接写死会增加部署不确定性；先把业务链路、接口和前端入口稳定下来。
+- 用户需求可能只是“保存这张图片”，不一定立刻需要文字；默认自动 OCR 会增加等待、成本和误识别风险。
+- PaddleOCR 依赖较重，必须固定版本和容器运行库；后续升级要重新做生产镜像验证。
 - 后续如接腾讯云 OCR，也只替换 provider，不改变小程序和 `content-to-note` 主链路。
 
 ### 决策：中置信类型确认由后端统一执行
@@ -1623,3 +1627,34 @@ teamBuy 首版定位为素材导入、卡片生成、查看统计、实名接龙
 - 站内消息是跨房源、商品、订单和后续场景的基座能力，不属于某一个场景页面。
 - 统一组件能集中处理未读数、文案、样式和后续权限提示。
 - 统一方法能避免后续多个页面重复出现会话创建、买家身份和订单绑定逻辑。
+
+### 决策：企业微信纯图片导入只保存图片，OCR 必须由用户二次触发
+
+选择：
+
+- 企业微信客服同步和会话归档里，如果导入内容只有图片、没有用户正文和链接，并且图片已经转存成功，则生成 `image_ocr` 图片资料。
+- 初始状态为 `structuredData.ocr.status=pending`，正文提示用户可以手动补充，也可以点击识别图片文字。
+- OCR 识别仍走小程序编辑页的 `POST /api/ocr/notes/{note_id}/recognize`，不在导入阶段自动识别。
+- 图文混合内容继续走 `content-to-note`；媒体下载失败时继续走媒体重试，不生成可识别图片资料。
+
+原因：
+
+- 用户真实需求分两类：有些图片只是素材，有些截图才需要文字识别。
+- 导入阶段自动 OCR 会增加耗时和失败面，也会把“保存图片”和“识别文字”两个动作混在一起。
+- 统一两段式后，小程序上传、企业微信客服图片、会话归档图片都能复用同一个编辑页确认入口。
+
+### 决策：用户身份唯一锚点是小程序微信 openid
+
+选择：
+
+- 小程序微信 `openid` 是多途径来源进入系统后的唯一用户身份锚点。
+- `userId` 只作为后端内部主键，业务归属必须能追溯到对应 `openid`。
+- 企业微信 `external_userid` 不作为用户身份，只作为来源标识，系统内部映射到 `ownerOpenid/ownerUserId`。
+- 第一次认领导入资料时写入内部映射；后续同一企业微信来源自动进入该 `openid` 对应用户的资料库。
+- P0 不提供用户侧绑定管理、解绑或改绑功能；测试期误认领走后台数据修正。
+
+原因：
+
+- 企业微信身份、小程序身份、手动录入和 OCR 来源不是同一个身份体系，不能互相直接等同。
+- `openid` 是当前小程序用户身份最稳定、最明确的唯一标识。
+- 不做解绑/改绑 UI 可以减少 P0 复杂度和误操作风险，先保证导入归属闭环。

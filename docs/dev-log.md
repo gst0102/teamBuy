@@ -1,5 +1,109 @@
 # 2026-06-20
 
+## 本次补充：修复 PaddleOCR 识别接口 502
+
+背景：
+
+- 用户反馈 06:33 左右测试“识别图片文字”显示识别失败。
+- 生产排查定位到：
+  - 06:33:56 `POST /api/ocr/images` 保存图片成功，生成 `note_af53dd1a18`。
+  - 06:34:06 `POST /api/ocr/notes/note_af53dd1a18/recognize` 返回 502。
+  - Nginx 错误为 `upstream prematurely closed connection`，后端容器同秒重启。
+
+原因：
+
+- PaddleOCR 单独识别该图片成功，完整业务识别在一次性容器里也成功。
+- 但 PaddleOCR 放在 Uvicorn Web 主进程内执行时，会让主进程直接退出，导致 Nginx 502。
+- 该问题属于 native OCR 依赖与 Web 主进程同进程运行不稳定，不是图片丢失或路由未部署。
+
+修复：
+
+- 新增 `app.services.paddle_ocr_worker`，把 PaddleOCR 识别放到独立 Python 子进程中执行。
+- `OcrService._try_paddle` 改为调用子进程并解析 JSON 结果。
+- 子进程异常、超时或 native 崩溃时，只返回 OCR 未配置/失败原因，不再带崩主后端服务。
+
+验证：
+
+- 本地 `compileall backend/app backend/tests`：通过。
+- 本地 `pytest backend/tests -q`：106 passed。
+- 本地 PaddleOCR 子进程识别测试图：返回 `HELLO 123`。
+- 生产已同步后端代码并重建/重启 `teambuy-backend`。
+- 公网 `POST /api/ocr/notes/note_af53dd1a18/recognize`：返回 200。
+- 生产容器 `RestartCount=0`，识别接口复测后未再重启。
+- 该笔资料已更新为 OCR done，`provider=paddle`，`confidence≈0.94`，并给出“可能是商品”的中置信提示。
+
+## 本次补充：OCR 生产部署与 PaddleOCR 启用
+
+背景：
+
+- 用户真机点击“保存图片”时报 `Not Found/no found`。
+- 小程序 `apiBaseUrl` 指向生产 `https://teambuy.lifelove.top`，本地新增的 `/api/ocr/images` 尚未部署到生产。
+- 用户确认 OCR 引擎优先安装 PaddleOCR。
+
+完成内容：
+
+- 已确认生产旧状态：
+  - `GET https://teambuy.lifelove.top/api/ocr/images` 返回路由级 `{"detail":"Not Found"}`。
+  - `POST /api/ocr/notes/test/recognize` 同样返回路由级 `Not Found`。
+- 本机 Codex Python 运行时安装并验证：
+  - `paddlepaddle==3.3.1`
+  - `paddleocr==2.10.0`
+  - `OcrService(provider="paddle")` 可识别测试图 `HELLO 123`。
+- 后端依赖与镜像：
+  - `backend/requirements.txt` 固定 PaddleOCR 依赖。
+  - `backend/Dockerfile` 补 `libgomp1/libglib2.0-0/libxcb1`。
+  - Docker 镜像内将图形版 OpenCV 替换为 `opencv-python-headless==4.13.0.92`，避免服务端依赖 `libGL` 大图形库。
+- 生产部署：
+  - 备份路径：`/home/ubuntu/teamBuy-deploy-backups/20260620-040644`。
+  - 已同步 `backend/app/`、`backend/tests/`、`backend/requirements.txt`、`backend/Dockerfile`、`backend/.env.example` 到生产。
+  - 已将生产 `backend/.env` 的 `OCR_PROVIDER` 设置为 `paddle`。
+  - 已重建并重启生产 `teambuy-backend` 容器。
+
+验证：
+
+- 生产 `/health`：返回 `status=ok`，Postgres configured。
+- 生产 `GET /api/ocr/images`：返回 `405 Method Not Allowed`，说明路由已上线，不再是 404。
+- 生产 `POST /api/ocr/notes/test/recognize`：返回业务级 `{"detail":"笔记不存在"}`，说明识别路由已上线。
+- 生产 `POST /api/ocr/images` 上传测试图且使用不存在用户：返回业务级 `{"detail":"用户不存在"}`，说明保存图片接口已进入业务层。
+- 生产容器内 `from paddleocr import PaddleOCR`：通过。
+- 生产容器内 `OcrService(provider="paddle")` 识别测试图：返回 `text='HELLO 123'`、`configured=True`、`provider='paddle'`。
+- 本地 `/Users/yiyi/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3 -m pytest backend/tests -q`：106 passed。
+- `git diff --check`：通过。
+
+## 本次补充：OCR 两段式保存与按需识别
+
+背景：
+
+- 用户确认 OCR 需要按实际意图拆开：有时只是保存图片，有时才需要识别图片文字。
+- PaddleOCR / Tesseract 未配置时，图片资料也必须先保存，不能因为识别能力缺失而丢资料。
+
+完成内容：
+
+- 后端新增两段式接口：
+  - `POST /api/ocr/images`：只保存图片资料，创建 `UserNote`，`cardType=image_ocr`，`sourceType=ocr`，`structuredData.ocr.status=pending`。
+  - `POST /api/ocr/notes/{note_id}/recognize`：对已有图片资料执行 OCR；识别成功后进入 `ContentObject.sourceType=image_ocr -> content-to-note`，并更新原资料。
+  - 兼容保留 `POST /api/ocr/image-to-note`，内部改为“保存图片 -> 识别图片”。
+- OCR 状态写入 `visibilityConfig.structuredData.ocr`：
+  - `pending`：图片已保存，等待用户主动识别。
+  - `done`：已识别到文字，并进入资料整理链路。
+  - `empty`：OCR 已配置但没有识别到文字。
+  - `not_configured`：未配置 PaddleOCR / Tesseract / 其他 provider。
+- 小程序“我的笔记”页入口从“图片识别”改为“保存图片”，上传后直接进入资料编辑页。
+- 小程序 `note-edit` 新增图片资料 OCR 操作区，显示当前 OCR 状态、provider/原因，并提供“识别图片文字 / 重新识别图片文字”按钮。
+- 未配置 OCR 或识别为空时，仍保留图片、封面和素材，用户可继续手动补正文和字段。
+
+验证：
+
+- `node --check miniprogram/pages/notes/index.js`：通过。
+- `node --check miniprogram/pages/note-edit/index.js`：通过。
+- `node --check miniprogram/services/api.js`：通过。
+- `python3 -m compileall backend/app backend/tests`：通过。
+- `/Users/yiyi/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3 -m pytest backend/tests/test_app.py -q -k ocr`：2 passed。
+- `find miniprogram -name '*.js' -print0 | xargs -0 -n 1 node --check`：通过。
+- `find miniprogram -name '*.json' -print0 | xargs -0 -n 1 python3 -m json.tool >/dev/null`：通过。
+- `/Users/yiyi/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3 -m pytest backend/tests -q`：106 passed。
+- `git diff --check`：通过。
+
 ## 本次补充：OCR 图片识别入库第一版
 
 背景：
@@ -2631,3 +2735,85 @@
 - 注意：
   - 生产中少量旧测试订单在电话/地址必填上线前创建，可能显示空电话或空地址；新提交会被后端强校验。
   - 小程序上传未完成：本机微信开发者工具 CLI 被“服务端口关闭”安全设置拦截，需要在开发者工具 GUI 里打开“设置 -> 安全设置 -> 服务端口”后再上传/预览。
+
+### 2026-06-20：企业微信纯图片导入接入两段式 OCR
+
+- 已调整：
+  - 后端统一导入层新增纯图片分流：企业微信客服同步、会话归档处理遇到“无正文、无链接、仅图片且图片已转存”的内容时，先保存为图片资料，不自动 OCR。
+  - 保存后的资料使用 `cardType=image_ocr`、`sourceType=ocr`、`structuredData.ocr.status=pending`，小程序编辑页继续由用户点击“识别图片文字”触发 OCR。
+  - 图文混合导入保持原有 `content-to-note` 整理逻辑；图片下载失败时仍保留原导入和媒体重试行为，不伪装成可识别图片资料。
+- 验证：
+  - 新增客服同步纯图片、会话归档纯图片测试。
+  - 后端全量测试：108 passed。
+  - `compileall backend/app backend/tests` 通过。
+  - `git diff --check` 通过。
+
+### 2026-06-20：identity-core P0 收窄为 openid 唯一身份锚点
+
+- 用户确认：
+  - P0 不做企业微信来源绑定管理、解绑或改绑页面。
+  - 小程序微信 `openid` 是多途径来源进入系统后的唯一身份信息。
+  - 企业微信 `external_userid` 只做系统内部来源映射。
+- 已调整：
+  - `WecomIdentityBinding` 增加 `ownerOpenid`。
+  - 新认领导入写入 `external_userid -> ownerOpenid/ownerUserId`。
+  - 后续企业微信导入解析归属时优先按 `ownerOpenid` 查找用户，旧数据仍按 `ownerUserId` 兜底。
+  - `AGENTS.md` 写入 openid 身份总规则。
+- 验证：
+  - 新增 openid 优先归属测试。
+  - 身份相关回归：3 passed。
+  - 后端全量测试：109 passed。
+
+### 2026-06-20：生产部署 identity + OCR 纯图片导入
+
+- 已部署：
+  - 生产同步前备份路径：`/home/ubuntu/teamBuy-deploy-backups/20260620-072737`。
+  - 已同步 `backend/app/`、`backend/tests/`、`backend/requirements.txt`、`backend/Dockerfile`、`backend/.env.example` 到生产。
+  - 已重建并重启 `teambuy-backend` 容器。
+- 公网/生产验证：
+  - `GET /health`：200，Postgres configured。
+  - `GET /api/ocr/images`：405，说明 OCR 保存图片路由已上线，不是 404。
+  - `POST /api/ocr/notes/not_exists/recognize`：业务级“笔记不存在”，说明 OCR 识别路由进入业务层。
+  - Postgres `wecom_identity_bindings.owner_openid` 列已存在。
+  - 生产镜像内确认 `WecomIdentityBinding.ownerOpenid`、纯图片导入分流和 PaddleOCR worker 可用。
+  - 生产容器内 PaddleOCR 识别测试图返回 `HELLO 123`，`configured=True`。
+  - 生产容器重启次数为 0。
+- 企业微信真实拉取：
+  - 手动触发 `/api/wecom/archive/pull?limit=20` 成功，当前 `rawCount=0`，没有新真实归档消息。
+  - 手动触发 `/api/wecom/archive/process?limit=20` 成功，`processedCount=0`。
+- 待人工配合：
+  - 需要用户从企业微信真实发送一张纯图片，再触发 `pull -> process` 验证“企业微信纯图片 -> 图片资料 pending OCR -> 小程序点识别”闭环。
+
+### 2026-06-20：企业微信真实图片 OCR 闭环验证
+
+- 用户在 2026-06-20 07:36 左右通过企业微信发送一张图片。
+- 生产会话存档已保存并处理：
+  - 归档消息：`seq=28`，`msgType=image`。
+  - 生成资料：`note_f01130a526`。
+  - 图片已转存到 `/media/...webp`。
+- 小程序端已触发 OCR：
+  - `POST /api/ocr/notes/note_f01130a526/recognize` 返回 200。
+  - OCR 状态：`done`。
+  - Provider：`paddle`。
+  - Confidence：约 `0.948`。
+  - 识别内容为聊天截图里的时间、群名、联系人和聊天文字。
+- 结论：
+  - “企业微信图片 -> 归档拉取/处理 -> 图片资料 -> 用户点击 OCR -> PaddleOCR 回写同一条资料”闭环已跑通。
+  - 普通照片如果没有可见文字，OCR 可能返回空或低价值文本；当前 OCR 不是图片内容理解/看图识物。
+
+### 2026-06-20：开发期 Docker 挂载模式与构建缓存清理约定
+
+- 用户确认：
+  - 当前 Docker 方案主要服务开发联调期，真正生产上线前可以另写干净的生产 Dockerfile/镜像发布流程。
+  - 服务器每天清理 Docker build cache 可以接受，以降低磁盘压力。
+- 已调整：
+  - 新增 `backend/Dockerfile.dev`：只安装系统库和 Python 依赖，不 `COPY` 源码。
+  - 新增 `docker-compose.dev.yml`：挂载 `backend/app`、`backend/tests`、`backend/mock` 和只读 `backend/secrets`，并使用 `uvicorn --reload`。
+  - `backend/README.md` 增加开发期挂载启动方式和安全清理命令。
+- 建议清理命令：
+  - `docker builder prune -af --filter "until=24h"`
+  - `docker image prune -f`
+  - 不建议日常使用 `docker system prune -af --volumes`，避免误伤数据卷。
+- 验证：
+  - `docker-compose.dev.yml` YAML 解析通过。
+  - `git diff --check` 通过。

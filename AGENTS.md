@@ -62,6 +62,7 @@ docs/stage2-docs/08-plugin-architecture.md
 - 企业微信入口默认采用混合驱动模式：快捷指令 / 菜单点按优先，规则匹配其次，AI 意图识别只做兜底。AI 只能返回固定枚举和置信度，不能直接写库、扣费、发通知或执行业务动作；低置信度和非法输出必须返回确认菜单。
 - 文字类来源统一抽象为 `ContentObject`，并统一进入 `content-to-note`。微信笔记、聊天记录、链接文章、手动文字和后续 OCR 只是不同 Input Adapter，不拆成多个重复的文字整理 Skill。
 - 资料卡采用多类型信息结构：统一流程是“收藏 -> 编辑 -> 整理 -> 生成”，但数据结构必须分型。URL/公众号文章是链接卡/阅读卡，普通文字是文本卡，房源是字段卡，团购是商品卡，图片/截图后续是 OCR 卡。第一版 typed card 架构见 `docs/stage2-docs/12-typed-content-card-architecture.md`。
+- 用户身份唯一锚点是小程序微信 `openid`。企业微信客服、会话内容存档、OCR、手动录入、链接收藏等多途径来源最终都必须归属到 `openid` 对应的内部用户；`userId` 只是后端内部主键。企业微信 `external_userid` 只允许作为系统内部来源映射到 `openid/userId`，P0 不做面向用户的绑定管理、解绑或改绑功能。
 - `note-to-comic-image` 是独立渲染型 Skill；`showcase-builder` 是小程序可视化配置工具，不是 AI 自动全权生成展示页。
 - 支付属于 `billing-core` 基座能力，只控制权益和额度，不和内容整理 Skill 耦合。
 
