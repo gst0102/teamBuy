@@ -168,12 +168,13 @@ page {
 
 .showcase-share-canvas {
   position: fixed;
-  left: -9999rpx;
-  top: -9999rpx;
+  left: 0;
+  top: 0;
   width: 750rpx;
   height: 600rpx;
-  opacity: 0;
+  opacity: 0.01;
   pointer-events: none;
+  z-index: 0;
 }
 
 .sticky-share.teal {

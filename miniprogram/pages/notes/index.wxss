@@ -1152,9 +1152,11 @@
 
 .business-card-share-canvas {
   position: fixed;
-  left: -2400rpx;
+  left: 0;
   top: 0;
   width: 750rpx;
   height: 600rpx;
+  opacity: 0.01;
   pointer-events: none;
+  z-index: 0;
 }
