@@ -1394,6 +1394,16 @@
   color: #c2410c;
 }
 
+.property-share-action.service {
+  background: #1677ff;
+  color: #ffffff;
+}
+
+.property-more-action.service {
+  background: #eef6ff;
+  color: #1677ff;
+}
+
 .property-main-action::after,
 .property-share-action::after,
 .property-more-action::after {
@@ -1424,9 +1434,14 @@
   box-sizing: border-box;
 }
 
-.service-card-actions {
+.property-card-actions.service-card-actions {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12rpx;
+  gap: 8rpx;
+}
+
+.card-actions.service-card-actions {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8rpx;
 }
 
 .card-actions text,

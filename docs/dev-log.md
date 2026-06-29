@@ -8017,3 +8017,22 @@
 - 小程序 JSON 解析：通过。
 - `python3 -m compileall backend`：通过。
 - `./.venv312/bin/python -m pytest backend/tests/test_app.py -q`：134 passed。
+
+## 2026-06-29 电子名片资料库入口补漏
+
+本轮修正：
+
+- 资料库 / 名片列表的“发客户”入口此前仍使用通用资料封面生成，导致用户从资料库分享名片时仍看到大图封面。
+- `miniprogram/pages/library/index.js` 已改为：
+  - 电子名片走 `generateBusinessCardShareImage`。
+  - 服务方案走 `generateServiceOfferShareImage`。
+  - 普通资料才走 `generateTitleShareImage`。
+- 资料库里的名片 / 服务卡片按钮已改为复用房源卡片的按钮结构和尺寸。
+- 资料列表里的名片 / 服务卡片按钮尺寸同步收窄为房源同款视觉。
+
+验证：
+
+- 小程序全部 JS `node --check`：通过。
+- 小程序 JSON 解析：通过。
+- `python3 -m compileall backend`：通过。
+- `./.venv312/bin/python -m pytest backend/tests/test_app.py -q`：134 passed。

@@ -804,9 +804,9 @@
 .service-actions {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12rpx;
+  gap: 8rpx;
   align-items: center;
-  padding-top: 16rpx;
+  padding-top: 10rpx;
 }
 
 .service-actions .service-primary-share,
@@ -814,11 +814,11 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 64rpx;
+  height: 50rpx;
   margin: 0;
-  padding: 0;
-  border-radius: 10rpx;
-  font-size: 26rpx;
+  padding: 0 8rpx;
+  border-radius: 8rpx;
+  font-size: 21rpx;
   font-weight: 900;
   line-height: 1;
   box-sizing: border-box;

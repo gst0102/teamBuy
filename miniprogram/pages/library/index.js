@@ -1,7 +1,7 @@
 const api = require("../../services/api");
 const messagePlugin = require("../../plugins/message-plugin/index");
 const resourceStore = require("../../stores/resource-store");
-const { generateTitleShareImage } = require("../../utils/business-card-share");
+const { generateBusinessCardShareImage, generateServiceOfferShareImage, generateTitleShareImage } = require("../../utils/business-card-share");
 const { enrichCard, getCurrentUser } = require("../../utils/dashboard");
 const { navigateToResourceEdit, navigateToResourceView } = require("../../utils/resource-navigation");
 const { readWorkspaceMode } = require("../../utils/workspace-mode");
@@ -1041,13 +1041,39 @@ Page({
       if (this.libraryShareGenerating[card.id]) continue;
       this.libraryShareGenerating[card.id] = true;
       try {
-        const imagePath = await generateTitleShareImage(this, LIBRARY_SHARE_CANVAS_ID, {
-          title: card.title || "资料详情",
-          summary: card.summary || card.subtitle || "",
-          badge: card.categoryName || (card.cardType === "groupbuy_product" ? "商品" : "资料"),
-          coverUrl: card.coverDisplayUrl || card.coverUrl || "",
-          shareTargetLabel: "资料"
-        });
+        const config = card.visibilityConfig || {};
+        const data = config.structuredData || {};
+        let imagePath = "";
+        if (isBusinessCardResource(card)) {
+          imagePath = await generateBusinessCardShareImage(this, LIBRARY_SHARE_CANVAS_ID, {
+            ...data,
+            title: card.title,
+            summary: card.summary || "",
+            avatarUrl: data.avatarUrl || card.coverDisplayUrl || card.coverUrl || "",
+            coverUrl: "",
+            displayTemplate: config.displayTemplate || data.displayTemplate || "",
+            displayTemplateName: config.displayTemplateName || data.displayTemplateName || "",
+            structuredData: data
+          });
+        } else if (isServiceOfferResource(card)) {
+          imagePath = await generateServiceOfferShareImage(this, LIBRARY_SHARE_CANVAS_ID, {
+            ...data,
+            title: card.title,
+            summary: card.summary || "",
+            coverUrl: card.coverDisplayUrl || card.coverUrl || data.coverUrl || "",
+            displayTemplate: config.displayTemplate || data.displayTemplate || "",
+            displayTemplateName: config.displayTemplateName || data.displayTemplateName || "",
+            structuredData: data
+          });
+        } else {
+          imagePath = await generateTitleShareImage(this, LIBRARY_SHARE_CANVAS_ID, {
+            title: card.title || "资料详情",
+            summary: card.summary || card.subtitle || "",
+            badge: card.categoryName || (card.cardType === "groupbuy_product" ? "商品" : "资料"),
+            coverUrl: card.coverDisplayUrl || card.coverUrl || "",
+            shareTargetLabel: "资料"
+          });
+        }
         if (imagePath) {
           const shareImages = { ...(this.data.shareImages || {}), [card.id]: imagePath };
           const markReady = (item) => item && item.id === card.id
