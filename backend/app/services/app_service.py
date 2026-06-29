@@ -1,22 +1,25 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import re
+import time
 from collections import defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
-from urllib.parse import unquote, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 from uuid import uuid4
 import httpx
 from fastapi import HTTPException, status
 
 from app.core.config import settings
-from app.models.domain import AppState, Card, CardMedia, Category, CustomerAction, ImportBatch, LeadFollowUpLog, LeadReminder, MessageRecord, MessageThread, MediaRetryJob, RawMessage, RelayConfig, RelayEntry, ShowcaseItem, ShowcasePage, SkillRun, SyncCursor, Topic, User, UserNote, ViewEvent, WecomArchiveCursor, WecomArchiveMessage, WecomIdentityBinding
-from app.schemas.auth import MockLoginRequest, WechatLoginRequest
+from app.models.domain import AppState, Card, CardMedia, Category, CustomerAction, ImportBatch, LeadFollowUpLog, LeadReminder, MediaAsset, MediaAssetRef, MessageRecord, MessageThread, MediaRetryJob, RawMessage, RelayConfig, RelayEntry, ShowcaseEvent, ShowcaseItem, ShowcasePage, SkillRun, SyncCursor, Topic, User, UserNote, ViewEvent, WecomArchiveCursor, WecomArchiveMessage, WecomIdentityBinding
+from app.schemas.auth import MockLoginRequest, UserProfileUpdateRequest, WechatLoginRequest
 from app.schemas.categories import CategoryCreateRequest
 from app.schemas.cards import CardCreateRequest, CardUpdateRequest, CreateRelayRequest, LeadReminderUpdateRequest, LeadReminderUpsertRequest, RecordViewRequest
-from app.schemas.notes import CustomerActionSubmitRequest, NoteTypeConfirmRequest, TopicCreateRequest, UserNoteUpdateRequest
-from app.schemas.showcases import ShowcasePageRequest
+from app.schemas.notes import CustomerActionSubmitRequest, ManualNoteDraftRequest, NoteTypeConfirmRequest, PropertyBatchCreateRequest, PropertyBatchParseRequest, PropertySameCloneRequest, QuickNoteCaptureRequest, TopicCreateRequest, UserNoteUpdateRequest
+from app.schemas.showcases import ShowcaseEventRequest, ShowcasePageRequest
 from app.schemas.skills import (
     ContentMediaPayload,
     ContentObjectPayload,
@@ -35,6 +38,7 @@ from app.services.message_aggregator import MessageAggregator
 from app.services.ocr_service import OcrService
 from app.services.repository import AppRepository
 from app.services.skill_router_service import SkillRouterService
+from app.services.text_safety import strip_unicode_surrogates
 from app.services.time_utils import SHANGHAI, date_key, now_iso, parse_iso
 from app.services.wecom_message_normalizer import WecomMessageNormalizer
 from app.services.wecom_mock_service import WecomMockService
@@ -43,6 +47,7 @@ from app.services.wecom_mock_service import WecomMockService
 LEAD_REMINDER_STATUSES = {"pending", "contacted", "invalid", "paused", "completed"}
 LEAD_CLOSED_STATUSES = {"invalid", "paused", "completed"}
 WECOM_EXTERNAL_BINDING_SOURCE = "wecom_external_user"
+IMPORT_CLAIM_TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60
 CONVERSION_CONFIG_KEYS = {
     "showContactPhone",
     "enableLightScrm",
@@ -53,7 +58,9 @@ CONVERSION_CONFIG_KEYS = {
     "enableGroupRelay",
     "enablePaymentPlaceholder",
 }
-CONFIRMABLE_CARD_TYPES = {"property_listing", "groupbuy_product", "text_note"}
+CONFIRMABLE_CARD_TYPES = {"property_listing", "groupbuy_product", "business_card", "service_offer", "text_note"}
+MANUAL_DRAFT_CARD_TYPES = {"property_listing", "groupbuy_product", "business_card", "service_offer", "text_note"}
+MANUAL_DRAFT_INPUT_MODES = {"paste_text", "blank"}
 PROPERTY_CONVERSION_DEFAULTS = {
     "showContactPhone": True,
     "enableLightScrm": True,
@@ -74,6 +81,16 @@ GROUPBUY_CONVERSION_DEFAULTS = {
     "enableGroupRelay": True,
     "enablePaymentPlaceholder": False,
 }
+SERVICE_CONVERSION_DEFAULTS = {
+    "showContactPhone": True,
+    "enableLightScrm": True,
+    "collectLeads": True,
+    "enableAppointment": True,
+    "enablePrivateConsultation": True,
+    "enableSharePoster": True,
+    "enableGroupRelay": False,
+    "enablePaymentPlaceholder": False,
+}
 CUSTOMER_ACTION_LABELS = {
     "lead-contact": "留下电话/微信",
     "appointment": "预约看房",
@@ -83,6 +100,8 @@ CUSTOMER_ACTION_LABELS = {
     "navigation-click": "地图定位",
     "external-open": "打开外部详情",
 }
+OPPORTUNITY_KEY_SECTIONS = {"价格/优惠", "联系方式", "FAQ/保障", "商品规格", "课程内容"}
+OPPORTUNITY_HIGH_ACTIONS = {"lead-contact", "appointment", "order-intent", "relay-intent", "consult-click"}
 CUSTOMER_ACTION_FIELDS = {
     "lead-contact": [
         {"key": "name", "label": "姓名", "type": "text", "required": False},
@@ -114,6 +133,22 @@ CUSTOMER_ACTION_FIELDS = {
 }
 PRODUCT_ORDER_ACTION_KEYS = {"order-intent", "relay-intent"}
 ORDER_STATUSES = {"submitted", "contacted", "completed", "cancelled"}
+DASHBOARD_DEMO_TAG = "dashboard_demo"
+VISITOR_IDENTITY_DEFAULT = {
+    "type": "customer",
+    "label": "客户线索",
+    "group": "customer",
+}
+VISITOR_IDENTITY_PEER_AGENT = {
+    "type": "peer_agent",
+    "label": "疑似中介",
+    "group": "peer",
+}
+VISITOR_IDENTITY_UPSTREAM = {
+    "type": "upstream",
+    "label": "疑似上游",
+    "group": "upstream",
+}
 
 
 class AppService:
@@ -188,11 +223,15 @@ class AppService:
         return result
 
     def mock_login(self, payload: MockLoginRequest) -> User:
+        if not settings.allow_mock_login:
+            raise HTTPException(status_code=403, detail="测试登录已关闭")
         return self._upsert_user_by_openid(
             payload.openid or f"openid_{payload.nickname}",
             payload.nickname,
             payload.avatarUrl,
             payload.phone,
+            None,
+            payload.wechat,
         )
 
     def wechat_login(self, payload: WechatLoginRequest) -> User:
@@ -221,7 +260,38 @@ class AppService:
         openid = session_data.get("openid")
         if not openid:
             raise HTTPException(status_code=400, detail="微信登录未返回 openid")
-        return self._upsert_user_by_openid(openid, payload.nickname or "微信用户", payload.avatarUrl, payload.phone, session_data.get("unionid"))
+        return self._upsert_user_by_openid(
+            openid,
+            payload.nickname or "微信用户",
+            payload.avatarUrl,
+            payload.phone,
+            session_data.get("unionid"),
+            payload.wechat,
+        )
+
+    def update_user_profile(self, user_id: str, payload: UserProfileUpdateRequest) -> User:
+        user = self.repo.get_user(user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="用户不存在")
+
+        if payload.nickname is not None:
+            nickname = strip_unicode_surrogates(payload.nickname).strip()
+            if not nickname:
+                raise HTTPException(status_code=400, detail="昵称不能为空")
+            user.nickname = nickname[:40]
+        if payload.avatarUrl is not None:
+            avatar_url = self._clean_user_avatar_url(payload.avatarUrl, reject_invalid=True)
+            user.avatarUrl = avatar_url
+        if payload.phone is not None:
+            phone = strip_unicode_surrogates(payload.phone).strip()
+            user.phone = phone[:40] if phone else None
+        if payload.wechat is not None:
+            wechat = strip_unicode_surrogates(payload.wechat).strip()
+            user.wechat = wechat[:40] if wechat else None
+
+        user.updatedAt = now_iso()
+        self.repo.save_user(user)
+        return user
 
     def _upsert_user_by_openid(
         self,
@@ -230,13 +300,16 @@ class AppService:
         avatar_url: str,
         phone: str | None = None,
         unionid: str | None = None,
+        wechat: str | None = None,
     ) -> User:
         now = now_iso()
+        avatar_url = self._clean_user_avatar_url(avatar_url, reject_invalid=False)
         existing = self.repo.get_user_by_openid(openid)
         if existing:
             existing.nickname = nickname
             existing.avatarUrl = avatar_url
             existing.phone = phone
+            existing.wechat = wechat or existing.wechat
             existing.unionid = unionid or existing.unionid
             existing.updatedAt = now
             self.repo.save_user(existing)
@@ -248,12 +321,29 @@ class AppService:
             unionid=unionid,
             nickname=nickname,
             avatarUrl=avatar_url,
+            wechat=wechat,
             phone=phone,
             createdAt=now,
             updatedAt=now,
         )
         self.repo.save_user(user)
         return user
+
+    def _clean_user_avatar_url(self, value: str | None, reject_invalid: bool = False) -> str:
+        avatar_url = strip_unicode_surrogates(value or "").strip()[:500]
+        if not avatar_url:
+            return ""
+        invalid = (
+            not re.match(r"^https://", avatar_url, flags=re.IGNORECASE)
+            or re.search(r"example\.com|avatar-default", avatar_url, flags=re.IGNORECASE)
+            or re.match(r"^(wxfile|file|blob):", avatar_url, flags=re.IGNORECASE)
+            or avatar_url.startswith("/tmp/")
+        )
+        if invalid:
+            if reject_invalid:
+                raise HTTPException(status_code=400, detail="头像地址必须是可访问的 HTTPS 地址")
+            return ""
+        return avatar_url
 
     def trigger_mock_import(self, external_user_id: str, conversation_id: str, fixture: str) -> dict:
         synced_messages = self.wecom_mock_service.sync_messages(external_user_id, conversation_id, fixture)
@@ -323,16 +413,19 @@ class AppService:
         if not new_batches:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="未生成导入批次")
 
+        notifications = []
         for batch in new_batches:
             batch_messages = [item for item in raw_messages if item.id in batch.rawMessageIds]
             for message in batch_messages:
                 message.importBatchId = batch.id
             notification = self._process_import_batch(batch, batch_messages, notification_channel)
+            notifications.append(notification)
 
         return {
             "message": notification.message,
             "importBatchIds": [item.id for item in new_batches],
             "deduplicatedCount": len(existing_wecom_msg_ids),
+            "notifications": [item.model_dump() for item in notifications],
         }
 
     def _process_import_batch(
@@ -348,6 +441,7 @@ class AppService:
         )
         try:
             content_object = self.content_object_adapter.from_wecom_batch(batch, batch_messages)
+            content_object = self._enrich_internal_miniapp_content(content_object)
             owner_user_id = self._resolve_owner_user_id_for_external(batch.externalUserId)
             note_result = self._run_import_skill(owner_user_id, content_object)
             card = self._build_card_from_note_draft(batch, note_result.noteDraft, content_object)
@@ -468,6 +562,446 @@ class AppService:
             createdAt=now,
             updatedAt=now,
         )
+
+    def create_manual_note_draft(self, payload: ManualNoteDraftRequest) -> UserNote:
+        owner_user_id = payload.ownerUserId.strip()
+        card_type = payload.cardType.strip()
+        input_mode = payload.inputMode.strip()
+        raw_text = strip_unicode_surrogates(payload.rawText or "").strip()
+        title = strip_unicode_surrogates(payload.title or "").strip()
+        if card_type not in MANUAL_DRAFT_CARD_TYPES:
+            raise HTTPException(status_code=400, detail="不支持的资料类型")
+        if input_mode not in MANUAL_DRAFT_INPUT_MODES:
+            raise HTTPException(status_code=400, detail="不支持的创建方式")
+        if not self.repo.get_user(owner_user_id):
+            raise HTTPException(status_code=404, detail="用户不存在")
+        if input_mode == "paste_text" and not raw_text:
+            raise HTTPException(status_code=400, detail="请先粘贴资料文案")
+        if input_mode == "paste_text":
+            return self._create_manual_note_from_text(owner_user_id, card_type, raw_text, title)
+        return self._create_blank_manual_note(owner_user_id, card_type, title)
+
+    def parse_property_batch(self, payload: PropertyBatchParseRequest) -> dict:
+        owner_user_id = payload.ownerUserId.strip()
+        if not self.repo.get_user(owner_user_id):
+            raise HTTPException(status_code=404, detail="用户不存在")
+        raw_text = strip_unicode_surrogates(payload.rawText or "").strip()
+        if not raw_text:
+            raise HTTPException(status_code=400, detail="请先粘贴房源文案")
+        return self._parse_property_batch_text(raw_text)
+
+    def create_property_batch(self, payload: PropertyBatchCreateRequest) -> dict:
+        owner_user_id = payload.ownerUserId.strip()
+        if not self.repo.get_user(owner_user_id):
+            raise HTTPException(status_code=404, detail="用户不存在")
+        raw_text = strip_unicode_surrogates(payload.rawText or "").strip()
+        candidates = [item for item in payload.candidates if item.selected]
+        if not candidates:
+            raise HTTPException(status_code=400, detail="请至少选择一套房源")
+        notes = [self._create_property_note_from_batch_candidate(owner_user_id, raw_text, item.model_dump()) for item in candidates]
+        return {
+            "noteIds": [item.id for item in notes],
+            "notes": [item.model_dump() for item in notes],
+            "createdCount": len(notes),
+        }
+
+    def _parse_property_batch_text(self, raw_text: str) -> dict:
+        lines = [line.strip() for line in re.split(r"[\r\n]+", raw_text) if line.strip()]
+        common_private = self._property_batch_common_private_data(raw_text)
+        public_tags = self._property_batch_public_tags(raw_text)
+        private_tags = self._property_batch_private_tags(raw_text, common_private)
+        candidates: list[dict] = []
+        current_base = ""
+        current_features: list[str] = []
+        for line in lines:
+            clean = re.sub(r"^[0-9一二三四五六七八九十]+[，,、.．]\s*", "", line).strip()
+            if not clean or re.search(r"1[3-9]\d{9}", clean) and len(clean) < 40:
+                continue
+            if re.search(r"(苑|园|府|里|城|公寓|小区|花园).{0,12}(号|栋|幢|座|室|户|房)", clean) and not re.search(r"1[3-9]\d{9}", clean):
+                current_base = clean
+                current_features = self._property_features_from_text(clean)
+                continue
+            if current_base:
+                unit = self._property_candidate_from_unit_line(current_base, clean, public_tags, private_tags, common_private, current_features, len(candidates))
+                if unit:
+                    candidates.append(unit)
+                    continue
+            direct = self._property_candidate_from_direct_line(clean, public_tags, private_tags, common_private, len(candidates))
+            if direct:
+                candidates.append(direct)
+                current_base = ""
+                current_features = []
+        unique: list[dict] = []
+        seen: set[str] = set()
+        for item in candidates:
+            key = f"{item.get('title')}|{item.get('price')}"
+            if key in seen:
+                continue
+            seen.add(key)
+            item["candidateId"] = f"property_candidate_{len(unique) + 1}"
+            unique.append(item)
+        return {
+            "detectedCount": len(unique),
+            "candidates": unique,
+            "rawText": raw_text,
+            "privacySummary": {
+                "publicTags": public_tags,
+                "privateTags": private_tags,
+                "upstreamPhones": common_private.get("upstreamPhones", []),
+                "upstreamWechat": common_private.get("upstreamWechat", ""),
+                "commission": common_private.get("commission", ""),
+            },
+        }
+
+    def _property_batch_common_private_data(self, raw_text: str) -> dict:
+        phones = self._unique_strings(re.findall(r"1[3-9]\d{9}", raw_text))
+        wechat_match = re.search(r"(?:微信|v|V|➕微信|加微信)[：:\s➕+]*([A-Za-z0-9_-]{5,30})", raw_text)
+        v_match = re.search(r"\b(1[3-9]\d{9}v)\b", raw_text, re.IGNORECASE)
+        commission_match = re.search(r"(中介费\s*[%％]?\s*\d+%?|中介费\s*\d+[%％]|租高有红包|红包)", raw_text)
+        restrictions = []
+        if re.search(r"带小孩|孕妇|老人", raw_text):
+            restrictions.append("带小孩/孕妇/老人不租")
+        return {
+            "upstreamPhones": phones,
+            "upstreamWechat": (wechat_match.group(1) if wechat_match else v_match.group(1) if v_match else ""),
+            "commission": commission_match.group(0) if commission_match else "",
+            "lockNote": "全部密码锁" if "密码锁" in raw_text else "",
+            "bonusNote": "租高有红包" if "红包" in raw_text else "",
+            "viewingNote": "看房先联系上游" if "看房" in raw_text and phones else "",
+            "restrictions": restrictions,
+            "sourceHasMediaHint": bool(re.search(r"照片|视频|朋友圈", raw_text)),
+        }
+
+    def _property_batch_public_tags(self, raw_text: str) -> list[str]:
+        tags = []
+        checks = [
+            ("禁宠", r"禁.*宠|🈲️?养宠物|不养宠|养宠物"),
+            ("可办居住证", r"办居住证|居住证"),
+            ("可落户", r"落户"),
+            ("可办停车位", r"停车位"),
+            ("可开发票", r"开发票|发票"),
+            ("燃气", r"燃气"),
+            ("卫生间带窗", r"卫生间带窗"),
+            ("干湿分离", r"干湿分离"),
+            ("已空", r"已空|空置"),
+        ]
+        for label, pattern in checks:
+            if re.search(pattern, raw_text):
+                tags.append(label)
+        return self._unique_strings(tags)
+
+    def _property_batch_private_tags(self, raw_text: str, private_data: dict) -> list[str]:
+        tags = []
+        if private_data.get("upstreamPhones"):
+            tags.append(f"上游电话{len(private_data['upstreamPhones'])}个")
+        if private_data.get("commission"):
+            tags.append(private_data["commission"])
+        if private_data.get("lockNote"):
+            tags.append("密码锁")
+        if private_data.get("bonusNote"):
+            tags.append("红包")
+        if private_data.get("sourceHasMediaHint"):
+            tags.append("朋友圈有照片视频")
+        return self._unique_strings(tags)
+
+    def _property_features_from_text(self, text: str) -> list[str]:
+        features = []
+        for label, pattern in [("燃气", r"燃气"), ("卫生间带窗", r"卫生间带窗"), ("干湿分离", r"干湿分离"), ("新装", r"新装")]:
+            if re.search(pattern, text):
+                features.append(label)
+        return features
+
+    def _property_base_title(self, text: str) -> str:
+        text = re.sub(r"(新装|燃气|洗澡|做饭|卫生间|干湿分离|带窗户|，|,).*", "", text).strip()
+        return text or "未命名房源"
+
+    def _property_candidate_from_unit_line(self, base: str, line: str, public_tags: list[str], private_tags: list[str], private_data: dict, base_features: list[str], index: int) -> dict | None:
+        if re.search(r"1[3-9]\d{9}", line):
+            return None
+        match = re.search(r"(.{1,24}?)[\s，,]*(\d{3,5})(?:元|/月|，|,)?$", line)
+        if not match:
+            return None
+        unit_name = match.group(1).strip(" ，,")
+        price = match.group(2)
+        base_title = self._property_base_title(base)
+        return self._property_candidate_payload(base_title, unit_name, price, public_tags, private_tags, private_data, base_features, index)
+
+    def _property_candidate_from_direct_line(self, line: str, public_tags: list[str], private_tags: list[str], private_data: dict, index: int) -> dict | None:
+        if re.search(r"1[3-9]\d{9}", line):
+            return None
+        match = re.search(r"(.{2,36}?)(北次阁楼|主卧独卫|[A-Z]?[东西南北]?一房|阁楼|两房|一室户|[A-Z]室)(?:[^\d]{0,8})(\d{3,5})(?:元|/月|已空|，|,|$)", line)
+        if not match:
+            return None
+        base_title = match.group(1).strip(" 🎉，,")
+        unit_name = match.group(2).strip()
+        price = match.group(3)
+        features = self._property_features_from_text(line)
+        return self._property_candidate_payload(base_title, unit_name, price, public_tags, private_tags, private_data, features, index)
+
+    def _property_candidate_payload(self, base_title: str, unit_name: str, price: str, public_tags: list[str], private_tags: list[str], private_data: dict, features: list[str], index: int) -> dict:
+        layout = "一房" if "一房" in unit_name or "一室" in base_title else "阁楼" if "阁楼" in unit_name else unit_name
+        title = f"{base_title} · {unit_name}".strip(" ·")
+        summary_parts = self._unique_strings([layout, *features, *public_tags])
+        candidate_private = {**private_data, "sourceLineHint": title}
+        return {
+            "candidateId": f"property_candidate_{index + 1}",
+            "title": title,
+            "community": re.split(r"(?:\d+号|\d+栋|\d+幢)", base_title)[0] or base_title,
+            "buildingRoom": base_title,
+            "unitName": unit_name,
+            "layout": layout,
+            "price": f"{price}元/月",
+            "summary": " / ".join(summary_parts),
+            "publicTags": self._unique_strings([*public_tags, *features]),
+            "privateTags": private_tags,
+            "privateData": candidate_private,
+            "selected": True,
+        }
+
+    def _create_property_note_from_batch_candidate(self, owner_user_id: str, raw_text: str, candidate: dict) -> UserNote:
+        now = now_iso()
+        structured_data = {
+            "community": candidate.get("community") or "",
+            "buildingRoom": candidate.get("buildingRoom") or "",
+            "unitName": candidate.get("unitName") or "",
+            "layout": candidate.get("layout") or "",
+            "price": candidate.get("price") or "",
+            "systemTags": candidate.get("publicTags") or [],
+            "rawText": raw_text,
+        }
+        config = self._normalize_note_visibility_config(
+            {
+                "contentMode": "structured_card",
+                "cardType": "property_listing",
+                "cardState": "generated",
+                "sourceType": "property_batch_text",
+                "systemCategory": "房源",
+                "structuredData": structured_data,
+                "conversionConfig": self._default_conversion_config("property_listing"),
+                "tags": self._unique_strings(["房产", "房源", *(candidate.get("publicTags") or [])]),
+                "privateData": candidate.get("privateData") or {},
+                "privateTags": candidate.get("privateTags") or [],
+                "batchImport": {"candidateId": candidate.get("candidateId"), "rawTextLength": len(raw_text)},
+            }
+        )
+        note = UserNote(
+            id=new_id("note"),
+            ownerUserId=owner_user_id,
+            importBatchId=None,
+            sourceCardId=None,
+            status="active",
+            title=candidate.get("title") or "未命名房源",
+            summary=candidate.get("summary") or candidate.get("price") or "房源信息",
+            body="批量拆分自房东房源文本，可继续补图和完善字段。",
+            coverUrl=None,
+            media=[],
+            categoryIds=[],
+            phone=None,
+            locationText=candidate.get("buildingRoom") or candidate.get("community"),
+            sourceRefs=[new_id("property_batch")],
+            visibilityConfig=config,
+            createdAt=now,
+            updatedAt=now,
+        )
+        self.repo.save_user_note(note)
+        return note
+
+    def create_quick_note_capture(self, payload: QuickNoteCaptureRequest) -> UserNote:
+        owner_user_id = payload.ownerUserId.strip()
+        raw_text = strip_unicode_surrogates(payload.rawText).strip()
+        title = strip_unicode_surrogates(payload.title or "").strip()
+        if not self.repo.get_user(owner_user_id):
+            raise HTTPException(status_code=404, detail="用户不存在")
+        if not raw_text:
+            raise HTTPException(status_code=400, detail="请先输入内容")
+        content_object = ContentObjectPayload(
+            sourceType="manual_text",
+            title=title or None,
+            textBlocks=[raw_text],
+            metadata={"entryMode": "quick_note"},
+            sourceRefs=[new_id("quick_note")],
+        )
+        note_result = self.skill_router_service.run_content_to_note(owner_user_id, content_object)
+        note = self._build_user_note_from_note_draft(note_result.noteDraft)
+        note.status = "active"
+        note.visibilityConfig = self._quick_capture_visibility_config(note.visibilityConfig)
+        skill_run = SkillRun.model_validate(note_result.skillRun.model_dump())
+        skill_run.outputRef = note.id
+        skill_run.inputSnapshot = {
+            **skill_run.inputSnapshot,
+            "entryMode": "quick_note",
+        }
+        self.repo.save_user_note(note)
+        self.repo.save_skill_run(skill_run)
+        return note
+
+    def _quick_capture_visibility_config(self, config: dict) -> dict:
+        normalized = self._normalize_note_visibility_config(config)
+        normalized["sourceType"] = "manual_text"
+        normalized["entryMode"] = "quick_note"
+        structured_data = dict(normalized.get("structuredData") or {})
+        if normalized.get("cardType") == "groupbuy_product":
+            sku_config = structured_data.get("skuConfig") if isinstance(structured_data.get("skuConfig"), dict) else {}
+            structured_data["skuConfig"] = sku_config
+        normalized["structuredData"] = structured_data
+        return normalized
+
+    def _create_manual_note_from_text(self, owner_user_id: str, card_type: str, raw_text: str, title: str) -> UserNote:
+        content_object = ContentObjectPayload(
+            sourceType="manual_text",
+            title=title or None,
+            textBlocks=[raw_text],
+            metadata={"manualCardType": card_type, "inputMode": "paste_text"},
+            sourceRefs=[new_id("manual_text")],
+        )
+        note_result = self.skill_router_service.run_content_to_note(owner_user_id, content_object)
+        note = self._build_user_note_from_note_draft(note_result.noteDraft)
+        note = self._apply_manual_selected_note_type(note, card_type, input_mode="paste_text")
+        skill_run = SkillRun.model_validate(note_result.skillRun.model_dump())
+        skill_run.outputRef = note.id
+        skill_run.inputSnapshot = {
+            **skill_run.inputSnapshot,
+            "manualCardType": card_type,
+            "inputMode": "paste_text",
+        }
+        self.repo.save_user_note(note)
+        self.repo.save_skill_run(skill_run)
+        return note
+
+    def _create_blank_manual_note(self, owner_user_id: str, card_type: str, title: str) -> UserNote:
+        now = now_iso()
+        defaults = {
+            "property_listing": ("未命名房源", "补充房源字段后即可发给客户"),
+            "groupbuy_product": ("未命名商品", "补充商品信息后即可发给客户"),
+            "business_card": ("我的电子名片", "补充个人介绍和服务范围后即可发给客户"),
+            "service_offer": ("未命名服务方案", "补充服务内容和预约方式后即可发给客户"),
+            "text_note": ("未命名笔记", "手动创建的普通笔记"),
+        }
+        default_title, default_summary = defaults[card_type]
+        user = self.repo.get_user(owner_user_id)
+        seed_config = {}
+        if card_type == "business_card" and user:
+            seed_config = {
+                "structuredData": {
+                    "name": user.nickname,
+                    "title": "",
+                    "company": "",
+                    "serviceScope": "",
+                    "headline": f"你好，我是{user.nickname}",
+                    "bio": "",
+                    "phone": user.phone or "",
+                    "wechat": "",
+                    "city": "",
+                    "avatarUrl": user.avatarUrl,
+                    "qrCodeUrl": "",
+                    "images": [user.avatarUrl] if user.avatarUrl else [],
+                }
+            }
+        note = UserNote(
+            id=new_id("note"),
+            ownerUserId=owner_user_id,
+            importBatchId=None,
+            sourceCardId=None,
+            status="active",
+            title=title or default_title,
+            summary=default_summary,
+            body="手动创建，可继续补充内容。",
+            coverUrl=user.avatarUrl if card_type == "business_card" and user and user.avatarUrl else None,
+            media=[],
+            categoryIds=[],
+            phone=user.phone if card_type == "business_card" and user and user.phone else None,
+            locationText=None,
+            sourceRefs=[],
+            visibilityConfig=seed_config,
+            createdAt=now,
+            updatedAt=now,
+        )
+        note = self._apply_manual_selected_note_type(note, card_type, input_mode="blank")
+        self.repo.save_user_note(note)
+        return note
+
+    def _build_user_note_from_note_draft(self, note_draft: UserNoteDraftPayload) -> UserNote:
+        now = now_iso()
+        return UserNote(
+            id=new_id("note"),
+            ownerUserId=note_draft.ownerUserId or "unclaimed",
+            importBatchId=None,
+            sourceCardId=None,
+            status="active",
+            title=note_draft.title,
+            summary=note_draft.summary,
+            body=note_draft.body,
+            coverUrl=note_draft.coverUrl,
+            media=[item.model_dump() for item in note_draft.media],
+            categoryIds=note_draft.categoryIds,
+            phone=note_draft.phone,
+            locationText=note_draft.locationText,
+            sourceRefs=note_draft.sourceRefs,
+            visibilityConfig=note_draft.visibilityConfig,
+            createdAt=now,
+            updatedAt=now,
+        )
+
+    def _apply_manual_selected_note_type(self, note: UserNote, card_type: str, input_mode: str) -> UserNote:
+        current_config = self._normalize_note_visibility_config(note.visibilityConfig)
+        structured_data = self._build_confirmed_structured_data(note, current_config, card_type)
+        system_category_map = {
+            "property_listing": "房源",
+            "groupbuy_product": "团购",
+            "business_card": "名片",
+            "service_offer": "服务",
+        }
+        tag_map = {
+            "property_listing": ["房产", "房源"],
+            "groupbuy_product": ["团购", "商品"],
+            "business_card": ["名片", "顾问"],
+            "service_offer": ["服务", "销售"],
+        }
+        system_category = system_category_map.get(card_type, "待整理")
+        extra_tags = tag_map.get(card_type, ["待整理"])
+        confirmed_at = now_iso()
+        config = {
+            **current_config,
+            "contentMode": "note" if card_type == "text_note" else "structured_card",
+            "cardType": card_type,
+            "cardState": "collected" if card_type == "text_note" else "generated",
+            "sourceType": "manual_text",
+            "systemCategory": system_category,
+            "structuredData": structured_data,
+            "conversionConfig": self._manual_conversion_config(card_type, current_config),
+            "typeSuggestions": [],
+            "recognitionConfidence": {
+                "level": "manual",
+                "selectedType": card_type,
+                "inputMode": input_mode,
+                "confirmedAt": confirmed_at,
+            },
+            "recognitionExplanation": self._manual_recognition_explanation(current_config, card_type, input_mode, confirmed_at),
+            "tags": self._unique_strings([*current_config.get("tags", []), *extra_tags]),
+        }
+        note.visibilityConfig = self._normalize_note_visibility_config(config)
+        note.updatedAt = confirmed_at
+        return note
+
+    def _manual_conversion_config(self, card_type: str, config: dict) -> dict:
+        if config.get("cardType") == card_type:
+            return self._confirmed_conversion_config(card_type, config)
+        return self._default_conversion_config(card_type)
+
+    def _manual_recognition_explanation(self, config: dict, card_type: str, input_mode: str, confirmed_at: str) -> dict:
+        previous = config.get("recognitionExplanation") if isinstance(config.get("recognitionExplanation"), dict) else {}
+        return {
+            **previous,
+            "level": "manual",
+            "selectedType": card_type,
+            "selectedLabel": self._card_type_label(card_type),
+            "manualConfirmation": {
+                "cardType": card_type,
+                "label": self._card_type_label(card_type),
+                "inputMode": input_mode,
+                "confirmedAt": confirmed_at,
+            },
+        }
 
     def list_skill_runs(
         self,
@@ -609,6 +1143,7 @@ class AppService:
             try:
                 content_object = self._build_archive_content_object(group_messages)
                 media_result = self._download_and_attach_archive_media(content_object, archive_client)
+                content_object = self._enrich_internal_miniapp_content(content_object)
                 owner_user_id = self._resolve_owner_user_id_for_external(primary.fromUser)
                 note_result = self._run_import_skill(owner_user_id, content_object)
                 batch = self._build_archive_import_batch(primary, note_result.noteDraft.title, group_messages)
@@ -639,6 +1174,16 @@ class AppService:
                 self.repo.save_user_note(note)
                 self.repo.save_skill_run(skill_run)
                 self.repo.save_wecom_archive_messages(group_messages)
+                notification = self.notification_service.build_notification(
+                    batch,
+                    channel="wecom",
+                    media_warning_count=int(media_result.get("failedCount") or 0),
+                )
+                notification.resultPath = self.build_import_claim_link(batch.id)["pagePath"]
+                notification.actions = [
+                    {"key": "claim-result", "label": "查看整理结果", "path": notification.resultPath}
+                ]
+                self.repo.save_import_notification(notification)
                 processed.append(
                     {
                         "archiveMessageId": primary.id,
@@ -648,6 +1193,7 @@ class AppService:
                         "noteId": note.id,
                         "cardId": card.id,
                         "media": media_result,
+                        "notification": notification.model_dump(),
                     }
                 )
             except Exception as exc:
@@ -934,6 +1480,151 @@ class AppService:
             return self.skill_router_service.run_link_bookmark(owner_user_id, content_object)
         return self.skill_router_service.run_content_to_note(owner_user_id, content_object)
 
+    def _enrich_internal_miniapp_content(self, content_object: ContentObjectPayload) -> ContentObjectPayload:
+        miniapp = content_object.metadata.get("miniapp") if isinstance(content_object.metadata, dict) else None
+        if not isinstance(miniapp, dict) or not self._is_own_miniapp(miniapp):
+            return content_object
+        source = self._resolve_internal_miniapp_source(miniapp)
+        if not source:
+            return content_object
+        metadata = dict(content_object.metadata or {})
+        metadata["internalMiniapp"] = source
+        return content_object.model_copy(
+            update={
+                "title": source.get("title") or content_object.title,
+                "textBlocks": [*content_object.textBlocks, *source.get("textBlocks", [])],
+                "media": [*content_object.media, *source.get("media", [])],
+                "metadata": metadata,
+            }
+        )
+
+    def _is_own_miniapp(self, miniapp: dict) -> bool:
+        appid = str(miniapp.get("appid") or "").strip()
+        if settings.wechat_miniapp_appid and appid == settings.wechat_miniapp_appid:
+            return True
+        page_path = str(miniapp.get("pagePath") or "")
+        return any(marker in page_path for marker in ["/pages/note-preview/", "/pages/showcase-view/", "note-preview", "showcase-view"])
+
+    def _resolve_internal_miniapp_source(self, miniapp: dict) -> dict | None:
+        note_id = str(miniapp.get("noteId") or "").strip()
+        showcase_id = str(miniapp.get("showcaseId") or "").strip()
+        if not note_id and not showcase_id:
+            note_id, showcase_id = self._ids_from_miniapp_page_path(str(miniapp.get("pagePath") or ""))
+        if showcase_id:
+            showcase = self.repo.get_showcase_page(showcase_id)
+            if showcase and showcase.status == "published":
+                return self._internal_showcase_source(showcase)
+        if note_id:
+            note = self.repo.get_user_note(note_id)
+            if note and note.status != "deleted":
+                return self._internal_note_source(note)
+        return None
+
+    def _ids_from_miniapp_page_path(self, page_path: str) -> tuple[str, str]:
+        parsed = urlparse(page_path)
+        query = parse_qs(parsed.query)
+        note_id = (query.get("noteId") or query.get("sourceNoteId") or [""])[0]
+        showcase_id = (query.get("showcaseId") or [""])[0]
+        generic_id = (query.get("id") or [""])[0]
+        if not note_id and "note" in parsed.path and generic_id:
+            note_id = generic_id
+        if not showcase_id and "showcase" in parsed.path and generic_id:
+            showcase_id = generic_id
+        return note_id, showcase_id
+
+    def _internal_note_source(self, note: UserNote) -> dict:
+        config = note.visibilityConfig if isinstance(note.visibilityConfig, dict) else {}
+        structured = config.get("structuredData") if isinstance(config.get("structuredData"), dict) else {}
+        public_data = self._public_clone_structured_data(structured)
+        media_urls = self._note_image_urls(note)
+        text_blocks = [
+            "来源：资料整理助手自有小程序房源卡",
+            f"公开房源标题：{note.title}",
+            f"公开摘要：{note.summary}" if note.summary else "",
+            *[f"{label}：{value}" for label, value in self._public_property_field_pairs(public_data)],
+            "隐私边界：只复制公开房源内容，不继承原发布者私密保存的房东、二房东或渠道联系方式。",
+        ]
+        media = [
+            ContentMediaPayload(type="image", url=url, mediaId=None, title=note.title, sourceRef=note.id)
+            for url in media_urls
+        ]
+        return {
+            "kind": "note",
+            "noteId": note.id,
+            "ownerUserId": note.ownerUserId,
+            "title": note.title,
+            "cardType": config.get("cardType", "text_note"),
+            "structuredData": public_data,
+            "textBlocks": [item for item in text_blocks if item],
+            "media": media,
+        }
+
+    def _internal_showcase_source(self, showcase: ShowcasePage) -> dict:
+        snapshot = self.get_public_showcase(showcase.id)
+        items = snapshot.get("items") if isinstance(snapshot.get("items"), list) else []
+        text_blocks = [
+            "来源：资料整理助手自有小程序房源合集",
+            f"合集标题：{snapshot.get('name') or showcase.name}",
+            f"合集说明：{snapshot.get('description')}" if snapshot.get("description") else "",
+            f"模板：{snapshot.get('templateId') or showcase.templateId}",
+            f"排列：{(snapshot.get('displayConfig') or {}).get('layoutMode') or 'list'}",
+            f"房源数量：{len(items)}",
+            "隐私边界：只复制公开房源内容和公开展示结构，不继承原发布者私密保存的上游联系人。",
+        ]
+        media: list[ContentMediaPayload] = []
+        for index, item in enumerate(items[:30], start=1):
+            text_blocks.append(f"房源{index}：{item.get('title') or '未命名房源'} {item.get('primaryText') or ''} {item.get('secondaryText') or ''} {item.get('priceText') or ''}".strip())
+            cover_url = item.get("coverUrl")
+            if cover_url:
+                media.append(ContentMediaPayload(type="image", url=cover_url, mediaId=None, title=item.get("title"), sourceRef=item.get("noteId")))
+        return {
+            "kind": "showcase",
+            "showcaseId": showcase.id,
+            "ownerUserId": showcase.ownerUserId,
+            "title": snapshot.get("name") or showcase.name,
+            "templateId": snapshot.get("templateId") or showcase.templateId,
+            "displayConfig": snapshot.get("displayConfig") or {},
+            "contactConfig": snapshot.get("contactConfig") or {},
+            "items": items,
+            "textBlocks": text_blocks,
+            "media": media,
+        }
+
+    def _public_clone_structured_data(self, data: dict) -> dict:
+        blocked_fragments = ["contact", "phone", "wechat", "微信", "电话", "landlord", "房东", "upstream", "上游", "channel", "渠道", "rawtext"]
+        public_data: dict = {}
+        for key, value in data.items():
+            key_text = str(key)
+            key_match_text = key_text.lower()
+            if any(fragment in key_match_text for fragment in blocked_fragments):
+                continue
+            value_match_text = value.lower() if isinstance(value, str) else ""
+            if isinstance(value, str) and any(fragment in value_match_text for fragment in blocked_fragments):
+                continue
+            if isinstance(value, (str, int, float, bool)) or value is None:
+                public_data[key] = value
+            elif key == "images" and isinstance(value, list):
+                public_data[key] = [item for item in value if isinstance(item, str)]
+            elif key == "miniapp" and isinstance(value, dict):
+                public_data[key] = {k: v for k, v in value.items() if k not in {"contact", "phone", "wechat"}}
+        return public_data
+
+    def _public_property_field_pairs(self, data: dict) -> list[tuple[str, str]]:
+        labels = {
+            "community": "小区",
+            "layout": "户型",
+            "area": "面积",
+            "price": "租金",
+            "businessArea": "商圈",
+            "address": "地址",
+            "floor": "楼层",
+            "utilities": "配套",
+            "paymentMethod": "押付",
+            "moveInTime": "入住",
+            "remark": "备注",
+        }
+        return [(label, str(data.get(key) or "").strip()) for key, label in labels.items() if str(data.get(key) or "").strip()]
+
     def _should_save_import_as_image_note(self, content_object: ContentObjectPayload) -> bool:
         has_text = any(self._is_meaningful_import_text(block) for block in content_object.textBlocks)
         has_links = any(str(link.url or "").strip() for link in content_object.links)
@@ -1105,6 +1796,21 @@ class AppService:
     def list_import_notifications(self) -> list[dict]:
         return [item.model_dump() for item in self.repo.list_import_notifications()]
 
+    def update_import_notification_delivery(
+        self,
+        notification_id: str,
+        send_status: str,
+        send_error: str | None = None,
+    ) -> dict | None:
+        notification = next((item for item in self.repo.list_import_notifications() if item.id == notification_id), None)
+        if not notification:
+            return None
+        notification.sendStatus = send_status
+        notification.sendError = send_error
+        notification.sentMessageAt = now_iso() if send_status == "sent" else notification.sentMessageAt
+        self.repo.save_import_notification(notification)
+        return notification.model_dump()
+
     def get_sync_cursor(self, open_kfid: str) -> SyncCursor | None:
         return self.repo.get_sync_cursor(open_kfid)
 
@@ -1147,20 +1853,78 @@ class AppService:
         content: bytes,
         content_type: str | None = None,
         filename: str | None = None,
+        owner_user_id: str | None = None,
+        ref_type: str = "media",
+        ref_id: str | None = None,
+        usage: str = "media",
     ) -> str:
+        if not content:
+            raise HTTPException(status_code=400, detail="媒体内容不能为空")
+        normalized_type = "video" if media_type == "video" else "image" if media_type == "image" else str(media_type or "file")
+        original_sha256 = hashlib.sha256(content).hexdigest()
+        existing = self.repo.get_media_asset_by_original_hash(normalized_type, original_sha256)
+        if existing:
+            self._save_media_asset_ref(existing, owner_user_id, ref_type, ref_id or media_id, usage)
+            return existing.url
         processed = self.media_processing_service.process_upload(
-            media_type=media_type,
+            media_type=normalized_type,
             content=content,
             content_type=content_type,
             filename=filename,
         )
-        return self.media_storage_service.store_bytes(
+        storage_sha256 = hashlib.sha256(processed.content).hexdigest()
+        existing = self.repo.get_media_asset_by_storage_hash(normalized_type, storage_sha256)
+        if existing:
+            self._save_media_asset_ref(existing, owner_user_id, ref_type, ref_id or media_id, usage)
+            return existing.url
+        url = self.media_storage_service.store_bytes(
             media_id=media_id,
-            media_type=media_type,
+            media_type=normalized_type,
             content=processed.content,
             content_type=processed.content_type,
             filename=processed.filename,
         )
+        now = now_iso()
+        asset = MediaAsset(
+            id=new_id("media_asset"),
+            mediaType=normalized_type,
+            originalSha256=original_sha256,
+            storageSha256=storage_sha256,
+            url=url,
+            contentType=processed.content_type,
+            filename=processed.filename or filename,
+            originalSize=processed.original_size,
+            storedSize=processed.stored_size,
+            status="active",
+            createdAt=now,
+            updatedAt=now,
+        )
+        self.repo.save_media_asset(asset)
+        self._save_media_asset_ref(asset, owner_user_id, ref_type, ref_id or media_id, usage)
+        return url
+
+    def _save_media_asset_ref(
+        self,
+        asset: MediaAsset,
+        owner_user_id: str | None,
+        ref_type: str,
+        ref_id: str,
+        usage: str = "media",
+    ) -> None:
+        if not ref_id:
+            return
+        now = now_iso()
+        ref = MediaAssetRef(
+            id=new_id("media_ref"),
+            assetId=asset.id,
+            ownerUserId=self._clean_optional_text(owner_user_id),
+            refType=self._clean_optional_text(ref_type) or "media",
+            refId=ref_id,
+            usage=self._clean_optional_text(usage) or "media",
+            createdAt=now,
+            updatedAt=now,
+        )
+        self.repo.save_media_asset_ref(ref)
 
     def create_ocr_note_from_image(
         self,
@@ -1322,19 +2086,48 @@ class AppService:
                 storage_dir=settings.media_storage_dir,
                 public_url_prefix=settings.media_public_url_prefix,
             )
+        original_sha256 = hashlib.sha256(content).hexdigest()
+        existing = self.repo.get_media_asset_by_original_hash("image", original_sha256)
+        if existing:
+            self._save_media_asset_ref(existing, None, "ocr_upload", existing.id, "source_image")
+            return existing.url
         processed = self.media_processing_service.process_upload(
             media_type="image",
             content=content,
             content_type=content_type,
             filename=filename,
         )
-        return storage.store_bytes(
-            media_id=new_id("ocr_image"),
+        storage_sha256 = hashlib.sha256(processed.content).hexdigest()
+        existing = self.repo.get_media_asset_by_storage_hash("image", storage_sha256)
+        if existing:
+            self._save_media_asset_ref(existing, None, "ocr_upload", existing.id, "source_image")
+            return existing.url
+        media_id = new_id("ocr_image")
+        url = storage.store_bytes(
+            media_id=media_id,
             media_type="image",
             content=processed.content,
             content_type=processed.content_type,
             filename=processed.filename,
         )
+        now = now_iso()
+        asset = MediaAsset(
+            id=new_id("media_asset"),
+            mediaType="image",
+            originalSha256=original_sha256,
+            storageSha256=storage_sha256,
+            url=url,
+            contentType=processed.content_type,
+            filename=processed.filename or filename,
+            originalSize=processed.original_size,
+            storedSize=processed.stored_size,
+            status="active",
+            createdAt=now,
+            updatedAt=now,
+        )
+        self.repo.save_media_asset(asset)
+        self._save_media_asset_ref(asset, None, "ocr_upload", media_id, "source_image")
+        return url
 
     def _image_media_payload(self, url: str, filename: str | None = None) -> dict:
         return {
@@ -1519,6 +2312,8 @@ class AppService:
         user = self.repo.get_user(user_id)
         if not user:
             raise HTTPException(status_code=404, detail="用户不存在")
+        if batch.claimedByUserId and batch.claimedByUserId != user_id:
+            raise HTTPException(status_code=409, detail="该导入已被其他账号认领")
         if batch.generatedCardId is None:
             raise HTTPException(status_code=400, detail="该导入没有可认领卡片")
         card = self.repo.get_card(batch.generatedCardId)
@@ -1553,6 +2348,65 @@ class AppService:
             "identityBinding": binding,
         }
 
+    def build_import_claim_link(self, import_id: str, ttl_seconds: int = IMPORT_CLAIM_TOKEN_TTL_SECONDS) -> dict:
+        batch = self.repo.get_import_batch(import_id)
+        if not batch:
+            raise HTTPException(status_code=404, detail="导入批次不存在")
+        token = self._build_import_claim_token(import_id, ttl_seconds=ttl_seconds)
+        page_path = f"pages/import-claim/index?token={token}"
+        return {
+            "token": token,
+            "pagePath": page_path,
+            "title": batch.titleCandidate or "房源助手整理完成",
+            "importBatchId": import_id,
+            "expiresIn": ttl_seconds,
+        }
+
+    def claim_import_by_token(self, token: str, user_id: str) -> dict:
+        import_id = self._verify_import_claim_token(token)
+        return self.claim_import(import_id, user_id)
+
+    def _import_claim_token_secret(self) -> str:
+        return (
+            settings.admin_token
+            or settings.wecom_archive_secret
+            or settings.wecom_callback_token
+            or settings.wechat_miniapp_secret
+            or "teamBuy-import-claim-dev-secret"
+        )
+
+    def _build_import_claim_token(self, import_id: str, ttl_seconds: int = IMPORT_CLAIM_TOKEN_TTL_SECONDS) -> str:
+        expires_at = int(time.time()) + max(60, ttl_seconds)
+        payload = f"{import_id}.{expires_at}"
+        signature = hmac.new(
+            self._import_claim_token_secret().encode("utf-8"),
+            payload.encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
+        return f"{payload}.{signature}"
+
+    def _verify_import_claim_token(self, token: str) -> str:
+        raw = strip_unicode_surrogates(token or "").strip()
+        parts = raw.rsplit(".", 2)
+        if len(parts) != 3:
+            raise HTTPException(status_code=400, detail="认领链接无效")
+        import_id, expires_at_text, signature = parts
+        try:
+            expires_at = int(expires_at_text)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="认领链接无效") from exc
+        if expires_at < int(time.time()):
+            raise HTTPException(status_code=400, detail="认领链接已过期")
+        payload = f"{import_id}.{expires_at}"
+        expected = hmac.new(
+            self._import_claim_token_secret().encode("utf-8"),
+            payload.encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
+        if not hmac.compare_digest(signature, expected):
+            raise HTTPException(status_code=400, detail="认领链接无效")
+        return import_id
+
     def list_user_notes(
         self,
         owner_user_id: str,
@@ -1578,7 +2432,14 @@ class AppService:
             filtered = sorted(filtered, key=lambda item: item.createdAt, reverse=True)
         else:
             filtered = sorted(filtered, key=lambda item: item.updatedAt, reverse=True)
-        return [item.model_dump() for item in filtered]
+        return [self._user_note_list_payload(item) for item in filtered]
+
+    def _user_note_list_payload(self, note: UserNote) -> dict:
+        return {
+            **note.model_dump(),
+            "stats": self._build_note_stats(note),
+            "customerSummary": self._build_note_customer_summary(note),
+        }
 
     def _filter_user_notes(
         self,
@@ -1669,6 +2530,20 @@ class AppService:
             raise HTTPException(status_code=403, detail="仅笔记拥有者可查看")
         return note
 
+    def get_public_note(self, note_id: str) -> dict:
+        note = self._get_active_note(note_id)
+        payload = note.model_dump()
+        payload["visibilityConfig"] = self._public_note_visibility_config(note.visibilityConfig)
+        return payload
+
+    def _public_note_visibility_config(self, config: dict | None) -> dict:
+        source = dict(config or {})
+        for key in ("privateData", "privateTags", "analyticsData", "opportunityAlerts", "radarProfiles", "internalNotes"):
+            source.pop(key, None)
+        structured = source.get("structuredData") if isinstance(source.get("structuredData"), dict) else {}
+        source["structuredData"] = self._public_clone_structured_data(structured)
+        return source
+
     def list_showcases(self, owner_user_id: str) -> list[dict]:
         if not self.repo.get_user(owner_user_id):
             raise HTTPException(status_code=404, detail="用户不存在")
@@ -1684,7 +2559,7 @@ class AppService:
             name=self._clean_showcase_name(payload.name),
             description=self._clean_optional_text(payload.description),
             bannerUrl=self._clean_optional_text(payload.bannerUrl),
-            templateId=self._clean_optional_text(payload.templateId) or "classic_grid",
+            templateId=self._clean_optional_text(payload.templateId) or "featured_window",
             shareTitle=self._clean_optional_text(payload.shareTitle),
             contactConfig=self._normalize_showcase_contact_config(payload.contactConfig),
             displayConfig=self._normalize_showcase_display_config(payload.displayConfig),
@@ -1709,7 +2584,7 @@ class AppService:
         showcase.name = self._clean_showcase_name(payload.name)
         showcase.description = self._clean_optional_text(payload.description)
         showcase.bannerUrl = self._clean_optional_text(payload.bannerUrl)
-        showcase.templateId = self._clean_optional_text(payload.templateId) or "classic_grid"
+        showcase.templateId = self._clean_optional_text(payload.templateId) or "featured_window"
         showcase.shareTitle = self._clean_optional_text(payload.shareTitle)
         showcase.contactConfig = self._normalize_showcase_contact_config(payload.contactConfig)
         showcase.displayConfig = self._normalize_showcase_display_config(payload.displayConfig)
@@ -1730,6 +2605,10 @@ class AppService:
         showcase.items = valid_items
         showcase.publishedAt = showcase.publishedAt or now
         showcase.updatedAt = now
+        next_version = (showcase.snapshotVersion or 0) + 1
+        showcase.publicSnapshot = self._build_showcase_public_snapshot(showcase, now, next_version)
+        showcase.snapshotVersion = next_version
+        showcase.snapshotCreatedAt = now
         self.repo.save_showcase_page(showcase)
         return showcase
 
@@ -1740,11 +2619,71 @@ class AppService:
         self.repo.save_showcase_page(showcase)
         return showcase
 
+    def delete_showcase(self, showcase_id: str, owner_user_id: str) -> dict:
+        self.get_showcase_for_owner(showcase_id, owner_user_id)
+        self.repo.delete_showcase_page(showcase_id)
+        return {"deletedShowcaseId": showcase_id}
+
+    def record_showcase_event(self, showcase_id: str, payload: ShowcaseEventRequest) -> dict:
+        showcase = self.repo.get_showcase_page(showcase_id)
+        if not showcase or showcase.status != "published":
+            raise HTTPException(status_code=404, detail="展示页不存在或未发布")
+        event_type = str(payload.eventType or "").strip()
+        if event_type not in {"view", "note_click", "phone_click", "wechat_copy", "share"}:
+            raise HTTPException(status_code=400, detail="展示页事件类型无效")
+        viewer_user_id = self._clean_optional_text(payload.viewerUserId)
+        if event_type != "share" and viewer_user_id and viewer_user_id == showcase.ownerUserId:
+            return {"recorded": False, "ignored": "owner_event"}
+        note_id = self._clean_optional_text(payload.noteId)
+        if note_id and note_id not in {item.noteId for item in self._valid_showcase_items(showcase)}:
+            note_id = None
+        now = now_iso()
+        event = ShowcaseEvent(
+            id=self._existing_showcase_session_event_id(showcase.id, payload) or new_id("showcase_event"),
+            showcaseId=showcase.id,
+            ownerUserId=showcase.ownerUserId,
+            eventType=event_type,
+            noteId=note_id,
+            shareId=self._clean_optional_text(payload.shareId),
+            shareFromUserId=self._clean_optional_text(payload.shareFromUserId),
+            scene=self._clean_optional_text(payload.scene),
+            referrer=self._clean_optional_text(payload.referrer),
+            viewerUserId=viewer_user_id,
+            viewType="logged_in" if viewer_user_id else "anonymous",
+            anonymousId=self._clean_optional_text(payload.anonymousId),
+            nickname=self._clean_optional_text(payload.nickname),
+            avatarUrl=self._clean_optional_text(payload.avatarUrl),
+            sessionId=self._clean_optional_text(payload.sessionId),
+            durationSeconds=self._safe_int(payload.durationSeconds, 0, 24 * 60 * 60),
+            maxScrollPercent=self._safe_int(payload.maxScrollPercent, 0, 100),
+            focusSections=self._normalize_focus_sections(payload.focusSections),
+            createdAt=now,
+            dateKey=date_key(now),
+        )
+        self.repo.add_showcase_event(event)
+        return {"recorded": True, "eventId": event.id}
+
+    def get_showcase_analytics(self, showcase_id: str, owner_user_id: str) -> dict:
+        showcase = self.get_showcase_for_owner(showcase_id, owner_user_id)
+        return self._build_showcase_analytics(showcase)
+
     def get_public_showcase(self, showcase_id: str) -> dict:
         showcase = self.repo.get_showcase_page(showcase_id)
         if not showcase or showcase.status != "published":
             raise HTTPException(status_code=404, detail="展示页不存在或未发布")
-        items = self._public_showcase_items(showcase)
+        snapshot = showcase.publicSnapshot if isinstance(showcase.publicSnapshot, dict) else {}
+        if snapshot and isinstance(snapshot.get("items"), list):
+            return snapshot
+        now = now_iso()
+        next_version = (showcase.snapshotVersion or 0) + 1
+        snapshot = self._build_showcase_public_snapshot(showcase, now, next_version)
+        showcase.publicSnapshot = snapshot
+        showcase.snapshotVersion = next_version
+        showcase.snapshotCreatedAt = now
+        self.repo.save_showcase_page(showcase)
+        return snapshot
+
+    def _build_showcase_public_snapshot(self, showcase: ShowcasePage, snapshot_at: str, snapshot_version: int) -> dict:
         return {
             "id": showcase.id,
             "name": showcase.name,
@@ -1754,9 +2693,12 @@ class AppService:
             "shareTitle": showcase.shareTitle or showcase.name,
             "contactConfig": showcase.contactConfig,
             "displayConfig": showcase.displayConfig,
-            "items": items,
+            "items": self._public_showcase_items(showcase),
             "publishedAt": showcase.publishedAt,
             "updatedAt": showcase.updatedAt,
+            "snapshotVersion": snapshot_version,
+            "snapshotCreatedAt": snapshot_at,
+            "snapshotSource": "published_snapshot",
         }
 
     def _ensure_showcase_owner(self, owner_user_id: str) -> None:
@@ -1767,7 +2709,1536 @@ class AppService:
         payload = showcase.model_dump()
         payload["itemCount"] = len(self._valid_showcase_items(showcase))
         payload["sharePath"] = f"/pages/showcase-view/index?id={showcase.id}"
+        payload["analytics"] = self._build_showcase_analytics(showcase, compact=True)
         return payload
+
+    def _build_showcase_analytics(self, showcase: ShowcasePage, compact: bool = False) -> dict:
+        events = self.repo.list_showcase_events(showcase.id)
+        valid_items = self._valid_showcase_items(showcase)
+        note_titles = {}
+        for item in valid_items:
+            note = self.repo.get_user_note(item.noteId)
+            note_titles[item.noteId] = item.displayTitle or (note.title if note else "资料")
+        counts = defaultdict(int)
+        viewers: dict[str, dict] = {}
+        anonymous_ids = set()
+        note_clicks = defaultdict(int)
+        share_rows: dict[str, dict] = {}
+        recent_events = []
+        for event in events:
+            counts[event.eventType] += 1
+            if event.shareId:
+                share_row = share_rows.setdefault(
+                    event.shareId,
+                    {
+                        "shareId": event.shareId,
+                        "shareFromUserId": event.shareFromUserId,
+                        "scene": event.scene,
+                        "eventCount": 0,
+                        "openCount": 0,
+                        "noteClickCount": 0,
+                        "consultCount": 0,
+                        "lastEventAt": event.createdAt,
+                    },
+                )
+                share_row["eventCount"] += 1
+                if event.eventType == "view":
+                    share_row["openCount"] += 1
+                if event.eventType == "note_click":
+                    share_row["noteClickCount"] += 1
+                if event.eventType in {"phone_click", "wechat_copy"}:
+                    share_row["consultCount"] += 1
+                if event.createdAt > share_row["lastEventAt"]:
+                    share_row["lastEventAt"] = event.createdAt
+                    share_row["scene"] = event.scene or share_row["scene"]
+            if event.eventType == "note_click" and event.noteId:
+                note_clicks[event.noteId] += 1
+            if event.eventType == "view":
+                if event.viewerUserId:
+                    viewer = viewers.setdefault(
+                        event.viewerUserId,
+                        {
+                            "viewerUserId": event.viewerUserId,
+                            "nickname": event.nickname or "微信用户",
+                            "avatarUrl": event.avatarUrl,
+                            "viewCount": 0,
+                            "lastViewedAt": event.createdAt,
+                        },
+                    )
+                    viewer["viewCount"] += 1
+                    if event.createdAt > viewer["lastViewedAt"]:
+                        viewer["lastViewedAt"] = event.createdAt
+                        viewer["nickname"] = event.nickname or viewer["nickname"]
+                        viewer["avatarUrl"] = event.avatarUrl or viewer["avatarUrl"]
+                else:
+                    anonymous_ids.add(event.anonymousId or event.id)
+            if len(recent_events) < (6 if compact else 20):
+                recent_events.append(self._showcase_event_row(event, note_titles))
+        recent_viewers = sorted(viewers.values(), key=lambda item: item.get("lastViewedAt") or "", reverse=True)
+        top_notes = [
+            {"noteId": note_id, "title": note_titles.get(note_id, "资料"), "clickCount": count}
+            for note_id, count in sorted(note_clicks.items(), key=lambda item: item[1], reverse=True)
+        ]
+        top_shares = sorted(
+            share_rows.values(),
+            key=lambda item: (item.get("openCount") or 0, item.get("noteClickCount") or 0, item.get("consultCount") or 0, item.get("lastEventAt") or ""),
+            reverse=True,
+        )
+        summary = {
+            "pv": counts["view"],
+            "uv": len(viewers) + len(anonymous_ids),
+            "loggedInUv": len(viewers),
+            "anonymousUv": len(anonymous_ids),
+            "noteClickCount": counts["note_click"],
+            "phoneClickCount": counts["phone_click"],
+            "wechatCopyCount": counts["wechat_copy"],
+            "shareCount": counts["share"],
+            "shareSourceCount": len(share_rows),
+            "consultClickCount": counts["phone_click"] + counts["wechat_copy"],
+        }
+        return {
+            "summary": summary,
+            "recentViewers": recent_viewers[: 3 if compact else 20],
+            "recentEvents": recent_events,
+            "topNotes": top_notes[: 3 if compact else 20],
+            "topShares": top_shares[: 3 if compact else 20],
+        }
+
+    def _showcase_event_row(self, event: ShowcaseEvent, note_titles: dict[str, str]) -> dict:
+        labels = {
+            "view": "打开展示页",
+            "note_click": "查看资料",
+            "phone_click": "电话咨询",
+            "wechat_copy": "复制微信",
+            "share": "分享展示页",
+        }
+        viewer_name = event.nickname or ("匿名客户" if not event.viewerUserId else "微信用户")
+        return {
+            "id": event.id,
+            "eventType": event.eventType,
+            "eventLabel": labels.get(event.eventType, "客户动作"),
+            "noteId": event.noteId,
+            "noteTitle": note_titles.get(event.noteId or "", ""),
+            "shareId": event.shareId,
+            "shareFromUserId": event.shareFromUserId,
+            "scene": event.scene,
+            "referrer": event.referrer,
+            "viewerUserId": event.viewerUserId,
+            "anonymous": not bool(event.viewerUserId),
+            "nickname": viewer_name,
+            "avatarUrl": event.avatarUrl,
+            "createdAt": event.createdAt,
+        }
+
+    def get_business_dashboard(self, owner_user_id: str, requester_user_id: str | None = None, mode: str | None = None) -> dict:
+        if not self.repo.get_user(owner_user_id):
+            raise HTTPException(status_code=404, detail="用户不存在")
+        if not requester_user_id:
+            raise HTTPException(status_code=401, detail="请先登录后查看工作台")
+        if requester_user_id != owner_user_id:
+            raise HTTPException(status_code=403, detail="仅工作台拥有者可查看")
+        if mode == "property":
+            return self._property_customer_dashboard(owner_user_id)
+        notes = self.repo.list_user_notes(owner_user_id, include_deleted=False)
+        if mode == "groupbuy":
+            notes = [item for item in notes if self._is_groupbuy_note(item)]
+        if mode == "service":
+            notes = [item for item in notes if self._is_service_note(item)]
+        note_by_id = {item.id: item for item in notes}
+        note_ids = set(note_by_id.keys())
+        note_view_events: dict[str, list[ViewEvent]] = {
+            note.id: self.repo.list_view_events_for_card(note.sourceCardId or note.id)
+            for note in notes
+        }
+        note_card_ids = {item.sourceCardId for item in notes if item.sourceCardId}
+        note_source_ids = note_ids | note_card_ids
+        showcases = self.repo.list_showcase_pages(owner_user_id)
+        if mode in {"groupbuy", "service"}:
+            showcases = [
+                item
+                for item in showcases
+                if any(showcase_item.noteId in note_ids for showcase_item in item.items)
+            ]
+        showcase_by_id = {item.id: item for item in showcases}
+        showcase_events = [
+            event
+            for showcase in showcases
+            for event in self.repo.list_showcase_events(showcase.id)
+            if event.ownerUserId == owner_user_id
+            and (mode not in {"groupbuy", "service"} or not event.noteId or event.noteId in note_ids)
+        ]
+        actions = [
+            action
+            for note in notes
+            for action in self.repo.list_customer_actions_for_note(note.id)
+            if action.ownerUserId == owner_user_id
+        ]
+        leads = self.repo.list_lead_reminders(owner_user_id)
+        if mode in {"groupbuy", "service"}:
+            leads = [item for item in leads if item.cardId in note_source_ids]
+        today = date_key(now_iso())
+        event_counts = defaultdict(int)
+        visitor_keys: set[str] = set()
+        anonymous_keys: set[str] = set()
+        note_clicks = defaultdict(int)
+        share_rows: dict[str, dict] = {}
+        for event in showcase_events:
+            event_counts[event.eventType] += 1
+            if event.shareId:
+                showcase = showcase_by_id.get(event.showcaseId)
+                share_row = share_rows.setdefault(
+                    event.shareId,
+                    {
+                        "shareId": event.shareId,
+                        "shareFromUserId": event.shareFromUserId,
+                        "showcaseId": event.showcaseId,
+                        "showcaseName": showcase.name if showcase else "展示页",
+                        "scene": event.scene,
+                        "eventCount": 0,
+                        "openCount": 0,
+                        "noteClickCount": 0,
+                        "consultCount": 0,
+                        "lastEventAt": event.createdAt,
+                    },
+                )
+                share_row["eventCount"] += 1
+                if event.eventType == "view":
+                    share_row["openCount"] += 1
+                if event.eventType == "note_click":
+                    share_row["noteClickCount"] += 1
+                if event.eventType in {"phone_click", "wechat_copy"}:
+                    share_row["consultCount"] += 1
+                if event.createdAt > share_row["lastEventAt"]:
+                    share_row["lastEventAt"] = event.createdAt
+                    share_row["scene"] = event.scene or share_row["scene"]
+            if event.eventType == "view":
+                if event.viewerUserId:
+                    visitor_keys.add(event.viewerUserId)
+                else:
+                    anonymous_keys.add(event.anonymousId or event.id)
+            if event.eventType == "note_click" and event.noteId:
+                note_clicks[event.noteId] += 1
+        order_actions = [item for item in actions if item.actionKey in PRODUCT_ORDER_ACTION_KEYS]
+        open_orders = [
+            item
+            for item in order_actions
+            if str((item.payload or {}).get("orderStatus") or "submitted") not in {"completed", "cancelled"}
+        ]
+        pending_leads = [item for item in leads if item.status == "pending"]
+        contacts = [
+            item
+            for item in leads
+            if item.customerPhone or item.customerWechat or item.budgetText or item.intentLevel or item.customerTags
+        ]
+        summary = {
+            "showcaseOpenCount": event_counts["view"],
+            "visitorCount": len(visitor_keys) + len(anonymous_keys),
+            "loggedInVisitorCount": len(visitor_keys),
+            "anonymousVisitorCount": len(anonymous_keys),
+            "noteClickCount": event_counts["note_click"],
+            "consultCount": event_counts["phone_click"] + event_counts["wechat_copy"],
+            "shareCount": event_counts["share"],
+            "shareSourceCount": len(share_rows),
+            "pendingLeadCount": len(pending_leads),
+            "customerCount": len(contacts),
+            "orderCount": len(order_actions),
+            "pendingOrderCount": len(open_orders),
+            "todayEventCount": sum(1 for item in showcase_events if item.dateKey == today),
+            "todayActionCount": sum(1 for item in actions if date_key(item.createdAt) == today),
+            "showcaseCount": len(showcases),
+            "publishedShowcaseCount": sum(1 for item in showcases if item.status == "published"),
+        }
+        dashboard = {
+            "summary": summary,
+            "entries": self._business_dashboard_entries(summary),
+            "recentVisitors": self._business_dashboard_recent_visitors(showcase_events, showcase_by_id),
+            "topNotes": self._business_dashboard_top_notes(note_clicks, note_by_id),
+            "topShares": self._business_dashboard_top_shares(share_rows, showcase_events),
+            "latestActions": self._business_dashboard_latest_actions(actions, note_by_id),
+            "showcaseBreakdown": self._business_dashboard_showcase_breakdown(showcases, showcase_events),
+            "visitorProfiles": self._business_dashboard_visitor_profiles(showcase_events, actions, leads, showcase_by_id, note_by_id),
+        }
+        return self._attach_opportunity_radar(dashboard, notes, showcase_events, actions, leads, note_view_events)
+
+    def _is_property_note(self, note: UserNote) -> bool:
+        config = note.visibilityConfig or {}
+        if config.get("cardType") == "property_listing":
+            return True
+        system_category = str(config.get("systemCategory") or "")
+        if system_category in {"property", "property_listing", "房源"}:
+            return True
+        haystack = " ".join(
+            [
+                note.title or "",
+                note.summary or "",
+                note.body or "",
+                note.locationText or "",
+                str(config.get("sourceName") or ""),
+                json.dumps(config.get("structuredData", {}), ensure_ascii=False),
+            ]
+        )
+        return any(keyword in haystack for keyword in ["房源", "小区", "户型", "租房", "买房", "看房", "房租", "押金"])
+
+    def _is_groupbuy_note(self, note: UserNote) -> bool:
+        config = note.visibilityConfig or {}
+        if config.get("cardType") == "groupbuy_product":
+            return True
+        system_category = str(config.get("systemCategory") or "")
+        if system_category in {"groupbuy", "groupbuy_product", "团购", "商品"}:
+            return True
+        haystack = " ".join(
+            [
+                note.title or "",
+                note.summary or "",
+                note.body or "",
+                str(config.get("sourceName") or ""),
+                json.dumps(config.get("structuredData", {}), ensure_ascii=False),
+            ]
+        )
+        return any(keyword in haystack for keyword in ["团购", "接龙", "商品", "下单", "买家", "库存", "自提", "配送"])
+
+    def _is_service_note(self, note: UserNote) -> bool:
+        config = note.visibilityConfig or {}
+        if config.get("cardType") in {"business_card", "service_offer"}:
+            return True
+        system_category = str(config.get("systemCategory") or "")
+        if system_category in {"service", "business_card", "service_offer", "名片", "服务"}:
+            return True
+        haystack = " ".join(
+            [
+                note.title or "",
+                note.summary or "",
+                note.body or "",
+                str(config.get("sourceName") or ""),
+                json.dumps(config.get("structuredData", {}), ensure_ascii=False),
+            ]
+        )
+        return any(keyword in haystack for keyword in ["名片", "服务方案", "预约沟通", "咨询服务", "服务介绍"])
+
+    def _property_customer_dashboard(self, owner_user_id: str) -> dict:
+        notes = [item for item in self.repo.list_user_notes(owner_user_id, include_deleted=False) if self._is_property_note(item)]
+        note_by_id = {item.id: item for item in notes}
+        note_ids = set(note_by_id)
+        actions = [
+            action
+            for note in notes
+            for action in self.repo.list_customer_actions_for_note(note.id)
+            if action.ownerUserId == owner_user_id
+        ]
+        projected_lead_ids = {
+            str((action.projectionRefs or {}).get("leadReminderId") or "")
+            for action in actions
+            if (action.projectionRefs or {}).get("leadReminderId")
+        }
+        all_leads = self.repo.list_lead_reminders(owner_user_id)
+        leads = [item for item in all_leads if item.id in projected_lead_ids or item.cardId in note_ids]
+        note_stats = {note.id: self._build_note_stats(note) for note in notes}
+        note_view_events: dict[str, list[ViewEvent]] = {
+            note.id: self.repo.list_view_events_for_card(note.sourceCardId or note.id)
+            for note in notes
+        }
+        showcases = [
+            showcase
+            for showcase in self.repo.list_showcase_pages(owner_user_id)
+            if any(item.noteId in note_ids for item in showcase.items)
+        ]
+        showcase_by_id = {item.id: item for item in showcases}
+        showcase_events = [
+            event
+            for showcase in showcases
+            for event in self.repo.list_showcase_events(showcase.id)
+            if event.ownerUserId == owner_user_id
+        ]
+        today = date_key(now_iso())
+        note_clicks = defaultdict(int)
+        today_note_clicks = defaultdict(int)
+        share_rows: dict[str, dict] = {}
+        showcase_visitor_keys: set[str] = set()
+        today_showcase_visitor_keys: set[str] = set()
+        package_view_count = 0
+        today_package_view_count = 0
+        package_consult_count = 0
+        today_package_consult_count = 0
+        package_share_count = 0
+        today_package_share_count = 0
+        for event in showcase_events:
+            is_today_event = event.dateKey == today
+            if event.eventType == "view":
+                package_view_count += 1
+                showcase_visitor_keys.add(self._dashboard_identity_key(event.viewerUserId, event.anonymousId, event.id))
+                if is_today_event:
+                    today_package_view_count += 1
+                    today_showcase_visitor_keys.add(self._dashboard_identity_key(event.viewerUserId, event.anonymousId, event.id))
+            elif event.eventType == "note_click" and event.noteId in note_ids:
+                note_clicks[event.noteId] += 1
+                if is_today_event:
+                    today_note_clicks[event.noteId] += 1
+            elif event.eventType in {"phone_click", "wechat_copy"}:
+                package_consult_count += 1
+                if is_today_event:
+                    today_package_consult_count += 1
+            elif event.eventType == "share":
+                package_share_count += 1
+                if is_today_event:
+                    today_package_share_count += 1
+            if event.shareId:
+                showcase = showcase_by_id.get(event.showcaseId)
+                share_row = share_rows.setdefault(
+                    event.shareId,
+                    {
+                        "shareId": event.shareId,
+                        "shareFromUserId": event.shareFromUserId,
+                        "showcaseId": event.showcaseId,
+                        "showcaseName": showcase.name if showcase else "房源推荐包",
+                        "scene": event.scene,
+                        "eventCount": 0,
+                        "openCount": 0,
+                        "noteClickCount": 0,
+                        "consultCount": 0,
+                        "lastEventAt": event.createdAt,
+                    },
+                )
+                share_row["eventCount"] += 1
+                if event.eventType == "view":
+                    share_row["openCount"] += 1
+                if event.eventType == "note_click" and event.noteId in note_ids:
+                    share_row["noteClickCount"] += 1
+                if event.eventType in {"phone_click", "wechat_copy"}:
+                    share_row["consultCount"] += 1
+                if event.createdAt > share_row["lastEventAt"]:
+                    share_row["lastEventAt"] = event.createdAt
+                    share_row["scene"] = event.scene or share_row["scene"]
+        note_visitor_keys: set[str] = set()
+        today_note_visitor_keys: set[str] = set()
+        today_note_view_count = 0
+        for note in notes:
+            stats = note_stats.get(note.id, {})
+            for viewer in stats.get("loggedInViewers") or []:
+                note_visitor_keys.add(self._dashboard_identity_key(viewer.get("userId") or viewer.get("viewerUserId")))
+            for index in range(int(stats.get("anonymousUv") or 0)):
+                note_visitor_keys.add(f"note-anon:{note.id}:{index}")
+            for event in note_view_events.get(note.id, []):
+                if event.dateKey != today:
+                    continue
+                today_note_view_count += 1
+                today_note_visitor_keys.add(self._dashboard_identity_key(event.viewerUserId, event.anonymousId, event.id))
+        action_contact_count = sum(1 for item in actions if item.actionKey in {"lead-contact", "appointment", "consult-click"})
+        today_actions = [item for item in actions if date_key(item.createdAt) == today]
+        today_action_contact_count = sum(1 for item in today_actions if item.actionKey in {"lead-contact", "appointment", "consult-click"})
+        pending_leads = [item for item in leads if item.status == "pending"]
+        today_pending_leads = [item for item in pending_leads if date_key(item.createdAt) == today]
+        property_rows = []
+        for index, note in enumerate(notes):
+            stats = note_stats.get(note.id, {})
+            note_actions = [action for action in actions if action.noteId == note.id]
+            note_lead_ids = {
+                str((action.projectionRefs or {}).get("leadReminderId") or "")
+                for action in note_actions
+                if (action.projectionRefs or {}).get("leadReminderId")
+            }
+            note_card_ids = {note.id}
+            if note.sourceCardId:
+                note_card_ids.add(note.sourceCardId)
+            note_pending = sum(1 for lead in leads if (lead.id in note_lead_ids or lead.cardId in note_card_ids) and lead.status == "pending")
+            click_count = int(stats.get("pv") or 0) + int(note_clicks.get(note.id) or 0)
+            today_open_count = (
+                sum(1 for event in note_view_events.get(note.id, []) if event.dateKey == today)
+                + int(today_note_clicks.get(note.id) or 0)
+            )
+            today_visitor_count = len({
+                self._dashboard_identity_key(event.viewerUserId, event.anonymousId, event.id)
+                for event in note_view_events.get(note.id, [])
+                if event.dateKey == today
+            })
+            today_followup_count = sum(1 for lead in leads if (lead.id in note_lead_ids or lead.cardId in note_card_ids) and lead.status == "pending" and date_key(lead.createdAt) == today)
+            property_rows.append(
+                {
+                    "noteId": note.id,
+                    "title": note.title or "房源资料",
+                    "clickCount": click_count,
+                    "openCount": click_count,
+                    "visitorCount": int(stats.get("uv") or 0),
+                    "followupCount": note_pending,
+                    "todayOpenCount": today_open_count,
+                    "todayVisitorCount": today_visitor_count,
+                    "todayFollowupCount": today_followup_count,
+                    "cardType": (note.visibilityConfig or {}).get("cardType", "property_listing"),
+                    "lastEventAt": max((action.createdAt for action in note_actions), default=note.updatedAt),
+                    "rankNo": index + 1,
+                }
+            )
+        property_rows = sorted(
+            property_rows,
+            key=lambda item: (item["openCount"], item["followupCount"], item["lastEventAt"]),
+            reverse=True,
+        )
+        for index, row in enumerate(property_rows):
+            row["rankNo"] = index + 1
+        summary = {
+            "propertyCount": len(notes),
+            "showcaseOpenCount": package_view_count,
+            "visitorCount": len(note_visitor_keys | showcase_visitor_keys),
+            "loggedInVisitorCount": sum(1 for key in note_visitor_keys | showcase_visitor_keys if key.startswith("user:")),
+            "anonymousVisitorCount": sum(1 for key in note_visitor_keys | showcase_visitor_keys if not key.startswith("user:")),
+            "noteClickCount": sum(int(item.get("openCount") or 0) for item in property_rows),
+            "consultCount": package_consult_count + action_contact_count,
+            "shareCount": package_share_count,
+            "shareSourceCount": len(share_rows),
+            "pendingLeadCount": len(pending_leads),
+            "customerCount": len(leads),
+            "orderCount": 0,
+            "pendingOrderCount": 0,
+            "todayEventCount": sum(1 for item in showcase_events if item.dateKey == today),
+            "todayActionCount": sum(1 for item in actions if date_key(item.createdAt) == today),
+            "showcaseCount": len(showcases),
+            "publishedShowcaseCount": sum(1 for item in showcases if item.status == "published"),
+        }
+        today_summary = {
+            "propertyCount": sum(1 for note in notes if date_key(note.createdAt) == today),
+            "updatedPropertyCount": sum(1 for note in notes if date_key(note.updatedAt) == today),
+            "showcaseOpenCount": today_package_view_count,
+            "visitorCount": len(today_note_visitor_keys | today_showcase_visitor_keys),
+            "loggedInVisitorCount": sum(1 for key in today_note_visitor_keys | today_showcase_visitor_keys if key.startswith("user:")),
+            "anonymousVisitorCount": sum(1 for key in today_note_visitor_keys | today_showcase_visitor_keys if not key.startswith("user:")),
+            "noteClickCount": today_note_view_count + sum(today_note_clicks.values()),
+            "consultCount": today_package_consult_count + today_action_contact_count,
+            "shareCount": today_package_share_count,
+            "shareSourceCount": len({
+                event.shareId
+                for event in showcase_events
+                if event.shareId and event.dateKey == today
+            }),
+            "pendingLeadCount": len(today_pending_leads),
+            "customerCount": len({
+                self._dashboard_identity_key(action.viewerUserId, action.anonymousId, action.id)
+                for action in today_actions
+            } | today_note_visitor_keys | today_showcase_visitor_keys),
+            "orderCount": 0,
+            "pendingOrderCount": 0,
+            "todayEventCount": summary["todayEventCount"],
+            "todayActionCount": summary["todayActionCount"],
+            "showcaseCount": summary["showcaseCount"],
+            "publishedShowcaseCount": summary["publishedShowcaseCount"],
+        }
+        property_showcase_events = [
+            event
+            for event in showcase_events
+            if event.eventType != "note_click" or event.noteId in note_ids
+        ]
+        visitor_profiles = self._business_dashboard_visitor_profiles(property_showcase_events, actions, leads, showcase_by_id, note_by_id)
+        visitor_profiles = self._merge_property_note_view_profiles(visitor_profiles, notes, note_view_events)
+        latest_actions = self._business_dashboard_latest_actions(actions, note_by_id)
+        latest_actions = self._merge_pending_lead_actions(latest_actions, pending_leads, notes)
+        dashboard = {
+            "summary": summary,
+            "todaySummary": today_summary,
+            "entries": self._business_dashboard_entries(summary),
+            "recentVisitors": self._property_dashboard_recent_visitors(notes, note_stats, property_showcase_events, showcase_by_id),
+            "topNotes": property_rows[:8],
+            "propertyBreakdown": property_rows,
+            "topShares": self._business_dashboard_top_shares(share_rows, property_showcase_events),
+            "latestActions": latest_actions,
+            "showcaseBreakdown": self._business_dashboard_showcase_breakdown(showcases, property_showcase_events),
+            "visitorProfiles": visitor_profiles,
+        }
+        return self._attach_opportunity_radar(dashboard, notes, property_showcase_events, actions, leads, note_view_events)
+
+    def _attach_opportunity_radar(
+        self,
+        dashboard: dict,
+        notes: list[UserNote],
+        showcase_events: list[ShowcaseEvent],
+        actions: list[CustomerAction],
+        leads: list[LeadReminder],
+        note_view_events: dict[str, list[ViewEvent]] | None = None,
+    ) -> dict:
+        note_by_id = {item.id: item for item in notes}
+        note_by_card_id: dict[str, UserNote] = {}
+        for note in notes:
+            note_by_card_id[note.id] = note
+            if note.sourceCardId:
+                note_by_card_id[note.sourceCardId] = note
+        profiles = self._build_opportunity_profiles(note_by_id, note_by_card_id, showcase_events, actions, leads, note_view_events or {})
+        alerts = self._build_opportunity_alerts(profiles)
+        content_insights = self._build_content_insights(notes, profiles)
+        revival_alerts = [item for item in alerts if item.get("alertType") == "revival"]
+        today = date_key(now_iso())
+        dashboard["radarProfiles"] = profiles[:20]
+        dashboard["opportunityAlerts"] = alerts[:8]
+        dashboard["contentInsights"] = content_insights[:8]
+        dashboard["revivalAlerts"] = revival_alerts[:6]
+        dashboard["opportunitySummary"] = {
+            "highIntentCount": sum(1 for item in profiles if item.get("intentLevel") == "高"),
+            "mediumIntentCount": sum(1 for item in profiles if item.get("intentLevel") == "中"),
+            "todayHighIntentCount": sum(1 for item in profiles if item.get("intentLevel") == "高" and item.get("lastActivityDateKey") == today),
+            "todayVisitorCount": (dashboard.get("todaySummary") or {}).get("visitorCount", (dashboard.get("summary") or {}).get("todayEventCount", 0)),
+            "pendingFollowupCount": (dashboard.get("summary") or {}).get("pendingLeadCount", 0),
+            "opportunityCount": len(alerts),
+            "revivalCount": len(revival_alerts),
+            "topContentTitle": content_insights[0]["title"] if content_insights else "",
+        }
+        return dashboard
+
+    def _build_opportunity_profiles(
+        self,
+        note_by_id: dict[str, UserNote],
+        note_by_card_id: dict[str, UserNote],
+        showcase_events: list[ShowcaseEvent],
+        actions: list[CustomerAction],
+        leads: list[LeadReminder],
+        note_view_events: dict[str, list[ViewEvent]],
+    ) -> list[dict]:
+        profiles: dict[str, dict] = {}
+
+        def ensure_profile(viewer_user_id: str | None, anonymous_id: str | None, fallback_id: str, nickname: str | None, avatar_url: str | None) -> dict:
+            key = self._dashboard_identity_key(viewer_user_id, anonymous_id, fallback_id)
+            return profiles.setdefault(
+                key,
+                {
+                    "id": key,
+                    "viewerUserId": viewer_user_id or "",
+                    "anonymousId": anonymous_id or "",
+                    "anonymous": not bool(viewer_user_id),
+                    "nickname": self._dashboard_display_name(nickname, viewer_user_id),
+                    "avatarUrl": avatar_url or "",
+                    "viewCount": 0,
+                    "noteClickCount": 0,
+                    "consultCount": 0,
+                    "actionCount": 0,
+                    "durationSeconds": 0,
+                    "maxScrollPercent": 0,
+                    "focusSections": [],
+                    "noteIds": [],
+                    "noteTitles": [],
+                    "firstActivityAt": "",
+                    "lastActivityAt": "",
+                    "lastActivityDateKey": "",
+                    "visitorIdentityType": VISITOR_IDENTITY_DEFAULT["type"],
+                    "visitorIdentityLabel": VISITOR_IDENTITY_DEFAULT["label"],
+                    "visitorIdentityGroup": VISITOR_IDENTITY_DEFAULT["group"],
+                    "hasLead": False,
+                },
+            )
+
+        def add_note(profile: dict, note: UserNote | None) -> None:
+            if not note:
+                return
+            if note.id not in profile["noteIds"]:
+                profile["noteIds"].append(note.id)
+            if note.title and note.title not in profile["noteTitles"]:
+                profile["noteTitles"].append(note.title)
+
+        def touch(profile: dict, at: str) -> None:
+            if not profile["firstActivityAt"] or at < profile["firstActivityAt"]:
+                profile["firstActivityAt"] = at
+            if not profile["lastActivityAt"] or at > profile["lastActivityAt"]:
+                profile["lastActivityAt"] = at
+                profile["lastActivityDateKey"] = date_key(at)
+
+        for event in showcase_events:
+            profile = ensure_profile(event.viewerUserId, event.anonymousId, event.id, event.nickname, event.avatarUrl)
+            if event.eventType == "view":
+                profile["viewCount"] += 1
+            elif event.eventType == "note_click":
+                profile["noteClickCount"] += 1
+            elif event.eventType in {"phone_click", "wechat_copy"}:
+                profile["consultCount"] += 1
+            profile["durationSeconds"] = max(profile["durationSeconds"], int(event.durationSeconds or 0))
+            profile["maxScrollPercent"] = max(profile["maxScrollPercent"], int(event.maxScrollPercent or 0))
+            profile["focusSections"] = self._merge_focus_sections(profile["focusSections"], event.focusSections)
+            add_note(profile, note_by_id.get(event.noteId or ""))
+            touch(profile, event.createdAt)
+
+        for note_id, events in note_view_events.items():
+            note = note_by_id.get(note_id)
+            for event in events:
+                profile = ensure_profile(event.viewerUserId, event.anonymousId, event.id, event.nickname, event.avatarUrl)
+                profile["viewCount"] += 1
+                profile["durationSeconds"] = max(profile["durationSeconds"], int(event.durationSeconds or 0))
+                profile["maxScrollPercent"] = max(profile["maxScrollPercent"], int(event.maxScrollPercent or 0))
+                profile["focusSections"] = self._merge_focus_sections(profile["focusSections"], event.focusSections)
+                add_note(profile, note)
+                touch(profile, event.viewedAt)
+
+        for action in actions:
+            profile = ensure_profile(action.viewerUserId, action.anonymousId, action.id, (action.payload or {}).get("name") or (action.payload or {}).get("nickname"), (action.payload or {}).get("avatarUrl"))
+            visitor_identity = self._customer_action_visitor_identity(action)
+            profile["visitorIdentityType"] = visitor_identity["type"]
+            profile["visitorIdentityLabel"] = visitor_identity["label"]
+            profile["visitorIdentityGroup"] = visitor_identity["group"]
+            profile["actionCount"] += 1
+            if action.actionKey in OPPORTUNITY_HIGH_ACTIONS:
+                profile["consultCount"] += 1
+            add_note(profile, note_by_id.get(action.noteId))
+            touch(profile, action.createdAt)
+
+        for lead in leads:
+            profile = ensure_profile(lead.viewerUserId, None, lead.id, lead.nickname, lead.avatarUrl)
+            profile["hasLead"] = True
+            profile["viewCount"] = max(profile["viewCount"], int(lead.viewCount or 0))
+            add_note(profile, note_by_card_id.get(lead.cardId))
+            touch(profile, lead.updatedAt or lead.createdAt)
+
+        rows = []
+        for profile in profiles.values():
+            score, level = self._opportunity_score(profile)
+            explanation = self._opportunity_explanation(profile)
+            advice = self._opportunity_advice(profile)
+            rows.append({
+                **profile,
+                "intentScore": score,
+                "intentLevel": level,
+                "intentLabel": f"{level}意向",
+                "intentExplanation": explanation,
+                "suggestedAction": advice["action"],
+                "followupWindow": advice["window"],
+                "followupScript": self._followup_script(profile),
+                "isRevival": self._is_revival_profile(profile),
+            })
+        return sorted(
+            rows,
+            key=lambda item: (
+                item.get("visitorIdentityType") == "customer",
+                item.get("intentScore") or 0,
+                item.get("lastActivityAt") or "",
+            ),
+            reverse=True,
+        )
+
+    def _merge_focus_sections(self, existing: list[str], incoming: list[str] | None) -> list[str]:
+        result = list(existing or [])
+        for item in incoming or []:
+            text = str(item or "").strip()[:20]
+            if text and text not in result:
+                result.append(text)
+        return result[:8]
+
+    def _opportunity_score(self, profile: dict) -> tuple[int, str]:
+        score = 0
+        if profile.get("visitorIdentityType") != "customer":
+            return 0, "低"
+        duration = int(profile.get("durationSeconds") or 0)
+        has_key_section = bool(OPPORTUNITY_KEY_SECTIONS.intersection(set(profile.get("focusSections") or [])))
+        if int(profile.get("consultCount") or 0) > 0 or profile.get("hasLead"):
+            return 90, "高"
+        if int(profile.get("viewCount") or 0) >= 3:
+            return 72, "高"
+        if duration >= 90 and has_key_section:
+            return 70, "高"
+        if self._is_revival_profile(profile):
+            return 68, "高"
+        score += min(int(profile.get("viewCount") or 0) * 8, 32)
+        score += min(int(profile.get("noteClickCount") or 0) * 12, 36)
+        score += min(int(profile.get("consultCount") or 0) * 35, 70)
+        score += 25 if profile.get("hasLead") else 0
+        if duration >= 90:
+            score += 25
+        elif duration >= 30:
+            score += 12
+        if has_key_section:
+            score += 18
+        if profile.get("isRevival") or self._is_revival_profile(profile):
+            score += 22
+        if score >= 65:
+            return score, "高"
+        if score >= 28:
+            return score, "中"
+        return score, "低"
+
+    def _opportunity_explanation(self, profile: dict) -> str:
+        sections = set(profile.get("focusSections") or [])
+        if "价格/优惠" in sections:
+            return "重点看了价格和优惠，可能正在比较预算。"
+        if "联系方式" in sections or int(profile.get("consultCount") or 0) > 0:
+            return "已经看过联系方式或发生咨询动作，建议尽快联系。"
+        if "案例/成果" in sections:
+            return "看了案例和成果，可能还在建立信任。"
+        if "FAQ/保障" in sections:
+            return "重点看了保障和常见问题，可能在排除顾虑。"
+        if self._is_revival_profile(profile):
+            return "沉默后再次打开，可能重新进入决策。"
+        if int(profile.get("viewCount") or 0) >= 3:
+            return "多次查看同一批资料，兴趣正在升温。"
+        if int(profile.get("durationSeconds") or 0) >= 30:
+            return "停留时间较长，可能认真看过核心内容。"
+        return "有新的浏览动态，可继续观察。"
+
+    def _opportunity_advice(self, profile: dict) -> dict:
+        sections = set(profile.get("focusSections") or [])
+        if int(profile.get("consultCount") or 0) > 0 or profile.get("hasLead"):
+            return {"action": "立即跟进客户", "window": "建议 30 分钟内跟进"}
+        if self._is_revival_profile(profile):
+            return {"action": "发送最新优惠或预约入口", "window": "建议今天内跟进"}
+        if "价格/优惠" in sections:
+            return {"action": "发送优惠说明", "window": "建议 30 分钟内跟进"}
+        if "案例/成果" in sections:
+            return {"action": "发送案例或客户反馈", "window": "建议今天内跟进"}
+        if "FAQ/保障" in sections:
+            return {"action": "补充保障说明", "window": "建议今天内跟进"}
+        if len(profile.get("noteIds") or []) >= 2:
+            return {"action": "生成对比资料", "window": "建议今天内跟进"}
+        return {"action": "继续观察或轻触达", "window": "可稍后跟进"}
+
+    def _followup_script(self, profile: dict) -> str:
+        name = profile.get("nickname") or "您好"
+        title = (profile.get("noteTitles") or ["这份资料"])[0]
+        action = profile.get("suggestedAction") or self._opportunity_advice(profile)["action"]
+        if "优惠" in action:
+            return f"{name}，刚看到你在看《{title}》的价格和优惠，我帮你把实际到手方案整理一下，要不要发你看看？"
+        if "案例" in action:
+            return f"{name}，你刚看了《{title}》的案例部分，我可以再发你几个相近案例，方便你判断。"
+        if "对比" in action:
+            return f"{name}，我看你看了几份资料，我可以帮你做个简单对比，价格、亮点和适合人群放一起看。"
+        return f"{name}，刚看到你打开了《{title}》，如果你方便，我可以把重点和下一步安排发你。"
+
+    def _is_revival_profile(self, profile: dict) -> bool:
+        first_at = profile.get("firstActivityAt")
+        last_at = profile.get("lastActivityAt")
+        if not first_at or not last_at or first_at == last_at:
+            return False
+        try:
+            return (parse_iso(last_at) - parse_iso(first_at)) >= timedelta(days=3)
+        except Exception:
+            return False
+
+    def _build_opportunity_alerts(self, profiles: list[dict]) -> list[dict]:
+        alerts = []
+        for profile in profiles:
+            if profile.get("visitorIdentityType") != "customer":
+                continue
+            if profile.get("intentLevel") == "低" and not profile.get("isRevival"):
+                continue
+            title = (profile.get("noteTitles") or ["资料"])[0]
+            sections = "、".join(profile.get("focusSections") or [])
+            detail = f"{profile.get('nickname') or '客户'}刚刚查看了《{title}》"
+            if profile.get("durationSeconds"):
+                detail += f"，停留 {self._format_duration(int(profile.get('durationSeconds') or 0))}"
+            if sections:
+                detail += f"，重点看了{sections}"
+            alerts.append({
+                "id": f"opp_{profile.get('id')}",
+                "alertType": "revival" if profile.get("isRevival") else "intent",
+                "customerName": profile.get("nickname") or "客户",
+                "title": title,
+                "message": f"{detail}，{profile.get('followupWindow')}。",
+                "intentLevel": profile.get("intentLevel"),
+                "intentLabel": profile.get("intentLabel"),
+                "reason": profile.get("intentExplanation"),
+                "suggestedAction": profile.get("suggestedAction"),
+                "followupScript": profile.get("followupScript"),
+                "lastActivityAt": profile.get("lastActivityAt"),
+            })
+        return sorted(alerts, key=lambda item: item.get("lastActivityAt") or "", reverse=True)
+
+    def _build_content_insights(self, notes: list[UserNote], profiles: list[dict]) -> list[dict]:
+        rows = []
+        for note in notes:
+            related = [item for item in profiles if note.id in (item.get("noteIds") or [])]
+            if not related:
+                continue
+            view_count = sum(int(item.get("viewCount") or 0) for item in related)
+            consult_count = sum(int(item.get("consultCount") or 0) for item in related)
+            focus_sections = {section for item in related for section in (item.get("focusSections") or [])}
+            if view_count >= 3 and consult_count == 0:
+                suggestion = "打开不少但咨询偏少，建议把联系方式或行动按钮提前。"
+            elif "价格/优惠" in focus_sections:
+                suggestion = "价格和优惠被反复查看，建议补充优惠说明或对比口径。"
+            elif "案例/成果" in focus_sections:
+                suggestion = "案例内容被关注，建议强化客户反馈和成功案例。"
+            elif "FAQ/保障" in focus_sections:
+                suggestion = "客户在看保障和常见问题，建议把风险说明前置。"
+            else:
+                suggestion = "继续观察这份资料的打开和咨询转化。"
+            rows.append({
+                "noteId": note.id,
+                "title": note.title,
+                "viewCount": view_count,
+                "consultCount": consult_count,
+                "focusSections": list(focus_sections)[:6],
+                "suggestion": suggestion,
+            })
+        return sorted(rows, key=lambda item: (item["consultCount"], item["viewCount"]), reverse=True)
+
+    def _format_duration(self, seconds: int) -> str:
+        if seconds < 60:
+            return f"{seconds} 秒"
+        minutes = seconds // 60
+        rest = seconds % 60
+        return f"{minutes} 分 {rest} 秒" if rest else f"{minutes} 分钟"
+
+    def _safe_int(self, value, minimum: int = 0, maximum: int = 100) -> int:
+        try:
+            number = int(value or 0)
+        except (TypeError, ValueError):
+            number = 0
+        return max(minimum, min(maximum, number))
+
+    def _normalize_focus_sections(self, sections: list[str] | None) -> list[str]:
+        result = []
+        for item in sections or []:
+            text = str(item or "").strip()[:20]
+            if text and text not in result:
+                result.append(text)
+        return result[:8]
+
+    def _existing_view_session_event_id(self, card_id: str, payload: RecordViewRequest) -> str | None:
+        session_id = self._clean_optional_text(payload.sessionId)
+        if not session_id:
+            return None
+        viewer_user_id = self._clean_optional_text(payload.viewerUserId)
+        anonymous_id = self._clean_optional_text(payload.anonymousId)
+        for event in self.repo.list_view_events_for_card(card_id):
+            if event.sessionId != session_id:
+                continue
+            if viewer_user_id and event.viewerUserId != viewer_user_id:
+                continue
+            if anonymous_id and event.anonymousId != anonymous_id:
+                continue
+            return event.id
+        return None
+
+    def _existing_showcase_session_event_id(self, showcase_id: str, payload: ShowcaseEventRequest) -> str | None:
+        session_id = self._clean_optional_text(payload.sessionId)
+        if not session_id or payload.eventType != "view":
+            return None
+        viewer_user_id = self._clean_optional_text(payload.viewerUserId)
+        anonymous_id = self._clean_optional_text(payload.anonymousId)
+        for event in self.repo.list_showcase_events(showcase_id):
+            if event.eventType != "view" or event.sessionId != session_id:
+                continue
+            if viewer_user_id and event.viewerUserId != viewer_user_id:
+                continue
+            if anonymous_id and event.anonymousId != anonymous_id:
+                continue
+            return event.id
+        return None
+
+    def _merge_pending_lead_actions(
+        self,
+        action_rows: list[dict],
+        pending_leads: list[LeadReminder],
+        notes: list[UserNote],
+    ) -> list[dict]:
+        existing_lead_ids = {str(item.get("leadReminderId") or "") for item in action_rows if item.get("leadReminderId")}
+        lead_by_id = {lead.id: lead for lead in pending_leads}
+        note_by_card_id: dict[str, UserNote] = {}
+        for note in notes:
+            note_by_card_id[note.id] = note
+            if note.sourceCardId:
+                note_by_card_id[note.sourceCardId] = note
+        rows = []
+        for row in action_rows:
+            enriched = dict(row)
+            lead = lead_by_id.get(str(enriched.get("leadReminderId") or ""))
+            if lead:
+                if (not enriched.get("customerName")) or enriched.get("customerName") in {"客户", "微信客户", "匿名客户", "匿名访客"}:
+                    enriched["customerName"] = lead.nickname or "客户"
+                enriched["avatarUrl"] = enriched.get("avatarUrl") or lead.avatarUrl or ""
+                enriched["phone"] = enriched.get("phone") or lead.customerPhone or ""
+                enriched["wechat"] = enriched.get("wechat") or lead.customerWechat or ""
+            rows.append(enriched)
+        for lead in pending_leads:
+            if lead.id in existing_lead_ids:
+                continue
+            note = note_by_card_id.get(lead.cardId)
+            created_at = lead.updatedAt or lead.createdAt
+            rows.append(
+                {
+                    "id": f"lead_action_{lead.id}",
+                    "noteId": note.id if note else lead.cardId,
+                    "leadReminderId": lead.id,
+                    "orderActionId": "",
+                    "targetType": "lead",
+                    "noteTitle": note.title if note else "房源资料",
+                    "actionKey": "lead-followup",
+                    "actionLabel": "待跟进客户",
+                    "customerName": lead.nickname or "客户",
+                    "avatarUrl": lead.avatarUrl or "",
+                    "phone": lead.customerPhone or "",
+                    "wechat": lead.customerWechat or "",
+                    "orderStatus": "",
+                    "orderStatusText": "",
+                    "createdAt": created_at,
+                    "createdDateKey": date_key(created_at),
+                    "isToday": date_key(created_at) == date_key(now_iso()),
+                    "statusText": "待联系",
+                    "priority": 95,
+                    "visitorIdentityType": VISITOR_IDENTITY_DEFAULT["type"],
+                    "visitorIdentityLabel": VISITOR_IDENTITY_DEFAULT["label"],
+                    "visitorIdentityGroup": VISITOR_IDENTITY_DEFAULT["group"],
+                }
+            )
+        return sorted(
+            rows,
+            key=lambda item: (item.get("priority") or 0, item.get("createdAt") or ""),
+            reverse=True,
+        )[:12]
+
+    def _merge_property_note_view_profiles(
+        self,
+        profiles: list[dict],
+        notes: list[UserNote],
+        note_view_events: dict[str, list[ViewEvent]],
+    ) -> list[dict]:
+        today = date_key(now_iso())
+        note_by_id = {note.id: note for note in notes}
+        merged = {item.get("id"): dict(item) for item in profiles if item.get("id")}
+        for note_id, events in note_view_events.items():
+            note = note_by_id.get(note_id)
+            if not note:
+                continue
+            for event in sorted(events, key=lambda item: item.viewedAt):
+                key = self._dashboard_identity_key(event.viewerUserId, event.anonymousId, event.id)
+                profile = merged.setdefault(
+                    key,
+                    {
+                        "id": key,
+                        "viewerUserId": event.viewerUserId or "",
+                        "anonymousId": event.anonymousId or "",
+                        "anonymous": not bool(event.viewerUserId),
+                        "nickname": event.nickname or ("匿名访客" if not event.viewerUserId else "微信客户"),
+                        "avatarUrl": event.avatarUrl or "",
+                        "phone": "",
+                        "wechat": "",
+                        "budgetText": "",
+                        "intentLevel": "待判断",
+                        "customerTags": [],
+                        "viewCount": 0,
+                        "noteClickCount": 0,
+                        "consultCount": 0,
+                        "actionCount": 0,
+                        "showcaseNames": [],
+                        "shareIds": [],
+                        "noteIds": [],
+                        "noteTitles": [],
+                        "leadReminderId": "",
+                        "orderActionId": "",
+                        "noteId": note.id,
+                        "visitorIdentityType": VISITOR_IDENTITY_DEFAULT["type"],
+                        "visitorIdentityLabel": VISITOR_IDENTITY_DEFAULT["label"],
+                        "visitorIdentityGroup": VISITOR_IDENTITY_DEFAULT["group"],
+                        "lastActionLabel": "",
+                        "lastActivityAt": event.viewedAt,
+                        "lastActivityDateKey": event.dateKey,
+                        "isToday": event.dateKey == today,
+                    },
+                )
+                profile["viewerUserId"] = profile.get("viewerUserId") or event.viewerUserId or ""
+                profile["anonymousId"] = profile.get("anonymousId") or event.anonymousId or ""
+                profile["nickname"] = profile.get("nickname") or event.nickname or ("匿名访客" if not event.viewerUserId else "微信客户")
+                profile["avatarUrl"] = profile.get("avatarUrl") or event.avatarUrl or ""
+                profile["viewCount"] = int(profile.get("viewCount") or 0) + 1
+                profile["noteId"] = profile.get("noteId") or note.id
+                if note.id not in profile["noteIds"]:
+                    profile["noteIds"].append(note.id)
+                if note.title not in profile["noteTitles"]:
+                    profile["noteTitles"].append(note.title)
+                if event.viewedAt >= str(profile.get("lastActivityAt") or ""):
+                    profile["lastActivityAt"] = event.viewedAt
+                    profile["lastActivityDateKey"] = event.dateKey
+                    profile["isToday"] = event.dateKey == today
+        return sorted(
+            merged.values(),
+            key=lambda item: (
+                item.get("consultCount") or 0,
+                item.get("actionCount") or 0,
+                item.get("noteClickCount") or 0,
+                item.get("viewCount") or 0,
+                item.get("lastActivityAt") or "",
+            ),
+            reverse=True,
+        )[:20]
+
+    def _property_dashboard_recent_visitors(
+        self,
+        notes: list[UserNote],
+        note_stats: dict[str, dict],
+        showcase_events: list[ShowcaseEvent],
+        showcase_by_id: dict[str, ShowcasePage],
+    ) -> list[dict]:
+        rows = self._business_dashboard_recent_visitors(showcase_events, showcase_by_id)
+        for note in notes:
+            for viewer in (note_stats.get(note.id, {}) or {}).get("loggedInViewers") or []:
+                rows.append(
+                    {
+                        "id": f"{note.id}:{viewer.get('userId') or viewer.get('viewedAt')}",
+                        "showcaseId": "",
+                        "showcaseName": note.title,
+                        "noteId": note.id,
+                        "noteTitle": note.title,
+                        "shareId": "",
+                        "scene": "property_note",
+                        "viewerUserId": viewer.get("userId") or viewer.get("viewerUserId"),
+                        "anonymous": False,
+                        "nickname": viewer.get("nickname") or "微信用户",
+                        "avatarUrl": viewer.get("avatarUrl") or "",
+                        "viewCount": viewer.get("viewCount") or 1,
+                        "lastViewedAt": viewer.get("viewedAt") or "",
+                        "lastViewedDateKey": date_key(viewer.get("viewedAt")) if viewer.get("viewedAt") else "",
+                        "isToday": date_key(viewer.get("viewedAt")) == date_key(now_iso()) if viewer.get("viewedAt") else False,
+                        "actionText": f"查看了{note.title or '房源'}",
+                    }
+                )
+        return sorted(rows, key=lambda item: item.get("lastViewedAt") or "", reverse=True)[:12]
+
+    def _dashboard_identity_key(
+        self,
+        viewer_user_id: str | None = None,
+        anonymous_id: str | None = None,
+        fallback_id: str | None = None,
+    ) -> str:
+        if viewer_user_id:
+            return f"user:{viewer_user_id}"
+        if anonymous_id:
+            return f"anon:{anonymous_id}"
+        return f"anon:{fallback_id or new_id('visitor')}"
+
+    def _dashboard_display_name(self, nickname: str | None, viewer_user_id: str | None = None) -> str:
+        cleaned = str(nickname or "").strip()
+        if cleaned:
+            return cleaned
+        return "微信客户" if viewer_user_id else "匿名客户"
+
+    def _business_dashboard_contact_lookup(
+        self,
+        actions: list[CustomerAction],
+        leads: list[LeadReminder],
+    ) -> dict[str, dict]:
+        lookup: dict[str, dict] = {}
+        for lead in leads:
+            key = self._dashboard_identity_key(lead.viewerUserId)
+            row = lookup.setdefault(key, {})
+            row.update(
+                {
+                    "viewerUserId": lead.viewerUserId,
+                    "nickname": lead.nickname or row.get("nickname") or "微信客户",
+                    "avatarUrl": lead.avatarUrl or row.get("avatarUrl") or "",
+                    "phone": lead.customerPhone or row.get("phone") or "",
+                    "wechat": lead.customerWechat or row.get("wechat") or "",
+                    "budgetText": lead.budgetText or row.get("budgetText") or "",
+                    "intentLevel": lead.intentLevel or row.get("intentLevel") or "待判断",
+                    "customerTags": lead.customerTags or row.get("customerTags") or [],
+                    "leadReminderId": lead.id,
+                    "lastActivityAt": lead.updatedAt or lead.lastViewedAt or row.get("lastActivityAt") or "",
+                }
+            )
+        for action in actions:
+            key = self._dashboard_identity_key(action.viewerUserId, action.anonymousId, action.id)
+            payload = action.payload or {}
+            visitor_identity = self._customer_action_visitor_identity(action)
+            row = lookup.setdefault(key, {})
+            is_order_action = action.actionKey in PRODUCT_ORDER_ACTION_KEYS
+            lead_id = (action.projectionRefs or {}).get("leadReminderId")
+            row.update(
+                {
+                    "viewerUserId": action.viewerUserId or row.get("viewerUserId") or "",
+                    "anonymousId": action.anonymousId or row.get("anonymousId") or "",
+                    "nickname": payload.get("name") or payload.get("receiverName") or row.get("nickname") or self._dashboard_display_name(None, action.viewerUserId),
+                    "avatarUrl": payload.get("avatarUrl") or row.get("avatarUrl") or "",
+                    "phone": payload.get("phone") or row.get("phone") or "",
+                    "wechat": payload.get("wechat") or row.get("wechat") or "",
+                    "leadReminderId": lead_id or row.get("leadReminderId") or "",
+                    "orderActionId": action.id if is_order_action else row.get("orderActionId") or "",
+                    "noteId": action.noteId or row.get("noteId") or "",
+                    "lastActionLabel": action.actionLabel,
+                    "lastActivityAt": max(str(row.get("lastActivityAt") or ""), action.createdAt),
+                    "visitorIdentityType": visitor_identity["type"],
+                    "visitorIdentityLabel": visitor_identity["label"],
+                    "visitorIdentityGroup": visitor_identity["group"],
+                }
+            )
+        return lookup
+
+    def _customer_action_visitor_identity(self, action: CustomerAction | None) -> dict:
+        if not action:
+            return dict(VISITOR_IDENTITY_DEFAULT)
+        payload = action.payload or {}
+        identity = payload.get("visitorIdentity") if isinstance(payload.get("visitorIdentity"), dict) else {}
+        identity_type = str(identity.get("type") or (action.projectionRefs or {}).get("visitorIdentityType") or "").strip()
+        if identity_type == VISITOR_IDENTITY_PEER_AGENT["type"]:
+            return dict(VISITOR_IDENTITY_PEER_AGENT)
+        if identity_type == VISITOR_IDENTITY_UPSTREAM["type"]:
+            return dict(VISITOR_IDENTITY_UPSTREAM)
+        return dict(VISITOR_IDENTITY_DEFAULT)
+
+    def _business_dashboard_showcase_breakdown(
+        self,
+        showcases: list[ShowcasePage],
+        showcase_events: list[ShowcaseEvent],
+    ) -> list[dict]:
+        rows: dict[str, dict] = {}
+        for showcase in showcases:
+            rows[showcase.id] = {
+                "showcaseId": showcase.id,
+                "showcaseName": showcase.name,
+                "status": showcase.status,
+                "openCount": 0,
+                "visitorCount": 0,
+                "noteClickCount": 0,
+                "consultCount": 0,
+                "shareCount": 0,
+                "shareSourceCount": 0,
+                "lastEventAt": "",
+                "_visitorKeys": set(),
+                "_shareIds": set(),
+            }
+        for event in showcase_events:
+            row = rows.setdefault(
+                event.showcaseId,
+                {
+                    "showcaseId": event.showcaseId,
+                    "showcaseName": "展示页",
+                    "status": "",
+                    "openCount": 0,
+                    "visitorCount": 0,
+                    "noteClickCount": 0,
+                    "consultCount": 0,
+                    "shareCount": 0,
+                    "shareSourceCount": 0,
+                    "lastEventAt": "",
+                    "_visitorKeys": set(),
+                    "_shareIds": set(),
+                },
+            )
+            if event.eventType == "view":
+                row["openCount"] += 1
+                row["_visitorKeys"].add(self._dashboard_identity_key(event.viewerUserId, event.anonymousId, event.id))
+            elif event.eventType == "note_click":
+                row["noteClickCount"] += 1
+            elif event.eventType in {"phone_click", "wechat_copy"}:
+                row["consultCount"] += 1
+            elif event.eventType == "share":
+                row["shareCount"] += 1
+            if event.shareId:
+                row["_shareIds"].add(event.shareId)
+            if event.createdAt > row["lastEventAt"]:
+                row["lastEventAt"] = event.createdAt
+        result = []
+        for row in rows.values():
+            row["visitorCount"] = len(row.pop("_visitorKeys"))
+            row["shareSourceCount"] = len(row.pop("_shareIds"))
+            result.append(row)
+        return sorted(
+            result,
+            key=lambda item: (item["openCount"], item["noteClickCount"], item["consultCount"], item["lastEventAt"]),
+            reverse=True,
+        )
+
+    def _business_dashboard_visitor_profiles(
+        self,
+        showcase_events: list[ShowcaseEvent],
+        actions: list[CustomerAction],
+        leads: list[LeadReminder],
+        showcase_by_id: dict[str, ShowcasePage],
+        note_by_id: dict[str, UserNote],
+    ) -> list[dict]:
+        contact_lookup = self._business_dashboard_contact_lookup(actions, leads)
+        profiles: dict[str, dict] = {}
+        for event in sorted(showcase_events, key=lambda item: item.createdAt):
+            key = self._dashboard_identity_key(event.viewerUserId, event.anonymousId, event.id)
+            contact = contact_lookup.get(key, {})
+            showcase = showcase_by_id.get(event.showcaseId)
+            profile = profiles.setdefault(
+                key,
+                {
+                    "id": key,
+                    "viewerUserId": event.viewerUserId or contact.get("viewerUserId") or "",
+                    "anonymousId": event.anonymousId or contact.get("anonymousId") or "",
+                    "anonymous": not bool(event.viewerUserId),
+                    "nickname": contact.get("nickname") or self._dashboard_display_name(event.nickname, event.viewerUserId),
+                    "avatarUrl": contact.get("avatarUrl") or event.avatarUrl or "",
+                    "phone": contact.get("phone") or "",
+                    "wechat": contact.get("wechat") or "",
+                    "budgetText": contact.get("budgetText") or "",
+                    "intentLevel": contact.get("intentLevel") or "待判断",
+                    "customerTags": contact.get("customerTags") or [],
+                    "viewCount": 0,
+                    "noteClickCount": 0,
+                    "consultCount": 0,
+                    "actionCount": 0,
+                    "showcaseNames": [],
+                    "shareIds": [],
+                    "noteIds": [],
+                    "noteTitles": [],
+                    "leadReminderId": contact.get("leadReminderId") or "",
+                    "orderActionId": contact.get("orderActionId") or "",
+                    "noteId": contact.get("noteId") or "",
+                    "visitorIdentityType": contact.get("visitorIdentityType") or VISITOR_IDENTITY_DEFAULT["type"],
+                    "visitorIdentityLabel": contact.get("visitorIdentityLabel") or VISITOR_IDENTITY_DEFAULT["label"],
+                    "visitorIdentityGroup": contact.get("visitorIdentityGroup") or VISITOR_IDENTITY_DEFAULT["group"],
+                    "lastActionLabel": contact.get("lastActionLabel") or "",
+                    "lastActivityAt": contact.get("lastActivityAt") or event.createdAt,
+                    "lastActivityDateKey": date_key(contact.get("lastActivityAt") or event.createdAt),
+                    "isToday": date_key(contact.get("lastActivityAt") or event.createdAt) == date_key(now_iso()),
+                },
+            )
+            profile["nickname"] = contact.get("nickname") or self._dashboard_display_name(event.nickname, event.viewerUserId)
+            profile["avatarUrl"] = contact.get("avatarUrl") or event.avatarUrl or profile["avatarUrl"]
+            profile["phone"] = contact.get("phone") or profile["phone"]
+            profile["wechat"] = contact.get("wechat") or profile["wechat"]
+            profile["leadReminderId"] = contact.get("leadReminderId") or profile["leadReminderId"]
+            profile["orderActionId"] = contact.get("orderActionId") or profile["orderActionId"]
+            profile["noteId"] = contact.get("noteId") or event.noteId or profile["noteId"]
+            profile["visitorIdentityType"] = contact.get("visitorIdentityType") or profile.get("visitorIdentityType") or VISITOR_IDENTITY_DEFAULT["type"]
+            profile["visitorIdentityLabel"] = contact.get("visitorIdentityLabel") or profile.get("visitorIdentityLabel") or VISITOR_IDENTITY_DEFAULT["label"]
+            profile["visitorIdentityGroup"] = contact.get("visitorIdentityGroup") or profile.get("visitorIdentityGroup") or VISITOR_IDENTITY_DEFAULT["group"]
+            if contact.get("noteId") and contact.get("noteId") not in profile["noteIds"]:
+                profile["noteIds"].append(contact.get("noteId"))
+            profile["lastActionLabel"] = contact.get("lastActionLabel") or profile["lastActionLabel"]
+            if event.eventType == "view":
+                profile["viewCount"] += 1
+            elif event.eventType == "note_click":
+                profile["noteClickCount"] += 1
+                if event.noteId:
+                    if event.noteId not in profile["noteIds"]:
+                        profile["noteIds"].append(event.noteId)
+                    note = note_by_id.get(event.noteId)
+                    title = note.title if note else "资料"
+                    if title not in profile["noteTitles"]:
+                        profile["noteTitles"].append(title)
+            elif event.eventType in {"phone_click", "wechat_copy"}:
+                profile["consultCount"] += 1
+            if showcase and showcase.name not in profile["showcaseNames"]:
+                profile["showcaseNames"].append(showcase.name)
+            if event.shareId and event.shareId not in profile["shareIds"]:
+                profile["shareIds"].append(event.shareId)
+            if event.createdAt > profile["lastActivityAt"]:
+                profile["lastActivityAt"] = event.createdAt
+                profile["lastActivityDateKey"] = date_key(event.createdAt)
+                profile["isToday"] = event.dateKey == date_key(now_iso())
+        for key, contact in contact_lookup.items():
+            profile = profiles.setdefault(
+                key,
+                {
+                    "id": key,
+                    "viewerUserId": contact.get("viewerUserId") or "",
+                    "anonymousId": contact.get("anonymousId") or "",
+                    "anonymous": not bool(contact.get("viewerUserId")),
+                    "nickname": contact.get("nickname") or "微信客户",
+                    "avatarUrl": contact.get("avatarUrl") or "",
+                    "phone": contact.get("phone") or "",
+                    "wechat": contact.get("wechat") or "",
+                    "budgetText": contact.get("budgetText") or "",
+                    "intentLevel": contact.get("intentLevel") or "待判断",
+                    "customerTags": contact.get("customerTags") or [],
+                    "viewCount": 0,
+                    "noteClickCount": 0,
+                    "consultCount": 0,
+                    "actionCount": 0,
+                    "showcaseNames": [],
+                    "shareIds": [],
+                    "noteIds": [contact.get("noteId")] if contact.get("noteId") else [],
+                    "noteTitles": [],
+                    "leadReminderId": contact.get("leadReminderId") or "",
+                    "orderActionId": contact.get("orderActionId") or "",
+                    "noteId": contact.get("noteId") or "",
+                    "visitorIdentityType": contact.get("visitorIdentityType") or VISITOR_IDENTITY_DEFAULT["type"],
+                    "visitorIdentityLabel": contact.get("visitorIdentityLabel") or VISITOR_IDENTITY_DEFAULT["label"],
+                    "visitorIdentityGroup": contact.get("visitorIdentityGroup") or VISITOR_IDENTITY_DEFAULT["group"],
+                    "lastActionLabel": contact.get("lastActionLabel") or "",
+                    "lastActivityAt": contact.get("lastActivityAt") or "",
+                    "lastActivityDateKey": date_key(contact.get("lastActivityAt")) if contact.get("lastActivityAt") else "",
+                    "isToday": date_key(contact.get("lastActivityAt")) == date_key(now_iso()) if contact.get("lastActivityAt") else False,
+                },
+            )
+            profile["phone"] = contact.get("phone") or profile["phone"]
+            profile["wechat"] = contact.get("wechat") or profile["wechat"]
+            profile["leadReminderId"] = contact.get("leadReminderId") or profile["leadReminderId"]
+            profile["orderActionId"] = contact.get("orderActionId") or profile["orderActionId"]
+            profile["noteId"] = contact.get("noteId") or profile["noteId"]
+            profile["visitorIdentityType"] = contact.get("visitorIdentityType") or profile.get("visitorIdentityType") or VISITOR_IDENTITY_DEFAULT["type"]
+            profile["visitorIdentityLabel"] = contact.get("visitorIdentityLabel") or profile.get("visitorIdentityLabel") or VISITOR_IDENTITY_DEFAULT["label"]
+            profile["visitorIdentityGroup"] = contact.get("visitorIdentityGroup") or profile.get("visitorIdentityGroup") or VISITOR_IDENTITY_DEFAULT["group"]
+            if contact.get("noteId") and contact.get("noteId") not in profile["noteIds"]:
+                profile["noteIds"].append(contact.get("noteId"))
+            profile["lastActionLabel"] = contact.get("lastActionLabel") or profile["lastActionLabel"]
+            profile["actionCount"] += 1 if contact.get("lastActionLabel") else 0
+            if contact.get("lastActivityAt") and contact.get("lastActivityAt") > profile.get("lastActivityAt", ""):
+                profile["lastActivityAt"] = contact.get("lastActivityAt")
+                profile["lastActivityDateKey"] = date_key(contact.get("lastActivityAt"))
+                profile["isToday"] = date_key(contact.get("lastActivityAt")) == date_key(now_iso())
+        return sorted(
+            profiles.values(),
+            key=lambda item: (
+                item.get("consultCount") or 0,
+                item.get("actionCount") or 0,
+                item.get("noteClickCount") or 0,
+                item.get("viewCount") or 0,
+                item.get("lastActivityAt") or "",
+            ),
+            reverse=True,
+        )[:20]
+
+    def _business_dashboard_entries(self, summary: dict) -> list[dict]:
+        return [
+            {
+                "key": "showcases",
+                "title": "展示页效果",
+                "desc": "看展示页发出去后的效果",
+                "count": summary["showcaseOpenCount"],
+                "badge": f"{summary['visitorCount']} 位访客",
+                "target": "showcases",
+            },
+            {
+                "key": "visitors",
+                "title": "访客详情",
+                "desc": "看最近谁打开和看过什么",
+                "count": summary["visitorCount"],
+                "badge": f"匿名 {summary['anonymousVisitorCount']}",
+                "target": "visitors",
+            },
+            {
+                "key": "notes",
+                "title": "笔记数据",
+                "desc": "看哪些资料被点击和咨询",
+                "count": summary["noteClickCount"],
+                "badge": "点击排行",
+                "target": "notes",
+            },
+            {
+                "key": "customers",
+                "title": "客户资料",
+                "desc": "看客户动作和待跟进",
+                "count": summary["customerCount"],
+                "badge": f"待联系 {summary['pendingLeadCount']}",
+                "target": "customers",
+            },
+        ]
+
+    def _business_dashboard_recent_visitors(
+        self,
+        showcase_events: list[ShowcaseEvent],
+        showcase_by_id: dict[str, ShowcasePage],
+    ) -> list[dict]:
+        rows = []
+        for event in sorted(showcase_events, key=lambda item: item.createdAt, reverse=True):
+            if event.eventType != "view":
+                continue
+            showcase = showcase_by_id.get(event.showcaseId)
+            rows.append(
+                {
+                    "id": event.id,
+                    "showcaseId": event.showcaseId,
+                    "showcaseName": showcase.name if showcase else "展示页",
+                    "shareId": event.shareId,
+                    "scene": event.scene,
+                    "viewerUserId": event.viewerUserId,
+                    "anonymous": not bool(event.viewerUserId),
+                    "nickname": event.nickname or ("匿名客户" if not event.viewerUserId else "微信用户"),
+                    "avatarUrl": event.avatarUrl,
+                    "viewCount": 1,
+                    "lastViewedAt": event.createdAt,
+                    "lastViewedDateKey": event.dateKey,
+                    "isToday": event.dateKey == date_key(now_iso()),
+                    "actionText": f"打开了{showcase.name if showcase else '展示页'}",
+                }
+            )
+            if len(rows) >= 6:
+                break
+        return rows
+
+    def _business_dashboard_top_notes(self, note_clicks: dict[str, int], note_by_id: dict[str, UserNote]) -> list[dict]:
+        rows = []
+        for note_id, count in sorted(note_clicks.items(), key=lambda item: item[1], reverse=True)[:6]:
+            note = note_by_id.get(note_id)
+            rows.append(
+                {
+                    "noteId": note_id,
+                    "title": note.title if note else "资料",
+                    "clickCount": count,
+                    "cardType": (note.visibilityConfig or {}).get("cardType") if note else "",
+                }
+            )
+        return rows
+
+    def _business_dashboard_top_shares(self, share_rows: dict[str, dict], showcase_events: list[ShowcaseEvent]) -> list[dict]:
+        rows = sorted(
+            share_rows.values(),
+            key=lambda item: (
+                item.get("openCount") or 0,
+                item.get("noteClickCount") or 0,
+                item.get("consultCount") or 0,
+                item.get("lastEventAt") or "",
+            ),
+            reverse=True,
+        )[:6]
+        events_by_share: dict[str, list[ShowcaseEvent]] = defaultdict(list)
+        for event in showcase_events:
+            if event.shareId:
+                events_by_share[event.shareId].append(event)
+        for row in rows:
+            visitor_names = []
+            visitor_keys = set()
+            for event in sorted(events_by_share.get(row["shareId"], []), key=lambda item: item.createdAt, reverse=True):
+                if event.eventType != "view":
+                    continue
+                key = self._dashboard_identity_key(event.viewerUserId, event.anonymousId, event.id)
+                if key in visitor_keys:
+                    continue
+                visitor_keys.add(key)
+                visitor_names.append(self._dashboard_display_name(event.nickname, event.viewerUserId))
+                if len(visitor_names) >= 3:
+                    break
+            row["visitorCount"] = len(visitor_keys)
+            row["visitorNames"] = visitor_names
+        return rows
+
+    def _business_dashboard_latest_actions(
+        self,
+        actions: list[CustomerAction],
+        note_by_id: dict[str, UserNote],
+    ) -> list[dict]:
+        rows = []
+        sorted_actions = sorted(
+            actions,
+            key=lambda item: (self._customer_action_priority(item), item.createdAt),
+            reverse=True,
+        )
+        for action in sorted_actions[:8]:
+            note = note_by_id.get(action.noteId)
+            payload = action.payload or {}
+            visitor_identity = self._customer_action_visitor_identity(action)
+            lead_id = (action.projectionRefs or {}).get("leadReminderId")
+            is_order_action = action.actionKey in PRODUCT_ORDER_ACTION_KEYS
+            rows.append(
+                {
+                    "id": action.id,
+                    "noteId": action.noteId,
+                    "leadReminderId": lead_id,
+                    "orderActionId": action.id if is_order_action else "",
+                    "targetType": "order" if is_order_action else ("lead" if lead_id else "note"),
+                    "noteTitle": note.title if note else "资料",
+                    "actionKey": action.actionKey,
+                    "actionLabel": action.actionLabel or CUSTOMER_ACTION_LABELS.get(action.actionKey, "客户动作"),
+                    "customerName": payload.get("name") or payload.get("receiverName") or self._dashboard_display_name(payload.get("nickname"), action.viewerUserId),
+                    "avatarUrl": payload.get("avatarUrl") or "",
+                    "phone": payload.get("phone") or "",
+                    "wechat": payload.get("wechat") or "",
+                    "visitorIdentityType": visitor_identity["type"],
+                    "visitorIdentityLabel": visitor_identity["label"],
+                    "visitorIdentityGroup": visitor_identity["group"],
+                    "orderStatus": payload.get("orderStatus") or "",
+                    "orderStatusText": self._order_status_text(payload.get("orderStatus") or "submitted", "seller") if is_order_action else "",
+                    "createdAt": action.createdAt,
+                    "createdDateKey": date_key(action.createdAt),
+                    "isToday": date_key(action.createdAt) == date_key(now_iso()),
+                    "statusText": self._customer_action_status_text(action.actionKey, payload),
+                    "priority": self._customer_action_priority(action),
+                }
+            )
+        return rows
+
+    def _customer_action_priority(self, action: CustomerAction) -> int:
+        payload = action.payload or {}
+        if action.actionKey in {"order-intent", "relay-intent"}:
+            return 90
+        if action.actionKey == "appointment":
+            return 80
+        if action.actionKey == "lead-contact":
+            return 75 if (payload.get("phone") or payload.get("wechat")) else 60
+        if action.actionKey in {"consult-click", "navigation-click"}:
+            return 50
+        return 10
 
     def _clean_showcase_name(self, name: str) -> str:
         cleaned = str(name or "").strip()
@@ -1785,6 +4256,8 @@ class AppService:
             "phone": self._clean_optional_text(source.get("phone")),
             "wechat": self._clean_optional_text(source.get("wechat")),
             "contactText": self._clean_optional_text(source.get("contactText")) or "欢迎联系我了解详情",
+            "ownerName": self._clean_optional_text(source.get("ownerName")),
+            "avatarUrl": self._clean_optional_text(source.get("avatarUrl")),
             "showPhone": bool(source.get("showPhone", True)),
             "showWechat": bool(source.get("showWechat", True)),
         }
@@ -1796,8 +4269,10 @@ class AppService:
             group_by = "none"
         return {
             "groupBy": group_by,
+            "activeCategory": self._clean_optional_text(source.get("activeCategory")) or "全部",
             "showSearch": bool(source.get("showSearch", False)),
             "showTags": bool(source.get("showTags", True)),
+            "layoutMode": "grid" if str(source.get("layoutMode") or "list").strip() == "grid" else "list",
             "primaryColor": str(source.get("primaryColor") or "#1677ff").strip()[:24],
         }
 
@@ -1844,6 +4319,8 @@ class AppService:
 
     def _showcase_note_summary(self, note: UserNote, item: ShowcaseItem) -> dict:
         config = note.visibilityConfig or {}
+        structured_data = config.get("structuredData") if isinstance(config.get("structuredData"), dict) else {}
+        card_type = config.get("cardType", "text_note")
         return {
             "noteId": note.id,
             "title": item.displayTitle or note.title,
@@ -1851,11 +4328,55 @@ class AppService:
             "coverUrl": note.coverUrl,
             "sectionTitle": item.sectionTitle,
             "sortOrder": item.sortOrder,
-            "cardType": config.get("cardType", "text_note"),
+            "cardType": card_type,
             "systemCategory": config.get("systemCategory", ""),
             "tags": self._note_tags(note),
+            "badge": self._showcase_note_badge(card_type),
+            "primaryText": self._showcase_note_primary_text(card_type, structured_data, note),
+            "secondaryText": self._showcase_note_secondary_text(card_type, structured_data, note),
+            "priceText": str(structured_data.get("price") or "").strip(),
+            "productMeta": self._showcase_product_meta(card_type, structured_data),
+            "productActionText": "查看详情/接龙" if card_type == "groupbuy_product" else "",
             "updatedAt": note.updatedAt,
         }
+
+    def _showcase_product_meta(self, card_type: str, data: dict) -> list[str]:
+        if card_type != "groupbuy_product":
+            return []
+        return [
+            str(item).strip()
+            for item in [
+                data.get("spec"),
+                data.get("pickupMethod"),
+                data.get("pickupLocation"),
+                f"截止 {data.get('deadline')}" if data.get("deadline") else "",
+            ]
+            if str(item or "").strip()
+        ][:4]
+
+    def _showcase_note_badge(self, card_type: str) -> str:
+        labels = {
+            "property_listing": "房源",
+            "groupbuy_product": "好物",
+            "image_ocr": "图片",
+            "link": "链接",
+            "article": "文章",
+        }
+        return labels.get(card_type, "资料")
+
+    def _showcase_note_primary_text(self, card_type: str, data: dict, note: UserNote) -> str:
+        if card_type == "property_listing":
+            return " | ".join([str(item) for item in [data.get("area"), data.get("businessArea"), data.get("layout")] if item]) or note.summary
+        if card_type == "groupbuy_product":
+            return " | ".join([str(item) for item in [data.get("spec"), data.get("pickupMethod"), data.get("pickupLocation")] if item]) or note.summary
+        return note.summary
+
+    def _showcase_note_secondary_text(self, card_type: str, data: dict, note: UserNote) -> str:
+        if card_type == "property_listing":
+            return " | ".join([str(item) for item in [data.get("address"), data.get("utilities"), data.get("remark")] if item]) or note.body
+        if card_type == "groupbuy_product":
+            return " | ".join([str(item) for item in [data.get("deadline"), data.get("remark")] if item]) or note.body
+        return note.body
 
     def update_user_note(self, note_id: str, payload: UserNoteUpdateRequest) -> UserNote:
         note = self.get_user_note(note_id, payload.ownerUserId)
@@ -1874,6 +4395,275 @@ class AppService:
         note.updatedAt = now_iso()
         self.repo.save_user_note(note)
         return note
+
+    def duplicate_user_note(self, note_id: str, owner_user_id: str) -> UserNote:
+        source = self.get_user_note(note_id, owner_user_id)
+        now = now_iso()
+        copy_note = source.model_copy(deep=True)
+        copy_note.id = new_id("note")
+        copy_note.sourceCardId = None
+        copy_note.importBatchId = None
+        copy_note.title = f"{source.title} 副本"
+        copy_note.status = "active"
+        config = self._normalize_note_visibility_config(copy_note.visibilityConfig)
+        config["cardState"] = "editing"
+        copy_note.visibilityConfig = config
+        copy_note.createdAt = now
+        copy_note.updatedAt = now
+        self.repo.save_user_note(copy_note)
+        return copy_note
+
+    def clone_property_same(self, payload: PropertySameCloneRequest) -> dict:
+        owner = self.repo.get_user(payload.ownerUserId)
+        if not owner:
+            raise HTTPException(status_code=404, detail="用户不存在")
+        source_type = str(payload.sourceType or "note").strip().lower()
+        if source_type in {"showcase", "collection", "合集"}:
+            showcase = self._clone_public_showcase_for_owner(payload, owner)
+            return {
+                "type": "showcase",
+                "showcase": self._showcase_owner_payload(showcase),
+                "sharePath": f"/pages/showcase-view/index?id={showcase.id}",
+            }
+        note = self._clone_public_note_for_owner(payload.sourceId, payload, owner)
+        return {
+            "type": "note",
+            "note": note.model_dump(),
+            "sharePath": f"/pages/note-preview/index?id={note.id}",
+        }
+
+    def _clone_public_showcase_for_owner(self, payload: PropertySameCloneRequest, owner: User) -> ShowcasePage:
+        source = self.repo.get_showcase_page(payload.sourceId)
+        if not source or source.status != "published":
+            raise HTTPException(status_code=404, detail="公开合集不存在或未发布")
+        now = now_iso()
+        cloned_items: list[ShowcaseItem] = []
+        for index, item in enumerate(self._valid_showcase_items(source), start=1):
+            cloned_note = self._clone_public_note_for_owner(item.noteId, payload, owner, source_showcase_id=source.id)
+            cloned_items.append(
+                ShowcaseItem(
+                    noteId=cloned_note.id,
+                    sortOrder=item.sortOrder if item.sortOrder is not None else index,
+                    sectionTitle=item.sectionTitle,
+                    displayTitle=item.displayTitle,
+                    visible=item.visible,
+                    fieldConfig=dict(item.fieldConfig or {}),
+                )
+            )
+        if not cloned_items:
+            raise HTTPException(status_code=400, detail="合集里没有可复制的公开房源")
+        contact_config = self._clone_contact_config(payload, owner)
+        showcase = ShowcasePage(
+            id=new_id("showcase"),
+            ownerUserId=owner.id,
+            status="published" if payload.publishShowcase else "draft",
+            name=source.name,
+            description=source.description,
+            bannerUrl=source.bannerUrl,
+            templateId=source.templateId,
+            shareTitle=source.shareTitle,
+            contactConfig=contact_config,
+            displayConfig=dict(source.displayConfig or {}),
+            items=cloned_items,
+            publicSnapshot={},
+            snapshotVersion=0,
+            snapshotCreatedAt=None,
+            publishedAt=now if payload.publishShowcase else None,
+            createdAt=now,
+            updatedAt=now,
+        )
+        if payload.publishShowcase:
+            showcase.publicSnapshot = self._build_showcase_public_snapshot(showcase, now, 1)
+            showcase.snapshotVersion = 1
+            showcase.snapshotCreatedAt = now
+        self.repo.save_showcase_page(showcase)
+        self._register_media_refs_for_urls([source.bannerUrl], owner.id, "showcase", showcase.id, "banner")
+        return showcase
+
+    def _clone_public_note_for_owner(
+        self,
+        source_note_id: str,
+        payload: PropertySameCloneRequest,
+        owner: User,
+        source_showcase_id: str | None = None,
+    ) -> UserNote:
+        source = self.repo.get_user_note(source_note_id)
+        if not source or source.status == "deleted":
+            raise HTTPException(status_code=404, detail="公开房源卡不存在")
+        source_config = source.visibilityConfig if isinstance(source.visibilityConfig, dict) else {}
+        source_structured = source_config.get("structuredData") if isinstance(source_config.get("structuredData"), dict) else {}
+        structured_data = self._public_clone_structured_data(source_structured)
+        phone = self._clean_optional_text(payload.phone) or owner.phone
+        wechat = self._clean_optional_text(payload.wechat)
+        if phone:
+            structured_data["phone"] = phone
+            structured_data["contactPhone"] = phone
+        if wechat:
+            structured_data["wechat"] = wechat
+            structured_data["contactWechat"] = wechat
+        media = self._clone_note_media(source)
+        cover_url = source.coverUrl or self._first_media_url(media)
+        now = now_iso()
+        source_refs = self._unique_strings([*source.sourceRefs, source.id, source_showcase_id or ""])
+        card_type = str(source_config.get("cardType") or "property_listing")
+        visibility_config = self._normalize_note_visibility_config(
+            {
+                **source_config,
+                "cardType": card_type,
+                "cardState": "editing",
+                "sourceType": "property_same_clone",
+                "structuredData": structured_data,
+                "conversionConfig": self._clone_conversion_config(card_type, source_config, phone, wechat),
+                "cloneSource": {
+                    "sourceNoteId": source.id,
+                    "sourceShowcaseId": source_showcase_id,
+                    "sourceOwnerUserId": source.ownerUserId,
+                },
+                "privateData": {
+                    "upstreamContact": self._clone_upstream_contact(payload, source, source_config),
+                    "editableByOwner": True,
+                },
+            }
+        )
+        note = UserNote(
+            id=new_id("note"),
+            ownerUserId=owner.id,
+            importBatchId=None,
+            sourceCardId=None,
+            status="active",
+            title=source.title,
+            summary=source.summary,
+            body=source.body,
+            coverUrl=cover_url,
+            media=media,
+            categoryIds=[],
+            phone=phone,
+            locationText=source.locationText,
+            sourceRefs=source_refs,
+            visibilityConfig=visibility_config,
+            createdAt=now,
+            updatedAt=now,
+        )
+        self.repo.save_user_note(note)
+        self._register_media_refs_for_urls([cover_url, *[item.get("url") for item in media if isinstance(item, dict)]], owner.id, "note", note.id, "clone_media")
+        self._record_property_same_peer_signal(
+            source_note_id=source.id,
+            source_showcase_id=source_showcase_id,
+            clone_owner=owner,
+            payload=payload,
+            clone_type="note",
+            generated_ref_id=note.id,
+        )
+        return note
+
+    def _record_property_same_peer_signal(
+        self,
+        source_note_id: str,
+        source_showcase_id: str | None,
+        clone_owner: User,
+        payload: PropertySameCloneRequest,
+        clone_type: str,
+        generated_ref_id: str,
+    ) -> None:
+        source = self.repo.get_user_note(source_note_id)
+        if not source or source.status == "deleted" or source.ownerUserId == clone_owner.id:
+            return
+        now = now_iso()
+        phone = self._clean_optional_text(payload.phone) or clone_owner.phone or ""
+        wechat = self._clean_optional_text(payload.wechat) or ""
+        action = CustomerAction(
+            id=new_id("action"),
+            ownerUserId=source.ownerUserId,
+            noteId=source.id,
+            sourceCardId=source.sourceCardId,
+            viewerUserId=clone_owner.id,
+            anonymousId=None,
+            actionKey="consult-click",
+            actionLabel="生成同款",
+            payload={
+                "name": clone_owner.nickname,
+                "avatarUrl": clone_owner.avatarUrl,
+                "phone": phone,
+                "wechat": wechat,
+                "cloneType": clone_type,
+                "generatedRefId": generated_ref_id,
+                "sourceShowcaseId": source_showcase_id or "",
+                "visitorIdentity": VISITOR_IDENTITY_PEER_AGENT,
+                "note": "该访客通过生成同款进入，默认归为同行传播，不进入客户待跟进。",
+            },
+            projectionRefs={
+                "visitorIdentityType": VISITOR_IDENTITY_PEER_AGENT["type"],
+                "visitorIdentityLabel": VISITOR_IDENTITY_PEER_AGENT["label"],
+                "generatedRefId": generated_ref_id,
+            },
+            createdAt=now,
+            updatedAt=now,
+        )
+        self.repo.save_customer_action(action)
+
+    def _clone_note_media(self, source: UserNote) -> list[dict]:
+        media = [dict(item) for item in source.media if isinstance(item, dict)]
+        if source.coverUrl and not any(item.get("url") == source.coverUrl for item in media):
+            media.insert(0, self._image_media_payload(source.coverUrl, "封面图"))
+        return media
+
+    def _first_media_url(self, media: list[dict]) -> str | None:
+        for item in media:
+            if isinstance(item, dict) and item.get("url"):
+                return str(item.get("url"))
+        return None
+
+    def _clone_contact_config(self, payload: PropertySameCloneRequest, owner: User) -> dict:
+        phone = self._clean_optional_text(payload.phone) or owner.phone
+        wechat = self._clean_optional_text(payload.wechat)
+        return self._normalize_showcase_contact_config(
+            {
+                "phone": phone,
+                "wechat": wechat,
+                "contactText": "想了解房源细节，欢迎直接联系我。",
+                "ownerName": self._clean_optional_text(payload.ownerName) or owner.nickname,
+                "avatarUrl": self._clean_optional_text(payload.avatarUrl) or owner.avatarUrl,
+                "showPhone": bool(phone),
+                "showWechat": bool(wechat),
+            }
+        )
+
+    def _clone_conversion_config(self, card_type: str, source_config: dict, phone: str | None, wechat: str | None) -> dict:
+        incoming = source_config.get("conversionConfig") if isinstance(source_config.get("conversionConfig"), dict) else {}
+        conversion = self._normalize_conversion_config(card_type, incoming)
+        conversion["showContactPhone"] = bool(phone)
+        conversion["enablePrivateConsultation"] = bool(wechat) or conversion.get("enablePrivateConsultation", False)
+        return conversion
+
+    def _clone_upstream_contact(self, payload: PropertySameCloneRequest, source: UserNote, source_config: dict) -> str:
+        explicit = self._clean_optional_text(payload.upstreamContact)
+        if explicit:
+            return explicit
+        structured = source_config.get("structuredData") if isinstance(source_config.get("structuredData"), dict) else {}
+        candidates = [
+            structured.get("wechat"),
+            structured.get("contactWechat"),
+            structured.get("phone"),
+            structured.get("contactPhone"),
+            source.phone,
+        ]
+        source_owner = self.repo.get_user(source.ownerUserId)
+        if source_owner:
+            candidates.extend([source_owner.nickname, source_owner.phone])
+        return next((str(item).strip() for item in candidates if str(item or "").strip()), "原发布中介")
+
+    def _register_media_refs_for_urls(
+        self,
+        urls: list[str | None],
+        owner_user_id: str,
+        ref_type: str,
+        ref_id: str,
+        usage: str,
+    ) -> None:
+        for url in self._unique_strings([str(item).strip() for item in urls if str(item or "").strip()]):
+            asset = self.repo.get_media_asset_by_url(url)
+            if asset:
+                self._save_media_asset_ref(asset, owner_user_id, ref_type, ref_id, usage)
 
     def _normalize_note_visibility_config(self, config: dict) -> dict:
         normalized = dict(config or {})
@@ -1916,6 +4706,8 @@ class AppService:
             return dict(PROPERTY_CONVERSION_DEFAULTS)
         if card_type == "groupbuy_product":
             return dict(GROUPBUY_CONVERSION_DEFAULTS)
+        if card_type in {"business_card", "service_offer"}:
+            return dict(SERVICE_CONVERSION_DEFAULTS)
         return {key: False for key in CONVERSION_CONFIG_KEYS}
 
     def _unique_strings(self, values) -> list[str]:
@@ -1961,6 +4753,16 @@ class AppService:
         else:
             config["contentMode"] = "deep_note"
             config["cardType"] = "article" if card_type == "link" else card_type
+            summary = (note.summary or "").strip()
+            if not summary or summary in {"已收藏，待整理。", "已收藏，待整理"} or summary == (note.title or "").strip():
+                summary = (note.body or note.title or "")[:120]
+                note.summary = summary
+            structured_data["organizeResult"] = {
+                "summary": summary,
+                "generationOptions": ["日常合集", "分享摘要", "标签归类"],
+                "enabledFeatures": [],
+            }
+            config["structuredData"] = structured_data
         note.visibilityConfig = config
         if note.summary in {"已收藏，待整理。", "已收藏，待整理"}:
             note.summary = note.body[:120] if note.body else note.title
@@ -1999,8 +4801,20 @@ class AppService:
             raise HTTPException(status_code=400, detail="不支持确认成该资料类型")
         current_config = self._normalize_note_visibility_config(note.visibilityConfig)
         structured_data = self._build_confirmed_structured_data(note, current_config, card_type)
-        system_category = "房源" if card_type == "property_listing" else "团购" if card_type == "groupbuy_product" else current_config.get("systemCategory", "待整理")
-        extra_tags = ["房产", "房源"] if card_type == "property_listing" else ["团购", "商品"] if card_type == "groupbuy_product" else ["待整理"]
+        system_category_map = {
+            "property_listing": "房源",
+            "groupbuy_product": "团购",
+            "business_card": "名片",
+            "service_offer": "服务",
+        }
+        tag_map = {
+            "property_listing": ["房产", "房源"],
+            "groupbuy_product": ["团购", "商品"],
+            "business_card": ["名片", "顾问"],
+            "service_offer": ["服务", "销售"],
+        }
+        system_category = system_category_map.get(card_type, current_config.get("systemCategory", "待整理"))
+        extra_tags = tag_map.get(card_type, ["待整理"])
         conversion_config = self._confirmed_conversion_config(card_type, current_config)
         previous_explanation = current_config.get("recognitionExplanation") if isinstance(current_config.get("recognitionExplanation"), dict) else {}
         config = {
@@ -2074,6 +4888,39 @@ class AppService:
                 "images": images,
                 "rawText": current.get("rawText") or note.body,
             }
+        if card_type == "business_card":
+            return {
+                **preserved,
+                "name": current.get("name") or note.title,
+                "title": current.get("title", ""),
+                "company": current.get("company", ""),
+                "serviceScope": current.get("serviceScope", ""),
+                "headline": current.get("headline") or note.summary or "",
+                "bio": current.get("bio") or note.body,
+                "phone": current.get("phone") or note.phone or "",
+                "wechat": current.get("wechat", ""),
+                "city": current.get("city") or note.locationText or "",
+                "avatarUrl": current.get("avatarUrl") or note.coverUrl or "",
+                "qrCodeUrl": current.get("qrCodeUrl", ""),
+                "images": images,
+                "rawText": current.get("rawText") or note.body,
+            }
+        if card_type == "service_offer":
+            return {
+                **preserved,
+                "serviceName": current.get("serviceName") or note.title,
+                "headline": current.get("headline") or note.summary or "",
+                "targetAudience": current.get("targetAudience", ""),
+                "serviceContent": current.get("serviceContent") or note.body,
+                "pricingNote": current.get("pricingNote", ""),
+                "serviceProcess": current.get("serviceProcess", ""),
+                "caseHighlights": current.get("caseHighlights", ""),
+                "serviceArea": current.get("serviceArea") or note.locationText or "",
+                "contact": current.get("contact") or note.phone or "",
+                "appointmentNote": current.get("appointmentNote", ""),
+                "images": images,
+                "rawText": current.get("rawText") or note.body,
+            }
         return {
             **preserved,
             "rawText": current.get("rawText") or note.body,
@@ -2102,6 +4949,8 @@ class AppService:
         return {
             "property_listing": "房源",
             "groupbuy_product": "商品",
+            "business_card": "电子名片",
+            "service_offer": "服务方案",
             "text_note": "普通笔记",
         }.get(card_type, "资料")
 
@@ -2222,6 +5071,15 @@ class AppService:
         self.repo.save_topic(topic)
         return topic
 
+    def delete_topic(self, topic_id: str, owner_user_id: str) -> dict:
+        if not self.repo.get_user(owner_user_id):
+            raise HTTPException(status_code=404, detail="用户不存在")
+        topic = self.repo.get_topic(topic_id)
+        if not topic or topic.ownerUserId != owner_user_id:
+            raise HTTPException(status_code=404, detail="专题不存在")
+        self.repo.delete_topic(topic_id)
+        return {"deletedTopicId": topic_id}
+
     def add_note_to_topic(self, note_id: str, topic_id: str, owner_user_id: str) -> UserNote:
         note = self.get_user_note(note_id, owner_user_id)
         topic = self.repo.get_topic(topic_id)
@@ -2256,7 +5114,7 @@ class AppService:
         demo_specs = [
             {
                 "title": "测试房源A 万润时光里 27050 两房 近地铁",
-                "summary": "用于测试轻 SCRM 红点、留资和预约。",
+                "summary": "用于测试轻 SCRM 红点、留言和预约。",
                 "community": "万润时光里",
                 "price": "27050",
                 "layout": "loft 两房",
@@ -2337,6 +5195,8 @@ class AppService:
                     "cardType": "property_listing",
                     "cardState": "generated",
                     "contentMode": "generated_card",
+                    "demoData": True,
+                    "demoTag": DASHBOARD_DEMO_TAG,
                     "tags": ["房源", "演示数据"],
                     "conversionConfig": {
                         "showContactPhone": True,
@@ -2370,7 +5230,7 @@ class AppService:
                 customerWechat=spec["customerWechat"],
                 budgetText="预算待确认",
                 intentLevel="高意向" if spec["leadStatus"] == "pending" else "中意向",
-                customerTags=["演示", "房源客户"],
+                customerTags=["演示", "房源客户", DASHBOARD_DEMO_TAG],
                 viewCount=2,
                 lastViewedAt=now,
                 contactedAt=now if spec["leadStatus"] == "contacted" else None,
@@ -2395,7 +5255,9 @@ class AppService:
                     "name": spec["customer"],
                     "phone": spec["customerPhone"],
                     "wechat": spec["customerWechat"],
-                    "remark": "演示留资",
+                    "remark": "演示留言",
+                    "demoData": True,
+                    "demoTag": DASHBOARD_DEMO_TAG,
                 },
                 projectionRefs={"leadReminderId": lead.id},
                 createdAt=now,
@@ -2417,6 +5279,7 @@ class AppService:
                     createdAt=now,
                     updatedAt=now,
                 )
+                appointment_action.payload = {**appointment_action.payload, "demoData": True, "demoTag": DASHBOARD_DEMO_TAG}
                 self.repo.save_customer_action(appointment_action)
                 actions.append(appointment_action)
         product_note = UserNote(
@@ -2442,6 +5305,8 @@ class AppService:
                 "cardType": "groupbuy_product",
                 "cardState": "generated",
                 "contentMode": "generated_card",
+                "demoData": True,
+                "demoTag": DASHBOARD_DEMO_TAG,
                 "tags": ["商品", "团购", "演示数据"],
                 "conversionConfig": {
                     "showContactPhone": True,
@@ -2514,6 +5379,8 @@ class AppService:
                 "remark": "周六下午自提",
                 "name": "李小莓",
                 "avatarUrl": "https://example.com/avatar-demo.png",
+                "demoData": True,
+                "demoTag": DASHBOARD_DEMO_TAG,
             },
             projectionRefs={},
             createdAt=now,
@@ -2521,10 +5388,205 @@ class AppService:
         )
         self.repo.save_customer_action(relay_action)
         actions.append(relay_action)
+        showcase = ShowcasePage(
+            id=new_id("showcase"),
+            ownerUserId=owner_user_id,
+            status="published",
+            name="演示展示页：房源和好物精选",
+            description="用于测试经营看板的展示页打开、访客、资料点击和咨询数据。",
+            bannerUrl=notes[0].coverUrl or product_note.coverUrl,
+            templateId="featured_window",
+            shareTitle="演示展示页：近期精选资料",
+            contactConfig={
+                "phone": user.phone or "13800001001",
+                "wechat": "demo_wechat",
+                "contactText": "欢迎联系我了解详情",
+                "ownerName": user.nickname,
+                "avatarUrl": user.avatarUrl,
+                "showPhone": True,
+                "showWechat": True,
+            },
+            displayConfig={
+                "groupBy": "tag",
+                "activeCategory": "演示数据",
+                "showSearch": False,
+                "showTags": True,
+                "primaryColor": "#1677ff",
+                "demoData": True,
+                "demoTag": DASHBOARD_DEMO_TAG,
+            },
+            items=[
+                ShowcaseItem(noteId=note.id, sortOrder=index, visible=True)
+                for index, note in enumerate(notes)
+            ],
+            publishedAt=now,
+            createdAt=now,
+            updatedAt=now,
+        )
+        showcase.snapshotVersion = 1
+        showcase.snapshotCreatedAt = now
+        showcase.publicSnapshot = self._build_showcase_public_snapshot(showcase, now, 1)
+        self.repo.save_showcase_page(showcase)
+        demo_events = [
+            ShowcaseEvent(
+                id=new_id("showcase_event"),
+                showcaseId=showcase.id,
+                ownerUserId=owner_user_id,
+                eventType="view",
+                noteId=None,
+                viewerUserId=leads[0].viewerUserId if leads else None,
+                viewType="logged_in" if leads else "anonymous",
+                anonymousId=None if leads else "demo_anon_001",
+                nickname=leads[0].nickname if leads else "匿名客户",
+                avatarUrl=leads[0].avatarUrl if leads else None,
+                createdAt=now,
+                dateKey=date_key(now),
+            ),
+            ShowcaseEvent(
+                id=new_id("showcase_event"),
+                showcaseId=showcase.id,
+                ownerUserId=owner_user_id,
+                eventType="view",
+                noteId=None,
+                viewerUserId=None,
+                viewType="anonymous",
+                anonymousId="demo_anon_002",
+                nickname=None,
+                avatarUrl=None,
+                createdAt=now,
+                dateKey=date_key(now),
+            ),
+            ShowcaseEvent(
+                id=new_id("showcase_event"),
+                showcaseId=showcase.id,
+                ownerUserId=owner_user_id,
+                eventType="note_click",
+                noteId=notes[0].id,
+                viewerUserId=leads[0].viewerUserId if leads else None,
+                viewType="logged_in" if leads else "anonymous",
+                anonymousId=None if leads else "demo_anon_003",
+                nickname=leads[0].nickname if leads else "匿名客户",
+                avatarUrl=leads[0].avatarUrl if leads else None,
+                createdAt=now,
+                dateKey=date_key(now),
+            ),
+            ShowcaseEvent(
+                id=new_id("showcase_event"),
+                showcaseId=showcase.id,
+                ownerUserId=owner_user_id,
+                eventType="phone_click",
+                noteId=None,
+                viewerUserId=leads[0].viewerUserId if leads else None,
+                viewType="logged_in" if leads else "anonymous",
+                anonymousId=None if leads else "demo_anon_004",
+                nickname=leads[0].nickname if leads else "匿名客户",
+                avatarUrl=leads[0].avatarUrl if leads else None,
+                createdAt=now,
+                dateKey=date_key(now),
+            ),
+            ShowcaseEvent(
+                id=new_id("showcase_event"),
+                showcaseId=showcase.id,
+                ownerUserId=owner_user_id,
+                eventType="wechat_copy",
+                noteId=None,
+                viewerUserId=None,
+                viewType="anonymous",
+                anonymousId="demo_anon_005",
+                nickname=None,
+                avatarUrl=None,
+                createdAt=now,
+                dateKey=date_key(now),
+            ),
+        ]
+        for event in demo_events:
+            self.repo.add_showcase_event(event)
         return {
             "notes": [item.model_dump() for item in notes],
             "actionsCreated": len(actions),
             "leadsCreated": len(leads),
+            "showcasesCreated": 1,
+            "showcaseEventsCreated": len(demo_events),
+        }
+
+    def cleanup_note_demo_data(self, owner_user_id: str) -> dict:
+        if not self.repo.get_user(owner_user_id):
+            raise HTTPException(status_code=404, detail="用户不存在")
+        state = self.repo.load()
+
+        def is_demo_note(note: UserNote) -> bool:
+            config = note.visibilityConfig or {}
+            tags = set(config.get("tags") or [])
+            return (
+                note.ownerUserId == owner_user_id
+                and (
+                    config.get("demoData") is True
+                    or config.get("demoTag") == DASHBOARD_DEMO_TAG
+                    or "演示数据" in tags
+                    or str(note.title or "").startswith(("测试房源", "测试商品"))
+                )
+            )
+
+        demo_note_ids = {item.id for item in state.user_notes if is_demo_note(item)}
+
+        def is_demo_showcase(showcase: ShowcasePage) -> bool:
+            display = showcase.displayConfig or {}
+            return (
+                showcase.ownerUserId == owner_user_id
+                and (
+                    display.get("demoData") is True
+                    or display.get("demoTag") == DASHBOARD_DEMO_TAG
+                    or str(showcase.name or "").startswith("演示展示页")
+                )
+            )
+
+        demo_showcase_ids = {item.id for item in state.showcase_pages if is_demo_showcase(item)}
+        demo_lead_ids = {
+            item.id
+            for item in state.lead_reminders
+            if item.ownerUserId == owner_user_id
+            and (
+                DASHBOARD_DEMO_TAG in set(item.customerTags or [])
+                or "演示" in set(item.customerTags or [])
+                or item.cardId in demo_note_ids
+            )
+        }
+        demo_action_ids = {
+            item.id
+            for item in state.customer_actions
+            if item.ownerUserId == owner_user_id
+            and (
+                (item.payload or {}).get("demoData") is True
+                or (item.payload or {}).get("demoTag") == DASHBOARD_DEMO_TAG
+                or item.noteId in demo_note_ids
+                or (item.projectionRefs or {}).get("leadReminderId") in demo_lead_ids
+            )
+        }
+        before = {
+            "notes": len(state.user_notes),
+            "showcases": len(state.showcase_pages),
+            "showcaseEvents": len(state.showcase_events),
+            "leads": len(state.lead_reminders),
+            "actions": len(state.customer_actions),
+        }
+        state.user_notes = [item for item in state.user_notes if item.id not in demo_note_ids]
+        state.showcase_pages = [item for item in state.showcase_pages if item.id not in demo_showcase_ids]
+        state.showcase_events = [
+            item
+            for item in state.showcase_events
+            if not (item.ownerUserId == owner_user_id and (item.showcaseId in demo_showcase_ids or item.noteId in demo_note_ids))
+        ]
+        state.lead_reminders = [item for item in state.lead_reminders if item.id not in demo_lead_ids]
+        state.customer_actions = [item for item in state.customer_actions if item.id not in demo_action_ids]
+        self.repo.save(state)
+        return {
+            "deleted": {
+                "notes": before["notes"] - len(state.user_notes),
+                "showcases": before["showcases"] - len(state.showcase_pages),
+                "showcaseEvents": before["showcaseEvents"] - len(state.showcase_events),
+                "leads": before["leads"] - len(state.lead_reminders),
+                "actions": before["actions"] - len(state.customer_actions),
+            }
         }
 
     def get_customer_action_config(
@@ -2583,6 +5645,7 @@ class AppService:
         for action in actions:
             lead_id = (action.projectionRefs or {}).get("leadReminderId")
             lead = lead_status_by_id.get(lead_id)
+            visitor_identity = self._customer_action_visitor_identity(action)
             row = action.model_dump()
             row["customerName"] = action.payload.get("name") or (lead.get("nickname") if lead else "") or "客户"
             row["customerAvatarUrl"] = action.payload.get("avatarUrl") or (lead.get("avatarUrl") if lead else None)
@@ -2590,6 +5653,14 @@ class AppService:
             row["leadStatus"] = lead.get("status") if lead else None
             row["leadStatusText"] = self._lead_status_text(lead.get("status")) if lead else ""
             row["statusText"] = self._customer_action_status_text(action.actionKey, action.payload)
+            row["visitorIdentityType"] = visitor_identity["type"]
+            row["visitorIdentityLabel"] = visitor_identity["label"]
+            row["visitorIdentityGroup"] = visitor_identity["group"]
+            if action.actionKey in PRODUCT_ORDER_ACTION_KEYS:
+                order_status = str((action.payload or {}).get("orderStatus") or "submitted")
+                row["orderStatus"] = order_status
+                row["orderStatusText"] = self._order_status_text(order_status, "seller")
+                row["orderStatusGroup"] = self._order_status_group(order_status)
             row["displayRows"] = self._customer_action_display_rows(action)
             action_rows.append(row)
         order_count = sum(1 for item in actions if item.actionKey in PRODUCT_ORDER_ACTION_KEYS)
@@ -2954,7 +6025,7 @@ class AppService:
         ]
         return [{"label": label, "value": str(value)} for label, value in rows if value]
 
-    def list_orders(self, user_id: str, role: str) -> dict:
+    def list_orders(self, user_id: str, role: str, note_id: str | None = None) -> dict:
         if role not in {"buyer", "seller"}:
             raise HTTPException(status_code=400, detail="订单角色不正确")
         rows = [
@@ -2963,7 +6034,21 @@ class AppService:
             if (role == "buyer" and action.viewerUserId == user_id)
             or (role == "seller" and action.ownerUserId == user_id)
         ]
-        return {"role": role, "orders": rows}
+        if note_id:
+            rows = [item for item in rows if item["noteId"] == note_id]
+        return {
+            "role": role,
+            "summary": {
+                "total": len(rows),
+                "pending": sum(1 for item in rows if item["status"] == "submitted"),
+                "contacted": sum(1 for item in rows if item["status"] == "contacted"),
+                "completed": sum(1 for item in rows if item["status"] == "completed"),
+                "cancelled": sum(1 for item in rows if item["status"] == "cancelled"),
+                "relay": sum(1 for item in rows if item["actionKey"] == "relay-intent"),
+                "order": sum(1 for item in rows if item["actionKey"] == "order-intent"),
+            },
+            "orders": rows,
+        }
 
     def get_order(self, order_id: str, user_id: str) -> dict:
         note, action, role = self._get_order_for_user(order_id, user_id)
@@ -3007,15 +6092,11 @@ class AppService:
         structured_data = config.get("structuredData") or {}
         payload = action.payload or {}
         status_value = payload.get("orderStatus") or "submitted"
-        status_labels = {
-            "submitted": "已下单",
-            "contacted": "已联系",
-            "completed": "已完成",
-            "cancelled": "已取消",
-        }
         return {
             "id": action.id,
             "actionKey": action.actionKey,
+            "actionKindText": "接龙" if action.actionKey == "relay-intent" else "下单",
+            "statusGroup": self._order_status_group(status_value),
             "role": role,
             "noteId": note.id,
             "sellerUserId": action.ownerUserId,
@@ -3033,10 +6114,28 @@ class AppService:
             "wechat": payload.get("wechat") or "",
             "remark": payload.get("remark") or "",
             "status": status_value,
-            "statusText": status_labels.get(status_value, "已下单"),
+            "statusText": self._order_status_text(status_value, role),
             "createdAt": action.createdAt,
             "updatedAt": action.updatedAt,
         }
+
+    def _order_status_text(self, status_value: str, role: str = "seller") -> str:
+        if status_value == "submitted":
+            return "待处理" if role == "seller" else "已提交"
+        if status_value == "contacted":
+            return "已联系"
+        if status_value == "completed":
+            return "已完成"
+        if status_value == "cancelled":
+            return "已取消"
+        return "待处理" if role == "seller" else "已提交"
+
+    def _order_status_group(self, status_value: str) -> str:
+        if status_value in {"completed", "cancelled"}:
+            return "finished"
+        if status_value == "contacted":
+            return "processing"
+        return "pending"
 
     def list_message_threads(self, user_id: str) -> dict:
         threads = [self._build_message_thread_row(thread, user_id) for thread in self.repo.list_message_threads_for_user(user_id)]
@@ -3187,18 +6286,135 @@ class AppService:
         note.status = "deleted"
         note.updatedAt = now_iso()
         self.repo.save_user_note(note)
+        self._remove_deleted_note_from_showcase_snapshots(note_id, owner_user_id)
         return {"deletedNoteId": note_id}
+
+    def _remove_deleted_note_from_showcase_snapshots(self, note_id: str, owner_user_id: str) -> None:
+        now = now_iso()
+        for showcase in self.repo.list_showcase_pages(owner_user_id):
+            changed = False
+            if any(item.noteId == note_id for item in showcase.items):
+                showcase.items = [item for item in showcase.items if item.noteId != note_id]
+                changed = True
+            snapshot = showcase.publicSnapshot if isinstance(showcase.publicSnapshot, dict) else {}
+            snapshot_items = snapshot.get("items") if isinstance(snapshot, dict) else None
+            if isinstance(snapshot_items, list):
+                filtered_items = [item for item in snapshot_items if not isinstance(item, dict) or item.get("noteId") != note_id]
+                if len(filtered_items) != len(snapshot_items):
+                    next_version = (showcase.snapshotVersion or 0) + 1
+                    showcase.publicSnapshot = {
+                        **snapshot,
+                        "items": filtered_items,
+                        "updatedAt": now,
+                        "snapshotVersion": next_version,
+                        "snapshotCreatedAt": now,
+                        "snapshotSource": "published_snapshot",
+                    }
+                    showcase.snapshotVersion = next_version
+                    showcase.snapshotCreatedAt = now
+                    changed = True
+            if changed:
+                showcase.updatedAt = now
+                self.repo.save_showcase_page(showcase)
 
     def list_cards(self, owner_user_id: str | None = None, keyword: str | None = None, category_id: str | None = None) -> list[dict]:
         cards = self.repo.list_cards(owner_user_id=owner_user_id, keyword=keyword, category_id=category_id)
-        return [
-            {
-                **item.model_dump(),
-                "stats": self._build_card_stats(item.id),
-                "sourceNoteId": self._find_note_id_by_source_card(item.id),
-            }
-            for item in cards
-        ]
+        rows = []
+        backed_note_ids: set[str] = set()
+        for item in cards:
+            source_note = self._find_note_by_source_card(item.id)
+            if source_note:
+                backed_note_ids.add(source_note.id)
+            source_note_config = source_note.visibilityConfig if source_note else {}
+            source_note_cover_url = self._first_note_image_url(source_note) if source_note else ""
+            rows.append(
+                {
+                    **item.model_dump(),
+                    "coverUrl": item.coverUrl or source_note_cover_url,
+                    "cardType": source_note_config.get("cardType"),
+                    "systemCategory": source_note_config.get("systemCategory"),
+                    "visibilityConfig": source_note_config,
+                    "stats": self._build_card_stats(item.id),
+                    "sourceNoteId": source_note.id if source_note else None,
+                    "customerSummary": self._build_note_customer_summary(source_note) if source_note else {},
+                }
+            )
+        rows.extend(self._note_card_rows(owner_user_id, keyword, category_id, backed_note_ids))
+        rows.sort(key=lambda item: item.get("updatedAt") or item.get("createdAt") or "", reverse=True)
+        return rows
+
+    def _note_card_rows(
+        self,
+        owner_user_id: str | None,
+        keyword: str | None,
+        category_id: str | None,
+        backed_note_ids: set[str],
+    ) -> list[dict]:
+        if not owner_user_id:
+            return []
+        notes = self.repo.list_user_notes(
+            owner_user_id=owner_user_id,
+            keyword=None,
+            category_id=category_id,
+            include_deleted=False,
+        )
+        if keyword:
+            lowered = keyword.lower().strip()
+            query_digits = re.sub(r"\D+", "", lowered)
+            notes = [item for item in notes if self._note_matches_keyword(item, lowered, query_digits)]
+        rows: list[dict] = []
+        for note in notes:
+            if note.id in backed_note_ids or note.sourceCardId:
+                continue
+            config = note.visibilityConfig or {}
+            card_type = config.get("cardType") or ("link" if config.get("contentMode") == "bookmark" else "text_note")
+            system_category = self._note_card_category_name(card_type, config.get("systemCategory"))
+            cover_url = note.coverUrl or self._first_note_image_url(note)
+            rows.append(
+                {
+                    "id": f"note_card_{note.id}",
+                    "ownerUserId": note.ownerUserId,
+                    "importBatchId": note.importBatchId,
+                    "sourceCardId": note.sourceCardId,
+                    "status": note.status,
+                    "title": note.title,
+                    "coverUrl": cover_url,
+                    "detailText": note.body or note.summary,
+                    "projectName": note.title,
+                    "locationText": note.locationText,
+                    "phone": note.phone,
+                    "relayNotice": None,
+                    "sourceUrl": None,
+                    "enabledFields": [],
+                    "categoryIds": note.categoryIds,
+                    "media": note.media,
+                    "relayConfig": {},
+                    "publishedAt": note.updatedAt,
+                    "createdAt": note.createdAt,
+                    "updatedAt": note.updatedAt,
+                    "cardType": card_type,
+                    "systemCategory": system_category,
+                    "categoryName": system_category,
+                    "visibilityConfig": config,
+                    "stats": self._build_note_stats(note),
+                    "sourceNoteId": note.id,
+                    "customerSummary": self._build_note_customer_summary(note),
+                }
+            )
+        return rows
+
+    def _note_card_category_name(self, card_type: str, system_category: str | None = None) -> str:
+        if system_category and not (card_type in {"text_note", "link", "image_ocr"} and system_category in {"待整理", "未整理"}):
+            return system_category
+        return {
+            "business_card": "名片",
+            "service_offer": "服务",
+            "property_listing": "房源",
+            "groupbuy_product": "团购",
+            "link": "链接",
+            "image_ocr": "图片",
+            "text_note": "普通笔记",
+        }.get(card_type, "资料")
 
     def get_card_detail(self, card_id: str) -> dict:
         card = self.get_card(card_id)
@@ -3211,6 +6427,12 @@ class AppService:
         for note in self.repo.list_all_user_notes(include_deleted=False):
             if note.sourceCardId == card_id:
                 return note.id
+        return None
+
+    def _find_note_by_source_card(self, card_id: str) -> UserNote | None:
+        for note in self.repo.list_all_user_notes(include_deleted=False):
+            if note.sourceCardId == card_id:
+                return note
         return None
 
     def list_categories(self, owner_user_id: str | None = None) -> list[dict]:
@@ -3361,16 +6583,94 @@ class AppService:
         card = self.repo.get_card(card_id)
         if not card:
             raise HTTPException(status_code=404, detail="卡片不存在")
+        is_share_event = self._clean_optional_text(payload.eventType) == "share"
+        if not is_share_event and payload.viewerUserId and payload.viewerUserId == card.ownerUserId:
+            now = now_iso()
+            return ViewEvent(
+                id=new_id("view_ignored"),
+                cardId=card_id,
+                viewerUserId=payload.viewerUserId,
+                viewType="logged_in",
+                anonymousId=payload.anonymousId,
+                nickname=payload.nickname,
+                avatarUrl=payload.avatarUrl,
+                shareId=self._clean_optional_text(payload.shareId),
+                shareFromUserId=self._clean_optional_text(payload.shareFromUserId),
+                scene=self._clean_optional_text(payload.scene),
+                referrer=self._clean_optional_text(payload.referrer),
+                sessionId=self._clean_optional_text(payload.sessionId),
+                durationSeconds=0,
+                maxScrollPercent=0,
+                focusSections=[],
+                viewedAt=now,
+                dateKey=date_key(now),
+            )
 
         now = now_iso()
         event = ViewEvent(
-            id=new_id("view"),
+            id=self._existing_view_session_event_id(card_id, payload) or new_id("view"),
             cardId=card_id,
             viewerUserId=payload.viewerUserId,
-            viewType="logged_in" if payload.viewerUserId else "anonymous",
+            viewType="share" if is_share_event else "logged_in" if payload.viewerUserId else "anonymous",
             anonymousId=payload.anonymousId,
             nickname=payload.nickname,
             avatarUrl=payload.avatarUrl,
+            shareId=self._clean_optional_text(payload.shareId),
+            shareFromUserId=self._clean_optional_text(payload.shareFromUserId),
+            scene=self._clean_optional_text(payload.scene),
+            referrer=self._clean_optional_text(payload.referrer),
+            sessionId=self._clean_optional_text(payload.sessionId),
+            durationSeconds=self._safe_int(payload.durationSeconds, 0, 24 * 60 * 60),
+            maxScrollPercent=self._safe_int(payload.maxScrollPercent, 0, 100),
+            focusSections=self._normalize_focus_sections(payload.focusSections),
+            viewedAt=now,
+            dateKey=date_key(now),
+        )
+        self.repo.add_view_event(event)
+        return event
+
+    def record_note_view(self, note_id: str, payload: RecordViewRequest) -> ViewEvent:
+        note = self._get_active_note(note_id)
+        event_card_id = note.sourceCardId or note.id
+        is_share_event = self._clean_optional_text(payload.eventType) == "share"
+        if not is_share_event and payload.viewerUserId and payload.viewerUserId == note.ownerUserId:
+            now = now_iso()
+            return ViewEvent(
+                id=new_id("view_ignored"),
+                cardId=event_card_id,
+                viewerUserId=payload.viewerUserId,
+                viewType="logged_in",
+                anonymousId=payload.anonymousId,
+                nickname=payload.nickname,
+                avatarUrl=payload.avatarUrl,
+                shareId=self._clean_optional_text(payload.shareId),
+                shareFromUserId=self._clean_optional_text(payload.shareFromUserId),
+                scene=self._clean_optional_text(payload.scene),
+                referrer=self._clean_optional_text(payload.referrer),
+                sessionId=self._clean_optional_text(payload.sessionId),
+                durationSeconds=0,
+                maxScrollPercent=0,
+                focusSections=[],
+                viewedAt=now,
+                dateKey=date_key(now),
+            )
+        now = now_iso()
+        event = ViewEvent(
+            id=self._existing_view_session_event_id(event_card_id, payload) or new_id("view"),
+            cardId=event_card_id,
+            viewerUserId=payload.viewerUserId,
+            viewType="share" if is_share_event else "logged_in" if payload.viewerUserId else "anonymous",
+            anonymousId=payload.anonymousId,
+            nickname=payload.nickname,
+            avatarUrl=payload.avatarUrl,
+            shareId=self._clean_optional_text(payload.shareId),
+            shareFromUserId=self._clean_optional_text(payload.shareFromUserId),
+            scene=self._clean_optional_text(payload.scene),
+            referrer=self._clean_optional_text(payload.referrer),
+            sessionId=self._clean_optional_text(payload.sessionId),
+            durationSeconds=self._safe_int(payload.durationSeconds, 0, 24 * 60 * 60),
+            maxScrollPercent=self._safe_int(payload.maxScrollPercent, 0, 100),
+            focusSections=self._normalize_focus_sections(payload.focusSections),
             viewedAt=now,
             dateKey=date_key(now),
         )
@@ -3620,6 +6920,43 @@ class AppService:
         relays = self.repo.list_relay_entries_for_card(card_id, relay_status="active")
         return self._build_stats_from_events(card_id, events, relays)
 
+    def _build_note_stats(self, note: UserNote) -> dict:
+        stats_id = note.sourceCardId or note.id
+        events = self.repo.list_view_events_for_card(stats_id)
+        relays = self.repo.list_relay_entries_for_card(stats_id, relay_status="active")
+        return self._build_stats_from_events(stats_id, events, relays)
+
+    def _build_note_customer_summary(self, note: UserNote | None) -> dict:
+        if not note:
+            return {}
+        actions = self.repo.list_customer_actions_for_note(note.id)
+        projected_lead_ids = {
+            str((action.projectionRefs or {}).get("leadReminderId") or "")
+            for action in actions
+            if (action.projectionRefs or {}).get("leadReminderId")
+        }
+        leads = [
+            item
+            for item in self.repo.list_lead_reminders(note.ownerUserId)
+            if item.id in projected_lead_ids
+        ]
+        latest_action_at = max((action.createdAt for action in actions), default=None)
+        order_count = sum(1 for action in actions if action.actionKey in PRODUCT_ORDER_ACTION_KEYS)
+        relay_count = sum(1 for action in actions if action.actionKey == "relay-intent")
+        pending_count = sum(1 for item in leads if item.status == "pending")
+        return {
+            "total": len(actions),
+            "leadContact": sum(1 for action in actions if action.actionKey == "lead-contact"),
+            "appointment": sum(1 for action in actions if action.actionKey == "appointment"),
+            "orderIntent": order_count,
+            "relayIntent": relay_count,
+            "consult": sum(1 for action in actions if action.actionKey == "consult-click"),
+            "leads": len(leads),
+            "pending": pending_count,
+            "hasUnread": pending_count > 0 or order_count > 0 or relay_count > 0,
+            "latestActionAt": latest_action_at,
+        }
+
     def _build_stats_map(self, state: AppState) -> dict[str, dict]:
         stats = defaultdict(
             lambda: {
@@ -3629,12 +6966,21 @@ class AppService:
                 "anonymousUv": 0,
                 "loggedInViewers": [],
                 "relayCount": 0,
+                "shareCount": 0,
+                "latestShareAt": None,
+                "topShareId": "",
             }
         )
         logged_viewers = defaultdict(dict)
         unique_anonymous = defaultdict(set)
         for event in state.view_events:
             row = stats[event.cardId]
+            if event.viewType == "share":
+                row["shareCount"] += 1
+                if not row["latestShareAt"] or event.viewedAt > row["latestShareAt"]:
+                    row["latestShareAt"] = event.viewedAt
+                    row["topShareId"] = event.shareId or ""
+                continue
             row["pv"] += 1
             if event.viewType == "logged_in":
                 key = event.viewerUserId or event.id
@@ -3679,10 +7025,19 @@ class AppService:
             "anonymousUv": 0,
             "loggedInViewers": [],
             "relayCount": len(relays),
+            "shareCount": 0,
+            "latestShareAt": None,
+            "topShareId": "",
         }
         logged_viewers = {}
         unique_anonymous = set()
         for event in events:
+            if event.viewType == "share":
+                row["shareCount"] += 1
+                if not row["latestShareAt"] or event.viewedAt > row["latestShareAt"]:
+                    row["latestShareAt"] = event.viewedAt
+                    row["topShareId"] = event.shareId or ""
+                continue
             row["pv"] += 1
             if event.viewType == "logged_in":
                 key = event.viewerUserId or event.id

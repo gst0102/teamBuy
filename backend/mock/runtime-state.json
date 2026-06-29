@@ -49,6 +49,26 @@
       "phone": null,
       "createdAt": "2026-06-19T07:32:40.427967+08:00",
       "updatedAt": "2026-06-19T07:53:55.103780+08:00"
+    },
+    {
+      "id": "user_77fecd8769",
+      "openid": "debug_opp_owner",
+      "unionid": null,
+      "nickname": "成交助手用户",
+      "avatarUrl": "",
+      "phone": null,
+      "createdAt": "2026-06-27T06:21:36.187513+08:00",
+      "updatedAt": "2026-06-27T06:21:36.187513+08:00"
+    },
+    {
+      "id": "user_1df92cae2b",
+      "openid": "debug_opp_viewer",
+      "unionid": null,
+      "nickname": "王女士",
+      "avatarUrl": "",
+      "phone": null,
+      "createdAt": "2026-06-27T06:21:36.194329+08:00",
+      "updatedAt": "2026-06-27T06:21:36.194329+08:00"
     }
   ],
   "wecom_identity_bindings": [],
@@ -225,7 +245,7 @@
       "sourceCardId": null,
       "status": "active",
       "title": "测试房源A 万润时光里 27050 两房 近地铁",
-      "summary": "用于测试轻 SCRM 红点、留资和预约。",
+      "summary": "用于测试轻 SCRM 红点、留言和预约。",
       "body": "万润时光里，27050，loft 两房，万家丽 / 地铁口，带轻 SCRM 演示数据。",
       "coverUrl": null,
       "media": [],
@@ -259,7 +279,7 @@
           "address": "长沙万润时光里",
           "contact": "13800001001",
           "organizeResult": {
-            "summary": "用于测试轻 SCRM 红点、留资和预约。",
+            "summary": "用于测试轻 SCRM 红点、留言和预约。",
             "generationOptions": [
               "房源推广图",
               "微信群文案",
@@ -559,7 +579,7 @@
       "sourceCardId": null,
       "status": "active",
       "title": "测试房源A 万润时光里 27050 两房 近地铁",
-      "summary": "用于测试轻 SCRM 红点、留资和预约。",
+      "summary": "用于测试轻 SCRM 红点、留言和预约。",
       "body": "万润时光里，27050，loft 两房，万家丽 / 地铁口，带轻 SCRM 演示数据。",
       "coverUrl": null,
       "media": [],
@@ -593,7 +613,7 @@
           "address": "长沙万润时光里",
           "contact": "13800001001",
           "organizeResult": {
-            "summary": "用于测试轻 SCRM 红点、留资和预约。",
+            "summary": "用于测试轻 SCRM 红点、留言和预约。",
             "generationOptions": [
               "房源推广图",
               "微信群文案",
@@ -1035,7 +1055,7 @@
       "sourceCardId": null,
       "status": "active",
       "title": "测试房源A 万润时光里 27050 两房 近地铁",
-      "summary": "用于测试轻 SCRM 红点、留资和预约。",
+      "summary": "用于测试轻 SCRM 红点、留言和预约。",
       "body": "万润时光里，27050，loft 两房，万家丽 / 地铁口，带轻 SCRM 演示数据。",
       "coverUrl": null,
       "media": [],
@@ -1069,7 +1089,7 @@
           "address": "长沙万润时光里",
           "contact": "13800001001",
           "organizeResult": {
-            "summary": "用于测试轻 SCRM 红点、留资和预约。",
+            "summary": "用于测试轻 SCRM 红点、留言和预约。",
             "generationOptions": [
               "房源推广图",
               "微信群文案",
@@ -1298,7 +1318,7 @@
       "sourceCardId": null,
       "status": "active",
       "title": "测试房源A 万润时光里 27050 两房 近地铁",
-      "summary": "用于测试轻 SCRM 红点、留资和预约。",
+      "summary": "用于测试轻 SCRM 红点、留言和预约。",
       "body": "万润时光里，27050，loft 两房，万家丽 / 地铁口，带轻 SCRM 演示数据。",
       "coverUrl": "",
       "media": [],
@@ -1332,7 +1352,7 @@
           "address": "长沙万润时光里",
           "contact": "13800001001",
           "organizeResult": {
-            "summary": "用于测试轻 SCRM 红点、留资和预约。",
+            "summary": "用于测试轻 SCRM 红点、留言和预约。",
             "generationOptions": [
               "房源推广图",
               "微信群文案",
@@ -1631,6 +1651,238 @@
       },
       "createdAt": "2026-06-19T07:32:57.210558+08:00",
       "updatedAt": "2026-06-19T07:46:47.090154+08:00"
+    },
+    {
+      "id": "note_showcase_source_clone",
+      "ownerUserId": "user_482ce2f93a",
+      "importBatchId": null,
+      "sourceCardId": null,
+      "status": "active",
+      "title": "毛坯一房",
+      "summary": "低总价",
+      "body": "毛坯一房，方便带看。",
+      "coverUrl": "/media/showcase-room.webp",
+      "media": [
+        {
+          "type": "image",
+          "url": "/media/showcase-room.webp"
+        }
+      ],
+      "categoryIds": [],
+      "phone": "13800003333",
+      "locationText": "加州郡府",
+      "sourceRefs": [],
+      "visibilityConfig": {
+        "cardType": "property_listing",
+        "structuredData": {
+          "community": "加州郡府",
+          "layout": "一房",
+          "price": "88万",
+          "wechat": "agent-a"
+        }
+      },
+      "createdAt": "2026-06-25T07:51:12.697084+08:00",
+      "updatedAt": "2026-06-25T07:51:12.697084+08:00"
+    },
+    {
+      "id": "note_public_source_clone",
+      "ownerUserId": "user_435e7d8aac",
+      "importBatchId": null,
+      "sourceCardId": null,
+      "status": "active",
+      "title": "龙悦和府 两房",
+      "summary": "近地铁，可带看",
+      "body": "龙悦和府 88平 两房，家电齐全。",
+      "coverUrl": "/media/source-room.webp",
+      "media": [
+        {
+          "type": "image",
+          "url": "/media/source-room.webp",
+          "title": "客厅"
+        }
+      ],
+      "categoryIds": [],
+      "phone": "13800000000",
+      "locationText": "龙悦和府",
+      "sourceRefs": [],
+      "visibilityConfig": {
+        "cardType": "property_listing",
+        "cardState": "editing",
+        "structuredData": {
+          "community": "龙悦和府",
+          "layout": "两房",
+          "price": "88万",
+          "phone": "13800000000",
+          "contactWechat": "agent-a",
+          "landlordPhone": "13700000000"
+        },
+        "privateData": {
+          "upstreamContact": "真实房东13700000000"
+        }
+      },
+      "createdAt": "2026-06-25T07:51:23.813360+08:00",
+      "updatedAt": "2026-06-25T07:51:23.813360+08:00"
+    },
+    {
+      "id": "note_644522e9ed",
+      "ownerUserId": "user_77fecd8769",
+      "importBatchId": null,
+      "sourceCardId": null,
+      "status": "active",
+      "title": "暑期英语班介绍",
+      "summary": "暑期英语班介绍",
+      "body": "暑期英语班介绍\n课程内容：自然拼读\n价格优惠：早鸟价 1999 元\n联系方式：添加老师微信咨询",
+      "coverUrl": null,
+      "media": [],
+      "categoryIds": [],
+      "phone": null,
+      "locationText": null,
+      "sourceRefs": [
+        "manual_text_0c7e18b9e6"
+      ],
+      "visibilityConfig": {
+        "contentMode": "structured_card",
+        "cardType": "service_offer",
+        "cardState": "generated",
+        "structuredData": {
+          "serviceName": "暑期英语班介绍",
+          "headline": "暑期英语班介绍",
+          "targetAudience": "",
+          "serviceContent": "暑期英语班介绍\n课程内容：自然拼读\n价格优惠：早鸟价 1999 元\n联系方式：添加老师微信咨询",
+          "pricingNote": "",
+          "serviceProcess": "",
+          "caseHighlights": "",
+          "serviceArea": "",
+          "contact": "",
+          "appointmentNote": "",
+          "images": [],
+          "rawText": "暑期英语班介绍\n课程内容：自然拼读\n价格优惠：早鸟价 1999 元\n联系方式：添加老师微信咨询"
+        },
+        "conversionConfig": {
+          "showContactPhone": true,
+          "enableLightScrm": true,
+          "collectLeads": true,
+          "enableAppointment": true,
+          "enablePrivateConsultation": true,
+          "enableSharePoster": true,
+          "enableGroupRelay": false,
+          "enablePaymentPlaceholder": false
+        },
+        "typeSuggestions": [],
+        "recognitionConfidence": {
+          "level": "manual",
+          "selectedType": "service_offer",
+          "inputMode": "paste_text",
+          "confirmedAt": "2026-06-27T06:21:36.201808+08:00"
+        },
+        "recognitionExplanation": {
+          "level": "manual",
+          "selectedType": "service_offer",
+          "selectedLabel": "服务方案",
+          "sourceType": "manual_text",
+          "parserHints": [],
+          "candidates": [
+            {
+              "cardType": "property_listing",
+              "label": "房源",
+              "score": 3,
+              "matchedFields": [
+                "community",
+                "contact"
+              ],
+              "signals": [
+                "小区/楼盘",
+                "联系方式"
+              ],
+              "reason": "房源分 3，命中 小区/楼盘、联系方式"
+            },
+            {
+              "cardType": "groupbuy_product",
+              "label": "商品",
+              "score": 3,
+              "matchedFields": [
+                "contact"
+              ],
+              "signals": [
+                "联系方式"
+              ],
+              "reason": "商品分 3，命中 联系方式"
+            }
+          ],
+          "summary": "识别不够确定，建议人工确认：房源 / 商品。",
+          "manualConfirmation": {
+            "cardType": "service_offer",
+            "label": "服务方案",
+            "inputMode": "paste_text",
+            "confirmedAt": "2026-06-27T06:21:36.201808+08:00"
+          }
+        },
+        "sourceType": "manual_text",
+        "systemCategory": "服务",
+        "tags": [
+          "待整理",
+          "服务",
+          "销售"
+        ],
+        "userTags": [],
+        "tagLevels": {
+          "rule": [
+            "待整理"
+          ],
+          "light": [],
+          "deep": []
+        },
+        "tagStatus": "rule_done",
+        "canDeepOrganize": true,
+        "sourceUrl": "",
+        "sourceName": "",
+        "sourceLabel": "",
+        "topicIds": [],
+        "topics": [],
+        "showPhone": false,
+        "showSource": true
+      },
+      "createdAt": "2026-06-27T06:21:36.201773+08:00",
+      "updatedAt": "2026-06-27T06:21:36.201808+08:00"
+    }
+  ],
+  "showcase_pages": [
+    {
+      "id": "showcase_public_source_clone",
+      "ownerUserId": "user_482ce2f93a",
+      "status": "published",
+      "name": "本周精选房源",
+      "description": "适合同行对盘",
+      "bannerUrl": "/media/banner.webp",
+      "templateId": "featured_window",
+      "shareTitle": "本周精选房源",
+      "contactConfig": {
+        "phone": "13800003333",
+        "wechat": "agent-a"
+      },
+      "displayConfig": {
+        "layoutMode": "grid",
+        "filters": [
+          "全部",
+          "一房"
+        ]
+      },
+      "items": [
+        {
+          "noteId": "note_showcase_source_clone",
+          "sortOrder": 0,
+          "sectionTitle": null,
+          "displayTitle": "毛坯一房",
+          "visible": true,
+          "fieldConfig": {}
+        }
+      ],
+      "publicSnapshot": {},
+      "snapshotVersion": 0,
+      "snapshotCreatedAt": null,
+      "publishedAt": "2026-06-25T07:51:12.697084+08:00",
+      "createdAt": "2026-06-25T07:51:12.697084+08:00",
+      "updatedAt": "2026-06-25T07:51:12.697084+08:00"
     }
   ],
   "view_events": [
@@ -1642,6 +1894,10 @@
       "anonymousId": null,
       "nickname": "张团长",
       "avatarUrl": "https://example.com/avatar-owner.png",
+      "sessionId": null,
+      "durationSeconds": 0,
+      "maxScrollPercent": 0,
+      "focusSections": [],
       "viewedAt": "2026-06-08T09:10:00+08:00",
       "dateKey": "2026-06-08"
     },
@@ -1653,10 +1909,33 @@
       "anonymousId": "anon_seed_001",
       "nickname": null,
       "avatarUrl": null,
+      "sessionId": null,
+      "durationSeconds": 0,
+      "maxScrollPercent": 0,
+      "focusSections": [],
       "viewedAt": "2026-06-08T09:11:00+08:00",
       "dateKey": "2026-06-08"
+    },
+    {
+      "id": "view_2717190a03",
+      "cardId": "note_644522e9ed",
+      "viewerUserId": "user_1df92cae2b",
+      "viewType": "logged_in",
+      "anonymousId": null,
+      "nickname": "王女士",
+      "avatarUrl": "",
+      "sessionId": "s1",
+      "durationSeconds": 138,
+      "maxScrollPercent": 90,
+      "focusSections": [
+        "价格/优惠",
+        "联系方式"
+      ],
+      "viewedAt": "2026-06-27T06:21:36.209803+08:00",
+      "dateKey": "2026-06-27"
     }
   ],
+  "showcase_events": [],
   "relay_entries": [
     {
       "id": "relay_seed_001",
@@ -1978,7 +2257,7 @@
         "name": "王客户",
         "phone": "13900001111",
         "wechat": "wx_demo_001",
-        "remark": "演示留资"
+        "remark": "演示留言"
       },
       "projectionRefs": {
         "leadReminderId": "lead_33ba2060c5"
@@ -2019,7 +2298,7 @@
         "name": "李客户",
         "phone": "13900002222",
         "wechat": "wx_demo_002",
-        "remark": "演示留资"
+        "remark": "演示留言"
       },
       "projectionRefs": {
         "leadReminderId": "lead_1631946832"
@@ -2065,7 +2344,7 @@
         "name": "王客户",
         "phone": "13900001111",
         "wechat": "wx_demo_001",
-        "remark": "演示留资"
+        "remark": "演示留言"
       },
       "projectionRefs": {
         "leadReminderId": "lead_fa05f34f21"
@@ -2106,7 +2385,7 @@
         "name": "李客户",
         "phone": "13900002222",
         "wechat": "wx_demo_002",
-        "remark": "演示留资"
+        "remark": "演示留言"
       },
       "projectionRefs": {
         "leadReminderId": "lead_07bf8c216b"
@@ -2152,7 +2431,7 @@
         "name": "王客户",
         "phone": "13900001111",
         "wechat": "wx_demo_001",
-        "remark": "演示留资"
+        "remark": "演示留言"
       },
       "projectionRefs": {
         "leadReminderId": "lead_5667873ee0"
@@ -2193,7 +2472,7 @@
         "name": "李客户",
         "phone": "13900002222",
         "wechat": "wx_demo_002",
-        "remark": "演示留资"
+        "remark": "演示留言"
       },
       "projectionRefs": {
         "leadReminderId": "lead_17df859be0"
@@ -2239,7 +2518,7 @@
         "name": "王客户",
         "phone": "13900001111",
         "wechat": "wx_demo_001",
-        "remark": "演示留资"
+        "remark": "演示留言"
       },
       "projectionRefs": {
         "leadReminderId": "lead_c47e55e070"
@@ -2280,7 +2559,7 @@
         "name": "李客户",
         "phone": "13900002222",
         "wechat": "wx_demo_002",
-        "remark": "演示留资"
+        "remark": "演示留言"
       },
       "projectionRefs": {
         "leadReminderId": "lead_19355b2b4d"
@@ -2314,6 +2593,8 @@
       "updatedAt": "2026-06-19T07:32:57.210558+08:00"
     }
   ],
+  "message_threads": [],
+  "message_records": [],
   "categories": [
     {
       "id": "cat_seed_sale",
@@ -2334,9 +2615,80 @@
   "import_notifications": [],
   "sync_cursors": [],
   "media_retry_jobs": [],
+  "media_assets": [
+    {
+      "id": "media_asset_82317521dd",
+      "mediaType": "image",
+      "originalSha256": "8b217d583eee6924d48977d5cf144d3e69b6143cedcc56153646eecec623ba5a",
+      "storageSha256": "4d47dc3bd0befd658b6c95aa6314d20efcb04ac1115eb151e4f8a1a16bed8a90",
+      "url": "/mock-media/media_b28a01ab67-media_same_a.webp",
+      "contentType": "image/webp",
+      "filename": "room.webp",
+      "originalSize": 177,
+      "storedSize": 92,
+      "status": "active",
+      "createdAt": "2026-06-25T07:51:12.612033+08:00",
+      "updatedAt": "2026-06-25T07:51:12.612033+08:00"
+    }
+  ],
+  "media_asset_refs": [
+    {
+      "id": "media_ref_791957b77f",
+      "assetId": "media_asset_82317521dd",
+      "ownerUserId": "user-a",
+      "refType": "note",
+      "refId": "note-a",
+      "usage": "media",
+      "createdAt": "2026-06-25T07:51:12.614901+08:00",
+      "updatedAt": "2026-06-25T07:51:12.614901+08:00"
+    },
+    {
+      "id": "media_ref_8840c7ccf5",
+      "assetId": "media_asset_82317521dd",
+      "ownerUserId": "user-b",
+      "refType": "note",
+      "refId": "note-b",
+      "usage": "media",
+      "createdAt": "2026-06-25T07:51:12.617870+08:00",
+      "updatedAt": "2026-06-25T07:51:12.617870+08:00"
+    }
+  ],
   "sync_tasks": [],
   "sync_task_logs": [],
-  "skill_runs": [],
+  "skill_runs": [
+    {
+      "id": "skill_run_568602a7ee",
+      "skillId": "content-to-note",
+      "status": "success",
+      "inputSnapshot": {
+        "sourceType": "manual_text",
+        "title": null,
+        "textBlocks": [
+          "暑期英语班介绍\n课程内容：自然拼读\n价格优惠：早鸟价 1999 元\n联系方式：添加老师微信咨询"
+        ],
+        "media": [],
+        "links": [],
+        "metadata": {
+          "manualCardType": "service_offer",
+          "inputMode": "paste_text"
+        },
+        "participants": [],
+        "timestamps": [],
+        "sourceRefs": [
+          "manual_text_0c7e18b9e6"
+        ],
+        "rawMessageIds": [],
+        "manualCardType": "service_offer",
+        "inputMode": "paste_text"
+      },
+      "outputRef": "note_644522e9ed",
+      "modelProvider": "rule",
+      "errorMessage": null,
+      "cost": 0.0,
+      "startedAt": "2026-06-26T22:21:36.201745+00:00",
+      "endedAt": "2026-06-26T22:21:36.201745+00:00"
+    }
+  ],
   "wecom_archive_cursors": [],
   "wecom_archive_messages": []
 }

@@ -48,9 +48,21 @@ GROUPBUY_FIELD_ALIASES = {
     "contact": ["电话", "联系电话", "联系方式", "联系人"],
 }
 
+BUSINESS_OPPORTUNITY_FIELD_ALIASES = {
+    "serviceName": ["名称", "业务", "服务", "项目", "产品"],
+    "targetAudience": ["适合", "适用", "要求", "工种", "城市", "地区"],
+    "serviceContent": ["内容", "范围", "优势", "品类", "类目"],
+    "pricingNote": ["价格", "报价", "费用", "优惠", "批发价"],
+    "serviceProcess": ["流程", "时效", "截单", "截止", "生效"],
+    "serviceArea": ["城市", "地区", "口岸", "区域"],
+    "caseHighlights": ["优势", "案例", "资质", "亮点"],
+    "contact": ["微信", "电话", "联系方式", "联系人"],
+}
+
 CARD_TYPE_LABELS = {
     "property_listing": "房源",
     "groupbuy_product": "商品",
+    "service_offer": "商机合作",
     "text_note": "普通笔记",
     "image_ocr": "图片资料",
 }
@@ -72,6 +84,13 @@ FIELD_LABELS = {
     "pickupMethod": "取货/配送",
     "pickupLocation": "取货地点",
     "stockNote": "库存说明",
+    "serviceName": "服务/商机名称",
+    "targetAudience": "适合对象",
+    "serviceContent": "服务/合作内容",
+    "pricingNote": "价格/报价",
+    "serviceProcess": "流程/时效",
+    "serviceArea": "地区/范围",
+    "caseHighlights": "优势/背书",
 }
 
 PROPERTY_CONVERSION_DEFAULTS = {
@@ -93,6 +112,17 @@ GROUPBUY_CONVERSION_DEFAULTS = {
     "enablePrivateConsultation": False,
     "enableSharePoster": True,
     "enableGroupRelay": True,
+    "enablePaymentPlaceholder": False,
+}
+
+SERVICE_CONVERSION_DEFAULTS = {
+    "showContactPhone": True,
+    "enableLightScrm": True,
+    "collectLeads": True,
+    "enableAppointment": True,
+    "enablePrivateConsultation": True,
+    "enableSharePoster": True,
+    "enableGroupRelay": False,
     "enablePaymentPlaceholder": False,
 }
 
@@ -373,7 +403,7 @@ class SkillRouterService:
         for tag in detection["tags"]:
             if tag not in rule_tags:
                 rule_tags.insert(max(len(rule_tags) - 1, 0), tag)
-        is_generated = detection["cardType"] in {"property_listing", "groupbuy_product"} and detection["recognitionConfidence"].get("level") == "high"
+        is_generated = detection["cardType"] in {"property_listing", "groupbuy_product", "service_offer"} and detection["recognitionConfidence"].get("level") == "high"
         structured_data = dict(detection["structuredData"])
         miniapp = content.metadata.get("miniapp") if isinstance(content.metadata, dict) else None
         miniapp_web_url = ""
@@ -386,8 +416,18 @@ class SkillRouterService:
             }
             miniapp_web_url = str(miniapp.get("webUrl") or "")
             miniapp_source_name = str(miniapp.get("displayName") or miniapp.get("description") or "小程序")
+        internal_miniapp = content.metadata.get("internalMiniapp") if isinstance(content.metadata, dict) else None
+        if isinstance(internal_miniapp, dict) and internal_miniapp:
+            structured_data["internalMiniapp"] = internal_miniapp
+        service_template_config = {
+            "displayTemplate": "service_business_opportunity",
+            "displayTemplateName": "商机合作",
+            "displayTemplateScene": "商机合作",
+            "displayTemplateTone": "teal",
+        } if detection["cardType"] == "service_offer" else {}
         return {
-            "contentMode": "structured_card" if detection["cardType"] in {"property_listing", "groupbuy_product"} else "note",
+            **service_template_config,
+            "contentMode": "structured_card" if detection["cardType"] in {"property_listing", "groupbuy_product", "service_offer"} else "note",
             "cardType": detection["cardType"],
             "cardState": "generated" if is_generated else "collected",
             "structuredData": structured_data,
@@ -414,6 +454,8 @@ class SkillRouterService:
             return dict(PROPERTY_CONVERSION_DEFAULTS)
         if card_type == "groupbuy_product":
             return dict(GROUPBUY_CONVERSION_DEFAULTS)
+        if card_type == "service_offer":
+            return dict(SERVICE_CONVERSION_DEFAULTS)
         if source_type == "miniapp_card" and any(item.get("cardType") == "property_listing" for item in (suggestions or [])):
             return dict(MINIAPP_PROPERTY_CONVERSION_DEFAULTS)
         return {
@@ -433,8 +475,10 @@ class SkillRouterService:
         if inferred_community and "community" not in property_fields:
             property_fields["community"] = inferred_community
         groupbuy_fields = self._extract_fields(body, GROUPBUY_FIELD_ALIASES)
+        opportunity_fields = self._extract_fields(body, BUSINESS_OPPORTUNITY_FIELD_ALIASES)
         property_score = self._score_property(body, property_fields)
         groupbuy_score = self._score_groupbuy(body, groupbuy_fields)
+        opportunity_score = self._score_business_opportunity(body, opportunity_fields)
         images = [media.url for media in content.media if media.type == "image" and media.url]
         parser_hints = content.metadata.get("parserHints", []) if isinstance(content.metadata, dict) else []
 
@@ -452,8 +496,10 @@ class SkillRouterService:
                     source_type=content.sourceType,
                     property_score=property_score,
                     groupbuy_score=groupbuy_score,
+                    opportunity_score=opportunity_score,
                     property_fields=property_fields,
                     groupbuy_fields=groupbuy_fields,
+                    opportunity_fields=opportunity_fields,
                     parser_hints=parser_hints,
                 ),
                 "tags": ["房产", "房源"],
@@ -472,11 +518,35 @@ class SkillRouterService:
                     source_type=content.sourceType,
                     property_score=property_score,
                     groupbuy_score=groupbuy_score,
+                    opportunity_score=opportunity_score,
                     property_fields=property_fields,
                     groupbuy_fields=groupbuy_fields,
+                    opportunity_fields=opportunity_fields,
                     parser_hints=parser_hints,
                 ),
                 "tags": ["团购", "商品"],
+            }
+        if self._is_high_confidence_business_opportunity(body, opportunity_fields, opportunity_score, property_score, groupbuy_score):
+            data = self._build_business_opportunity_data(title, body, opportunity_fields, images)
+            return {
+                "cardType": "service_offer",
+                "systemCategory": "服务",
+                "structuredData": data,
+                "typeSuggestions": [],
+                "recognitionConfidence": {"level": "high", "score": opportunity_score, "matchedFields": sorted(opportunity_fields.keys())},
+                "recognitionExplanation": self._recognition_explanation(
+                    selected_type="service_offer",
+                    level="high",
+                    source_type=content.sourceType,
+                    property_score=property_score,
+                    groupbuy_score=groupbuy_score,
+                    opportunity_score=opportunity_score,
+                    property_fields=property_fields,
+                    groupbuy_fields=groupbuy_fields,
+                    opportunity_fields=opportunity_fields,
+                    parser_hints=parser_hints,
+                ),
+                "tags": ["服务", "商机", "合作"],
             }
 
         suggestions = []
@@ -484,6 +554,8 @@ class SkillRouterService:
             suggestions.append(self._type_suggestion("property_listing", property_score, property_fields, "命中房源相关字段或关键词"))
         if groupbuy_score >= 2:
             suggestions.append(self._type_suggestion("groupbuy_product", groupbuy_score, groupbuy_fields, "命中商品/团购相关字段或关键词"))
+        if opportunity_score >= 3:
+            suggestions.append(self._type_suggestion("service_offer", opportunity_score, opportunity_fields, "命中商机/合作/服务相关关键词"))
         card_type = "image_ocr" if content.media and not body.strip() else "text_note"
         return {
             "cardType": card_type,
@@ -494,9 +566,11 @@ class SkillRouterService:
                 "level": "medium" if suggestions else "low",
                 "propertyScore": property_score,
                 "groupbuyScore": groupbuy_score,
+                "opportunityScore": opportunity_score,
                 "matchedFields": {
                     "property": sorted(property_fields.keys()),
                     "groupbuy": sorted(groupbuy_fields.keys()),
+                    "opportunity": sorted(opportunity_fields.keys()),
                 },
             },
             "recognitionExplanation": self._recognition_explanation(
@@ -505,8 +579,10 @@ class SkillRouterService:
                 source_type=content.sourceType,
                 property_score=property_score,
                 groupbuy_score=groupbuy_score,
+                opportunity_score=opportunity_score,
                 property_fields=property_fields,
                 groupbuy_fields=groupbuy_fields,
+                opportunity_fields=opportunity_fields,
                 parser_hints=parser_hints,
             ),
             "tags": [],
@@ -531,12 +607,15 @@ class SkillRouterService:
         source_type: str,
         property_score: int,
         groupbuy_score: int,
+        opportunity_score: int,
         property_fields: dict,
         groupbuy_fields: dict,
+        opportunity_fields: dict,
         parser_hints: list[str],
     ) -> dict:
         property_matched = sorted(property_fields.keys())
         groupbuy_matched = sorted(groupbuy_fields.keys())
+        opportunity_matched = sorted(opportunity_fields.keys())
         candidates = [
             {
                 "cardType": "property_listing",
@@ -553,6 +632,14 @@ class SkillRouterService:
                 "matchedFields": groupbuy_matched,
                 "signals": self._field_signal_labels(groupbuy_matched),
                 "reason": self._candidate_reason("groupbuy_product", groupbuy_score, groupbuy_matched),
+            },
+            {
+                "cardType": "service_offer",
+                "label": CARD_TYPE_LABELS["service_offer"],
+                "score": opportunity_score,
+                "matchedFields": opportunity_matched,
+                "signals": self._field_signal_labels(opportunity_matched),
+                "reason": self._candidate_reason("service_offer", opportunity_score, opportunity_matched),
             },
         ]
         return {
@@ -605,7 +692,7 @@ class SkillRouterService:
         value = re.sub(r"(租房|出租|房源|急租|转租|整租|合租|公寓|住宅)", "", value).strip(" -_｜|·,，")
         if not value or len(value) < 2:
             return ""
-        has_property_signal = bool(re.search(r"(户型|一房|两房|三房|面积|价格|租金|水电|物业|位置|地址|地铁|服务费|密码锁)", text))
+        has_property_signal = bool(re.search(r"(户型|一房|两房|三房|三居|面积|平米|价格|租金|总价|售价|万|水电|物业|位置|地址|地铁|服务费|密码锁|毛坯|精装|阳台|南北通透|入学|小学|中学|楼层|小高层)", text))
         if not has_property_signal:
             return ""
         return value
@@ -613,10 +700,23 @@ class SkillRouterService:
     def _is_high_confidence_property(self, text: str, fields: dict, score: int, groupbuy_score: int) -> bool:
         required = {"community", "layout", "price", "businessArea", "address", "area"}
         matched = required.intersection(fields.keys())
-        has_location = bool({"community", "businessArea", "address"}.intersection(fields.keys())) or bool(re.search(r"(小区|位置|地址|地铁|商圈)", text))
-        has_shape = bool({"layout", "area"}.intersection(fields.keys())) or bool(re.search(r"(一房|两房|三房|公寓|平)", text))
-        has_price = "price" in fields or bool(re.search(r"\d+\s*(?:元/月|/月|每月|万|元)", text))
-        return score >= 5 and score >= groupbuy_score + 1 and has_price and has_location and has_shape and len(matched) >= 3
+        has_location = bool({"community", "businessArea", "address"}.intersection(fields.keys())) or bool(re.search(r"(小区|楼盘|郡府|和府|花园|家园|公馆|府|苑|城|位置|地址|地铁|商圈|小学|中学|入学)", text))
+        has_shape = bool({"layout", "area"}.intersection(fields.keys())) or bool(re.search(r"(一房|两房|三房|[一二两三四五六七八九十0-9]+室|[一二两三四五六七八九十0-9]+居室|公寓|平米|平方|㎡|平|南北通透|独梯独户)", text))
+        has_price = "price" in fields or bool(re.search(r"(?:\d+|[一二两三四五六七八九十]+)\s*(?:元/月|/月|每月|万|元)", text))
+        informal_signals = sum(
+            1
+            for pattern in [
+                r"\d+(?:\.\d+)?\s*(?:平米|平方|㎡|平)",
+                r"\d+(?:\.\d+)?\s*万",
+                r"[一二两三四五六七八九十0-9]+(?:室|居室|房)",
+                r"(毛坯|精装|装修|阳台|阴台|南北通透|独梯独户|小高层|楼层|采光)",
+                r"(小学|中学|入学|学区)",
+                r"1[3-9]\d{9}",
+            ]
+            if re.search(pattern, text)
+        )
+        has_enough_fields = len(matched) >= 3 or (informal_signals >= 3 and has_location)
+        return score >= 5 and score >= groupbuy_score + 1 and (has_price or informal_signals >= 4) and has_location and has_shape and has_enough_fields
 
     def _is_high_confidence_groupbuy(self, text: str, fields: dict, score: int, property_score: int, parser_hints: list[str] | None = None) -> bool:
         required = {"productName", "price", "spec", "deadline", "pickupMethod", "pickupLocation"}
@@ -628,12 +728,26 @@ class SkillRouterService:
         has_enough_fields = len(matched) >= 2 or (has_parser_hint and score >= 5)
         return score >= 5 and score > property_score and has_product and (has_price or has_parser_hint) and has_delivery and has_enough_fields
 
+    def _is_high_confidence_business_opportunity(self, text: str, fields: dict, score: int, property_score: int, groupbuy_score: int) -> bool:
+        has_contact = "contact" in fields or bool(PHONE_PATTERN.search(text)) or bool(re.search(r"(微信|私聊|咨询|联系|同号)", text))
+        has_business_signal = bool(re.search(r"(合作|代理|招募|管理员|批发|货源|工厂|出单|投保|保险|清关|报关|进口|口岸|渠道|招商|资深业务|合作共赢)", text))
+        has_service_signal = bool(re.search(r"(时效|截单|生效|适用|优势|欢迎咨询|有意请私聊|有量有价|一手货源|参观看货|服务|办理|代理)", text))
+        return score >= 5 and has_contact and has_business_signal and has_service_signal and score >= max(property_score, groupbuy_score)
+
     def _score_property(self, text: str, fields: dict) -> int:
         score = len(fields)
         keywords = [
             "小区",
+            "楼盘",
+            "郡府",
+            "和府",
+            "花园",
+            "家园",
+            "公馆",
             "户型",
             "租金",
+            "总价",
+            "售价",
             "水电",
             "物业",
             "商圈",
@@ -649,9 +763,27 @@ class SkillRouterService:
             "采光",
             "楼层",
             "拎包入住",
+            "毛坯",
+            "精装",
+            "装修",
+            "阳台",
+            "阴台",
+            "南北通透",
+            "独梯独户",
+            "小高层",
+            "入学",
+            "学区",
+            "小学",
+            "中学",
         ]
         score += sum(1 for keyword in keywords if keyword in text)
-        if "price" in fields or re.search(r"\d+\s*(?:元/月|/月|每月|万|元)", text):
+        if "price" in fields or re.search(r"(?:\d+|[一二两三四五六七八九十]+)\s*(?:元/月|/月|每月|万|元)", text):
+            score += 1
+        if re.search(r"\d+(?:\.\d+)?\s*(?:平米|平方|㎡|平)", text):
+            score += 1
+        if re.search(r"[一二两三四五六七八九十0-9]+(?:室|居室|房)", text):
+            score += 1
+        if PHONE_PATTERN.search(text):
             score += 1
         return score
 
@@ -660,6 +792,44 @@ class SkillRouterService:
         keywords = ["团购", "拼单", "包邮", "自提", "接龙", "截止", "取货", "现摘", "现发", "规格", "优惠", "活动", "斤", "盒", "箱", "份", "个", "鸡蛋", "草莓", "水果", "礼篮", "礼盒"]
         score += sum(1 for keyword in keywords if keyword in text)
         if "price" in fields or PRICE_PATTERN.search(text):
+            score += 1
+        return score
+
+    def _score_business_opportunity(self, text: str, fields: dict) -> int:
+        score = len(fields)
+        keywords = [
+            "合作",
+            "代理",
+            "招募",
+            "管理员",
+            "批发",
+            "货源",
+            "工厂",
+            "出单",
+            "投保",
+            "保险",
+            "清关",
+            "报关",
+            "进口",
+            "口岸",
+            "渠道",
+            "招商",
+            "资深业务",
+            "合作共赢",
+            "欢迎咨询",
+            "有意请私聊",
+            "微信同号",
+            "有量有价",
+            "一手货源",
+            "免费包装",
+            "截单",
+            "生效",
+            "时效",
+        ]
+        score += sum(1 for keyword in keywords if keyword in text)
+        if PHONE_PATTERN.search(text) or re.search(r"(微信|电话|联系|咨询|私聊|同号)", text):
+            score += 2
+        if re.search(r"(城市|青岛|烟台|厦门|宁波|无锡|苏州|南通|大连|珠海|澳门|广东|福建|上海|天津)", text):
             score += 1
         return score
 
@@ -693,6 +863,97 @@ class SkillRouterService:
             "images": images,
             "rawText": body,
         }
+
+    def _build_business_opportunity_data(self, title: str, body: str, fields: dict, images: list[str]) -> dict:
+        raw_contact = fields.get("contact") or ""
+        contact_match = PHONE_PATTERN.search(raw_contact) or PHONE_PATTERN.search(body)
+        contact = contact_match.group(0) if contact_match else raw_contact.strip("，。、, ")
+        field_service_name = fields.get("serviceName", "")
+        if field_service_name and ("首选" in field_service_name or len(re.findall(r"[、,，]", field_service_name)) >= 3):
+            field_service_name = ""
+        service_name = field_service_name or self._infer_business_opportunity_name(title, body)
+        return {
+            "serviceName": service_name or title or "商机 / 合作信息",
+            "headline": self._infer_business_headline(body) or "先看合作内容、适合对象和联系方式",
+            "targetAudience": fields.get("targetAudience") or self._infer_business_audience(body),
+            "serviceContent": fields.get("serviceContent") or self._truncate(body, 220),
+            "pricingNote": fields.get("pricingNote") or self._infer_business_pricing(body),
+            "serviceProcess": fields.get("serviceProcess") or self._infer_business_process(body),
+            "caseHighlights": fields.get("caseHighlights") or self._infer_business_highlights(body),
+            "serviceArea": fields.get("serviceArea") or self._infer_business_area(body),
+            "contact": contact,
+            "phone": contact,
+            "wechat": self._infer_wechat(body, contact),
+            "appointmentNote": "建议先发送需求、品类、城市或合作意向",
+            "primaryAction": "咨询合作",
+            "secondaryAction": "复制微信",
+            "displayTemplate": "service_business_opportunity",
+            "images": images,
+            "rawText": body,
+        }
+
+    def _infer_business_opportunity_name(self, title: str, text: str) -> str:
+        clean_title = re.sub(r"^\[[^\]]+\]\s*", "", title.strip())
+        if "管理员" in text and ("招募" in text or "需要" in text):
+            return "城市群管理员招募"
+        if "清关" in text or "报关" in text:
+            return self._truncate(clean_title or "进口清关代理", 28)
+        if "保险" in text or "出单" in text or "投保" in text:
+            return self._truncate(clean_title or "保险出单合作", 28)
+        if "工厂" in text and "批发" in text:
+            return self._truncate(clean_title or "工厂批发合作", 28)
+        candidates = [clean_title]
+        for line in text.splitlines():
+            value = line.strip(" ~，。,.、")
+            if not value:
+                continue
+            if PHONE_PATTERN.search(value) or value.startswith(("微信", "电话", "联系方式")):
+                continue
+            candidates.append(value)
+        for value in candidates:
+            if value and len(value) <= 28:
+                return value
+        return candidates[0][:28] if candidates and candidates[0] else ""
+
+    def _infer_business_headline(self, text: str) -> str:
+        for line in text.splitlines():
+            value = line.strip()
+            if any(keyword in value for keyword in ["优势", "超低", "一手", "时效", "批发", "招募", "合作", "欢迎咨询"]):
+                return self._truncate(value, 42)
+        return ""
+
+    def _infer_business_audience(self, text: str) -> str:
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        selected = [line for line in lines if any(keyword in line for keyword in ["适合", "适用", "工种", "城市", "要求", "需要"])]
+        return "、".join(selected[:3]) or "适合想了解合作条件、代理机会、货源或专业服务的客户"
+
+    def _infer_business_pricing(self, text: str) -> str:
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        selected = [line for line in lines if any(keyword in line for keyword in ["价格", "报价", "批发价", "费用", "优惠", "超低", "有量有价", "免费"])]
+        return "；".join(selected[:2])
+
+    def _infer_business_process(self, text: str) -> str:
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        selected = [line for line in lines if any(keyword in line for keyword in ["时效", "截单", "截止", "生效", "报名", "私聊", "咨询"])]
+        return " - ".join(selected[:3]) or "了解合作 - 咨询细节 - 提交信息 - 确认合作"
+
+    def _infer_business_highlights(self, text: str) -> str:
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        selected = [line for line in lines if any(keyword in line for keyword in ["优势", "一手", "工厂", "资深", "强势", "合作共赢", "可参观", "全套服务"])]
+        return "；".join(selected[:3])
+
+    def _infer_business_area(self, text: str) -> str:
+        city_pattern = r"(青岛|烟台|厦门|宁波|无锡|苏州|南通|大连|珠海|澳门|广东|福建|上海|天津|北京|杭州|深圳|广州|中港)"
+        cities = list(dict.fromkeys(re.findall(city_pattern, text)))
+        return " / ".join(cities[:8])
+
+    def _infer_wechat(self, text: str, contact: str) -> str:
+        match = re.search(r"(?:微信|微信同号|微信号)\D{0,6}([A-Za-z0-9_-]{5,20}|1[3-9]\d{9})", text)
+        if match:
+            return match.group(1)
+        if contact and "微信" in text:
+            return contact
+        return ""
 
     def _infer_groupbuy_product_name(self, text: str) -> str:
         preferred_patterns = [

@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 ImportStatus = Literal["pending", "success", "failed", "claimed"]
 CardStatus = Literal["draft", "published", "archived"]
 UserNoteStatus = Literal["draft", "active", "deleted"]
-ViewType = Literal["logged_in", "anonymous"]
+ViewType = Literal["logged_in", "anonymous", "share"]
 RelayStatus = Literal["active", "deleted"]
 FollowUpStatus = Literal["pending", "followed"]
 LeadReminderStatus = Literal["pending", "contacted", "invalid", "paused", "completed"]
@@ -19,6 +19,7 @@ MediaRetryStatus = Literal["pending", "success", "failed"]
 SyncTaskStatus = Literal["queued", "running", "success", "failed", "retrying", "skipped"]
 SkillRunStatus = Literal["pending", "success", "failed", "needs_confirm"]
 ArchiveCursorStatus = Literal["idle", "running", "success", "failed"]
+MediaAssetStatus = Literal["active", "deleted"]
 CustomerActionKey = Literal[
     "lead-contact",
     "appointment",
@@ -38,6 +39,7 @@ class User(BaseModel):
     unionid: str | None = None
     nickname: str
     avatarUrl: str
+    wechat: str | None = None
     phone: str | None = None
     createdAt: str
     updatedAt: str
@@ -165,11 +167,14 @@ class ShowcasePage(BaseModel):
     name: str
     description: str | None = None
     bannerUrl: str | None = None
-    templateId: str = "classic_grid"
+    templateId: str = "featured_window"
     shareTitle: str | None = None
     contactConfig: dict = Field(default_factory=dict)
     displayConfig: dict = Field(default_factory=dict)
     items: list[ShowcaseItem] = Field(default_factory=list)
+    publicSnapshot: dict = Field(default_factory=dict)
+    snapshotVersion: int = 0
+    snapshotCreatedAt: str | None = None
     publishedAt: str | None = None
     createdAt: str
     updatedAt: str
@@ -183,7 +188,38 @@ class ViewEvent(BaseModel):
     anonymousId: str | None = None
     nickname: str | None = None
     avatarUrl: str | None = None
+    shareId: str | None = None
+    shareFromUserId: str | None = None
+    scene: str | None = None
+    referrer: str | None = None
+    sessionId: str | None = None
+    durationSeconds: int = 0
+    maxScrollPercent: int = 0
+    focusSections: list[str] = Field(default_factory=list)
     viewedAt: str
+    dateKey: str
+
+
+class ShowcaseEvent(BaseModel):
+    id: str
+    showcaseId: str
+    ownerUserId: str
+    eventType: str
+    noteId: str | None = None
+    shareId: str | None = None
+    shareFromUserId: str | None = None
+    scene: str | None = None
+    referrer: str | None = None
+    viewerUserId: str | None = None
+    viewType: ViewType
+    anonymousId: str | None = None
+    nickname: str | None = None
+    avatarUrl: str | None = None
+    sessionId: str | None = None
+    durationSeconds: int = 0
+    maxScrollPercent: int = 0
+    focusSections: list[str] = Field(default_factory=list)
+    createdAt: str
     dateKey: str
 
 
@@ -301,6 +337,13 @@ class ImportNotification(BaseModel):
     channel: Literal["mock", "wecom"]
     sentAt: str
     errorMessage: str | None = None
+    resultType: str | None = None
+    resultRefId: str | None = None
+    resultPath: str | None = None
+    actions: list[dict] = Field(default_factory=list)
+    sendStatus: Literal["pending", "sent", "failed", "skipped"] = "pending"
+    sendError: str | None = None
+    sentMessageAt: str | None = None
 
 
 class SyncCursor(BaseModel):
@@ -329,6 +372,32 @@ class MediaRetryJob(BaseModel):
     localMediaUrl: str | None = None
     errorMessage: str | None = None
     lastAttemptAt: str | None = None
+    createdAt: str
+    updatedAt: str
+
+
+class MediaAsset(BaseModel):
+    id: str
+    mediaType: str
+    originalSha256: str
+    storageSha256: str
+    url: str
+    contentType: str | None = None
+    filename: str | None = None
+    originalSize: int = 0
+    storedSize: int = 0
+    status: MediaAssetStatus = "active"
+    createdAt: str
+    updatedAt: str
+
+
+class MediaAssetRef(BaseModel):
+    id: str
+    assetId: str
+    ownerUserId: str | None = None
+    refType: str
+    refId: str
+    usage: str = "media"
     createdAt: str
     updatedAt: str
 
@@ -415,6 +484,7 @@ class AppState(BaseModel):
     user_notes: list[UserNote] = Field(default_factory=list)
     showcase_pages: list[ShowcasePage] = Field(default_factory=list)
     view_events: list[ViewEvent] = Field(default_factory=list)
+    showcase_events: list[ShowcaseEvent] = Field(default_factory=list)
     relay_entries: list[RelayEntry] = Field(default_factory=list)
     lead_reminders: list[LeadReminder] = Field(default_factory=list)
     customer_actions: list[CustomerAction] = Field(default_factory=list)
@@ -425,6 +495,8 @@ class AppState(BaseModel):
     import_notifications: list[ImportNotification] = Field(default_factory=list)
     sync_cursors: list[SyncCursor] = Field(default_factory=list)
     media_retry_jobs: list[MediaRetryJob] = Field(default_factory=list)
+    media_assets: list[MediaAsset] = Field(default_factory=list)
+    media_asset_refs: list[MediaAssetRef] = Field(default_factory=list)
     sync_tasks: list[SyncTask] = Field(default_factory=list)
     sync_task_logs: list[SyncTaskLog] = Field(default_factory=list)
     skill_runs: list[SkillRun] = Field(default_factory=list)

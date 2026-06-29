@@ -18,10 +18,13 @@ from app.models.domain import (
     LeadReminder,
     MessageRecord,
     MessageThread,
+    MediaAsset,
+    MediaAssetRef,
     MediaRetryJob,
     RawMessage,
     RelayEntry,
     ShowcasePage,
+    ShowcaseEvent,
     SkillRun,
     SyncCursor,
     SyncTask,
@@ -34,6 +37,7 @@ from app.models.domain import (
     WecomArchiveCursor,
     WecomArchiveMessage,
 )
+from app.services.text_safety import strip_unicode_surrogates
 
 
 class AppRepository(Protocol):
@@ -94,6 +98,9 @@ class AppRepository(Protocol):
     def save_showcase_page(self, showcase: ShowcasePage) -> None:
         ...
 
+    def delete_showcase_page(self, showcase_id: str) -> None:
+        ...
+
     def save_raw_messages(self, messages: list[RawMessage]) -> None:
         ...
 
@@ -152,6 +159,12 @@ class AppRepository(Protocol):
         ...
 
     def list_view_events_for_card(self, card_id: str) -> list[ViewEvent]:
+        ...
+
+    def add_showcase_event(self, event: ShowcaseEvent) -> None:
+        ...
+
+    def list_showcase_events(self, showcase_id: str) -> list[ShowcaseEvent]:
         ...
 
     def add_relay_entry(self, relay: RelayEntry) -> None:
@@ -257,6 +270,29 @@ class AppRepository(Protocol):
     def list_media_retry_jobs(self, statuses: set[str] | None = None) -> list[MediaRetryJob]:
         ...
 
+    def get_media_asset_by_original_hash(self, media_type: str, original_sha256: str) -> MediaAsset | None:
+        ...
+
+    def get_media_asset_by_storage_hash(self, media_type: str, storage_sha256: str) -> MediaAsset | None:
+        ...
+
+    def get_media_asset_by_url(self, url: str) -> MediaAsset | None:
+        ...
+
+    def save_media_asset(self, asset: MediaAsset) -> None:
+        ...
+
+    def save_media_asset_ref(self, ref: MediaAssetRef) -> None:
+        ...
+
+    def list_media_asset_refs(
+        self,
+        asset_id: str | None = None,
+        ref_type: str | None = None,
+        ref_id: str | None = None,
+    ) -> list[MediaAssetRef]:
+        ...
+
     def save_sync_task(self, task: SyncTask) -> None:
         ...
 
@@ -314,8 +350,9 @@ class JsonRepository:
         return AppState.model_validate(payload)
 
     def save(self, state: AppState) -> None:
+        payload = strip_unicode_surrogates(state.model_dump(mode="json"))
         self.data_file.write_text(
-            state.model_dump_json(indent=2),
+            AppState.model_validate(payload).model_dump_json(indent=2),
             encoding="utf-8",
         )
 
@@ -403,6 +440,12 @@ class JsonRepository:
         state = self.load()
         state.showcase_pages = [item for item in state.showcase_pages if item.id != showcase.id]
         state.showcase_pages.append(showcase)
+        self.save(state)
+
+    def delete_showcase_page(self, showcase_id: str) -> None:
+        state = self.load()
+        state.showcase_pages = [item for item in state.showcase_pages if item.id != showcase_id]
+        state.showcase_events = [item for item in state.showcase_events if item.showcaseId != showcase_id]
         self.save(state)
 
     def save_raw_messages(self, messages: list[RawMessage]) -> None:
@@ -518,11 +561,25 @@ class JsonRepository:
 
     def add_view_event(self, event: ViewEvent) -> None:
         state = self.load()
+        state.view_events = [item for item in state.view_events if item.id != event.id]
         state.view_events.append(event)
         self.save(state)
 
     def list_view_events_for_card(self, card_id: str) -> list[ViewEvent]:
         return [item for item in self.load().view_events if item.cardId == card_id]
+
+    def add_showcase_event(self, event: ShowcaseEvent) -> None:
+        state = self.load()
+        state.showcase_events = [item for item in state.showcase_events if item.id != event.id]
+        state.showcase_events.append(event)
+        self.save(state)
+
+    def list_showcase_events(self, showcase_id: str) -> list[ShowcaseEvent]:
+        return sorted(
+            [item for item in self.load().showcase_events if item.showcaseId == showcase_id],
+            key=lambda item: (item.createdAt, item.id),
+            reverse=True,
+        )
 
     def add_relay_entry(self, relay: RelayEntry) -> None:
         state = self.load()
@@ -735,6 +792,56 @@ class JsonRepository:
         jobs = self.load().media_retry_jobs
         return [item for item in jobs if statuses is None or item.status in statuses]
 
+    def get_media_asset_by_original_hash(self, media_type: str, original_sha256: str) -> MediaAsset | None:
+        return next(
+            (
+                item
+                for item in self.load().media_assets
+                if item.mediaType == media_type and item.originalSha256 == original_sha256 and item.status == "active"
+            ),
+            None,
+        )
+
+    def get_media_asset_by_storage_hash(self, media_type: str, storage_sha256: str) -> MediaAsset | None:
+        return next(
+            (
+                item
+                for item in self.load().media_assets
+                if item.mediaType == media_type and item.storageSha256 == storage_sha256 and item.status == "active"
+            ),
+            None,
+        )
+
+    def get_media_asset_by_url(self, url: str) -> MediaAsset | None:
+        return next((item for item in self.load().media_assets if item.url == url and item.status == "active"), None)
+
+    def save_media_asset(self, asset: MediaAsset) -> None:
+        state = self.load()
+        state.media_assets = [item for item in state.media_assets if item.id != asset.id]
+        state.media_assets.append(asset)
+        self.save(state)
+
+    def save_media_asset_ref(self, ref: MediaAssetRef) -> None:
+        state = self.load()
+        state.media_asset_refs = [item for item in state.media_asset_refs if item.id != ref.id]
+        state.media_asset_refs.append(ref)
+        self.save(state)
+
+    def list_media_asset_refs(
+        self,
+        asset_id: str | None = None,
+        ref_type: str | None = None,
+        ref_id: str | None = None,
+    ) -> list[MediaAssetRef]:
+        refs = self.load().media_asset_refs
+        if asset_id:
+            refs = [item for item in refs if item.assetId == asset_id]
+        if ref_type:
+            refs = [item for item in refs if item.refType == ref_type]
+        if ref_id:
+            refs = [item for item in refs if item.refId == ref_id]
+        return sorted(refs, key=lambda item: item.createdAt, reverse=True)
+
     def save_sync_task(self, task: SyncTask) -> None:
         state = self.load()
         state.sync_tasks = [item for item in state.sync_tasks if item.id != task.id]
@@ -837,6 +944,7 @@ class PostgresRepository:
         "user_notes": "user_notes",
         "showcase_pages": "showcase_pages",
         "view_events": "view_events",
+        "showcase_events": "showcase_events",
         "relay_entries": "relay_entries",
         "lead_reminders": "lead_reminders",
         "customer_actions": "customer_actions",
@@ -847,6 +955,8 @@ class PostgresRepository:
         "import_notifications": "import_notifications",
         "sync_cursors": "sync_cursors",
         "media_retry_jobs": "media_retry_jobs",
+        "media_assets": "media_assets",
+        "media_asset_refs": "media_asset_refs",
         "sync_tasks": "sync_tasks",
         "sync_task_logs": "sync_task_logs",
         "skill_runs": "skill_runs",
@@ -916,8 +1026,26 @@ class PostgresRepository:
             ("viewer_user_id", "text", "viewerUserId"),
             ("view_type", "text", "viewType"),
             ("anonymous_id", "text", "anonymousId"),
+            ("share_id", "text", "shareId"),
+            ("share_from_user_id", "text", "shareFromUserId"),
+            ("scene", "text", "scene"),
+            ("referrer", "text", "referrer"),
             ("date_key", "date", "dateKey"),
             ("viewed_at", "timestamptz", "viewedAt"),
+        ],
+        "showcase_events": [
+            ("showcase_id", "text", "showcaseId"),
+            ("owner_user_id", "text", "ownerUserId"),
+            ("event_type", "text", "eventType"),
+            ("note_id", "text", "noteId"),
+            ("share_id", "text", "shareId"),
+            ("share_from_user_id", "text", "shareFromUserId"),
+            ("scene", "text", "scene"),
+            ("referrer", "text", "referrer"),
+            ("viewer_user_id", "text", "viewerUserId"),
+            ("view_type", "text", "viewType"),
+            ("anonymous_id", "text", "anonymousId"),
+            ("date_key", "date", "dateKey"),
         ],
         "relay_entries": [
             ("card_id", "text", "cardId"),
@@ -987,6 +1115,20 @@ class PostgresRepository:
             ("status", "text", "status"),
             ("attempts", "integer", "attempts"),
             ("last_attempt_at", "timestamptz", "lastAttemptAt"),
+        ],
+        "media_assets": [
+            ("media_type", "text", "mediaType"),
+            ("original_sha256", "text", "originalSha256"),
+            ("storage_sha256", "text", "storageSha256"),
+            ("url", "text", "url"),
+            ("status", "text", "status"),
+        ],
+        "media_asset_refs": [
+            ("asset_id", "text", "assetId"),
+            ("owner_user_id", "text", "ownerUserId"),
+            ("ref_type", "text", "refType"),
+            ("ref_id", "text", "refId"),
+            ("usage", "text", "usage"),
         ],
         "sync_tasks": [
             ("name", "text", "name"),
@@ -1068,6 +1210,15 @@ class PostgresRepository:
             ("idx_view_events_card_date", "card_id, date_key"),
             ("idx_view_events_logged_viewer", "card_id, viewer_user_id"),
             ("idx_view_events_anonymous", "card_id, anonymous_id"),
+            ("idx_view_events_share", "card_id, share_id, viewed_at"),
+        ],
+        "showcase_events": [
+            ("idx_showcase_events_showcase_time", "showcase_id, created_at"),
+            ("idx_showcase_events_owner_time", "owner_user_id, created_at"),
+            ("idx_showcase_events_type", "showcase_id, event_type, created_at"),
+            ("idx_showcase_events_viewer", "showcase_id, viewer_user_id"),
+            ("idx_showcase_events_anonymous", "showcase_id, anonymous_id"),
+            ("idx_showcase_events_share", "showcase_id, share_id, created_at"),
         ],
         "relay_entries": [
             ("idx_relay_entries_card_status", "card_id, status, created_at"),
@@ -1103,6 +1254,16 @@ class PostgresRepository:
         "media_retry_jobs": [
             ("idx_media_retry_jobs_status", "status, updated_at"),
             ("idx_media_retry_jobs_media_id", "media_id"),
+        ],
+        "media_assets": [
+            ("idx_media_assets_original_hash", "media_type, original_sha256"),
+            ("idx_media_assets_storage_hash", "media_type, storage_sha256"),
+            ("idx_media_assets_url", "url"),
+        ],
+        "media_asset_refs": [
+            ("idx_media_asset_refs_asset", "asset_id, created_at"),
+            ("idx_media_asset_refs_ref", "ref_type, ref_id"),
+            ("idx_media_asset_refs_owner", "owner_user_id, created_at"),
         ],
         "sync_tasks": [
             ("idx_sync_tasks_ready", "status, next_run_at, created_at"),
@@ -1255,6 +1416,11 @@ class PostgresRepository:
     def save_showcase_page(self, showcase: ShowcasePage) -> None:
         self._save_model("showcase_pages", showcase)
 
+    def delete_showcase_page(self, showcase_id: str) -> None:
+        with psycopg.connect(self.database_url) as conn:
+            conn.execute("delete from showcase_events where showcase_id = %s", (showcase_id,))
+            conn.execute("delete from showcase_pages where id = %s", (showcase_id,))
+
     def save_raw_messages(self, messages: list[RawMessage]) -> None:
         with psycopg.connect(self.database_url) as conn:
             with conn.transaction():
@@ -1393,6 +1559,18 @@ class PostgresRepository:
 
     def add_view_event(self, event: ViewEvent) -> None:
         self._save_model("view_events", event)
+
+    def add_showcase_event(self, event: ShowcaseEvent) -> None:
+        self._save_model("showcase_events", event)
+
+    def list_showcase_events(self, showcase_id: str) -> list[ShowcaseEvent]:
+        rows = self._list_payloads(
+            "showcase_events",
+            "showcase_id = %s",
+            (showcase_id,),
+            "created_at desc, id desc",
+        )
+        return [ShowcaseEvent.model_validate(row) for row in rows]
 
     def list_relay_entries_for_card(self, card_id: str, relay_status: str = "active") -> list[dict]:
         rows = self._list_payloads(
@@ -1698,6 +1876,54 @@ class PostgresRepository:
             rows = self._list_payloads("media_retry_jobs", "true", (), "updated_at desc, id desc")
         return [MediaRetryJob.model_validate(row) for row in rows]
 
+    def get_media_asset_by_original_hash(self, media_type: str, original_sha256: str) -> MediaAsset | None:
+        rows = self._list_payloads(
+            "media_assets",
+            "media_type = %s and original_sha256 = %s and status = 'active'",
+            (media_type, original_sha256),
+            "updated_at desc, id desc",
+        )
+        return MediaAsset.model_validate(rows[0]) if rows else None
+
+    def get_media_asset_by_storage_hash(self, media_type: str, storage_sha256: str) -> MediaAsset | None:
+        rows = self._list_payloads(
+            "media_assets",
+            "media_type = %s and storage_sha256 = %s and status = 'active'",
+            (media_type, storage_sha256),
+            "updated_at desc, id desc",
+        )
+        return MediaAsset.model_validate(rows[0]) if rows else None
+
+    def get_media_asset_by_url(self, url: str) -> MediaAsset | None:
+        rows = self._list_payloads("media_assets", "url = %s and status = 'active'", (url,), "updated_at desc, id desc")
+        return MediaAsset.model_validate(rows[0]) if rows else None
+
+    def save_media_asset(self, asset: MediaAsset) -> None:
+        self._save_model("media_assets", asset)
+
+    def save_media_asset_ref(self, ref: MediaAssetRef) -> None:
+        self._save_model("media_asset_refs", ref)
+
+    def list_media_asset_refs(
+        self,
+        asset_id: str | None = None,
+        ref_type: str | None = None,
+        ref_id: str | None = None,
+    ) -> list[MediaAssetRef]:
+        where_parts = ["true"]
+        params: list[str] = []
+        if asset_id:
+            where_parts.append("asset_id = %s")
+            params.append(asset_id)
+        if ref_type:
+            where_parts.append("ref_type = %s")
+            params.append(ref_type)
+        if ref_id:
+            where_parts.append("ref_id = %s")
+            params.append(ref_id)
+        rows = self._list_payloads("media_asset_refs", " and ".join(where_parts), tuple(params), "created_at desc, id desc")
+        return [MediaAssetRef.model_validate(row) for row in rows]
+
     def save_sync_task(self, task: SyncTask) -> None:
         self._save_model("sync_tasks", task)
 
@@ -1890,8 +2116,23 @@ class PostgresRepository:
                     where msg_id is not null
                     """
                 )
+                conn.execute(
+                    """
+                    create unique index if not exists uq_media_assets_original_hash
+                    on media_assets (media_type, original_sha256)
+                    where original_sha256 is not null and status = 'active'
+                    """
+                )
+                conn.execute(
+                    """
+                    create unique index if not exists uq_media_assets_storage_hash
+                    on media_assets (media_type, storage_sha256)
+                    where storage_sha256 is not null and status = 'active'
+                    """
+                )
 
     def _upsert_payload(self, conn, table_name: str, payload: dict) -> None:
+        payload = strip_unicode_surrogates(payload)
         field_columns = self.FIELD_COLUMNS.get(table_name, [])
         columns = ["id", "payload", "created_at", "updated_at", *[column[0] for column in field_columns]]
         placeholders = ["%s", "%s::jsonb", "coalesce(%s::timestamptz, now())", "coalesce(%s::timestamptz, now())"]

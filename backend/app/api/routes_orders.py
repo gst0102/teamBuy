@@ -20,9 +20,10 @@ class OrderStatusUpdateRequest(BaseModel):
 def list_orders(
     userId: str = Query(...),
     role: str = Query(...),
+    noteId: str | None = Query(default=None),
     service: AppService = Depends(get_app_service),
 ):
-    return ApiResponse(data=service.list_orders(userId, role))
+    return ApiResponse(data=service.list_orders(userId, role, noteId))
 
 
 @router.get("/{order_id}", response_model=ApiResponse[dict])

@@ -300,6 +300,14 @@ def miniapp_metadata(payload: dict) -> dict:
     query = parse_qs(urlparse(page_path).query)
     city_id = (query.get("cityId") or query.get("city_id") or [""])[0]
     house_code = (query.get("houseCode") or query.get("house_code") or [""])[0]
+    note_id = (query.get("noteId") or query.get("note_id") or query.get("sourceNoteId") or query.get("source_note_id") or [""])[0]
+    showcase_id = (query.get("showcaseId") or query.get("showcase_id") or [""])[0]
+    generic_id = (query.get("id") or [""])[0]
+    path_without_query = urlparse(page_path).path
+    if not note_id and "note" in path_without_query and generic_id:
+        note_id = generic_id
+    if not showcase_id and "showcase" in path_without_query and generic_id:
+        showcase_id = generic_id
     appid = str(payload.get("appid") or payload.get("appId") or "").strip()
     display_name = str(payload.get("displayname") or payload.get("displayName") or "").strip()
     description = str(payload.get("description") or payload.get("desc") or "").strip()
@@ -313,6 +321,8 @@ def miniapp_metadata(payload: dict) -> dict:
         "houseCode": house_code,
         "cityId": city_id,
         "source": (query.get("source") or [""])[0],
+        "noteId": note_id,
+        "showcaseId": showcase_id,
     }
     web_url = miniapp_web_url(metadata)
     if web_url:

@@ -10,7 +10,7 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from app.api.dependencies import get_app_service
+from app.api.dependencies import get_app_service, get_ops_console_store
 from app.core.config import ROOT_DIR
 from app.main import app
 from app.services.app_service import AppService
@@ -20,6 +20,7 @@ from app.services.import_notification_service import ImportNotificationService
 from app.services.media_storage_service import MediaStorageService
 from app.services.message_aggregator import MessageAggregator
 from app.services.ocr_service import OcrService
+from app.services.ops_console_store import OpsConsoleStore
 from app.services.repository import JsonRepository
 from app.services.wecom_message_normalizer import WecomMessageNormalizer
 from app.services.wecom_mock_service import WecomMockService
@@ -41,8 +42,10 @@ def client(tmp_path: Path):
         normalizer=WecomMessageNormalizer(),
         ocr_service=OcrService(provider="mock", mock_text=""),
     )
+    ops_store = OpsConsoleStore(tmp_path / "ops-console-state.json")
 
     app.dependency_overrides[get_app_service] = lambda: service
+    app.dependency_overrides[get_ops_console_store] = lambda: ops_store
     try:
         with TestClient(app) as test_client:
             yield test_client

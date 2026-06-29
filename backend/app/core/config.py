@@ -64,6 +64,7 @@ class Settings:
     wecom_archive_proxy_password: str = env_value("WECOM_ARCHIVE_PROXY_PASSWORD", "")
     wecom_archive_worker_enabled: bool = env_value("WECOM_ARCHIVE_WORKER_ENABLED", "false").lower() in {"1", "true", "yes"}
     wecom_archive_worker_interval_seconds: int = env_int("WECOM_ARCHIVE_WORKER_INTERVAL_SECONDS", 60)
+    robot_gateway_token: str = env_value("ROBOT_GATEWAY_TOKEN", "")
     storage_mode: str = env_value("STORAGE_MODE", "mock")
     media_storage_dir: Path = ROOT_DIR / env_value("MEDIA_STORAGE_DIR", "backend/mock/media")
     media_public_url_prefix: str = env_value("MEDIA_PUBLIC_URL_PREFIX", "/media")
@@ -86,8 +87,12 @@ class Settings:
     wechat_miniapp_appid: str = env_value("WECHAT_MINIAPP_APPID", "")
     wechat_miniapp_secret: str = env_value("WECHAT_MINIAPP_SECRET", "")
     wechat_jscode2session_url: str = env_value("WECHAT_JSCODE2SESSION_URL", "https://api.weixin.qq.com/sns/jscode2session")
+    allow_mock_login: bool = env_value("ALLOW_MOCK_LOGIN", "true").lower() in {"1", "true", "yes"}
     tencent_map_key: str = env_value("TENCENT_MAP_KEY", "")
     tencent_map_geocoder_url: str = env_value("TENCENT_MAP_GEOCODER_URL", "https://apis.map.qq.com/ws/geocoder/v1/")
+    tyc_api_key: str = env_value("TYC_API_KEY", "")
+    tyc_mcp_url: str = env_value("TYC_MCP_URL", "https://mcp.tianyancha.com/v1")
+    tyc_search_url: str = env_value("TYC_SEARCH_URL", "https://open.api.tianyancha.com/services/v4/open/searchV2")
     data_file: Path = ROOT_DIR / env_value("DATA_FILE", "backend/mock/runtime-state.json")
 
     def missing_database_fields(self) -> list[str]:

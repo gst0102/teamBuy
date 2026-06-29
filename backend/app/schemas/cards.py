@@ -56,16 +56,25 @@ class DuplicateCardRequest(BaseModel):
 
 
 class RecordViewRequest(BaseModel):
+    eventType: str | None = None
     viewerUserId: str | None = None
     anonymousId: str | None = None
     nickname: str | None = None
     avatarUrl: str | None = None
+    shareId: str | None = None
+    shareFromUserId: str | None = None
+    scene: str | None = None
+    referrer: str | None = None
+    sessionId: str | None = None
+    durationSeconds: int | None = None
+    maxScrollPercent: int | None = None
+    focusSections: list[str] = Field(default_factory=list)
 
 
 class CreateRelayRequest(BaseModel):
     userId: str
     nickname: str
-    avatarUrl: str = "https://example.com/avatar-default.png"
+    avatarUrl: str = ""
     phone: str | None = None
     address: str | None = None
 

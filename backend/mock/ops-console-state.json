@@ -1,0 +1,16 @@
+{
+  "groupUploadBatches": [
+    {
+      "id": "group_upload_batch_850521855a",
+      "batchName": "群二维码批量上传 2026-06-28",
+      "operatorName": null,
+      "rows": [],
+      "totalCount": 0,
+      "successCount": 0,
+      "failedCount": 0,
+      "createdAt": "2026-06-28T13:16:59.173756+08:00",
+      "updatedAt": "2026-06-28T13:16:59.173756+08:00"
+    }
+  ],
+  "feedbackTickets": []
+}

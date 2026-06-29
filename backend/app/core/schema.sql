@@ -70,8 +70,31 @@ create table if not exists view_events (
     viewer_user_id text,
     view_type text,
     anonymous_id text,
+    share_id text,
+    share_from_user_id text,
+    scene text,
+    referrer text,
     date_key date,
     viewed_at timestamptz,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+create table if not exists showcase_events (
+    id text primary key,
+    payload jsonb not null,
+    showcase_id text,
+    owner_user_id text,
+    event_type text,
+    note_id text,
+    share_id text,
+    share_from_user_id text,
+    scene text,
+    referrer text,
+    viewer_user_id text,
+    view_type text,
+    anonymous_id text,
+    date_key date,
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now()
 );
@@ -181,6 +204,30 @@ create table if not exists media_retry_jobs (
     updated_at timestamptz not null default now()
 );
 
+create table if not exists media_assets (
+    id text primary key,
+    payload jsonb not null,
+    media_type text,
+    original_sha256 text,
+    storage_sha256 text,
+    url text,
+    status text,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+create table if not exists media_asset_refs (
+    id text primary key,
+    payload jsonb not null,
+    asset_id text,
+    owner_user_id text,
+    ref_type text,
+    ref_id text,
+    usage text,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
 create table if not exists sync_tasks (
     id text primary key,
     payload jsonb not null,
@@ -268,6 +315,13 @@ create index if not exists idx_view_events_card_time on view_events (card_id, vi
 create index if not exists idx_view_events_card_date on view_events (card_id, date_key);
 create index if not exists idx_view_events_logged_viewer on view_events (card_id, viewer_user_id);
 create index if not exists idx_view_events_anonymous on view_events (card_id, anonymous_id);
+create index if not exists idx_view_events_share on view_events (card_id, share_id, viewed_at);
+create index if not exists idx_showcase_events_showcase_time on showcase_events (showcase_id, created_at);
+create index if not exists idx_showcase_events_owner_time on showcase_events (owner_user_id, created_at);
+create index if not exists idx_showcase_events_type on showcase_events (showcase_id, event_type, created_at);
+create index if not exists idx_showcase_events_viewer on showcase_events (showcase_id, viewer_user_id);
+create index if not exists idx_showcase_events_anonymous on showcase_events (showcase_id, anonymous_id);
+create index if not exists idx_showcase_events_share on showcase_events (showcase_id, share_id, created_at);
 create index if not exists idx_relay_entries_card_status on relay_entries (card_id, status, created_at);
 create index if not exists idx_relay_entries_card_follow_up on relay_entries (card_id, follow_up_status);
 create index if not exists idx_relay_entries_user on relay_entries (user_id);
@@ -285,6 +339,14 @@ create index if not exists idx_sync_cursors_last_synced on sync_cursors (last_sy
 create unique index if not exists uq_sync_cursors_open_kfid on sync_cursors (open_kfid);
 create index if not exists idx_media_retry_jobs_status on media_retry_jobs (status, updated_at);
 create index if not exists idx_media_retry_jobs_media_id on media_retry_jobs (media_id);
+create index if not exists idx_media_assets_original_hash on media_assets (media_type, original_sha256);
+create index if not exists idx_media_assets_storage_hash on media_assets (media_type, storage_sha256);
+create index if not exists idx_media_assets_url on media_assets (url);
+create unique index if not exists uq_media_assets_original_hash on media_assets (media_type, original_sha256) where original_sha256 is not null and status = 'active';
+create unique index if not exists uq_media_assets_storage_hash on media_assets (media_type, storage_sha256) where storage_sha256 is not null and status = 'active';
+create index if not exists idx_media_asset_refs_asset on media_asset_refs (asset_id, created_at);
+create index if not exists idx_media_asset_refs_ref on media_asset_refs (ref_type, ref_id);
+create index if not exists idx_media_asset_refs_owner on media_asset_refs (owner_user_id, created_at);
 create index if not exists idx_sync_tasks_ready on sync_tasks (status, next_run_at, created_at);
 create index if not exists idx_sync_tasks_name_status on sync_tasks (name, status, updated_at);
 create index if not exists idx_sync_tasks_locked on sync_tasks (locked_by, locked_at);

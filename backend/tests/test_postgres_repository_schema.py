@@ -13,7 +13,26 @@ def test_postgres_repository_maps_core_query_columns():
     assert {"import_batch_id", "msg_type", "received_at"} <= field_map["raw_messages"]
     assert {"wecom_msg_id", "wecom_token", "open_kfid"} <= field_map["raw_messages"]
     assert {"owner_user_id", "status", "title"} <= field_map["cards"]
-    assert {"card_id", "viewer_user_id", "anonymous_id", "date_key"} <= field_map["view_events"]
+    assert {
+        "card_id",
+        "viewer_user_id",
+        "anonymous_id",
+        "share_id",
+        "share_from_user_id",
+        "scene",
+        "referrer",
+        "date_key",
+    } <= field_map["view_events"]
+    assert {
+        "showcase_id",
+        "owner_user_id",
+        "event_type",
+        "viewer_user_id",
+        "anonymous_id",
+        "share_id",
+        "share_from_user_id",
+        "scene",
+    } <= field_map["showcase_events"]
     assert {"card_id", "user_id", "status", "follow_up_status"} <= field_map["relay_entries"]
     assert {"open_kfid", "cursor_value", "has_more", "last_synced_at"} <= field_map["sync_cursors"]
     assert {"sync_status", "lock_token", "locked_at", "last_error"} <= field_map["sync_cursors"]
@@ -34,6 +53,9 @@ def test_postgres_repository_defines_hot_path_indexes():
     assert "idx_raw_messages_open_kfid_token" in indexes["raw_messages"]
     assert "idx_cards_owner_status" in indexes["cards"]
     assert "idx_view_events_card_date" in indexes["view_events"]
+    assert "idx_view_events_share" in indexes["view_events"]
+    assert "idx_showcase_events_showcase_time" in indexes["showcase_events"]
+    assert "idx_showcase_events_share" in indexes["showcase_events"]
     assert "idx_relay_entries_card_status" in indexes["relay_entries"]
     assert "idx_sync_cursors_open_kfid" in indexes["sync_cursors"]
     assert "idx_media_retry_jobs_status" in indexes["media_retry_jobs"]

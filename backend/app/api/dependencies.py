@@ -9,6 +9,7 @@ from app.services.import_notification_service import ImportNotificationService
 from app.services.media_storage_service import MediaStorageService
 from app.services.media_processing_service import MediaProcessingService
 from app.services.message_aggregator import MessageAggregator
+from app.services.ops_console_store import OpsConsoleStore
 from app.services.repository import build_repository
 from app.services.skill_router_service import SkillRouterService
 from app.services.sync_task_queue import SyncTaskQueue
@@ -66,12 +67,55 @@ _sync_task_queue = SyncTaskQueue(
     _repo,
     lock_timeout_seconds=settings.wecom_sync_lock_timeout_seconds,
 )
+_ops_console_store = OpsConsoleStore(settings.data_file.parent / "ops-console-state.json")
+
+
+def _notification_reply_text(notification: dict) -> str:
+    title = notification.get("title") or "房源资料"
+    message = notification.get("message") or ""
+    path = notification.get("resultPath") or ""
+    if notification.get("status") == "success":
+        lines = [
+            f"已完成：{title}",
+            message,
+            "上游电话、中介费、密码锁等敏感信息只在你的账号里查看。",
+        ]
+        if path:
+            lines.append(f"打开小程序查看：{path}")
+        return "\n".join([line for line in lines if line])
+    return f"整理失败：{title}\n{message}"
+
+
+async def _send_archive_import_notifications(notifications: list[dict]) -> list[dict]:
+    results = []
+    if settings.wecom_use_mock:
+        return results
+    for notification in notifications:
+        notification_id = notification.get("id")
+        external_user_id = notification.get("externalUserId")
+        if not notification_id or not external_user_id:
+            continue
+        try:
+            response = await _wecom_client.send_customer_service_text(
+                external_user_id=external_user_id,
+                content=_notification_reply_text(notification),
+                open_kfid=settings.wecom_open_kfid or None,
+            )
+            updated = _service.update_import_notification_delivery(notification_id, "sent")
+            results.append({"notificationId": notification_id, "status": "sent", "response": response, "notification": updated})
+        except Exception as exc:
+            updated = _service.update_import_notification_delivery(notification_id, "failed", str(exc))
+            results.append({"notificationId": notification_id, "status": "failed", "error": str(exc), "notification": updated})
+    return results
+
+
 _wecom_archive_worker = WecomArchiveWorker(
     _service,
     _wecom_archive_client,
     enabled=settings.wecom_archive_worker_enabled,
     interval_seconds=settings.wecom_archive_worker_interval_seconds,
     pull_limit=settings.wecom_archive_pull_limit,
+    notification_sender=_send_archive_import_notifications,
 )
 
 
@@ -101,3 +145,7 @@ def get_wecom_archive_worker() -> WecomArchiveWorker:
 
 def get_skill_router_service() -> SkillRouterService:
     return _skill_router_service
+
+
+def get_ops_console_store() -> OpsConsoleStore:
+    return _ops_console_store

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+import mimetypes
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -8,18 +9,24 @@ from fastapi.staticfiles import StaticFiles
 
 from app.api.routes_auth import router as auth_router
 from app.api.routes_cards import router as cards_router
+from app.api.routes_dashboard import router as dashboard_router
+from app.api.routes_enterprise_resources import router as enterprise_resources_router
 from app.api.routes_imports import router as imports_router
 from app.api.routes_location import router as location_router
 from app.api.routes_messages import router as messages_router
 from app.api.routes_notes import router as notes_router
 from app.api.routes_ocr import router as ocr_router
+from app.api.routes_ops_admin import router as ops_admin_router
 from app.api.routes_orders import router as orders_router
+from app.api.routes_robot import router as robot_router
 from app.api.routes_showcases import router as showcases_router
 from app.api.routes_skills import router as skills_router
 from app.api.routes_wecom import recover_persisted_sync_tasks, router as wecom_router
 from app.api.dependencies import get_wecom_archive_worker
 from app.core.config import settings
 from app.core.database import DatabaseConfigError, check_postgres_connection, validate_database_settings
+
+mimetypes.add_type("image/webp", ".webp")
 
 
 @asynccontextmanager
@@ -46,11 +53,15 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(imports_router)
 app.include_router(cards_router)
+app.include_router(dashboard_router)
+app.include_router(enterprise_resources_router)
 app.include_router(wecom_router)
 app.include_router(skills_router)
 app.include_router(notes_router)
 app.include_router(ocr_router)
+app.include_router(ops_admin_router)
 app.include_router(orders_router)
+app.include_router(robot_router)
 app.include_router(showcases_router)
 app.include_router(messages_router)
 app.include_router(location_router)

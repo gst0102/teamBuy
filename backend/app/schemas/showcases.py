@@ -17,7 +17,7 @@ class ShowcasePageRequest(BaseModel):
     name: str
     description: str | None = None
     bannerUrl: str | None = None
-    templateId: str = "classic_grid"
+    templateId: str = "featured_window"
     shareTitle: str | None = None
     contactConfig: dict = Field(default_factory=dict)
     displayConfig: dict = Field(default_factory=dict)
@@ -26,3 +26,20 @@ class ShowcasePageRequest(BaseModel):
 
 class ShowcaseStatusRequest(BaseModel):
     ownerUserId: str
+
+
+class ShowcaseEventRequest(BaseModel):
+    eventType: str
+    noteId: str | None = None
+    shareId: str | None = None
+    shareFromUserId: str | None = None
+    scene: str | None = None
+    referrer: str | None = None
+    viewerUserId: str | None = None
+    anonymousId: str | None = None
+    nickname: str | None = None
+    avatarUrl: str | None = None
+    sessionId: str | None = None
+    durationSeconds: int | None = None
+    maxScrollPercent: int | None = None
+    focusSections: list[str] = Field(default_factory=list)

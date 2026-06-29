@@ -88,6 +88,25 @@ class WecomClient:
             filename=self._filename_from_disposition(response.headers.get("content-disposition", "")),
         )
 
+    async def send_customer_service_text(self, external_user_id: str, content: str, open_kfid: str | None = None) -> dict:
+        access_token = await self.get_access_token()
+        payload = {
+            "touser": external_user_id,
+            "open_kfid": open_kfid or self.settings.wecom_open_kfid,
+            "msgtype": "text",
+            "text": {"content": content[:2048]},
+        }
+        async with httpx.AsyncClient(base_url=self.settings.wecom_api_base_url, timeout=15) as client:
+            response = await client.post(
+                "/cgi-bin/kf/send_msg",
+                params={"access_token": access_token},
+                json=payload,
+            )
+            data = response.json()
+        if data.get("errcode") != 0:
+            raise WecomClientError(f"send customer service text failed: {data}")
+        return data
+
     def _filename_from_disposition(self, disposition: str) -> str | None:
         marker = "filename="
         if marker not in disposition:

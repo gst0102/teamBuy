@@ -1,0 +1,1122 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>teamBuy PC 运营后台</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f5f7fb;
+        --panel: #ffffff;
+        --line: #dbe3f0;
+        --text: #182132;
+        --sub: #64748b;
+        --brand: #1f8f55;
+        --brand-soft: #e9f7ef;
+        --warn: #b45309;
+        --warn-soft: #fff7ed;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: var(--bg);
+        color: var(--text);
+      }
+      .layout {
+        display: grid;
+        grid-template-columns: 220px minmax(0, 1fr);
+        min-height: 100vh;
+      }
+      .sidebar {
+        background: #0f172a;
+        color: #e2e8f0;
+        padding: 24px 18px;
+      }
+      .brand {
+        font-size: 24px;
+        font-weight: 700;
+        margin-bottom: 8px;
+      }
+      .brand-sub {
+        font-size: 13px;
+        line-height: 1.5;
+        color: #94a3b8;
+        margin-bottom: 20px;
+      }
+      .nav {
+        display: grid;
+        gap: 8px;
+      }
+      .nav button {
+        border: 0;
+        border-radius: 10px;
+        padding: 12px 14px;
+        text-align: left;
+        background: rgba(255,255,255,0.06);
+        color: inherit;
+        cursor: pointer;
+      }
+      .nav button.active {
+        background: rgba(255,255,255,0.14);
+      }
+      .main {
+        padding: 24px;
+      }
+      .toolbar, .panel, .metric, .table-wrap, .form-card {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+      }
+      .toolbar {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        justify-content: space-between;
+        padding: 16px 18px;
+        margin-bottom: 18px;
+      }
+      .toolbar-left h1 {
+        font-size: 24px;
+        margin: 0 0 6px;
+      }
+      .toolbar-left p {
+        margin: 0;
+        color: var(--sub);
+        font-size: 14px;
+      }
+      .token-box {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      input, textarea, select {
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 10px 12px;
+        font: inherit;
+        background: #fff;
+      }
+      textarea {
+        min-height: 180px;
+        resize: vertical;
+      }
+      button.primary, button.secondary {
+        border: 0;
+        border-radius: 10px;
+        padding: 10px 16px;
+        font: inherit;
+        cursor: pointer;
+      }
+      button.primary {
+        background: var(--brand);
+        color: #fff;
+      }
+      button.secondary {
+        background: #eef2f7;
+        color: var(--text);
+      }
+      .grid {
+        display: grid;
+        gap: 16px;
+      }
+      .metrics {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+      .metric {
+        padding: 18px;
+      }
+      .metric-label {
+        color: var(--sub);
+        font-size: 13px;
+      }
+      .metric-value {
+        font-size: 30px;
+        font-weight: 700;
+        margin-top: 10px;
+      }
+      .two-col {
+        grid-template-columns: 1.3fr 1fr;
+      }
+      .panel {
+        padding: 18px;
+      }
+      .panel h2 {
+        margin: 0 0 12px;
+        font-size: 18px;
+      }
+      .subtle {
+        color: var(--sub);
+        font-size: 13px;
+      }
+      .trend-list, .queue-list, .status-list {
+        display: grid;
+        gap: 10px;
+      }
+      .trend-row, .queue-row, .status-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 12px 0;
+        border-bottom: 1px solid #edf2f7;
+      }
+      .trend-row:last-child, .queue-row:last-child, .status-row:last-child {
+        border-bottom: 0;
+      }
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 70px;
+        padding: 5px 10px;
+        border-radius: 999px;
+        background: var(--brand-soft);
+        color: var(--brand);
+        font-size: 12px;
+      }
+      .badge.warn {
+        background: var(--warn-soft);
+        color: var(--warn);
+      }
+      .table-wrap {
+        overflow: auto;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th, td {
+        text-align: left;
+        padding: 12px 14px;
+        border-bottom: 1px solid #edf2f7;
+        white-space: nowrap;
+        font-size: 14px;
+      }
+      th {
+        color: var(--sub);
+        font-weight: 600;
+        background: #f8fafc;
+      }
+      .hidden { display: none; }
+      .section-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 12px;
+      }
+      .forms {
+        grid-template-columns: 1.2fr 1fr;
+      }
+      .form-card {
+        padding: 18px;
+      }
+      .form-grid {
+        display: grid;
+        gap: 12px;
+      }
+      .row {
+        display: grid;
+        gap: 12px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .tip {
+        padding: 12px 14px;
+        border-radius: 10px;
+        background: #f8fafc;
+        color: var(--sub);
+        font-size: 13px;
+        line-height: 1.6;
+      }
+      .status-pending_backend { color: var(--warn); }
+      .status-partial { color: var(--brand); }
+      .tab-subhead {
+        margin: 0 0 14px;
+        color: var(--sub);
+        font-size: 14px;
+      }
+      .upload-preview-box {
+        border: 1px dashed var(--line);
+        border-radius: 12px;
+        min-height: 160px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        background: #f8fafc;
+      }
+      .upload-preview-box img {
+        width: 100%;
+        max-height: 240px;
+        object-fit: contain;
+        display: block;
+      }
+      .chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .chip {
+        border: 1px solid var(--line);
+        background: #fff;
+        color: var(--text);
+        border-radius: 999px;
+        padding: 8px 12px;
+        cursor: pointer;
+        font: inherit;
+      }
+      .chip.active {
+        border-color: #9dd9b7;
+        background: var(--brand-soft);
+        color: var(--brand);
+      }
+      .inline-actions {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+      @media (max-width: 1100px) {
+        .layout { grid-template-columns: 1fr; }
+        .sidebar { display: none; }
+        .metrics, .two-col, .forms, .row { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="layout">
+      <aside class="sidebar">
+        <div class="brand">运营后台</div>
+        <div class="brand-sub">先把每天真正要看的数据和动作收拢到一处。</div>
+        <div class="nav">
+          <button class="active" data-tab="overview">总览</button>
+          <button data-tab="users">用户排行</button>
+          <button data-tab="content">内容排行</button>
+          <button data-tab="upload">群二维码批量上传</button>
+          <button data-tab="feedback">反馈工单</button>
+          <button data-tab="queue">系统待处理</button>
+        </div>
+      </aside>
+      <main class="main">
+        <div class="toolbar">
+          <div class="toolbar-left">
+            <h1>teamBuy PC 运营后台</h1>
+            <p>日报、排行、运营台。先跑起来，再慢慢长肌肉。</p>
+          </div>
+          <div class="token-box">
+            <input id="adminToken" placeholder="输入管理员 Token" />
+            <button class="secondary" id="saveTokenBtn">保存</button>
+            <button class="primary" id="refreshBtn">刷新</button>
+          </div>
+        </div>
+
+        <section id="tab-overview" class="tab-panel">
+          <div class="grid metrics" id="metricCards"></div>
+          <div class="grid two-col" style="margin-top: 16px;">
+            <div class="panel">
+              <div class="section-head">
+                <h2>近 7 日趋势</h2>
+                <span class="subtle">注册、资料、合集、动作、打开</span>
+              </div>
+              <div class="trend-list" id="trendList"></div>
+            </div>
+            <div class="panel">
+              <div class="section-head">
+                <h2>重点提醒</h2>
+                <span class="subtle">今天优先看的事</span>
+              </div>
+              <div class="queue-list" id="queueSummary"></div>
+              <div style="height: 14px;"></div>
+              <h2 style="font-size:16px;">资源状态</h2>
+              <div class="status-list" id="resourceStatus"></div>
+            </div>
+          </div>
+        </section>
+
+        <section id="tab-users" class="tab-panel hidden">
+          <div class="panel" style="margin-bottom: 16px;">
+            <div class="row">
+              <input id="userKeyword" placeholder="搜昵称 / userId / openid" />
+              <button class="primary" id="searchUsersBtn">搜索</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>用户</th>
+                  <th>注册时间</th>
+                  <th>资料数</th>
+                  <th>合集数</th>
+                  <th>客户动作</th>
+                  <th>打开数</th>
+                  <th>活跃分</th>
+                  <th>最近活跃</th>
+                </tr>
+              </thead>
+              <tbody id="userTable"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="tab-content" class="tab-panel hidden">
+          <div class="grid two-col">
+            <div class="panel">
+              <div class="section-head">
+                <h2>合集排行</h2>
+                <span class="subtle">按打开和互动排序</span>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>合集</th>
+                      <th>所属用户</th>
+                      <th>打开</th>
+                      <th>资料点击</th>
+                      <th>咨询</th>
+                      <th>分享</th>
+                    </tr>
+                  </thead>
+                  <tbody id="showcaseTable"></tbody>
+                </table>
+              </div>
+            </div>
+            <div class="panel">
+              <div class="section-head">
+                <h2>资料排行</h2>
+                <span class="subtle">按动作和点击排序</span>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>资料</th>
+                      <th>所属用户</th>
+                      <th>动作数</th>
+                      <th>合集点击</th>
+                      <th>最近互动</th>
+                    </tr>
+                  </thead>
+                  <tbody id="noteTable"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="tab-upload" class="tab-panel hidden">
+          <div class="panel" style="margin-bottom: 16px;">
+            <div class="section-head">
+              <h2>单条上传群二维码</h2>
+              <span class="subtle">先按小程序录入逻辑做，下面再批量导</span>
+            </div>
+            <p class="tab-subhead">和前端一致：先上传二维码，再选城市、类型、用途、人数、活跃度和有效期。尽量点选，少手输。</p>
+            <div class="grid forms">
+              <div class="form-card">
+                <div class="form-grid">
+                  <div class="upload-preview-box" id="singleQrPreview"><span class="subtle">还没上传二维码</span></div>
+                  <input id="singleQrFile" type="file" accept="image/*" />
+                  <div class="row">
+                    <input id="singleGroupName" placeholder="群名称" />
+                    <input id="singleOperatorName" placeholder="操作人（可不填）" />
+                  </div>
+                  <div class="row">
+                    <select id="singleCityMode">
+                      <option value="city">本地城市</option>
+                      <option value="national">全国</option>
+                    </select>
+                    <input id="singleCityLabel" placeholder="城市 / 区域，例如 长沙市 岳麓区" />
+                  </div>
+                  <div class="row">
+                    <select id="singleGroupType">
+                      <option value="房源">房源</option>
+                      <option value="团购">团购</option>
+                      <option value="老板">老板</option>
+                      <option value="本地生活">本地生活</option>
+                      <option value="服务">服务</option>
+                      <option value="自定义">自定义</option>
+                    </select>
+                    <input id="singleCustomTags" placeholder="自定义标签，逗号分隔，最多 4 个" />
+                  </div>
+                  <div>
+                    <div class="subtle" style="margin-bottom:8px;">用途</div>
+                    <div class="chips" id="purposeChips"></div>
+                  </div>
+                  <div class="row">
+                    <select id="singleMemberRange">
+                      <option value="50以下">50以下</option>
+                      <option value="50-100">50-100</option>
+                      <option value="100-300" selected>100-300</option>
+                      <option value="300+">300+</option>
+                    </select>
+                    <select id="singleActiveLevel">
+                      <option value="高">高</option>
+                      <option value="中">中</option>
+                      <option value="低">低</option>
+                      <option value="不确定">不确定</option>
+                    </select>
+                  </div>
+                  <div class="row">
+                    <select id="singleExpireDays">
+                      <option value="1">1天</option>
+                      <option value="3">3天</option>
+                      <option value="5" selected>5天（推荐）</option>
+                      <option value="7">7天</option>
+                    </select>
+                    <input id="singleRemark" placeholder="入群备注，例如 验证方式 / 门槛" />
+                  </div>
+                  <button class="primary" id="saveSingleGroupBtn">保存单条群资源</button>
+                </div>
+              </div>
+              <div class="form-card">
+                <div class="section-head">
+                  <h2>最近单条录入</h2>
+                  <span class="subtle">先和前台逻辑对齐</span>
+                </div>
+                <div class="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>群名称</th>
+                        <th>城市</th>
+                        <th>类型</th>
+                        <th>有效期</th>
+                      </tr>
+                    </thead>
+                    <tbody id="singleGroupTable"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="grid forms">
+            <div class="form-card">
+              <div class="section-head">
+                <h2>批量模板与规则</h2>
+                <span class="subtle">先下载模板，再填数据上传</span>
+              </div>
+              <div class="inline-actions" style="margin-bottom: 12px;">
+                <button class="secondary" id="downloadCsvTemplateBtn">下载 CSV 模板</button>
+                <button class="secondary" id="downloadXlsxTemplateBtn">下载 Excel 模板</button>
+              </div>
+              <div class="tip">批量模板当前请填“二维码链接”，不是图片本身。也就是说：适合你已经把二维码图上传到可访问地址之后，再批量导入。</div>
+              <div style="height: 12px;"></div>
+              <div class="section-head">
+                <h2>表格式批量上传</h2>
+                <span class="subtle">上传 Excel / CSV 文件后解析</span>
+              </div>
+              <div class="tip">建议直接上传 `.xlsx` 或 `.csv`。列顺序建议为：群名称、城市、区域、类型、标签、二维码链接、有效期、备注。</div>
+              <div style="height: 12px;"></div>
+              <div class="form-grid">
+                <input id="batchName" placeholder="批次名称（可不填）" />
+                <input id="operatorName" placeholder="操作人（可不填）" />
+                <input id="uploadFile" type="file" accept=".xlsx,.csv" />
+                <div class="row">
+                  <button class="secondary" id="previewUploadBtn">预览解析</button>
+                  <button class="primary" id="saveUploadBtn">保存批次</button>
+                </div>
+              </div>
+            </div>
+            <div class="form-card">
+              <div class="section-head">
+                <h2>解析预览</h2>
+                <span class="subtle" id="uploadSummary">还没有预览</span>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>行</th>
+                      <th>群名称</th>
+                      <th>城市</th>
+                      <th>状态</th>
+                    </tr>
+                  </thead>
+                  <tbody id="uploadPreviewTable"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+          <div class="panel" style="margin-top: 16px;">
+            <div class="section-head">
+              <h2>最近批次</h2>
+              <span class="subtle">保存在后台，方便复查</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>批次</th>
+                    <th>操作人</th>
+                    <th>总条数</th>
+                    <th>成功</th>
+                    <th>失败</th>
+                    <th>时间</th>
+                  </tr>
+                </thead>
+                <tbody id="uploadBatchTable"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section id="tab-feedback" class="tab-panel hidden">
+          <div class="grid forms">
+            <div class="form-card">
+              <div class="section-head">
+                <h2>新建反馈工单</h2>
+                <span class="subtle">支持人工补录，也为后续前台接入预留</span>
+              </div>
+              <div class="form-grid">
+                <div class="row">
+                  <select id="feedbackType">
+                    <option value="bug">Bug 反馈</option>
+                    <option value="suggestion">产品建议</option>
+                    <option value="resource">资源纠错</option>
+                    <option value="points">积分申诉</option>
+                  </select>
+                  <input id="feedbackUserNickname" placeholder="提交用户昵称" />
+                </div>
+                <div class="row">
+                  <input id="feedbackUserId" placeholder="用户 ID（可不填）" />
+                  <input id="feedbackContact" placeholder="联系方式（可不填）" />
+                </div>
+                <textarea id="feedbackContent" placeholder="问题描述 / 建议内容"></textarea>
+                <button class="primary" id="createFeedbackBtn">创建工单</button>
+              </div>
+            </div>
+            <div class="form-card">
+              <div class="section-head">
+                <h2>工单处理</h2>
+                <span class="subtle">选中列表中的工单后再填写</span>
+              </div>
+              <div class="form-grid">
+                <input id="selectedFeedbackId" placeholder="当前工单 ID" readonly />
+                <div class="row">
+                  <select id="feedbackStatus">
+                    <option value="pending">待处理</option>
+                    <option value="reviewed">已查看</option>
+                    <option value="replied">已回复</option>
+                    <option value="accepted">已采纳</option>
+                    <option value="closed">已关闭</option>
+                  </select>
+                  <input id="feedbackOperatorName" placeholder="处理人" />
+                </div>
+                <input id="feedbackRewardNote" placeholder="奖励积分备注，例如：建议采纳 +300" />
+                <textarea id="feedbackReplyText" placeholder="回复内容"></textarea>
+                <button class="secondary" id="updateFeedbackBtn">更新工单</button>
+              </div>
+            </div>
+          </div>
+          <div class="panel" style="margin-top: 16px;">
+            <div class="section-head">
+              <h2>反馈工单列表</h2>
+              <span class="subtle">点击行可载入右侧处理区</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>类型</th>
+                    <th>用户</th>
+                    <th>状态</th>
+                    <th>描述</th>
+                    <th>处理人</th>
+                    <th>更新时间</th>
+                  </tr>
+                </thead>
+                <tbody id="feedbackTable"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section id="tab-queue" class="tab-panel hidden">
+          <div class="grid two-col">
+            <div class="panel">
+              <div class="section-head">
+                <h2>待发送通知</h2>
+                <span class="subtle">优先保证用户收到结果</span>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>标题</th>
+                      <th>状态</th>
+                      <th>渠道</th>
+                      <th>时间</th>
+                    </tr>
+                  </thead>
+                  <tbody id="pendingNotificationTable"></tbody>
+                </table>
+              </div>
+            </div>
+            <div class="panel">
+              <div class="section-head">
+                <h2>失败异常</h2>
+                <span class="subtle">导入、媒体、同步都收在这里</span>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>类型</th>
+                      <th>说明</th>
+                      <th>时间</th>
+                    </tr>
+                  </thead>
+                  <tbody id="failedQueueTable"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script>
+      const state = {
+        uploadPreview: null,
+        feedbackItems: [],
+        singleQrImageData: "",
+        selectedPurposes: ["找同行"],
+        batchFile: null
+      };
+
+      const purposeOptions = ["找客户", "找同行", "找供应链", "找合作", "自定义"];
+
+      function getToken() {
+        return document.getElementById("adminToken").value.trim();
+      }
+
+      function saveToken() {
+        localStorage.setItem("teamBuy:opsAdminToken", getToken());
+      }
+
+      function restoreToken() {
+        document.getElementById("adminToken").value = localStorage.getItem("teamBuy:opsAdminToken") || "";
+      }
+
+      async function request(url, options = {}) {
+        const headers = { "Content-Type": "application/json", "X-Admin-Token": getToken(), ...(options.headers || {}) };
+        const response = await fetch(url, { ...options, headers });
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.detail || payload.message || "请求失败");
+        }
+        return payload.data;
+      }
+
+      function formatDate(value) {
+        return value ? value.replace("T", " ").slice(0, 16) : "-";
+      }
+
+      function setActiveTab(tab) {
+        document.querySelectorAll(".nav button").forEach((button) => {
+          button.classList.toggle("active", button.dataset.tab === tab);
+        });
+        document.querySelectorAll(".tab-panel").forEach((panel) => panel.classList.add("hidden"));
+        document.getElementById(`tab-${tab}`).classList.remove("hidden");
+      }
+
+      function renderMetrics(summary = {}) {
+        const items = [
+          ["今日新增用户", summary.todayNewUsers || 0],
+          ["今日新增资料", summary.todayNewNotes || 0],
+          ["今日新增合集", summary.todayNewShowcases || 0],
+          ["今日客户动作", summary.todayCustomerActions || 0],
+          ["今日展示页打开", summary.todayShowcaseViews || 0],
+          ["今日导入通知", summary.todayNotifications || 0],
+          ["待发送通知", summary.pendingNotifications || 0],
+          ["待处理异常", summary.pendingIssues || 0]
+        ];
+        document.getElementById("metricCards").innerHTML = items.map(([label, value]) => `
+          <div class="metric">
+            <div class="metric-label">${label}</div>
+            <div class="metric-value">${value}</div>
+          </div>
+        `).join("");
+      }
+
+      function renderTrend(items = []) {
+        document.getElementById("trendList").innerHTML = items.map((item) => `
+          <div class="trend-row">
+            <div>
+              <div>${item.date}</div>
+              <div class="subtle">注册 ${item.users} · 资料 ${item.notes} · 合集 ${item.showcases}</div>
+            </div>
+            <div class="subtle">动作 ${item.actions} · 打开 ${item.showcaseViews}</div>
+          </div>
+        `).join("") || `<div class="subtle">暂无趋势数据</div>`;
+      }
+
+      function renderQueueSummary(summary = {}) {
+        const rows = [
+          ["待发送通知", summary.pendingNotificationCount || 0],
+          ["失败导入", summary.failedImportCount || 0],
+          ["媒体失败", summary.failedMediaCount || 0],
+          ["同步失败", summary.failedSyncTaskCount || 0]
+        ];
+        document.getElementById("queueSummary").innerHTML = rows.map(([label, value]) => `
+          <div class="queue-row">
+            <div>${label}</div>
+            <span class="badge ${value ? "warn" : ""}">${value}</span>
+          </div>
+        `).join("");
+      }
+
+      function renderResourceStatus(items = []) {
+        document.getElementById("resourceStatus").innerHTML = items.map((item) => `
+          <div class="status-row">
+            <div>
+              <div>${item.label}</div>
+              <div class="subtle">${item.desc}</div>
+            </div>
+            <div class="status-${item.status}">${item.status === "pending_backend" ? "待后端化" : "部分可用"}</div>
+          </div>
+        `).join("");
+      }
+
+      function renderUserTable(items = []) {
+        document.getElementById("userTable").innerHTML = items.map((item) => `
+          <tr>
+            <td>${item.nickname}<div class="subtle">${item.userId}</div></td>
+            <td>${formatDate(item.createdAt)}</td>
+            <td>${item.noteCount}</td>
+            <td>${item.showcaseCount}</td>
+            <td>${item.customerActionCount}</td>
+            <td>${item.showcaseViewCount}</td>
+            <td>${item.activeScore}</td>
+            <td>${formatDate(item.lastActiveAt)}</td>
+          </tr>
+        `).join("") || `<tr><td colspan="8" class="subtle">暂无数据</td></tr>`;
+      }
+
+      function renderContentTables(data = {}) {
+        document.getElementById("showcaseTable").innerHTML = (data.showcases || []).map((item) => `
+          <tr>
+            <td>${item.name}<div class="subtle">${item.status}</div></td>
+            <td>${item.ownerNickname}</td>
+            <td>${item.openCount}</td>
+            <td>${item.noteClickCount}</td>
+            <td>${item.consultCount}</td>
+            <td>${item.shareCount}</td>
+          </tr>
+        `).join("") || `<tr><td colspan="6" class="subtle">暂无合集数据</td></tr>`;
+        document.getElementById("noteTable").innerHTML = (data.notes || []).map((item) => `
+          <tr>
+            <td>${item.title}<div class="subtle">${item.status}</div></td>
+            <td>${item.ownerNickname}</td>
+            <td>${item.actionCount}</td>
+            <td>${item.showcaseClickCount}</td>
+            <td>${formatDate(item.lastActiveAt)}</td>
+          </tr>
+        `).join("") || `<tr><td colspan="5" class="subtle">暂无资料数据</td></tr>`;
+      }
+
+      function renderUploadPreview(result) {
+        state.uploadPreview = result;
+        const summary = result?.summary || {};
+        document.getElementById("uploadSummary").textContent = `共 ${summary.totalCount || 0} 条，成功 ${summary.successCount || 0}，失败 ${summary.failedCount || 0}`;
+        document.getElementById("uploadPreviewTable").innerHTML = (result?.rows || []).map((item) => `
+          <tr>
+            <td>${item.rowNumber}</td>
+            <td>${item.groupName || "-"}</td>
+            <td>${item.city || "-"}</td>
+            <td>${item.success ? '<span class="badge">成功</span>' : `<span class="badge warn">${item.error || "失败"}</span>`}</td>
+          </tr>
+        `).join("") || `<tr><td colspan="4" class="subtle">暂无预览</td></tr>`;
+      }
+
+      function renderUploadBatches(items = []) {
+        document.getElementById("uploadBatchTable").innerHTML = items.map((item) => `
+          <tr>
+            <td>${item.batchName}</td>
+            <td>${item.operatorName || "-"}</td>
+            <td>${item.totalCount}</td>
+            <td>${item.successCount}</td>
+            <td>${item.failedCount}</td>
+            <td>${formatDate(item.createdAt)}</td>
+          </tr>
+        `).join("") || `<tr><td colspan="6" class="subtle">暂无批次</td></tr>`;
+      }
+
+      function renderPurposeChips() {
+        document.getElementById("purposeChips").innerHTML = purposeOptions.map((item) => `
+          <button type="button" class="chip ${state.selectedPurposes.includes(item) ? "active" : ""}" data-purpose="${item}">${item}</button>
+        `).join("");
+      }
+
+      function renderSingleGroups(items = []) {
+        document.getElementById("singleGroupTable").innerHTML = items.map((item) => `
+          <tr>
+            <td>${item.name}<div class="subtle">${(item.purposes || []).join(" / ")}</div></td>
+            <td>${item.cityLabel || "-"}</td>
+            <td>${item.groupType || "-"}</td>
+            <td>${item.expiresAtText || "-"}</td>
+          </tr>
+        `).join("") || `<tr><td colspan="4" class="subtle">暂无单条录入</td></tr>`;
+      }
+
+      function renderFeedback(items = []) {
+        state.feedbackItems = items;
+        document.getElementById("feedbackTable").innerHTML = items.map((item) => `
+          <tr data-feedback-id="${item.id}">
+            <td>${item.type}</td>
+            <td>${item.userNickname || item.userId || "-"}</td>
+            <td>${item.status}</td>
+            <td>${item.content}</td>
+            <td>${item.operatorName || "-"}</td>
+            <td>${formatDate(item.updatedAt)}</td>
+          </tr>
+        `).join("") || `<tr><td colspan="6" class="subtle">暂无工单</td></tr>`;
+      }
+
+      function renderSystemQueue(data = {}) {
+        document.getElementById("pendingNotificationTable").innerHTML = (data.pendingNotifications || []).map((item) => `
+          <tr>
+            <td>${item.title || "-"}</td>
+            <td>${item.sendStatus || "-"}</td>
+            <td>${item.channel || "-"}</td>
+            <td>${formatDate(item.sentAt)}</td>
+          </tr>
+        `).join("") || `<tr><td colspan="4" class="subtle">暂无待发送通知</td></tr>`;
+
+        const failedRows = [];
+        (data.importFailures?.notifications || []).forEach((item) => {
+          failedRows.push({ type: "导入通知失败", text: item.title || item.message || "-", time: item.sentAt });
+        });
+        (data.importFailures?.skillRuns || []).forEach((item) => {
+          failedRows.push({ type: "技能运行失败", text: item.errorMessage || item.skillId || "-", time: item.startedAt });
+        });
+        (data.failedMedia || []).forEach((item) => {
+          failedRows.push({ type: "媒体重试失败", text: item.mediaId || "-", time: item.updatedAt });
+        });
+        (data.failedSyncTasks || []).forEach((item) => {
+          failedRows.push({ type: "同步任务失败", text: item.name || "-", time: item.updatedAt });
+        });
+        document.getElementById("failedQueueTable").innerHTML = failedRows.map((item) => `
+          <tr>
+            <td>${item.type}</td>
+            <td>${item.text}</td>
+            <td>${formatDate(item.time)}</td>
+          </tr>
+        `).join("") || `<tr><td colspan="3" class="subtle">暂无失败异常</td></tr>`;
+      }
+
+      async function loadOverview() {
+        const data = await request("/api/ops-admin/overview");
+        renderMetrics(data.summary || {});
+        renderTrend(data.trend7d || []);
+        renderQueueSummary(data.systemQueue || {});
+        renderResourceStatus(data.resourceStatus || []);
+      }
+
+      async function loadUsers() {
+        const keyword = document.getElementById("userKeyword").value.trim();
+        const data = await request(`/api/ops-admin/user-leaderboard${keyword ? `?keyword=${encodeURIComponent(keyword)}` : ""}`);
+        renderUserTable(data.items || []);
+      }
+
+      async function loadContent() {
+        const data = await request("/api/ops-admin/content-leaderboard");
+        renderContentTables(data);
+      }
+
+      async function loadUploadBatches() {
+        const data = await request("/api/ops-admin/group-upload/batches");
+        renderUploadBatches(data || []);
+      }
+
+      async function loadSingleGroups() {
+        const data = await request("/api/ops-admin/group-resources");
+        renderSingleGroups(data || []);
+      }
+
+      async function loadFeedback() {
+        const data = await request("/api/ops-admin/feedback");
+        renderFeedback(data || []);
+      }
+
+      async function loadQueue() {
+        const data = await request("/api/ops-admin/system-queue");
+        renderSystemQueue(data || {});
+      }
+
+      async function refreshAll() {
+        saveToken();
+        await Promise.all([
+          loadOverview(),
+          loadUsers(),
+          loadContent(),
+          loadUploadBatches(),
+          loadSingleGroups(),
+          loadFeedback(),
+          loadQueue()
+        ]);
+      }
+
+      async function previewUpload() {
+        if (!state.batchFile) throw new Error("请先选择 Excel 或 CSV 文件");
+        const formData = new FormData();
+        formData.append("file", state.batchFile);
+        const response = await fetch("/api/ops-admin/group-upload/preview-file", {
+          method: "POST",
+          headers: { "X-Admin-Token": getToken() },
+          body: formData
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.detail || payload.message || "请求失败");
+        const result = payload.data;
+        renderUploadPreview(result);
+      }
+
+      async function saveUploadBatch() {
+        if (!state.batchFile) throw new Error("请先选择 Excel 或 CSV 文件");
+        const formData = new FormData();
+        formData.append("file", state.batchFile);
+        formData.append("batchName", document.getElementById("batchName").value);
+        formData.append("operatorName", document.getElementById("operatorName").value);
+        const response = await fetch("/api/ops-admin/group-upload/batches-file", {
+          method: "POST",
+          headers: { "X-Admin-Token": getToken() },
+          body: formData
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.detail || payload.message || "请求失败");
+        const result = payload.data;
+        renderUploadPreview({ summary: { totalCount: result.totalCount, successCount: result.successCount, failedCount: result.failedCount }, rows: result.rows || [] });
+        await loadUploadBatches();
+      }
+
+      async function saveSingleGroup() {
+        const customTags = (document.getElementById("singleCustomTags").value || "")
+          .split(/[,，]/)
+          .map((item) => item.trim())
+          .filter(Boolean)
+          .slice(0, 4);
+        await request("/api/ops-admin/group-resources", {
+          method: "POST",
+          body: JSON.stringify({
+            name: document.getElementById("singleGroupName").value,
+            cityMode: document.getElementById("singleCityMode").value,
+            cityLabel: document.getElementById("singleCityLabel").value,
+            region: [],
+            groupType: document.getElementById("singleGroupType").value,
+            purposes: state.selectedPurposes,
+            memberRange: document.getElementById("singleMemberRange").value,
+            activeLevel: document.getElementById("singleActiveLevel").value,
+            expiresInDays: Number(document.getElementById("singleExpireDays").value || 5),
+            remark: document.getElementById("singleRemark").value,
+            customTags,
+            qrImageData: state.singleQrImageData,
+            operatorName: document.getElementById("singleOperatorName").value
+          })
+        });
+        document.getElementById("singleGroupName").value = "";
+        document.getElementById("singleRemark").value = "";
+        document.getElementById("singleCustomTags").value = "";
+        document.getElementById("singleQrFile").value = "";
+        state.singleQrImageData = "";
+        document.getElementById("singleQrPreview").innerHTML = `<span class="subtle">还没上传二维码</span>`;
+        await loadSingleGroups();
+      }
+
+      async function createFeedback() {
+        await request("/api/ops-admin/feedback", {
+          method: "POST",
+          body: JSON.stringify({
+            type: document.getElementById("feedbackType").value,
+            userId: document.getElementById("feedbackUserId").value,
+            userNickname: document.getElementById("feedbackUserNickname").value,
+            contact: document.getElementById("feedbackContact").value,
+            content: document.getElementById("feedbackContent").value
+          })
+        });
+        document.getElementById("feedbackContent").value = "";
+        await loadFeedback();
+      }
+
+      async function updateFeedback() {
+        const ticketId = document.getElementById("selectedFeedbackId").value;
+        if (!ticketId) return;
+        await request(`/api/ops-admin/feedback/${ticketId}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            status: document.getElementById("feedbackStatus").value,
+            replyText: document.getElementById("feedbackReplyText").value,
+            rewardNote: document.getElementById("feedbackRewardNote").value,
+            operatorName: document.getElementById("feedbackOperatorName").value
+          })
+        });
+        await loadFeedback();
+      }
+
+      function bindEvents() {
+        document.querySelectorAll(".nav button").forEach((button) => {
+          button.addEventListener("click", () => setActiveTab(button.dataset.tab));
+        });
+        document.getElementById("saveTokenBtn").addEventListener("click", saveToken);
+        document.getElementById("refreshBtn").addEventListener("click", () => refreshAll().catch((error) => alert(error.message)));
+        document.getElementById("searchUsersBtn").addEventListener("click", () => loadUsers().catch((error) => alert(error.message)));
+        document.getElementById("previewUploadBtn").addEventListener("click", () => previewUpload().catch((error) => alert(error.message)));
+        document.getElementById("saveUploadBtn").addEventListener("click", () => saveUploadBatch().catch((error) => alert(error.message)));
+        document.getElementById("uploadFile").addEventListener("change", (event) => {
+          state.batchFile = (event.target.files && event.target.files[0]) || null;
+          document.getElementById("uploadSummary").textContent = state.batchFile ? `已选择 ${state.batchFile.name}` : "还没有预览";
+        });
+        document.getElementById("downloadCsvTemplateBtn").addEventListener("click", () => {
+          window.open(`/api/ops-admin/group-upload/template.csv`, "_blank");
+        });
+        document.getElementById("downloadXlsxTemplateBtn").addEventListener("click", () => {
+          window.open(`/api/ops-admin/group-upload/template.xlsx`, "_blank");
+        });
+        document.getElementById("saveSingleGroupBtn").addEventListener("click", () => saveSingleGroup().catch((error) => alert(error.message)));
+        document.getElementById("createFeedbackBtn").addEventListener("click", () => createFeedback().catch((error) => alert(error.message)));
+        document.getElementById("updateFeedbackBtn").addEventListener("click", () => updateFeedback().catch((error) => alert(error.message)));
+        document.getElementById("purposeChips").addEventListener("click", (event) => {
+          const button = event.target.closest("[data-purpose]");
+          if (!button) return;
+          const value = button.dataset.purpose;
+          if (state.selectedPurposes.includes(value)) {
+            state.selectedPurposes = state.selectedPurposes.filter((item) => item !== value);
+          } else {
+            state.selectedPurposes = [...state.selectedPurposes, value].slice(0, 4);
+          }
+          renderPurposeChips();
+        });
+        document.getElementById("singleQrFile").addEventListener("change", async (event) => {
+          const file = event.target.files && event.target.files[0];
+          if (!file) return;
+          const reader = new FileReader();
+          reader.onload = () => {
+            state.singleQrImageData = String(reader.result || "");
+            document.getElementById("singleQrPreview").innerHTML = `<img src="${state.singleQrImageData}" alt="二维码预览" />`;
+          };
+          reader.readAsDataURL(file);
+        });
+        document.getElementById("feedbackTable").addEventListener("click", (event) => {
+          const row = event.target.closest("tr[data-feedback-id]");
+          if (!row) return;
+          const item = state.feedbackItems.find((ticket) => ticket.id === row.dataset.feedbackId);
+          if (!item) return;
+          document.getElementById("selectedFeedbackId").value = item.id;
+          document.getElementById("feedbackStatus").value = item.status || "pending";
+          document.getElementById("feedbackReplyText").value = item.replyText || "";
+          document.getElementById("feedbackRewardNote").value = item.rewardNote || "";
+          document.getElementById("feedbackOperatorName").value = item.operatorName || "";
+        });
+      }
+
+      restoreToken();
+      renderPurposeChips();
+      bindEvents();
+      refreshAll().catch((error) => {
+        console.warn(error);
+      });
+    </script>
+  </body>
+</html>

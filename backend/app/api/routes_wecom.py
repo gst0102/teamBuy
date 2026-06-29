@@ -45,6 +45,62 @@ def _sync_response_has_more(value) -> bool:
     return bool(value)
 
 
+def _notification_reply_text(notification: dict) -> str:
+    title = notification.get("title") or "房源资料"
+    message = notification.get("message") or ""
+    path = notification.get("resultPath") or ""
+    if notification.get("status") == "success":
+        lines = [
+            f"已完成：{title}",
+            message,
+            "上游电话、中介费、密码锁等敏感信息只在你的账号里查看。",
+        ]
+        if path:
+            lines.append(f"打开小程序查看：{path}")
+        return "\n".join([line for line in lines if line])
+    return f"整理失败：{title}\n{message}"
+
+
+async def _send_import_notifications(
+    notifications: list[dict],
+    service: AppService,
+    client: WecomClient,
+) -> list[dict]:
+    results = []
+    if settings.wecom_use_mock:
+        return results
+    for notification in notifications:
+        notification_id = notification.get("id")
+        external_user_id = notification.get("externalUserId")
+        if not notification_id or not external_user_id:
+            continue
+        try:
+            response = await client.send_customer_service_text(
+                external_user_id=external_user_id,
+                content=_notification_reply_text(notification),
+                open_kfid=settings.wecom_open_kfid or None,
+            )
+            updated = service.update_import_notification_delivery(notification_id, "sent")
+            results.append({"notificationId": notification_id, "status": "sent", "response": response, "notification": updated})
+        except Exception as exc:
+            updated = service.update_import_notification_delivery(notification_id, "failed", str(exc))
+            results.append({"notificationId": notification_id, "status": "failed", "error": str(exc), "notification": updated})
+    return results
+
+
+async def _send_pending_import_notifications(
+    service: AppService,
+    client: WecomClient,
+    limit: int = 20,
+) -> list[dict]:
+    pending = [
+        item
+        for item in service.list_import_notifications()
+        if item.get("sendStatus") == "pending" and item.get("channel") == "wecom"
+    ][:limit]
+    return await _send_import_notifications(pending, service, client)
+
+
 def _verify_admin_token(provided_token: str | None) -> None:
     if not settings.admin_token:
         raise HTTPException(status_code=403, detail="WECOM_ADMIN_TOKEN is not configured")
@@ -316,6 +372,23 @@ def config_check(client: WecomClient = Depends(get_wecom_client)):
     )
 
 
+@router.get("/customer-service-config", response_model=ApiResponse[dict])
+def customer_service_config():
+    corp_id = settings.wecom_corp_id
+    open_kfid = settings.wecom_open_kfid
+    ext_info_url = f"https://work.weixin.qq.com/kfid/{open_kfid}" if open_kfid else ""
+    return ApiResponse(
+        success=bool(corp_id and ext_info_url),
+        message="wecom customer service config ready" if corp_id and ext_info_url else "wecom customer service config incomplete",
+        data={
+            "corpId": corp_id,
+            "openKfid": open_kfid,
+            "extInfoUrl": ext_info_url,
+            "configured": bool(corp_id and ext_info_url),
+        },
+    )
+
+
 @router.get("/archive/config-check", response_model=ApiResponse[dict])
 def archive_config_check():
     missing = settings.missing_wecom_archive_fields()
@@ -367,17 +440,40 @@ def pull_archive_messages(
 
 
 @router.post("/archive/process", response_model=ApiResponse[dict])
-def process_archive_messages(
+async def process_archive_messages(
     limit: int = Query(default=100, ge=1, le=1000),
     admin_token: str | None = Query(default=None, alias="adminToken"),
     x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
     service: AppService = Depends(get_app_service),
     archive_client: WecomArchiveClient = Depends(get_wecom_archive_client),
+    client: WecomClient = Depends(get_wecom_client),
+):
+    _verify_admin_token(x_admin_token or admin_token)
+    result = service.process_wecom_archive_messages(limit=limit, archive_client=archive_client)
+    notifications = [
+        item.get("notification")
+        for item in result.get("processed", [])
+        if isinstance(item, dict) and item.get("notification")
+    ]
+    result["notificationSendResults"] = await _send_import_notifications(notifications, service, client)
+    return ApiResponse(
+        message="archive messages processed",
+        data=result,
+    )
+
+
+@router.post("/notifications/send-pending", response_model=ApiResponse[list[dict]])
+async def send_pending_import_notifications(
+    limit: int = Query(default=20, ge=1, le=100),
+    admin_token: str | None = Query(default=None, alias="adminToken"),
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+    client: WecomClient = Depends(get_wecom_client),
 ):
     _verify_admin_token(x_admin_token or admin_token)
     return ApiResponse(
-        message="archive messages processed",
-        data=service.process_wecom_archive_messages(limit=limit, archive_client=archive_client),
+        message="pending import notifications sent",
+        data=await _send_pending_import_notifications(service, client, limit),
     )
 
 
@@ -496,6 +592,7 @@ async def _run_real_sync(
                 allow_media_storage_fallback=settings.wecom_use_mock,
                 notification_channel="mock" if settings.wecom_use_mock else "wecom",
             )
+            notification_send_results = await _send_import_notifications(result.get("notifications", []), service, client)
             next_cursor = sync_response.get("next_cursor") or sync_response.get("cursor") or sync_response.get("token")
             has_more = _sync_response_has_more(sync_response.get("has_more"))
             sync_cursor = service.advance_sync_cursor(
@@ -512,6 +609,7 @@ async def _run_real_sync(
                     "nextCursor": next_cursor,
                     "hasMore": has_more,
                     "importResult": result,
+                    "notificationSendResults": notification_send_results,
                 }
             )
             imported_batch_ids.extend(result["importBatchIds"])

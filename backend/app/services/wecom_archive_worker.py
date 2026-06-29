@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+from collections.abc import Awaitable, Callable
 
 from app.services.app_service import AppService
 from app.services.wecom_archive_client import WecomArchiveClient
@@ -20,12 +21,14 @@ class WecomArchiveWorker:
         enabled: bool,
         interval_seconds: int,
         pull_limit: int,
+        notification_sender: Callable[[list[dict]], Awaitable[list[dict]]] | None = None,
     ):
         self.service = service
         self.archive_client = archive_client
         self.enabled = enabled
         self.interval_seconds = max(interval_seconds, 10)
         self.pull_limit = pull_limit
+        self.notification_sender = notification_sender
         self._task: asyncio.Task | None = None
         self._stop_event = asyncio.Event()
 
@@ -60,6 +63,15 @@ class WecomArchiveWorker:
             self.pull_limit,
             self.archive_client,
         )
+        notifications = [
+            item.get("notification")
+            for item in process_result.get("processed", [])
+            if isinstance(item, dict) and item.get("notification")
+        ]
+        notification_result = []
+        if notifications and self.notification_sender:
+            notification_result = await self.notification_sender(notifications)
+            process_result["notificationSendResults"] = notification_result
         return {"pull": pull_result, "process": process_result}
 
     async def _run(self) -> None:
