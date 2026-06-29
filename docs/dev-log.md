@@ -34,6 +34,21 @@
   - `.venv312/bin/python -m pytest backend/tests/test_app.py -q -k "group_bot or bot_channel"`：4 passed。
   - `.venv312/bin/python -m compileall -q backend/app backend/tests`：通过。
   - PC 后台内嵌脚本 `node --check`：通过。
+
+## 2026-06-29：企业群机器人支持小程序卡片消息
+
+- 背景：
+  - 用户希望测试企业群机器人是否可以发“小程序卡片”，而不仅是文本里附小程序路径。
+- 已完成：
+  - 对 `resource_test` 测试群直接发送 `template_card/text_notice` 小程序卡片，企业微信返回 `errcode=0`。
+  - `POST /api/wecom/group-bot/broadcast` 新增 `messageType=miniapp_card`。
+  - 小程序卡片支持 `miniappAppId`、`miniappPath`、`cardTitle`、`cardDescription`。
+  - 默认 `messageType=text` 不变，原文本日报链路不受影响。
+- 已验证：
+  - `.venv312/bin/python -m pytest backend/tests/test_app.py -q -k "group_bot"`：6 passed。
+  - `.venv312/bin/python -m pytest backend/tests -q`：171 passed。
+  - `.venv312/bin/python -m compileall -q backend/app backend/tests`：通过。
+  - `git diff --check`：通过。
   - 后续如果效果稳定，再接定时任务和运营后台按钮。
 
 ## 2026-06-29：PC 运营后台新增小程序加群配置生成入口

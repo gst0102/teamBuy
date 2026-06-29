@@ -5449,3 +5449,75 @@ def test_ops_admin_group_bot_channel_mapping_can_be_used_for_broadcast(client, m
         "webhook": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=resource-secret",
         "content": "资料助手日报测试",
     }]
+
+
+def test_wecom_group_bot_broadcast_dry_run_builds_miniapp_card(client, monkeypatch):
+    monkeypatch.setattr(settings, "admin_token", "group-admin")
+    monkeypatch.setattr(settings, "wechat_miniapp_appid", "wx-test-appid")
+    monkeypatch.setattr(
+        settings,
+        "wecom_group_bot_webhooks",
+        json.dumps({"resource_test": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=resource-secret"}),
+    )
+
+    response = client.post(
+        "/api/wecom/group-bot/broadcast",
+        headers={"X-Admin-Token": "group-admin"},
+        json={
+            "groupId": "resource_test",
+            "messageType": "miniapp_card",
+            "template": "midday",
+            "variables": {"topic": "资料助手内测", "count": 3, "focus": "外部群日报运营演习"},
+            "miniappPath": "pages/home/index",
+            "cardTitle": "小程序卡片测试",
+            "cardDescription": "打开资料整理助手首页",
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["dryRun"] is True
+    assert data["messageType"] == "miniapp_card"
+    assert data["sendPayload"]["msgtype"] == "template_card"
+    assert data["sendPayload"]["template_card"]["card_action"] == {
+        "type": 2,
+        "appid": "wx-test-appid",
+        "pagepath": "pages/home/index",
+    }
+
+
+def test_wecom_group_bot_broadcast_sends_miniapp_card(client, monkeypatch):
+    from app.api import routes_wecom
+
+    sent = []
+
+    async def fake_post_group_bot_webhook_payload(webhook_url, payload):
+        sent.append({"webhook": webhook_url, "payload": payload})
+        return {"errcode": 0, "errmsg": "ok"}
+
+    monkeypatch.setattr(settings, "admin_token", "group-admin")
+    monkeypatch.setattr(settings, "wechat_miniapp_appid", "wx-test-appid")
+    monkeypatch.setattr(
+        settings,
+        "wecom_group_bot_webhooks",
+        json.dumps({"resource_test": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=resource-secret"}),
+    )
+    monkeypatch.setattr(routes_wecom, "_post_group_bot_webhook_payload", fake_post_group_bot_webhook_payload)
+
+    response = client.post(
+        "/api/wecom/group-bot/broadcast",
+        headers={"X-Admin-Token": "group-admin"},
+        json={
+            "groupId": "resource_test",
+            "messageType": "miniapp_card",
+            "content": "资料助手小程序卡片发送测试",
+            "miniappPath": "pages/home/index",
+            "dryRun": False,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["data"]["sentCount"] == 1
+    assert sent[0]["webhook"] == "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=resource-secret"
+    assert sent[0]["payload"]["msgtype"] == "template_card"
+    assert sent[0]["payload"]["template_card"]["jump_list"][0]["appid"] == "wx-test-appid"

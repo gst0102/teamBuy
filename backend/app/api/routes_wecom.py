@@ -48,10 +48,14 @@ GROUP_BOT_MESSAGE_TEMPLATES = {
 class GroupBotBroadcastRequest(BaseModel):
     groupIds: list[str] = Field(default_factory=list)
     groupId: str | None = None
+    messageType: str = Field(default="text", pattern="^(text|miniapp_card)$")
     template: str = Field(default="custom", pattern="^(midday|afternoon|evening|custom)$")
     content: str | None = None
     variables: dict[str, str | int | float] = Field(default_factory=dict)
     miniappPath: str | None = None
+    miniappAppId: str | None = None
+    cardTitle: str | None = None
+    cardDescription: str | None = None
     dryRun: bool = True
 
 
@@ -191,6 +195,62 @@ async def _post_group_bot_webhook(webhook_url: str, content: str) -> dict:
     if data.get("errcode") != 0:
         raise WecomClientError(f"企业微信群机器人发送失败: {data}")
     return data
+
+
+async def _post_group_bot_webhook_payload(webhook_url: str, payload: dict) -> dict:
+    async with httpx.AsyncClient(timeout=15) as client:
+        response = await client.post(webhook_url, json=payload)
+        data = response.json()
+    if data.get("errcode") != 0:
+        raise WecomClientError(f"企业微信群机器人发送失败: {data}")
+    return data
+
+
+def _build_group_bot_send_payload(payload: GroupBotBroadcastRequest, content: str) -> dict:
+    if payload.messageType == "text":
+        return {"msgtype": "text", "text": {"content": content}}
+
+    appid = (payload.miniappAppId or settings.wechat_miniapp_appid or "").strip()
+    pagepath = (payload.miniappPath or "").strip()
+    if not appid:
+        raise HTTPException(status_code=400, detail="发送小程序卡片需要 miniappAppId")
+    if not pagepath:
+        raise HTTPException(status_code=400, detail="发送小程序卡片需要 miniappPath")
+
+    title = (payload.cardTitle or "资料整理助手").strip()
+    description = (payload.cardDescription or content).strip()
+    return {
+        "msgtype": "template_card",
+        "template_card": {
+            "card_type": "text_notice",
+            "source": {
+                "desc": "资料整理助手",
+                "desc_color": 0,
+            },
+            "main_title": {
+                "title": title[:36],
+                "desc": description[:64],
+            },
+            "emphasis_content": {
+                "title": "打开",
+                "desc": "小程序",
+            },
+            "sub_title_text": content[:120],
+            "jump_list": [
+                {
+                    "type": 2,
+                    "title": "打开小程序",
+                    "appid": appid,
+                    "pagepath": pagepath,
+                }
+            ],
+            "card_action": {
+                "type": 2,
+                "appid": appid,
+                "pagepath": pagepath,
+            },
+        },
+    }
 
 
 def _read_text_file(path) -> str:
@@ -500,13 +560,17 @@ async def group_bot_broadcast(
         raise HTTPException(status_code=400, detail=f"未配置的 groupId: {', '.join(unknown_groups)}")
 
     content = _format_group_bot_message(payload)
+    send_payload = _build_group_bot_send_payload(payload, content)
     results = []
     for group_id in group_ids:
         if payload.dryRun:
             results.append({"groupId": group_id, "status": "dryRun", "webhook": _mask_webhook(webhooks[group_id])})
             continue
         try:
-            response = await _post_group_bot_webhook(webhooks[group_id], content)
+            if payload.messageType == "text":
+                response = await _post_group_bot_webhook(webhooks[group_id], content)
+            else:
+                response = await _post_group_bot_webhook_payload(webhooks[group_id], send_payload)
             results.append({"groupId": group_id, "status": "sent", "response": response})
         except WecomClientError as exc:
             results.append({"groupId": group_id, "status": "failed", "error": str(exc)})
@@ -516,8 +580,10 @@ async def group_bot_broadcast(
         message="group bot broadcast dry run" if payload.dryRun else "group bot broadcast completed",
         data={
             "dryRun": payload.dryRun,
+            "messageType": payload.messageType,
             "template": payload.template,
             "content": content,
+            "sendPayload": send_payload if payload.dryRun else None,
             "targetCount": len(group_ids),
             "sentCount": len([item for item in results if item["status"] == "sent"]),
             "failedCount": failed_count,

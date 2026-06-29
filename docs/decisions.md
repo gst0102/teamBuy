@@ -50,6 +50,19 @@
 - 企业群机器人 webhook 已经在测试外部群打通，足以支撑第一版“不同群发不同运营数据”。
 - 自定义群标识比企业微信真实 `chat_id` 更适合运营和 AI 协作理解，例如 `housing_changsha`、`resource_test`、`daily_ops`。
 
+### 决策：企业群机器人保留文本日报，并增加小程序卡片入口
+
+选择：
+
+- `POST /api/wecom/group-bot/broadcast` 默认仍发送文本，保持现有日报链路稳定。
+- 如需发送小程序入口卡片，传 `messageType=miniapp_card`，并提供 `miniappAppId` 和 `miniappPath`。
+- 小程序卡片使用企业微信群机器人 `template_card/text_notice` 格式，卡片点击动作跳转到小程序。
+
+原因：
+
+- 测试群实测 `template_card` 返回 `errcode=0`，可作为比纯文本更清晰的小程序入口。
+- 文本日报更适合承载详细内容；卡片更适合做入口提醒，两者需要并存。
+
 ## 2026-06-28
 
 ### 决策：企业资源搜索第一版只开放高频查询，不直接暴露天眼查全量工具
