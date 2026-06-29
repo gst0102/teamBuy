@@ -24,14 +24,15 @@
 - 新增 PC 页面：
   - `/ops` 左侧新增 `小程序加群配置`
   - 可填写客户群 `chat_id`、备注、群名规则、群序号、是否群满自动建群、渠道 state。
+  - 可点击 `拉取客户群` 从企业微信读取客户群列表，点选后自动填入 `chat_id`。
   - 支持预览配置和生成 `config_id`。
   - 生成历史保存在 `ops-console-state.json` 的 `wecomGroupJoinWays`。
 - 重要边界：
   - 以后不是只能系统建群。手动建群、手动二维码仍然可用。
   - 只有“小程序按钮式加入群聊”这条链路，建议走 PC 后台 API 生成 `config_id`。
-  - 第一版需要人工填客户群 `chat_id`；后续可补客户群列表查询。
+  - `chat_id` 不需要在企业微信页面手工找，PC 后台现在可以通过企业微信接口拉取客户群列表。
 - 已验证：
-  - `.venv312/bin/python -m pytest backend/tests/test_app.py -q -k "join_way or group_join"`：3 passed。
+  - `.venv312/bin/python -m pytest backend/tests/test_app.py -q -k "customer_groups or join_way or group_join"`：4 passed。
   - `.venv312/bin/python -m compileall -q backend/app backend/tests`：通过。
   - PC 后台内嵌脚本 `node --check`：通过。
 

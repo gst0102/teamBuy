@@ -139,6 +139,31 @@ class WecomClient:
             raise WecomClientError(f"create group join way failed: {data}")
         return data
 
+    async def list_customer_groups(
+        self,
+        *,
+        status_filter: int = 0,
+        cursor: str | None = None,
+        limit: int = 100,
+    ) -> dict:
+        access_token = await self.get_access_token()
+        payload = {
+            "status_filter": status_filter,
+            "limit": max(1, min(limit, 1000)),
+        }
+        if cursor:
+            payload["cursor"] = cursor
+        async with httpx.AsyncClient(base_url=self.settings.wecom_api_base_url, timeout=15) as client:
+            response = await client.post(
+                "/cgi-bin/externalcontact/groupchat/list",
+                params={"access_token": access_token},
+                json=payload,
+            )
+            data = response.json()
+        if data.get("errcode") != 0:
+            raise WecomClientError(f"list customer groups failed: {data}")
+        return data
+
     def _filename_from_disposition(self, disposition: str) -> str | None:
         marker = "filename="
         if marker not in disposition:

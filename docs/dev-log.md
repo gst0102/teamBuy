@@ -37,7 +37,22 @@
   - PC 后台内嵌脚本 `node --check`：通过。
 - 说明：
   - 手动建群仍然可用；PC 端生成的是“小程序点击加入群聊”需要的 `config_id`。
-  - 后续还需要确认客户群 `chat_id` 获取方式，可以先人工填入，后续再补客户群列表查询。
+  - `chat_id` 不需要在企业微信后台手动找；PC 后台已支持拉取企业微信客户群列表，点击某个客户群即可填入。
+
+## 2026-06-29：PC 后台补企业微信客户群列表拉取
+
+- 背景：
+  - 用户在企业微信外部群设置页找不到 `chat_id`，需要后台直接拉取客户群列表。
+- 已完成：
+  - `backend/app/services/wecom_client.py` 新增 `list_customer_groups()`，调用企业微信 `externalcontact/groupchat/list`。
+  - `backend/app/api/routes_ops_admin.py` 新增 `GET /api/ops-admin/wecom-customer-groups`，返回 `chatId/name/owner/status/createTime`。
+  - `/ops` 的 `小程序加群配置` Tab 新增 `企业微信客户群列表` 区块和 `拉取客户群` 按钮。
+  - 点击客户群行会自动填入上方 `chat_id`，并把群名带入备注和群名规则。
+  - `backend/tests/test_app.py` 新增客户群列表规范化测试。
+- 已验证：
+  - `.venv312/bin/python -m pytest backend/tests/test_app.py -q -k "customer_groups or join_way or group_join"`：4 passed。
+  - `.venv312/bin/python -m compileall -q backend/app backend/tests`：通过。
+  - PC 后台内嵌脚本 `node --check`：通过。
 
 ## 2026-06-28：企业资源搜索 V1（天眼查接入）策划沉淀
 

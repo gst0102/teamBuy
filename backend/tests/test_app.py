@@ -437,6 +437,43 @@ def test_ops_admin_wecom_group_join_way_dry_run(client, monkeypatch):
     assert data["request"]["chatIdList"] == ["wr_chat_001"]
 
 
+def test_ops_admin_wecom_customer_groups_normalizes_list(client, monkeypatch):
+    class FakeWecomClient:
+        async def list_customer_groups(self, **kwargs):
+            assert kwargs["status_filter"] == 0
+            assert kwargs["limit"] == 100
+            return {
+                "errcode": 0,
+                "errmsg": "ok",
+                "group_chat_list": [
+                    {
+                        "chat_id": "wr_chat_001",
+                        "name": "资料助手资源测试群",
+                        "owner": "zhangsan",
+                        "status": 0,
+                        "create_time": 1710000000,
+                    }
+                ],
+                "next_cursor": "",
+            }
+
+    monkeypatch.setattr(settings, "admin_token", "ops-secret")
+    client.app.dependency_overrides[get_wecom_client] = lambda: FakeWecomClient()
+
+    response = client.get("/api/ops-admin/wecom-customer-groups", headers={"X-Admin-Token": "ops-secret"})
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["items"] == [{
+        "chatId": "wr_chat_001",
+        "name": "资料助手资源测试群",
+        "owner": "zhangsan",
+        "status": 0,
+        "createTime": 1710000000,
+    }]
+    assert data["nextCursor"] == ""
+
+
 def test_ops_admin_wecom_group_join_way_create_saves_config(client, monkeypatch):
     class FakeWecomClient:
         def __init__(self):

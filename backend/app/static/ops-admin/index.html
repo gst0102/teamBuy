@@ -603,6 +603,29 @@
           </div>
           <div class="panel" style="margin-top: 16px;">
             <div class="section-head">
+              <h2>企业微信客户群列表</h2>
+              <div class="inline-actions">
+                <button class="secondary" id="loadCustomerGroupsBtn">拉取客户群</button>
+              </div>
+            </div>
+            <p class="tab-subhead">从企业微信接口读取客户群，点击某一行即可填入上方 chat_id。</p>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>群名</th>
+                    <th>chat_id</th>
+                    <th>群主</th>
+                    <th>状态</th>
+                    <th>创建时间</th>
+                  </tr>
+                </thead>
+                <tbody id="customerGroupTable"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="panel" style="margin-top: 16px;">
+            <div class="section-head">
               <h2>历史加群配置</h2>
               <span class="subtle">最近生成的 config_id</span>
             </div>
@@ -744,6 +767,7 @@
         uploadPreview: null,
         feedbackItems: [],
         joinWayItems: [],
+        customerGroups: [],
         singleQrImageData: "",
         selectedPurposes: ["找同行"],
         batchFile: null
@@ -938,6 +962,19 @@
         `).join("") || `<tr><td colspan="6" class="subtle">暂无加群配置</td></tr>`;
       }
 
+      function renderCustomerGroups(items = []) {
+        state.customerGroups = items;
+        document.getElementById("customerGroupTable").innerHTML = items.map((item) => `
+          <tr data-chat-id="${item.chatId}">
+            <td>${item.name || "-"}</td>
+            <td>${item.chatId}</td>
+            <td>${item.owner || "-"}</td>
+            <td>${item.status ?? "-"}</td>
+            <td>${item.createTime || "-"}</td>
+          </tr>
+        `).join("") || `<tr><td colspan="5" class="subtle">暂无客户群，点击右上角拉取</td></tr>`;
+      }
+
       function renderFeedback(items = []) {
         state.feedbackItems = items;
         document.getElementById("feedbackTable").innerHTML = items.map((item) => `
@@ -1016,6 +1053,11 @@
       async function loadJoinWays() {
         const data = await request("/api/ops-admin/wecom-group-join-ways");
         renderJoinWays(data || []);
+      }
+
+      async function loadCustomerGroups() {
+        const data = await request("/api/ops-admin/wecom-customer-groups?statusFilter=0&limit=100");
+        renderCustomerGroups(data.items || []);
       }
 
       async function loadFeedback() {
@@ -1190,6 +1232,7 @@
         document.getElementById("saveSingleGroupBtn").addEventListener("click", () => saveSingleGroup().catch((error) => alert(error.message)));
         document.getElementById("previewJoinWayBtn").addEventListener("click", () => previewJoinWay().catch((error) => alert(error.message)));
         document.getElementById("createJoinWayBtn").addEventListener("click", () => createJoinWay().catch((error) => alert(error.message)));
+        document.getElementById("loadCustomerGroupsBtn").addEventListener("click", () => loadCustomerGroups().catch((error) => alert(error.message)));
         document.getElementById("createFeedbackBtn").addEventListener("click", () => createFeedback().catch((error) => alert(error.message)));
         document.getElementById("updateFeedbackBtn").addEventListener("click", () => updateFeedback().catch((error) => alert(error.message)));
         document.getElementById("purposeChips").addEventListener("click", (event) => {
@@ -1212,6 +1255,16 @@
             document.getElementById("singleQrPreview").innerHTML = `<img src="${state.singleQrImageData}" alt="二维码预览" />`;
           };
           reader.readAsDataURL(file);
+        });
+        document.getElementById("customerGroupTable").addEventListener("click", (event) => {
+          const row = event.target.closest("tr[data-chat-id]");
+          if (!row) return;
+          document.getElementById("joinWayChatIds").value = row.dataset.chatId;
+          const group = state.customerGroups.find((item) => item.chatId === row.dataset.chatId);
+          if (group?.name) {
+            document.getElementById("joinWayRemark").value = group.name;
+            document.getElementById("joinWayRoomBaseName").value = group.name;
+          }
         });
         document.getElementById("feedbackTable").addEventListener("click", (event) => {
           const row = event.target.closest("tr[data-feedback-id]");

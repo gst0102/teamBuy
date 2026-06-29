@@ -409,6 +409,39 @@ def list_wecom_group_join_ways(
     return ApiResponse(data=store.list_wecom_group_join_ways())
 
 
+@router.get("/api/ops-admin/wecom-customer-groups", response_model=ApiResponse[dict])
+async def list_wecom_customer_groups(
+    status_filter: int = Query(default=0, alias="statusFilter"),
+    cursor: str | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=1000),
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    client: WecomClient = Depends(get_wecom_client),
+):
+    _verify_admin_token(x_admin_token)
+    try:
+        response = await client.list_customer_groups(status_filter=status_filter, cursor=cursor, limit=limit)
+    except WecomClientError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    groups = response.get("group_chat_list") or response.get("groupChatList") or []
+    items = [
+        {
+            "chatId": item.get("chat_id") or item.get("chatId"),
+            "name": item.get("name") or "未命名客户群",
+            "owner": item.get("owner"),
+            "status": item.get("status"),
+            "createTime": item.get("create_time") or item.get("createTime"),
+        }
+        for item in groups
+    ]
+    return ApiResponse(
+        data={
+            "items": [item for item in items if item["chatId"]],
+            "nextCursor": response.get("next_cursor") or response.get("nextCursor") or "",
+            "rawCount": len(groups),
+        }
+    )
+
+
 @router.post("/api/ops-admin/wecom-group-join-ways", response_model=ApiResponse[dict])
 async def create_wecom_group_join_way(
     payload: WecomGroupJoinWayCreateRequest,
