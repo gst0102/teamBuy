@@ -2,7 +2,7 @@ const api = require("../../services/api");
 const messagePlugin = require("../../plugins/message-plugin/index");
 const { getCurrentUser } = require("../../utils/dashboard");
 const { decorateNoteForList, isUsefulLabel } = require("../../utils/note-display");
-const { buildBusinessCardShareTitle, buildServiceOfferShareTitle, generateBusinessCardShareImage, generateServiceOfferShareImage } = require("../../utils/business-card-share");
+const { buildBusinessCardShareTitle, buildServiceOfferShareTitle, generatePropertyShareImage, generateBusinessCardShareImage, generateServiceOfferShareImage, generateTitleShareImage } = require("../../utils/business-card-share");
 
 const SALES_CARD_SHARE_CANVAS_ID = "salesCardListShareCanvas";
 
@@ -35,7 +35,7 @@ function isPlainNoteItem(note) {
 }
 
 function withInitialShareState(note) {
-  if (!note || !note.isServiceCard) return note;
+  if (!note || !note.id) return note;
   return {
     ...note,
     shareDisabled: true,
@@ -128,41 +128,59 @@ Page({
       notes = notes.map(withInitialShareState);
       this.setData({ notes, tagFilters: this.buildTagFilters(notes), migrationSummary: this.buildMigrationSummary(allNotes) });
       this.loadScrmSummaries(notes);
-      this.prepareSalesCardShareImages(notes);
+      this.prepareNoteShareImages(notes);
     } catch (error) {
       wx.showToast({ title: error.detail || "笔记加载失败", icon: "none" });
     } finally {
       this.setData({ loading: false });
     }
   },
-  async prepareSalesCardShareImages(notes) {
-    const salesCards = (notes || []).filter((note) => (
-      (note.isBusinessCard && note.businessCardPreview) ||
-      (note.isServiceOffer && note.serviceOfferPreview)
-    ));
-    if (!salesCards.length) {
+  async prepareNoteShareImages(notes) {
+    const shareableNotes = (notes || []).filter((note) => note && note.id);
+    if (!shareableNotes.length) {
       this.setData({ noteShareImages: {} });
       return;
     }
     const nextImages = {};
-    for (const note of salesCards) {
+    for (const note of shareableNotes) {
       if (!note.id) continue;
       try {
-        const imagePath = note.isServiceOffer
-          ? await generateServiceOfferShareImage(this, SALES_CARD_SHARE_CANVAS_ID, {
-              ...note.serviceOfferPreview,
-              structuredData: note.structuredData || {},
-              title: note.title,
-              summary: note.summary,
-              coverUrl: note.serviceOfferPreview.coverUrl || note.coverUrl
-            })
-          : await generateBusinessCardShareImage(this, SALES_CARD_SHARE_CANVAS_ID, {
-              ...note.businessCardPreview,
-              structuredData: note.structuredData || {},
-              title: note.title,
-              summary: note.summary,
-              coverUrl: note.coverUrl
-            });
+        let imagePath = "";
+        if (note.isServiceOffer && note.serviceOfferPreview) {
+          imagePath = await generateServiceOfferShareImage(this, SALES_CARD_SHARE_CANVAS_ID, {
+            ...note.serviceOfferPreview,
+            structuredData: note.structuredData || {},
+            title: note.title,
+            summary: note.summary,
+            coverUrl: note.serviceOfferPreview.coverUrl || note.coverUrl
+          });
+        } else if (note.isBusinessCard && note.businessCardPreview) {
+          imagePath = await generateBusinessCardShareImage(this, SALES_CARD_SHARE_CANVAS_ID, {
+            ...note.businessCardPreview,
+            structuredData: note.structuredData || {},
+            title: note.title,
+            summary: note.summary,
+            coverUrl: note.coverUrl
+          });
+        } else if (note.isProperty) {
+          const data = note.structuredData || {};
+          imagePath = await generatePropertyShareImage(this, SALES_CARD_SHARE_CANVAS_ID, {
+            title: note.title || data.community || "房源资料",
+            price: data.price || note.primaryValue || "",
+            layout: data.layout || "",
+            area: data.area || "",
+            address: data.address || data.businessArea || note.secondaryValue || "",
+            coverUrl: note.coverDisplayUrl || note.coverUrl || ""
+          });
+        } else {
+          imagePath = await generateTitleShareImage(this, SALES_CARD_SHARE_CANVAS_ID, {
+            title: note.title || "资料详情",
+            summary: note.summary || note.gridSummary || note.secondaryValue || "",
+            badge: note.cardBadge || note.systemCategory || (note.isGroupbuy ? "商品" : "资料"),
+            hint: note.isGroupbuy ? "打开小程序查看商品详情" : "打开小程序查看完整资料",
+            growthHint: "我也想做同款"
+          });
+        }
         if (imagePath) {
           nextImages[note.id] = imagePath;
           this.setData({ noteShareImages: { ...nextImages } });

@@ -1,7 +1,7 @@
 const api = require("../../services/api");
 const messagePlugin = require("../../plugins/message-plugin/index");
 const { getCurrentUser } = require("../../utils/dashboard");
-const { buildBusinessCardShareTitle, generatePropertyShareImage, generateBusinessCardShareImage } = require("../../utils/business-card-share");
+const { buildBusinessCardShareTitle, generatePropertyShareImage, generateBusinessCardShareImage, generateTitleShareImage } = require("../../utils/business-card-share");
 const { getSalesPageTemplates, templateToneClass } = require("../../utils/sales-page-templates");
 
 const BUSINESS_CARD_SHARE_CANVAS_ID = "businessCardEditShareCanvas";
@@ -1392,6 +1392,7 @@ Page({
     businessCardHero: null,
     businessCardShareImage: "",
     propertyShareImage: "",
+    genericShareImage: "",
     activePropertyDetailTab: "operate",
     businessCardImages: buildBusinessCardImageState({ media: [] }, {}),
     mediaCountText: "",
@@ -1641,6 +1642,7 @@ Page({
       this.autoResolveMapLocation({ silent: true });
       this.prepareBusinessCardShareImage();
       this.preparePropertyShareImage();
+      this.prepareGenericShareImage();
     });
   },
   async prepareBusinessCardShareImage() {
@@ -1675,6 +1677,25 @@ Page({
       this.setData({ propertyShareImage: imagePath || "" });
     } catch (error) {
       this.setData({ propertyShareImage: "" });
+    }
+  },
+  async prepareGenericShareImage() {
+    if (this.data.isProperty || this.data.isBusinessCard) {
+      this.setData({ genericShareImage: "" });
+      return;
+    }
+    try {
+      const form = this.data.form || {};
+      const imagePath = await generateTitleShareImage(this, BUSINESS_CARD_SHARE_CANVAS_ID, {
+        title: this.data.displayTitle || form.title || "资料详情",
+        summary: this.data.displaySubtitle || form.summary || form.body || "",
+        badge: this.data.displayCategory || "资料",
+        hint: "打开小程序查看完整资料",
+        growthHint: "我也想做同款"
+      });
+      this.setData({ genericShareImage: imagePath || "" });
+    } catch (error) {
+      this.setData({ genericShareImage: "" });
     }
   },
   async handleRecognizeOcr() {
@@ -2762,7 +2783,7 @@ Page({
     return {
       title,
       path: `/pages/note-preview/index?id=${this.data.noteId}`,
-      imageUrl: this.data.businessCardShareImage || this.data.propertyShareImage || (hero && hero.avatarUrl) || this.data.form.coverUrl || ""
+      imageUrl: this.data.businessCardShareImage || this.data.propertyShareImage || this.data.genericShareImage || (hero && hero.avatarUrl) || this.data.form.coverUrl || ""
     };
   }
 });
