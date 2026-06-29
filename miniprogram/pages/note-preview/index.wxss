@@ -1817,7 +1817,7 @@
   left: -9999rpx;
   top: -9999rpx;
   width: 750rpx;
-  height: 420rpx;
+  height: 600rpx;
   pointer-events: none;
 }
 

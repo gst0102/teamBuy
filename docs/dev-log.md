@@ -8036,3 +8036,18 @@
 - 小程序 JSON 解析：通过。
 - `python3 -m compileall backend`：通过。
 - `./.venv312/bin/python -m pytest backend/tests/test_app.py -q`：134 passed。
+
+## 2026-06-29 电子名片分享图比例修正
+
+本轮修正：
+
+- 电子名片分享图从 750x420 横图改为名片专用 600x480，适配微信聊天卡片更接近 5:4 的展示裁切。
+- 混合分享 canvas 高度扩到 600rpx，兼容普通资料 750x420 和名片 600x480 两种导出。
+- 名片头像绘制改为先下载并通过 `getImageInfo` 校验，拿可绘制本地 path 画头像；失败时走首字占位，避免头像位置空白。
+
+验证：
+
+- 小程序全部 JS `node --check`：通过。
+- 小程序 JSON 解析：通过。
+- `python3 -m compileall backend`：通过。
+- `./.venv312/bin/python -m pytest backend/tests/test_app.py -q`：134 passed。

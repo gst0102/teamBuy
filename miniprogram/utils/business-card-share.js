@@ -3,9 +3,11 @@ const api = require("../services/api");
 
 const SHARE_CARD_WIDTH = 750;
 const SHARE_CARD_HEIGHT = 420;
+const BUSINESS_CARD_SHARE_WIDTH = 600;
+const BUSINESS_CARD_SHARE_HEIGHT = 480;
 const SHARE_CARD_FOOTER = "由资料整理助手生成 · 点击生成同款";
 
-function getCanvasExportSize() {
+function getCanvasExportSize(baseWidth = SHARE_CARD_WIDTH, baseHeight = SHARE_CARD_HEIGHT) {
   let windowWidth = 375;
   try {
     const info = wx.getSystemInfoSync ? wx.getSystemInfoSync() : {};
@@ -14,13 +16,13 @@ function getCanvasExportSize() {
     windowWidth = 375;
   }
   const width = Math.max(300, Math.round(windowWidth));
-  const height = Math.round(width * SHARE_CARD_HEIGHT / SHARE_CARD_WIDTH);
+  const height = Math.round(width * baseHeight / baseWidth);
   return {
     width,
     height,
-    scale: width / SHARE_CARD_WIDTH,
-    destWidth: SHARE_CARD_WIDTH,
-    destHeight: SHARE_CARD_HEIGHT
+    scale: width / baseWidth,
+    destWidth: baseWidth,
+    destHeight: baseHeight
   };
 }
 
@@ -266,80 +268,85 @@ function drawCircleAvatar(ctx, imagePath, card, x, y, size, palette) {
 }
 
 function drawBusinessCardPreview(ctx, card, avatarPath) {
+  const width = BUSINESS_CARD_SHARE_WIDTH;
+  const height = BUSINESS_CARD_SHARE_HEIGHT;
   const palette = businessCardPalette(card.templateId);
-  const bg = ctx.createLinearGradient(0, 0, SHARE_CARD_WIDTH, SHARE_CARD_HEIGHT);
+  const bg = ctx.createLinearGradient(0, 0, width, height);
   bg.addColorStop(0, palette.bg0);
   bg.addColorStop(1, palette.bg1);
   ctx.setFillStyle(bg);
-  ctx.fillRect(0, 0, SHARE_CARD_WIDTH, SHARE_CARD_HEIGHT);
+  ctx.fillRect(0, 0, width, height);
 
-  ctx.save();
-  ctx.translate(SHARE_CARD_WIDTH / 2, SHARE_CARD_HEIGHT / 2);
-  ctx.scale(0.76, 0.76);
-  ctx.translate(-SHARE_CARD_WIDTH / 2, -SHARE_CARD_HEIGHT / 2);
+  const outerX = 58;
+  const outerY = 82;
+  const outerW = 484;
+  const outerH = 266;
+  const innerX = 82;
+  const innerY = 106;
+  const innerW = 436;
+  const innerH = 194;
 
-  fillRoundRect(ctx, 44, 34, 662, 326, 32, "#ffffff");
+  fillRoundRect(ctx, outerX, outerY, outerW, outerH, 26, "#ffffff");
   ctx.setStrokeStyle(palette.border);
-  ctx.setLineWidth(3);
-  drawRoundRect(ctx, 44, 34, 662, 326, 32);
+  ctx.setLineWidth(2);
+  drawRoundRect(ctx, outerX, outerY, outerW, outerH, 26);
   ctx.stroke();
 
-  const cardBg = ctx.createLinearGradient(74, 62, 676, 306);
+  const cardBg = ctx.createLinearGradient(innerX, innerY, innerX + innerW, innerY + innerH);
   cardBg.addColorStop(0, palette.card0);
   cardBg.addColorStop(1, palette.card1);
-  fillRoundRect(ctx, 74, 62, 602, 244, 28, palette.card0);
-  drawRoundRect(ctx, 74, 62, 602, 244, 28);
+  fillRoundRect(ctx, innerX, innerY, innerW, innerH, 22, palette.card0);
+  drawRoundRect(ctx, innerX, innerY, innerW, innerH, 22);
   ctx.setFillStyle(cardBg);
   ctx.fill();
 
   ctx.setFillStyle("rgba(255,255,255,0.14)");
   ctx.beginPath();
-  ctx.arc(612, 102, 74, 0, Math.PI * 2);
+  ctx.arc(innerX + innerW - 48, innerY + 38, 52, 0, Math.PI * 2);
   ctx.fill();
 
-  drawCircleAvatar(ctx, avatarPath, card, 112, 92, 112, palette);
+  drawCircleAvatar(ctx, avatarPath, card, innerX + 28, innerY + 38, 82, palette);
 
   ctx.setFillStyle(palette.text);
-  ctx.setFontSize(52);
-  drawOneLine(ctx, card.name || "电子名片", 254, 126, 300);
+  ctx.setFontSize(42);
+  drawOneLine(ctx, card.name || "电子名片", innerX + 138, innerY + 68, 250);
 
   ctx.setFillStyle(palette.subText);
-  ctx.setFontSize(28);
-  drawOneLine(ctx, card.role || "个人顾问", 256, 166, 286);
-
-  fillRoundRect(ctx, 256, 184, 176, 42, 21, palette.chipBg);
-  ctx.setFillStyle(palette.chipText);
   ctx.setFontSize(24);
-  drawOneLine(ctx, card.templateName || "电子名片", 282, 213, 128);
+  drawOneLine(ctx, card.role || "个人顾问", innerX + 140, innerY + 104, 220);
+
+  fillRoundRect(ctx, innerX + 140, innerY + 118, 138, 32, 16, palette.chipBg);
+  ctx.setFillStyle(palette.chipText);
+  ctx.setFontSize(20);
+  drawOneLine(ctx, card.templateName || "电子名片", innerX + 162, innerY + 141, 94);
 
   ctx.setFillStyle(palette.subText);
-  ctx.setFontSize(26);
-  drawOneLine(ctx, card.company || "个人服务", 112, 258, 292);
-  drawOneLine(ctx, card.contactLine || "电话 / 微信", 112, 292, 360);
+  ctx.setFontSize(21);
+  drawOneLine(ctx, card.company || "个人服务", innerX + 30, innerY + 146, 240);
+  drawOneLine(ctx, card.contactLine || "电话 / 微信", innerX + 30, innerY + 174, 300);
 
   const chips = String(card.serviceScope || "专业服务")
     .split(/[\/,，、\s]+/)
     .filter(Boolean)
     .slice(0, 3);
   chips.forEach((chip, index) => {
-    const x = 112 + index * 130;
-    fillRoundRect(ctx, x, 318, 110, 34, 17, "#f6f8fb");
+    const x = innerX + 30 + index * 116;
+    fillRoundRect(ctx, x, outerY + outerH - 44, 94, 28, 14, "#f6f8fb");
     ctx.setFillStyle("#5b6676");
-    ctx.setFontSize(20);
-    drawOneLine(ctx, chip, x + 18, 341, 74);
+    ctx.setFontSize(18);
+    drawOneLine(ctx, chip, x + 16, outerY + outerH - 24, 62);
   });
 
-  fillRoundRect(ctx, 584, 222, 62, 76, 12, palette.qrBg);
+  fillRoundRect(ctx, innerX + innerW - 68, innerY + 120, 48, 58, 10, palette.qrBg);
   ctx.setFillStyle(palette.qrText);
   ctx.setTextAlign("center");
-  ctx.setFontSize(26);
-  ctx.fillText("码", 615, 269);
+  ctx.setFontSize(22);
+  ctx.fillText("码", innerX + innerW - 44, innerY + 158);
   ctx.setTextAlign("left");
 
   ctx.setFillStyle("#667085");
-  ctx.setFontSize(26);
-  drawOneLine(ctx, SHARE_CARD_FOOTER, 112, 392, 526);
-  ctx.restore();
+  ctx.setFontSize(24);
+  drawOneLine(ctx, SHARE_CARD_FOOTER, 118, 388, 364);
 }
 
 async function generateNativeShareImage(page, canvasId, source = {}) {
@@ -454,12 +461,14 @@ async function generatePropertyShareImage(page, canvasId, source) {
 
 async function generateBusinessCardShareImage(page, canvasId, source) {
   const card = normalizeBusinessCardShareSource(source);
-  const exportSize = getCanvasExportSize();
+  const exportSize = getCanvasExportSize(BUSINESS_CARD_SHARE_WIDTH, BUSINESS_CARD_SHARE_HEIGHT);
   const ctx = wx.createCanvasContext(canvasId, page);
-  const avatarPath = await downloadCanvasImage(card.avatarUrl || "");
+  const downloadedAvatar = await downloadCanvasImage(card.avatarUrl || "");
+  const avatarInfo = await getLocalImageInfo(downloadedAvatar);
+  const drawableAvatar = avatarInfo ? (avatarInfo.path || downloadedAvatar) : "";
   ctx.save();
   ctx.scale(exportSize.scale, exportSize.scale);
-  drawBusinessCardPreview(ctx, card, avatarPath);
+  drawBusinessCardPreview(ctx, card, drawableAvatar);
   ctx.restore();
   return exportShareCanvas(page, canvasId, ctx, exportSize);
 }
