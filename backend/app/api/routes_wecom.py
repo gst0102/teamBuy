@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse
+from pydantic import BaseModel, Field
 
 from app.api.dependencies import get_app_service, get_sync_task_queue, get_wecom_archive_client, get_wecom_client, get_wecom_mock_service
 from app.core.config import settings
@@ -19,6 +21,30 @@ from app.services.wecom_mock_service import WecomMockService
 router = APIRouter(prefix="/api/wecom", tags=["wecom"])
 KF_CALLBACK_PATH = "/kf/teamBuy/callback"
 ARCHIVE_CALLBACK_PATH = "/archive/callback"
+GROUP_BOT_MESSAGE_TEMPLATES = {
+    "midday": {
+        "label": "中午更新",
+        "content": "今日更新：\n{topic} 新增 {count} 条，已整理成合集。\n今天重点是 {focus}。\n需要的直接看小程序。",
+    },
+    "afternoon": {
+        "label": "下午入口",
+        "content": "你现在可以直接做这几件事：\n1. 看今天新增\n2. 提交你的资源\n3. 生成同款合集\n需要我帮你整理的，也可以直接私聊我。",
+    },
+    "evening": {
+        "label": "晚间总结",
+        "content": "今天已更新 {count} 条内容，补了 {showcaseCount} 个合集。\n明天优先整理 {focus}。\n你手里有资源也可以发我，我一起整理进去。",
+    },
+}
+
+
+class GroupBotBroadcastRequest(BaseModel):
+    groupIds: list[str] = Field(default_factory=list)
+    groupId: str | None = None
+    template: str = Field(default="custom", pattern="^(midday|afternoon|evening|custom)$")
+    content: str | None = None
+    variables: dict[str, str | int | float] = Field(default_factory=dict)
+    miniappPath: str | None = None
+    dryRun: bool = True
 
 
 def _register_real_sync_task(sync_task_queue: SyncTaskQueue) -> None:
@@ -106,6 +132,54 @@ def _verify_admin_token(provided_token: str | None) -> None:
         raise HTTPException(status_code=403, detail="WECOM_ADMIN_TOKEN is not configured")
     if provided_token != settings.admin_token:
         raise HTTPException(status_code=403, detail="admin token verification failed")
+
+
+def _configured_group_webhooks() -> dict[str, str]:
+    return settings.group_bot_webhook_map()
+
+
+def _mask_webhook(url: str) -> str:
+    if "key=" not in url:
+        return url[:36] + "***" if len(url) > 40 else "***"
+    prefix, key = url.split("key=", 1)
+    return f"{prefix}key={key[:4]}***{key[-4:]}" if len(key) > 8 else f"{prefix}key=***"
+
+
+def _format_group_bot_message(payload: GroupBotBroadcastRequest) -> str:
+    if payload.template == "custom":
+        content = payload.content or ""
+    else:
+        variables = {
+            "topic": "今日资源",
+            "count": 0,
+            "focus": "重点资源",
+            "showcaseCount": 0,
+            **payload.variables,
+        }
+        try:
+            content = GROUP_BOT_MESSAGE_TEMPLATES[payload.template]["content"].format(**variables)
+        except KeyError as exc:
+            raise HTTPException(status_code=400, detail=f"缺少模板变量: {exc.args[0]}") from exc
+    content = content.strip()
+    if payload.miniappPath:
+        content = f"{content}\n\n小程序入口：{payload.miniappPath.strip()}"
+    if not content:
+        raise HTTPException(status_code=400, detail="群发内容不能为空")
+    if len(content) > 2048:
+        raise HTTPException(status_code=400, detail="群发内容不能超过 2048 个字符")
+    return content
+
+
+async def _post_group_bot_webhook(webhook_url: str, content: str) -> dict:
+    async with httpx.AsyncClient(timeout=15) as client:
+        response = await client.post(
+            webhook_url,
+            json={"msgtype": "text", "text": {"content": content}},
+        )
+        data = response.json()
+    if data.get("errcode") != 0:
+        raise WecomClientError(f"企业微信群机器人发送失败: {data}")
+    return data
 
 
 def _read_text_file(path) -> str:
@@ -368,6 +442,73 @@ def config_check(client: WecomClient = Depends(get_wecom_client)):
             "callbackUrl": f"{settings.public_base_url.rstrip('/')}/api/wecom{KF_CALLBACK_PATH}" if settings.public_base_url else "",
             "missing": missing,
             "configured": client.is_configured(),
+        },
+    )
+
+
+@router.get("/group-bot/config", response_model=ApiResponse[dict])
+def group_bot_config(
+    admin_token: str | None = Query(default=None, alias="adminToken"),
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+):
+    _verify_admin_token(x_admin_token or admin_token)
+    webhooks = _configured_group_webhooks()
+    return ApiResponse(
+        success=bool(webhooks),
+        message="group bot configured" if webhooks else "group bot webhooks are not configured",
+        data={
+            "configured": bool(webhooks),
+            "groups": [{"groupId": group_id, "webhook": _mask_webhook(url)} for group_id, url in webhooks.items()],
+            "templates": {
+                key: {"label": value["label"], "content": value["content"]}
+                for key, value in GROUP_BOT_MESSAGE_TEMPLATES.items()
+            },
+        },
+    )
+
+
+@router.post("/group-bot/broadcast", response_model=ApiResponse[dict])
+async def group_bot_broadcast(
+    payload: GroupBotBroadcastRequest,
+    admin_token: str | None = Query(default=None, alias="adminToken"),
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+):
+    _verify_admin_token(x_admin_token or admin_token)
+    webhooks = _configured_group_webhooks()
+    if not webhooks:
+        raise HTTPException(status_code=400, detail="WECOM_GROUP_BOT_WEBHOOKS 未配置")
+
+    group_ids = payload.groupIds or ([payload.groupId] if payload.groupId else [])
+    group_ids = [item.strip() for item in group_ids if item and item.strip()]
+    if not group_ids:
+        raise HTTPException(status_code=400, detail="至少需要一个 groupId")
+    unknown_groups = [group_id for group_id in group_ids if group_id not in webhooks]
+    if unknown_groups:
+        raise HTTPException(status_code=400, detail=f"未配置的 groupId: {', '.join(unknown_groups)}")
+
+    content = _format_group_bot_message(payload)
+    results = []
+    for group_id in group_ids:
+        if payload.dryRun:
+            results.append({"groupId": group_id, "status": "dryRun", "webhook": _mask_webhook(webhooks[group_id])})
+            continue
+        try:
+            response = await _post_group_bot_webhook(webhooks[group_id], content)
+            results.append({"groupId": group_id, "status": "sent", "response": response})
+        except WecomClientError as exc:
+            results.append({"groupId": group_id, "status": "failed", "error": str(exc)})
+    failed_count = len([item for item in results if item["status"] == "failed"])
+    return ApiResponse(
+        success=failed_count == 0,
+        message="group bot broadcast dry run" if payload.dryRun else "group bot broadcast completed",
+        data={
+            "dryRun": payload.dryRun,
+            "template": payload.template,
+            "content": content,
+            "targetCount": len(group_ids),
+            "sentCount": len([item for item in results if item["status"] == "sent"]),
+            "failedCount": failed_count,
+            "results": results,
         },
     )
 

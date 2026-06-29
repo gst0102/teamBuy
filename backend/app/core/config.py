@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -65,6 +66,7 @@ class Settings:
     wecom_archive_worker_enabled: bool = env_value("WECOM_ARCHIVE_WORKER_ENABLED", "false").lower() in {"1", "true", "yes"}
     wecom_archive_worker_interval_seconds: int = env_int("WECOM_ARCHIVE_WORKER_INTERVAL_SECONDS", 60)
     robot_gateway_token: str = env_value("ROBOT_GATEWAY_TOKEN", "")
+    wecom_group_bot_webhooks: str = env_value("WECOM_GROUP_BOT_WEBHOOKS", "")
     storage_mode: str = env_value("STORAGE_MODE", "mock")
     media_storage_dir: Path = ROOT_DIR / env_value("MEDIA_STORAGE_DIR", "backend/mock/media")
     media_public_url_prefix: str = env_value("MEDIA_PUBLIC_URL_PREFIX", "/media")
@@ -126,6 +128,21 @@ class Settings:
         elif not self.wecom_archive_public_key_path.exists():
             missing.append("WECOM_ARCHIVE_PUBLIC_KEY_PATH(file not found)")
         return missing
+
+    def group_bot_webhook_map(self) -> dict[str, str]:
+        if not self.wecom_group_bot_webhooks:
+            return {}
+        try:
+            value = json.loads(self.wecom_group_bot_webhooks)
+        except json.JSONDecodeError:
+            return {}
+        if not isinstance(value, dict):
+            return {}
+        return {
+            str(key): str(url)
+            for key, url in value.items()
+            if key and isinstance(url, str) and url.startswith(("http://", "https://"))
+        }
 
 
 settings = Settings()

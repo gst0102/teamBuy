@@ -1,5 +1,36 @@
 # teamBuy 阶段性交接归档
 
+## 2026-06-29 本轮交接：企业群机器人群发消息 API 已打通
+
+- 用户要求先把群发消息 API 打通，后续试企业群日常运营效果。
+- 本轮已改：
+  - `backend/app/core/config.py`
+  - `backend/.env.example`
+  - `backend/app/api/routes_wecom.py`
+  - `backend/tests/test_app.py`
+  - `docs/dev-log.md`
+  - `docs/decisions.md`
+  - `docs/pitfalls.md`
+- 新增配置：
+  - `WECOM_GROUP_BOT_WEBHOOKS`
+  - 格式示例：`{"property":"https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxx"}`
+  - 真实 webhook 只能放后端环境变量或生产 `.env`，不要写入前端或提交 Git。
+- 新增接口：
+  - `GET /api/wecom/group-bot/config`
+  - `POST /api/wecom/group-bot/broadcast`
+- 接口规则：
+  - 必须带 `X-Admin-Token: <WECOM_ADMIN_TOKEN>`。
+  - `broadcast` 支持 `groupId` 或 `groupIds`。
+  - `template` 支持 `midday / afternoon / evening / custom`。
+  - 默认 `dryRun=true`，只返回预览内容和目标群，不调用 webhook。
+  - 只有显式传 `dryRun=false` 才真实发送。
+- 已验证：
+  - `.venv312/bin/python -m pytest backend/tests/test_app.py -q -k "group_bot"`：3 passed。
+  - `.venv312/bin/python -m compileall -q backend/app backend/tests`：通过。
+- 重要边界：
+  - 这次打通的是“平台自有企业群机器人 webhook 播报”，不是外部客户群自动群发。
+  - 外部群仍由运营本人判断和发送；机器人可生成内容和建议，但不作为外部群直接自动运营主链路。
+
 ## 2026-06-28 本轮交接：企业资源搜索 V1（天眼查接入）策划
 
 - 用户计划申请天眼查 API Key，并希望在资源库中增加第二类资源能力：企业资源搜索。
@@ -5411,3 +5442,14 @@ rm -rf
   - 中午更新
   - 下午入口
   - 晚间总结
+## 2026-06-29 企业群机器人消息模板已补
+
+已新增文档：
+
+- `docs/stage2-docs/32-enterprise-group-bot-message-templates-v1.md`
+
+这份文档适合下一步继续拆给：
+
+- 开发配置群机器人模板
+- 运营配置不同 `groupId` 的文案
+- 产品确认不同群类型的小程序承接页

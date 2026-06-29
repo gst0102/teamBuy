@@ -5202,3 +5202,84 @@ def test_robot_gateway_keeps_self_query_private_in_group(client, monkeypatch):
     data = response.json()["data"]
     assert data["replyType"] == "private_required"
     assert "私聊" in data["text"]
+
+
+def test_wecom_group_bot_config_requires_admin_token(client, monkeypatch):
+    monkeypatch.setattr(settings, "admin_token", "group-admin")
+
+    response = client.get("/api/wecom/group-bot/config")
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "admin token verification failed"
+
+
+def test_wecom_group_bot_broadcast_dry_run_renders_template(client, monkeypatch):
+    monkeypatch.setattr(settings, "admin_token", "group-admin")
+    monkeypatch.setattr(
+        settings,
+        "wecom_group_bot_webhooks",
+        json.dumps({
+            "property": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=property-secret",
+            "resource": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=resource-secret",
+        }),
+    )
+
+    config = client.get("/api/wecom/group-bot/config", headers={"X-Admin-Token": "group-admin"})
+    assert config.status_code == 200
+    assert config.json()["data"]["configured"] is True
+    assert config.json()["data"]["groups"][0]["webhook"].endswith("***cret")
+
+    response = client.post(
+        "/api/wecom/group-bot/broadcast",
+        headers={"X-Admin-Token": "group-admin"},
+        json={
+            "groupIds": ["property", "resource"],
+            "template": "midday",
+            "variables": {"topic": "岳麓区房源", "count": 12, "focus": "地铁口两房"},
+            "miniappPath": "/pages/showcase-view/index?id=showcase_today",
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["dryRun"] is True
+    assert data["targetCount"] == 2
+    assert data["sentCount"] == 0
+    assert "岳麓区房源 新增 12 条" in data["content"]
+    assert data["results"] == [
+        {"groupId": "property", "status": "dryRun", "webhook": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=prop***cret"},
+        {"groupId": "resource", "status": "dryRun", "webhook": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=reso***cret"},
+    ]
+
+
+def test_wecom_group_bot_broadcast_sends_to_configured_groups(client, monkeypatch):
+    from app.api import routes_wecom
+
+    sent = []
+
+    async def fake_post_group_bot_webhook(webhook_url, content):
+        sent.append({"webhook": webhook_url, "content": content})
+        return {"errcode": 0, "errmsg": "ok"}
+
+    monkeypatch.setattr(settings, "admin_token", "group-admin")
+    monkeypatch.setattr(
+        settings,
+        "wecom_group_bot_webhooks",
+        json.dumps({"property": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=property-secret"}),
+    )
+    monkeypatch.setattr(routes_wecom, "_post_group_bot_webhook", fake_post_group_bot_webhook)
+
+    response = client.post(
+        "/api/wecom/group-bot/broadcast",
+        headers={"X-Admin-Token": "group-admin"},
+        json={"groupId": "property", "content": "今天新增 3 条房源", "dryRun": False},
+    )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["sentCount"] == 1
+    assert data["results"][0]["status"] == "sent"
+    assert sent == [{
+        "webhook": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=property-secret",
+        "content": "今天新增 3 条房源",
+    }]

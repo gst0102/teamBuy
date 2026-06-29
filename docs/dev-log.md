@@ -1,5 +1,23 @@
 # 2026-06-21
 
+## 2026-06-29：企业群机器人群发消息 API 最小闭环
+
+- 背景：
+  - 用户希望先打通群发消息 API，后续试企业群日常运营消息效果。
+  - 已有产品口径是企业群由机器人稳定播报，外部客户群仍由运营本人转化，不把机器人拉进外部群作为主链路。
+- 已完成：
+  - `backend/app/core/config.py` 新增 `WECOM_GROUP_BOT_WEBHOOKS` 配置解析，采用后端 JSON 白名单保存 `groupId -> 企业微信群机器人 webhook`。
+  - `backend/.env.example` 补充 `WECOM_GROUP_BOT_WEBHOOKS` 示例，强调真实 webhook 只放后端环境。
+  - `backend/app/api/routes_wecom.py` 新增 `GET /api/wecom/group-bot/config`，可查看已配置群 ID、脱敏 webhook 和内置模板。
+  - `backend/app/api/routes_wecom.py` 新增 `POST /api/wecom/group-bot/broadcast`，支持一次发送多个 `groupId`，支持 `midday/afternoon/evening/custom` 模板，默认 `dryRun=true` 只预览，`dryRun=false` 才真正调用 webhook。
+  - 新增后端测试覆盖管理员 Token、dryRun 模板渲染和真实发送调用。
+- 已验证：
+  - `.venv312/bin/python -m pytest backend/tests/test_app.py -q -k "group_bot"`：3 passed。
+  - `.venv312/bin/python -m compileall -q backend/app backend/tests`：通过。
+- 待下一步：
+  - 生产环境配置真实 `WECOM_GROUP_BOT_WEBHOOKS` 后，可先用 `dryRun=true` 预览，再用 `dryRun=false` 给一个测试企业群发送。
+  - 后续如果效果稳定，再接定时任务和运营后台按钮。
+
 ## 2026-06-28：企业资源搜索 V1（天眼查接入）策划沉淀
 
 - 背景：
@@ -7775,3 +7793,18 @@
 
 - 作为企业群机器人运营播报的交接文档。
 - 作为后续产品承接页和群消息模板的统一口径。
+## 2026-06-29 企业群机器人消息模板文档
+
+本轮新增：
+
+- `docs/stage2-docs/32-enterprise-group-bot-message-templates-v1.md`
+
+本轮补充：
+
+- 明确机器人当前实现边界是通过 API 按不同 `groupId` 下发不同模板消息。
+- 外部群仍由运营本人手动转化，机器人不参与。
+- 企业群模板按 4 类群配置：
+  - 房源资源群
+  - 商家合作 / 资源合作群
+  - 企业资源 / 企业查询群
+  - 内测反馈群
