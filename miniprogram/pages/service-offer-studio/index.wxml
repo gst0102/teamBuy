@@ -592,5 +592,7 @@
         <button class="inline-editor-save" bindtap="handleSaveInlineEditor">保存修改</button>
       </view>
     </view>
+
+    <canvas canvas-id="serviceOfferStudioShareCanvas" class="studio-share-canvas"></canvas>
   </view>
 </view>

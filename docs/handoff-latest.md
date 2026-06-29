@@ -1,5 +1,35 @@
 # teamBuy 阶段性交接归档
 
+## 2026-06-29 本轮交接：真实小程序分享封面与底部类目边界复查
+
+- 用户真机反馈：微信小程序分享卡片底部显示“未发布的小程序 开发版”，不是预期的“营销推广”；同时指出企业群机器人测试卡片不是普通微信里的真实小程序分享卡片。
+- 本轮确认：
+  - 企业微信群机器人 `template_card/text_notice` 是企业微信机器人卡片，不等同于用户从小程序转发到微信聊天里的原生小程序分享卡片。
+  - 原生小程序分享卡片底部类目/开发版文案由微信客户端根据小程序后台服务类目和版本状态渲染，代码不能直接改成“营销推广”。
+  - 代码侧只能控制 `onShareAppMessage` 的标题、路径和封面图 `imageUrl`。
+- 本轮已改：
+  - `miniprogram/pages/business-card-studio/index.js`
+  - `miniprogram/pages/business-card-studio/index.wxml`
+  - `miniprogram/pages/business-card-studio/index.wxss`
+  - `miniprogram/pages/service-offer-studio/index.js`
+  - `miniprogram/pages/service-offer-studio/index.wxml`
+  - `miniprogram/pages/service-offer-studio/index.wxss`
+  - `docs/dev-log.md`
+  - `docs/decisions.md`
+  - `docs/pitfalls.md`
+- 修复点：
+  - 电子名片工作台直接分享时，保存后预生成专属横版名片封面，`imageUrl` 优先使用该封面，不再优先退回头像/二维码。
+  - 服务方案工作台直接分享时，保存后预生成专属横版服务方案封面，`imageUrl` 优先使用该封面，不再优先退回普通封面/头像。
+  - 资料客户预览页、资料库列表、合集列表/预览已复查：已有标题、路径和分享封面兜底。
+- 已验证：
+  - 小程序相关 JS `node --check`：通过。
+  - 小程序 JSON 解析：通过。
+  - `.venv312/bin/python -m pytest backend/tests -q`：171 passed。
+  - `git diff --check`：通过。
+- 后续人工验收：
+  - 用户需要在微信开发者工具上传最新体验版或正式版后，用真机分别从资料、合集、电子名片、服务方案入口触发分享。
+  - 若仍显示“未发布的小程序 开发版”，优先检查分享来源是否为开发版，以及微信公众平台后台服务类目/发布状态，而不是继续改页面样式。
+
 ## 2026-06-29 本轮交接：PC 后台新增群发渠道映射
 
 - 用户决定：暂时不继续测试小程序入群 `config_id`，优先把外部群机器人日报运营链路跑通，尽快上线。

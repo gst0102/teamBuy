@@ -1,6 +1,9 @@
 const api = require("../../services/api");
 const { getCurrentUser } = require("../../utils/dashboard");
 const { getSalesPageTemplates, getSalesPageTemplate, templateToneClass } = require("../../utils/sales-page-templates");
+const { buildServiceOfferShareTitle, generateServiceOfferShareImage } = require("../../utils/business-card-share");
+
+const SERVICE_OFFER_STUDIO_SHARE_CANVAS_ID = "serviceOfferStudioShareCanvas";
 
 const STEPS = [
   { key: "style", label: "选模板" },
@@ -345,6 +348,7 @@ Page({
     savedNoteId: "",
     pageError: "",
     hasUnsavedChanges: false,
+    shareImage: "",
     saving: false,
     uploadingField: "",
     inlineEditor: {
@@ -794,15 +798,32 @@ Page({
     if (typeof fn === "function") {
       fn({ menus: ["shareAppMessage", "shareTimeline"] });
     }
+    if (ready) {
+      this.ensureShareImage();
+    } else {
+      this.setData({ shareImage: "" });
+    }
+  },
+
+  async ensureShareImage() {
+    if (this.data.shareImage || !this.data.preview) return this.data.shareImage || "";
+    try {
+      const imagePath = await generateServiceOfferShareImage(this, SERVICE_OFFER_STUDIO_SHARE_CANVAS_ID, this.data.preview);
+      if (imagePath) {
+        this.setData({ shareImage: imagePath });
+        return imagePath;
+      }
+    } catch (error) {}
+    return "";
   },
 
   onShareAppMessage() {
     const id = this.data.savedNoteId;
     const preview = this.data.preview || {};
     return {
-      title: [preview.serviceName, preview.headline].filter(Boolean).join(" · ") || "服务方案",
+      title: buildServiceOfferShareTitle(preview),
       path: id ? `/pages/note-preview/index?id=${id}` : "/pages/service-offer-studio/index",
-      imageUrl: preview.coverUrl || preview.heroAvatarUrl || ""
+      imageUrl: this.data.shareImage || preview.coverUrl || preview.heroAvatarUrl || ""
     };
   }
 });

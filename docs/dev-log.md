@@ -49,6 +49,21 @@
   - `.venv312/bin/python -m pytest backend/tests -q`：171 passed。
   - `.venv312/bin/python -m compileall -q backend/app backend/tests`：通过。
   - `git diff --check`：通过。
+
+## 2026-06-29：电子名片/服务方案工作台分享封面补齐
+
+- 背景：
+  - 用户真机反馈微信小程序分享卡片底部显示“未发布的小程序 开发版”，并要求检查资料、合集、名片等小卡片。
+  - 代码层面确认：微信分享卡片底部类目/开发版标识由微信后台服务类目和版本状态决定，前端只能控制标题、路径和 `imageUrl`。
+- 已完成：
+  - `business-card-studio` 直接分享时，保存后预生成电子名片专属横版分享封面，不再优先退回头像/二维码。
+  - `service-offer-studio` 直接分享时，保存后预生成服务方案专属横版分享封面，不再优先退回封面/头像。
+  - 客户预览页、资料库列表、合集列表/预览原有分享封面逻辑已复查：均已提供标题、路径和封面兜底。
+- 已验证：
+  - 小程序相关 JS `node --check`：通过。
+  - 小程序 JSON 解析：通过。
+  - `.venv312/bin/python -m pytest backend/tests -q`：171 passed。
+  - `git diff --check`：通过。
   - 后续如果效果稳定，再接定时任务和运营后台按钮。
 
 ## 2026-06-29：PC 运营后台新增小程序加群配置生成入口

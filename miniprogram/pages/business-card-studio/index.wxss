@@ -1582,3 +1582,12 @@
   font-size: 22rpx;
   font-weight: 900;
 }
+
+.studio-share-canvas {
+  position: fixed;
+  left: -9999rpx;
+  top: -9999rpx;
+  width: 750rpx;
+  height: 600rpx;
+  pointer-events: none;
+}

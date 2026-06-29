@@ -1,7 +1,9 @@
 const api = require("../../services/api");
 const { getCurrentUser } = require("../../utils/dashboard");
 const { getSalesPageTemplates, getSalesPageTemplate, templateToneClass } = require("../../utils/sales-page-templates");
-const { buildBusinessCardShareTitle } = require("../../utils/business-card-share");
+const { buildBusinessCardShareTitle, generateBusinessCardShareImage } = require("../../utils/business-card-share");
+
+const BUSINESS_CARD_STUDIO_SHARE_CANVAS_ID = "businessCardStudioShareCanvas";
 
 const STEPS = [
   { key: "style", label: "选风格" },
@@ -195,6 +197,7 @@ Page({
     existingNoteSummary: "",
     loadedNoteId: "",
     hasUnsavedChanges: false,
+    shareImage: "",
     saving: false,
     uploadingField: "",
     savedNoteId: "",
@@ -584,6 +587,22 @@ Page({
     if (typeof fn === "function") {
       fn({ menus: ["shareAppMessage", "shareTimeline"] });
     }
+    if (ready) {
+      this.ensureShareImage();
+    } else {
+      this.setData({ shareImage: "" });
+    }
+  },
+  async ensureShareImage() {
+    if (this.data.shareImage || !this.data.preview) return this.data.shareImage || "";
+    try {
+      const imagePath = await generateBusinessCardShareImage(this, BUSINESS_CARD_STUDIO_SHARE_CANVAS_ID, this.data.preview);
+      if (imagePath) {
+        this.setData({ shareImage: imagePath });
+        return imagePath;
+      }
+    } catch (error) {}
+    return "";
   },
   handleOpenSavedPreview() {
     if (!this.data.savedNoteId) {
@@ -598,7 +617,7 @@ Page({
     return {
       title: buildBusinessCardShareTitle(preview),
       path: id ? `/pages/note-preview/index?id=${id}` : "/pages/business-card-studio/index",
-      imageUrl: preview.avatarUrl || preview.qrCodeUrl || ""
+      imageUrl: this.data.shareImage || preview.avatarUrl || preview.qrCodeUrl || ""
     };
   }
 });

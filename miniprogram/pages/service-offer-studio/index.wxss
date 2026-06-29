@@ -1724,3 +1724,12 @@
   background: #ccfbf1;
   color: #0f766e;
 }
+
+.studio-share-canvas {
+  position: fixed;
+  left: -9999rpx;
+  top: -9999rpx;
+  width: 750rpx;
+  height: 600rpx;
+  pointer-events: none;
+}
