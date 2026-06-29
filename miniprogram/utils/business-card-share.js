@@ -273,6 +273,11 @@ function drawBusinessCardPreview(ctx, card, avatarPath) {
   ctx.setFillStyle(bg);
   ctx.fillRect(0, 0, SHARE_CARD_WIDTH, SHARE_CARD_HEIGHT);
 
+  ctx.save();
+  ctx.translate(SHARE_CARD_WIDTH / 2, SHARE_CARD_HEIGHT / 2);
+  ctx.scale(0.76, 0.76);
+  ctx.translate(-SHARE_CARD_WIDTH / 2, -SHARE_CARD_HEIGHT / 2);
+
   fillRoundRect(ctx, 44, 34, 662, 326, 32, "#ffffff");
   ctx.setStrokeStyle(palette.border);
   ctx.setLineWidth(3);
@@ -334,6 +339,7 @@ function drawBusinessCardPreview(ctx, card, avatarPath) {
   ctx.setFillStyle("#667085");
   ctx.setFontSize(26);
   drawOneLine(ctx, SHARE_CARD_FOOTER, 112, 392, 526);
+  ctx.restore();
 }
 
 async function generateNativeShareImage(page, canvasId, source = {}) {
