@@ -4,12 +4,23 @@
   <view class="header">
     <view>
       <view class="title">专题</view>
-      <view class="subtitle">用专题承载场景集合，不再做多级文件夹。</view>
+      <view class="subtitle">专题用于内部整理和检索；需要分享时，再生成日常合集。</view>
+    </view>
+  </view>
+
+  <view class="mind-card">
+    <view>
+      <text>专题</text>
+      <text>自己找资料、做归档</text>
+    </view>
+    <view>
+      <text>合集</text>
+      <text>整理成页面后发出去</text>
     </view>
   </view>
 
   <view class="create-panel">
-    <input value="{{name}}" placeholder="例如：周末亲子露营 / 学习资料合集" bindinput="handleNameChange" />
+    <input value="{{name}}" placeholder="例如：周末亲子露营 / 客户资料" bindinput="handleNameChange" />
     <button bindtap="handleCreate">新建</button>
   </view>
 
@@ -20,7 +31,11 @@
           <view class="topic-name">{{item.name}}</view>
           <view class="topic-desc">{{item.description || '点击查看这个专题下的资料'}}</view>
         </view>
-        <view class="topic-count">{{item.noteCount}}</view>
+        <view class="topic-side">
+          <view class="topic-count">{{item.noteCount}}</view>
+          <button catchtap="handleCreateCollection" data-id="{{item.id}}" data-name="{{item.name}}">建合集</button>
+          <button class="danger" catchtap="handleDelete" data-id="{{item.id}}" data-name="{{item.name}}" data-count="{{item.noteCount}}">删除</button>
+        </view>
       </view>
     </block>
   </view>

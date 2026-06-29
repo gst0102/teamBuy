@@ -7,7 +7,6 @@
       <view class="notes-subtitle">从企业微信和手动整理沉淀的资料</view>
     </view>
     <view class="notes-tools">
-      <button class="ocr-btn" loading="{{ocrUploading}}" disabled="{{ocrUploading}}" bindtap="handleOcrUpload">保存图片</button>
       <view class="notes-count">{{notes.length}}</view>
     </view>
   </view>
@@ -16,17 +15,34 @@
     <input class="search-input" placeholder="搜索标题 / 摘要 / 来源 / 标签" value="{{keyword}}" bindinput="handleKeywordChange" confirm-type="search" bindconfirm="handleSearch" />
   </view>
 
+  <view class="migration-card {{activeMigrationPending ? 'filtering' : ''}}" wx:if="{{migrationSummary}}">
+    <view>
+      <view class="migration-title">最近迁入</view>
+      <view class="migration-sub">企业微信 {{migrationSummary.wecomCount}} · 手动/图片 {{migrationSummary.manualCount}} · 图片待处理 {{migrationSummary.imagePendingCount}} · 候选确认 {{migrationSummary.suggestedCount}}</view>
+    </view>
+    <view class="migration-actions">
+      <view class="migration-action {{migrationSummary.hasPending ? 'hot' : ''}} {{activeMigrationPending ? 'active' : ''}}" bindtap="handleMigrationPendingFilter">
+        <text>{{migrationSummary.statusText}}</text>
+        <text>{{migrationSummary.actionText}}</text>
+      </view>
+      <view class="migration-action primary" wx:if="{{migrationSummary.firstPendingId}}" bindtap="handleOpenFirstPending">
+        <text>处理第一条</text>
+        <text>{{migrationSummary.firstPendingText}}</text>
+      </view>
+    </view>
+  </view>
+
   <view class="filter-row">
     <view class="filter-title">分类</view>
     <view class="filter-line">
       <block wx:for="{{categoryQuickFilters}}" wx:key="value">
-        <text class="filter-chip {{activeSourceType === item.value ? 'active' : ''}}" data-value="{{item.value}}" bindtap="handleSourceFilter">{{item.label}}</text>
+        <text class="filter-chip {{activeCategoryKey === item.key ? 'active' : ''}}" data-mode="{{item.mode}}" data-value="{{item.value}}" data-key="{{item.key}}" bindtap="handleCategoryFilter">{{item.label}}</text>
       </block>
       <text class="filter-chip icon" bindtap="toggleCategories">{{showAllCategories ? '⌃' : '⌄'}}</text>
     </view>
     <view class="filter-line expanded" wx:if="{{showAllCategories}}">
       <block wx:for="{{sourceFilters}}" wx:key="value">
-        <text class="filter-chip {{activeSourceType === item.value ? 'active' : ''}}" data-value="{{item.value}}" bindtap="handleSourceFilter">{{item.label}}</text>
+        <text class="filter-chip {{activeCategoryKey === item.key ? 'active' : ''}}" data-value="{{item.value}}" bindtap="handleSourceFilter">{{item.label}}</text>
       </block>
       <text class="filter-chip add" bindtap="handleAddCategory">+ 添加分类</text>
     </view>
@@ -64,13 +80,50 @@
     <text bindtap="handleSortToggle">{{sort === 'collected' ? '按收藏时间' : '按更新时间'}}</text>
   </view>
 
-  <view class="note-list" wx:if="{{notes.length}}">
+  <view class="view-switch" wx:if="{{notes.length}}">
+    <text class="{{viewMode === 'list' ? 'active' : ''}}" data-mode="list" bindtap="handleViewModeChange">列表</text>
+    <text class="{{viewMode === 'grid' ? 'active' : ''}}" data-mode="grid" bindtap="handleViewModeChange">双列卡片</text>
+  </view>
+
+  <view class="note-grid" wx:if="{{notes.length && viewMode === 'grid'}}">
+    <view wx:for="{{notes}}" wx:key="id" class="grid-card" data-id="{{item.id}}" bindtap="handleEdit">
+      <view wx:if="{{item.isServiceOffer}}" class="grid-service-card tone-{{item.serviceOfferPreview.tone}}">
+        <view class="grid-service-head">
+          <text>{{item.serviceOfferPreview.templateName}}</text>
+          <text>{{item.serviceOfferPreview.badge}}</text>
+        </view>
+        <image wx:if="{{item.serviceOfferPreview.coverUrl}}" class="grid-service-cover" src="{{item.serviceOfferPreview.coverUrl}}" mode="aspectFill"></image>
+        <view wx:else class="grid-service-cover placeholder">服</view>
+        <view class="grid-service-title">{{item.serviceOfferPreview.serviceName}}</view>
+        <view class="grid-service-summary">{{item.serviceOfferPreview.headline}}</view>
+      </view>
+      <block wx:else>
+        <image wx:if="{{item.coverUrl}}" class="grid-cover" src="{{item.coverDisplayUrl ? item.coverDisplayUrl : item.coverUrl}}" mode="aspectFill"></image>
+        <view wx:else class="grid-cover placeholder">{{item.cardBadge}}</view>
+        <view class="grid-body">
+          <view class="grid-title">{{item.gridTitle || item.title}}</view>
+          <view class="grid-summary">{{item.gridSummary || item.primaryValue || item.summary}}</view>
+          <view class="grid-bottom">
+            <text class="grid-price" wx:if="{{item.gridPrice}}">{{item.gridPrice}}</text>
+            <text class="grid-badge" wx:else>{{item.cardBadge}}</text>
+            <text class="grid-tag" wx:if="{{item.bookmarkTags.length}}">{{item.bookmarkTags[0]}}</text>
+          </view>
+        </view>
+      </block>
+    </view>
+  </view>
+
+  <view class="note-list" wx:if="{{notes.length && viewMode === 'list'}}">
     <block wx:for="{{notes}}" wx:key="id">
       <view wx:if="{{item.isBookmark}}" class="bookmark-card" data-id="{{item.id}}" data-bookmark="{{true}}" data-url="{{item.sourceUrl}}" data-title="{{item.title}}" bindtap="handleOpen">
         <image wx:if="{{item.coverUrl}}" class="bookmark-cover" src="{{item.coverDisplayUrl ? item.coverDisplayUrl : item.coverUrl}}" mode="aspectFill"></image>
         <view wx:else class="bookmark-cover placeholder">文</view>
         <view class="bookmark-body">
           <view class="bookmark-source">{{item.sourceLabel}} · {{item.sourceName}}</view>
+          <view class="migration-line">
+            <text>{{item.migrationSourceText}}</text>
+            <text class="migration-pill {{item.migrationTone}}">{{item.migrationStatusText}}</text>
+          </view>
           <view class="bookmark-title">{{item.title}}</view>
           <view class="bookmark-summary">{{item.summary ? item.summary : '已收藏，待整理。'}}</view>
           <view class="bookmark-meta">
@@ -105,6 +158,10 @@
             <text>{{item.cardBadge}}</text>
             <text class="property-status {{item.propertyStatus.className}}">{{item.propertyStatus.text}}</text>
           </view>
+          <view class="migration-line">
+            <text>{{item.migrationSourceText}}</text>
+            <text class="migration-pill {{item.migrationTone}}">{{item.migrationStatusText}}</text>
+          </view>
           <view class="typed-title">{{item.structuredData.community || item.title}}</view>
           <view class="typed-primary">{{item.primaryValue}}</view>
           <view class="typed-secondary">{{item.secondaryValue}}</view>
@@ -119,7 +176,7 @@
           <text class="scrm-shortcut {{item.scrmHasUnread ? 'hot' : ''}}" data-id="{{item.id}}" catchtap="handleOpenScrm">{{item.scrmLabel || '客户信息'}}</text>
           <message-entry mode="center" variant="text" title="消息" desc="" />
           <text class="upload-time">上传时间 {{item.uploadDateText}}</text>
-          <button class="inline-share" open-type="share" data-id="{{item.id}}">{{item.cardAction}}</button>
+          <button class="inline-share" open-type="share" data-id="{{item.id}}" disabled="{{item.shareDisabled}}">{{item.shareStatusText || item.cardAction}}</button>
           <text class="danger" data-id="{{item.id}}" bindtap="handleDelete">删除</text>
         </view>
       </view>
@@ -131,6 +188,10 @@
         <view class="typed-main" data-id="{{item.id}}" bindtap="handleEdit">
           <view class="typed-head groupbuy">
             <text>{{item.cardBadge}}</text>
+          </view>
+          <view class="migration-line">
+            <text>{{item.migrationSourceText}}</text>
+            <text class="migration-pill {{item.migrationTone}}">{{item.migrationStatusText}}</text>
           </view>
           <view class="typed-title">{{item.structuredData.productName || item.title}}</view>
           <view class="typed-primary price">{{item.primaryValue}}</view>
@@ -146,7 +207,84 @@
           <text class="scrm-shortcut {{item.scrmHasUnread ? 'hot' : ''}}" data-id="{{item.id}}" catchtap="handleOpenScrm">{{item.scrmLabel || '客户信息'}}</text>
           <message-entry mode="center" variant="text" title="消息" desc="" />
           <text class="upload-time">上传时间 {{item.uploadDateText}}</text>
-          <button class="inline-share" open-type="share" data-id="{{item.id}}">{{item.cardAction}}</button>
+          <button class="inline-share" open-type="share" data-id="{{item.id}}" disabled="{{item.shareDisabled}}">{{item.shareStatusText || item.cardAction}}</button>
+          <text class="danger" data-id="{{item.id}}" bindtap="handleDelete">删除</text>
+        </view>
+      </view>
+
+      <view wx:elif="{{item.isBusinessCard}}" class="typed-card service-card business-list-card">
+        <view class="card-unread-dot" wx:if="{{item.scrmHasUnread}}"></view>
+        <view class="list-namecard" data-id="{{item.id}}" bindtap="handleEdit">
+          <view class="list-namecard-shine"></view>
+          <image wx:if="{{item.businessCardPreview.avatarUrl}}" class="list-namecard-avatar" src="{{item.businessCardPreview.avatarUrl}}" mode="aspectFill"></image>
+          <view wx:else class="list-namecard-avatar placeholder">{{item.businessCardPreview.initial}}</view>
+          <view class="list-namecard-main">
+            <view class="list-namecard-name">{{item.businessCardPreview.name}}</view>
+            <view class="list-namecard-role">{{item.businessCardPreview.role}}</view>
+            <view class="list-namecard-org">{{item.businessCardPreview.company}}</view>
+            <view class="list-namecard-service">{{item.businessCardPreview.serviceScope}}</view>
+            <view class="list-namecard-contact">{{item.businessCardPreview.contactLine}}</view>
+          </view>
+        </view>
+        <view class="typed-main" data-id="{{item.id}}" bindtap="handleEdit">
+          <view class="migration-line">
+            <text>{{item.migrationSourceText}}</text>
+            <text class="migration-pill {{item.migrationTone}}">{{item.migrationStatusText}}</text>
+          </view>
+          <view class="bookmark-tags" wx:if="{{item.bookmarkTags.length}}">
+            <block wx:for="{{item.bookmarkTags}}" wx:for-item="tag" wx:key="*this">
+              <text>{{tag}}</text>
+            </block>
+          </view>
+        </view>
+        <view class="typed-actions">
+          <text data-id="{{item.id}}" bindtap="handleEdit">编辑名片</text>
+          <text class="scrm-shortcut {{item.scrmHasUnread ? 'hot' : ''}}" data-id="{{item.id}}" catchtap="handleOpenScrm">{{item.scrmLabel || '客户信息'}}</text>
+          <message-entry mode="center" variant="text" title="消息" desc="" />
+          <text class="upload-time">上传时间 {{item.uploadDateText}}</text>
+          <button class="inline-share" open-type="share" data-id="{{item.id}}" disabled="{{item.shareDisabled}}">{{item.shareStatusText || item.cardAction}}</button>
+          <text class="danger" data-id="{{item.id}}" bindtap="handleDelete">删除</text>
+        </view>
+      </view>
+
+      <view wx:elif="{{item.isServiceOffer}}" class="typed-card service-card service-list-card">
+        <view class="card-unread-dot" wx:if="{{item.scrmHasUnread}}"></view>
+        <view class="list-serviceoffer tone-{{item.serviceOfferPreview.tone}}" data-id="{{item.id}}" bindtap="handleEdit">
+          <view class="list-serviceoffer-main">
+            <view class="list-serviceoffer-kicker">{{item.serviceOfferPreview.templateName}}</view>
+            <view class="list-serviceoffer-title">{{item.serviceOfferPreview.serviceName}}</view>
+            <view class="list-serviceoffer-headline">{{item.serviceOfferPreview.headline}}</view>
+            <view class="list-serviceoffer-meta">
+              <text>{{item.serviceOfferPreview.badge}}</text>
+              <text>{{item.serviceOfferPreview.pricingNote}}</text>
+            </view>
+          </view>
+          <image wx:if="{{item.serviceOfferPreview.coverUrl}}" class="list-serviceoffer-cover" src="{{item.serviceOfferPreview.coverUrl}}" mode="aspectFill"></image>
+          <view wx:else class="list-serviceoffer-cover placeholder">服</view>
+        </view>
+        <view class="typed-main" data-id="{{item.id}}" bindtap="handleEdit">
+          <view class="typed-head service">
+            <text>{{item.cardBadge}}</text>
+          </view>
+          <view class="migration-line">
+            <text>{{item.migrationSourceText}}</text>
+            <text class="migration-pill {{item.migrationTone}}">{{item.migrationStatusText}}</text>
+          </view>
+          <view class="typed-title">{{item.gridTitle || item.title}}</view>
+          <view class="typed-primary">{{item.primaryValue}}</view>
+          <view class="typed-secondary">{{item.secondaryValue}}</view>
+          <view class="bookmark-tags" wx:if="{{item.bookmarkTags.length}}">
+            <block wx:for="{{item.bookmarkTags}}" wx:for-item="tag" wx:key="*this">
+              <text>{{tag}}</text>
+            </block>
+          </view>
+        </view>
+        <view class="typed-actions">
+          <text data-id="{{item.id}}" bindtap="handleEdit">编辑服务</text>
+          <text class="scrm-shortcut {{item.scrmHasUnread ? 'hot' : ''}}" data-id="{{item.id}}" catchtap="handleOpenScrm">{{item.scrmLabel || '客户信息'}}</text>
+          <message-entry mode="center" variant="text" title="消息" desc="" />
+          <text class="upload-time">上传时间 {{item.uploadDateText}}</text>
+          <button class="inline-share" open-type="share" data-id="{{item.id}}" disabled="{{item.shareDisabled}}">{{item.shareStatusText || item.cardAction}}</button>
           <text class="danger" data-id="{{item.id}}" bindtap="handleDelete">删除</text>
         </view>
       </view>
@@ -155,9 +293,17 @@
         <image wx:if="{{item.coverUrl}}" class="note-cover" src="{{item.coverDisplayUrl ? item.coverDisplayUrl : item.coverUrl}}" mode="aspectFill" data-id="{{item.id}}" bindtap="handleEdit"></image>
         <view wx:else class="note-cover placeholder" data-id="{{item.id}}" bindtap="handleEdit">记</view>
         <view class="note-main" data-id="{{item.id}}" bindtap="handleEdit">
+          <view class="migration-line">
+            <text>{{item.migrationSourceText}}</text>
+            <text class="migration-pill {{item.migrationTone}}">{{item.migrationStatusText}}</text>
+          </view>
           <view class="note-title">{{item.title}}</view>
           <view class="note-summary">{{item.summary ? item.summary : item.body}}</view>
           <view class="suggestion-line" wx:if="{{item.suggestionText}}">{{item.suggestionText}}</view>
+          <view class="confirm-row" wx:if="{{item.migrationConfirmType}}">
+            <button class="confirm-type-btn" data-id="{{item.id}}" data-type="{{item.migrationConfirmType}}" catchtap="handleConfirmType">{{item.migrationConfirmText}}</button>
+            <text>确认后进入对应工作台继续补字段</text>
+          </view>
           <view class="note-meta">
             <text>{{item.status === 'active' ? '已认领' : '草稿'}}</text>
             <text wx:if="{{item.phone}}">电话</text>
@@ -177,4 +323,5 @@
     <view>暂无笔记</view>
     <view class="empty-sub">从企业微信导入并认领后，会出现在这里。</view>
   </view>
+  <canvas canvas-id="salesCardListShareCanvas" class="business-card-share-canvas"></canvas>
 </view>

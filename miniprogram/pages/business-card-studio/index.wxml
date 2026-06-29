@@ -1,0 +1,332 @@
+<view class="page-shell studio-page">
+  <custom-nav title="电子名片" />
+
+  <view class="studio-hero">
+    <view>
+      <view class="hero-kicker">独立名片工作台</view>
+      <view class="studio-title">选风格，填资料，直接发客户</view>
+      <view class="studio-subtitle">同一份资料可以自由切换 4 种名片风格，确认后保存分享。</view>
+    </view>
+  </view>
+
+  <view class="step-bar">
+    <block wx:for="{{steps}}" wx:key="key">
+      <view class="step-item {{activeStep === item.key ? 'active' : ''}}" data-step="{{item.key}}" bindtap="handleStepTap">
+        <text class="step-no">{{index + 1}}</text>
+        <text class="step-label">{{item.label}}</text>
+      </view>
+    </block>
+  </view>
+
+  <view class="existing-card-panel" wx:if="{{savedNoteId}}">
+    <view>
+      <view class="existing-card-kicker">已做好的名片</view>
+      <view class="existing-card-title">{{existingNoteTitle || preview.name || '电子名片'}}</view>
+      <view class="existing-card-sub">{{hasUnsavedChanges ? '有未保存改动，保存后再预览或分享。' : (existingNoteSummary || preview.headline || '可以继续切换风格、保存并转发。')}}</view>
+    </view>
+    <view class="existing-card-actions">
+      <view data-step="form" bindtap="handleStepTap">编辑资料</view>
+      <view bindtap="handleOpenSavedPreview">客户页</view>
+    </view>
+  </view>
+
+  <view wx:if="{{activeStep === 'style'}}" class="stage-panel">
+    <view class="stage-head">
+      <view>
+        <view class="stage-title">选择名片风格</view>
+        <view class="stage-desc">先看客户收到的首屏卡片，再决定用哪一种气质。</view>
+      </view>
+      <view class="view-switch">
+        <view class="view-switch-item {{templateViewMode === 'list' ? 'active' : ''}}" data-mode="list" bindtap="handleTemplateViewMode">列表</view>
+        <view class="view-switch-item {{templateViewMode === 'grid' ? 'active' : ''}}" data-mode="grid" bindtap="handleTemplateViewMode">双列</view>
+      </view>
+    </view>
+
+    <view class="template-grid mode-{{templateViewMode}}">
+      <block wx:for="{{templates}}" wx:key="id">
+        <view class="template-option {{selectedTemplateId === item.id ? 'active' : ''}}" data-id="{{item.id}}" bindtap="handleSelectTemplate">
+          <view class="template-preview tpl-{{item.id}}">
+            <view class="preview-bg-shape"></view>
+            <view class="tpl-store-cover" wx:if="{{item.id === 'store_sales_card'}}"></view>
+            <view class="tpl-main-row">
+              <view class="tpl-avatar {{item.preview.avatarClass}}">
+                <image wx:if="{{item.preview.avatarUrl}}" class="tpl-avatar-photo" src="{{item.preview.avatarUrl}}" mode="aspectFill"></image>
+                <view class="portrait-hair"></view>
+                <view class="portrait-face">
+                  <view class="portrait-eye left"></view>
+                  <view class="portrait-eye right"></view>
+                  <view class="portrait-smile"></view>
+                </view>
+                <view class="portrait-neck"></view>
+                <view class="portrait-clothes"></view>
+                <text wx:if="{{!item.preview.avatarUrl}}">{{item.preview.initial}}</text>
+              </view>
+              <view class="tpl-copy">
+                <view class="tpl-name">{{item.preview.title}}</view>
+                <view class="tpl-role">{{item.preview.subtitle}}</view>
+                <view class="tpl-badge">{{item.preview.roleBadge}}</view>
+                <view class="tpl-org">{{item.preview.organization}}</view>
+              </view>
+            </view>
+            <view class="tpl-contact">{{item.preview.contactLine}}</view>
+            <view class="tpl-chip-row">
+              <block wx:for="{{item.preview.chips}}" wx:key="*this">
+                <text class="tpl-chip">{{item}}</text>
+              </block>
+            </view>
+            <view class="tpl-qr">码</view>
+          </view>
+          <view class="template-name-row">
+            <view>
+              <view class="template-name">{{item.name}}</view>
+              <view class="template-subtitle">{{item.subtitle}}</view>
+            </view>
+            <view class="selected-dot">{{selectedTemplateId === item.id ? '已选' : '选择'}}</view>
+          </view>
+        </view>
+      </block>
+    </view>
+  </view>
+
+  <view wx:elif="{{activeStep === 'form'}}" class="stage-panel">
+    <view class="stage-head">
+      <view>
+        <view class="stage-title">填写名片信息</view>
+        <view class="stage-desc">资料只填一次，切换风格不会清空。</view>
+      </view>
+      <view class="style-pill" bindtap="handleBackStep">当前：{{selectedTemplate.name}}</view>
+    </view>
+
+    <view class="image-fields">
+      <view class="image-picker" data-field="avatarUrl" bindtap="chooseImage">
+        <image wx:if="{{form.avatarUrl}}" class="image-preview avatar" src="{{form.avatarUrl}}" mode="aspectFill"></image>
+        <view wx:else class="image-placeholder avatar">头像</view>
+        <view class="image-label">上传头像</view>
+      </view>
+      <view class="image-picker" data-field="qrCodeUrl" bindtap="chooseImage">
+        <image wx:if="{{form.qrCodeUrl}}" class="image-preview qr" src="{{form.qrCodeUrl}}" mode="aspectFill"></image>
+        <view wx:else class="image-placeholder qr">二维码</view>
+        <view class="image-label">上传二维码</view>
+      </view>
+    </view>
+
+    <view class="form-grid">
+      <view class="form-field half">
+        <view class="field-label">姓名</view>
+        <input class="field-input studio-input" value="{{form.name}}" data-key="name" bindinput="handleInput" placeholder="例如：张伟" />
+      </view>
+      <view class="form-field half">
+        <view class="field-label">职位 / 身份</view>
+        <input class="field-input studio-input" value="{{form.title}}" data-key="title" bindinput="handleInput" placeholder="例如：高级咨询顾问" />
+      </view>
+      <view class="form-field">
+        <view class="field-label">公司 / 门店</view>
+        <input class="field-input studio-input" value="{{form.company}}" data-key="company" bindinput="handleInput" placeholder="例如：智汇咨询有限公司" />
+      </view>
+      <view class="form-field">
+        <view class="field-label">一句话介绍</view>
+        <input class="field-input studio-input" value="{{form.headline}}" data-key="headline" bindinput="handleInput" placeholder="例如：专注企业增长与落地执行" />
+      </view>
+      <view class="form-field third">
+        <view class="field-label">电话</view>
+        <input class="field-input studio-input" value="{{form.phone}}" data-key="phone" bindinput="handleInput" placeholder="手机号" type="number" />
+      </view>
+      <view class="form-field third">
+        <view class="field-label">微信</view>
+        <input class="field-input studio-input" value="{{form.wechat}}" data-key="wechat" bindinput="handleInput" placeholder="微信号" />
+      </view>
+      <view class="form-field third">
+        <view class="field-label">邮箱</view>
+        <input class="field-input studio-input" value="{{form.email}}" data-key="email" bindinput="handleInput" placeholder="选填" />
+      </view>
+      <view class="form-field half">
+        <view class="field-label">城市</view>
+        <input class="field-input studio-input" value="{{form.city}}" data-key="city" bindinput="handleInput" placeholder="例如：上海" />
+      </view>
+      <view class="form-field half">
+        <view class="field-label">公司网址</view>
+        <input class="field-input studio-input" value="{{form.website}}" data-key="website" bindinput="handleInput" placeholder="选填" />
+      </view>
+      <view class="form-field">
+        <view class="field-label">地址</view>
+        <input class="field-input studio-input" value="{{form.address}}" data-key="address" bindinput="handleInput" placeholder="选填，门店或办公地址" />
+      </view>
+      <view class="form-field">
+        <view class="field-label">服务范围</view>
+        <textarea class="field-input studio-textarea" value="{{form.serviceScope}}" data-key="serviceScope" bindinput="handleInput" placeholder="用 / 或换行分隔，例如：品牌定位 / 增长陪跑 / 团队培训"></textarea>
+      </view>
+      <view class="form-field">
+        <view class="field-label">服务介绍</view>
+        <textarea class="field-input studio-textarea long" value="{{form.bio}}" data-key="bio" bindinput="handleInput" placeholder="介绍你能提供的服务、优势和客户适合找你的场景。"></textarea>
+      </view>
+    </view>
+  </view>
+
+  <view wx:else class="stage-panel confirm-stage">
+    <view class="stage-head">
+      <view>
+        <view class="stage-title">确认名片效果</view>
+        <view class="stage-desc">左右切换查看卡片与详情页，点击内容可直接修改。</view>
+      </view>
+    </view>
+
+    <view class="preview-tabs">
+      <view class="preview-tab {{previewMode === 'card' ? 'active' : ''}}" data-mode="card" bindtap="handlePreviewMode">卡片预览</view>
+      <view class="preview-tab {{previewMode === 'detail' ? 'active' : ''}}" data-mode="detail" bindtap="handlePreviewMode">详情预览</view>
+    </view>
+
+    <view wx:if="{{previewMode === 'card'}}">
+      <view class="share-card tpl-{{preview.templateId}}">
+        <view class="share-bg-shape"></view>
+        <view class="share-avatar-wrap">
+          <image wx:if="{{preview.avatarUrl}}" class="share-avatar image-editable" src="{{preview.avatarUrl}}" mode="aspectFill" catchtap="handleChooseAvatar"></image>
+          <view wx:else class="share-avatar fallback image-editable" catchtap="handleChooseAvatar">{{preview.initial}}</view>
+        </view>
+        <view class="share-info">
+          <view class="inline-editable light" data-key="name" catchtap="handleOpenInlineEditor">
+            <view class="share-name">{{preview.name}}</view>
+            <text class="inline-edit-tip">编辑</text>
+          </view>
+          <view class="inline-editable light" data-key="title" catchtap="handleOpenInlineEditor">
+            <view class="share-role">{{preview.role}}</view>
+            <text class="inline-edit-tip">编辑</text>
+          </view>
+          <view class="inline-editable light" data-key="company" catchtap="handleOpenInlineEditor">
+            <view class="share-company">{{preview.company}}</view>
+            <text class="inline-edit-tip">编辑</text>
+          </view>
+          <view class="inline-editable light" data-key="headline" catchtap="handleOpenInlineEditor">
+            <view class="share-headline">{{preview.headline}}</view>
+            <text class="inline-edit-tip">编辑</text>
+          </view>
+          <view class="share-contact">{{preview.contactLine}}</view>
+        </view>
+        <view class="share-qr image-editable" wx:if="{{preview.qrCodeUrl}}" catchtap="handleChooseQrCode">
+          <image src="{{preview.qrCodeUrl}}" mode="aspectFill"></image>
+        </view>
+        <view wx:else class="share-qr fallback image-editable" catchtap="handleChooseQrCode">码</view>
+      </view>
+    </view>
+
+    <view wx:else>
+      <view class="phone-frame tpl-{{preview.templateId}}">
+        <view class="phone-status">9:41</view>
+        <view class="detail-hero">
+          <view class="detail-avatar-wrap">
+            <image wx:if="{{preview.avatarUrl}}" class="detail-avatar image-editable" src="{{preview.avatarUrl}}" mode="aspectFill" catchtap="handleChooseAvatar"></image>
+            <view wx:else class="detail-avatar fallback image-editable" catchtap="handleChooseAvatar">{{preview.initial}}</view>
+          </view>
+          <view class="inline-editable light" data-key="name" catchtap="handleOpenInlineEditor">
+            <view class="detail-name">{{preview.name}}</view>
+            <text class="inline-edit-tip">编辑</text>
+          </view>
+          <view class="inline-editable light" data-key="title" catchtap="handleOpenInlineEditor">
+            <view class="detail-role">{{preview.role}}</view>
+            <text class="inline-edit-tip">编辑</text>
+          </view>
+          <view class="inline-editable light" data-key="company" catchtap="handleOpenInlineEditor">
+            <view class="detail-company">{{preview.company}}</view>
+            <text class="inline-edit-tip">编辑</text>
+          </view>
+          <view class="inline-editable light" data-key="headline" catchtap="handleOpenInlineEditor">
+            <view class="detail-headline">{{preview.headline}}</view>
+            <text class="inline-edit-tip">编辑</text>
+          </view>
+        </view>
+        <view class="detail-actions count-{{preview.actionCount}}">
+          <block wx:for="{{preview.contactActions}}" wx:key="key">
+            <view class="detail-action">
+              <view class="detail-action-icon">{{item.icon}}</view>
+              <view>{{item.label}}</view>
+            </view>
+          </block>
+        </view>
+        <view class="detail-block inline-editable" data-key="bio" catchtap="handleOpenInlineEditor">
+          <view class="detail-block-title">服务介绍</view>
+          <text class="inline-edit-tip">编辑</text>
+          <view class="detail-block-text">{{preview.intro}}</view>
+        </view>
+        <view class="detail-block inline-editable" data-key="serviceScope" catchtap="handleOpenInlineEditor">
+          <view class="detail-block-title">服务范围</view>
+          <text class="inline-edit-tip">编辑</text>
+          <view class="scope-row">
+            <block wx:for="{{preview.scopeTags}}" wx:key="*this">
+              <text class="scope-chip">{{item}}</text>
+            </block>
+          </view>
+        </view>
+        <view class="detail-block contact-block">
+          <view>
+            <view class="detail-block-title">联系方式</view>
+            <view class="contact-line inline-editable flat" wx:if="{{preview.phone}}" data-key="phone" catchtap="handleOpenInlineEditor">电话：{{preview.phone}}</view>
+            <view class="contact-line inline-editable flat" wx:if="{{preview.wechat}}" data-key="wechat" catchtap="handleOpenInlineEditor">微信：{{preview.wechat}}</view>
+            <view class="contact-line inline-editable flat" wx:if="{{preview.email}}" data-key="email" catchtap="handleOpenInlineEditor">邮箱：{{preview.email}}</view>
+            <view class="contact-line inline-editable flat" wx:if="{{preview.website}}" data-key="website" catchtap="handleOpenInlineEditor">网址：{{preview.website}}</view>
+            <view class="contact-add-row">
+              <view wx:if="{{!preview.phone}}" data-key="phone" catchtap="handleOpenInlineEditor">补电话</view>
+              <view wx:if="{{!preview.wechat}}" data-key="wechat" catchtap="handleOpenInlineEditor">补微信</view>
+              <view wx:if="{{!preview.email}}" data-key="email" catchtap="handleOpenInlineEditor">补邮箱</view>
+              <view wx:if="{{!preview.website}}" data-key="website" catchtap="handleOpenInlineEditor">补网址</view>
+            </view>
+          </view>
+          <image wx:if="{{preview.qrCodeUrl}}" class="detail-qr image-editable" src="{{preview.qrCodeUrl}}" mode="aspectFill" catchtap="handleChooseQrCode"></image>
+          <view wx:else class="detail-qr placeholder image-editable" catchtap="handleChooseQrCode">二维码</view>
+        </view>
+      </view>
+    </view>
+
+    <view class="confirm-section-title">切换名片风格</view>
+    <view class="confirm-template-row">
+      <block wx:for="{{templates}}" wx:key="id">
+        <view class="confirm-template-item {{selectedTemplateId === item.id ? 'active' : ''}}" data-id="{{item.id}}" bindtap="handleSelectTemplate">
+          <view class="confirm-template-thumb tpl-{{item.id}}">
+            <image wx:if="{{item.preview.avatarUrl}}" src="{{item.preview.avatarUrl}}" mode="aspectFill"></image>
+            <view wx:else>{{item.preview.initial}}</view>
+          </view>
+          <text>{{item.name}}</text>
+        </view>
+      </block>
+    </view>
+
+    <view class="publish-check-card">
+      <view class="publish-check-head">
+        <view>
+          <view class="publish-check-kicker">发给客户前检查</view>
+          <view class="publish-check-title">确认名片可以直接转发</view>
+        </view>
+        <view class="publish-check-state">{{savedNoteId && !hasUnsavedChanges ? '可分享' : '需保存'}}</view>
+      </view>
+      <view class="publish-check-list">
+        <block wx:for="{{publishChecks}}" wx:key="key">
+          <view class="publish-check-item {{item.status}}">
+            <text>{{item.status === 'done' ? '已完成' : item.status === 'warn' ? '待完善' : '建议'}}</text>
+            <view>
+              <view>{{item.label}}</view>
+              <view>{{item.desc}}</view>
+            </view>
+          </view>
+        </block>
+      </view>
+    </view>
+  </view>
+
+  <view class="studio-bottom">
+    <button class="bottom-btn ghost-btn" bindtap="handleBackStep">{{activeStep === 'style' ? '返回' : '上一步'}}</button>
+    <button wx:if="{{activeStep !== 'confirm'}}" class="bottom-btn primary-btn" bindtap="handleNext">{{activeStep === 'style' ? '选择此风格' : '生成名片'}}</button>
+    <button wx:else class="bottom-btn primary-btn" loading="{{saving}}" bindtap="handleSavePreview">{{savedNoteId ? '保存并预览' : '保存并预览'}}</button>
+    <button wx:if="{{activeStep === 'confirm' && savedNoteId && !hasUnsavedChanges}}" class="bottom-btn share-mini" bindtap="handleOpenSavedPreview">预览</button>
+    <button wx:if="{{activeStep === 'confirm' && savedNoteId && !hasUnsavedChanges}}" class="bottom-btn share-mini" open-type="share">分享</button>
+  </view>
+
+  <view wx:if="{{inlineEditor.open}}" class="inline-editor-mask" catchtap="handleCloseInlineEditor">
+    <view class="inline-editor-panel" catchtap="noop">
+      <view class="inline-editor-head">
+        <view>{{inlineEditor.label}}</view>
+        <text bindtap="handleCloseInlineEditor">取消</text>
+      </view>
+      <textarea wx:if="{{inlineEditor.multiline}}" class="inline-editor-textarea" value="{{inlineEditor.value}}" placeholder="{{inlineEditor.placeholder}}" maxlength="800" auto-height bindinput="handleInlineEditorInput" />
+      <input wx:else class="inline-editor-input" value="{{inlineEditor.value}}" placeholder="{{inlineEditor.placeholder}}" bindinput="handleInlineEditorInput" />
+      <button class="inline-editor-save" bindtap="handleSaveInlineEditor">保存修改</button>
+    </view>
+  </view>
+</view>

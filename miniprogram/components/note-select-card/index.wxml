@@ -1,0 +1,14 @@
+<view class="picker-card {{mode === 'grid' ? 'grid' : ''}} {{note.selected ? 'selected' : ''}}">
+  <image wx:if="{{note.coverUrl}}" class="picker-cover" src="{{note.coverUrl}}" mode="aspectFill"></image>
+  <view wx:else class="picker-cover fallback">{{note.badge}}</view>
+  <view class="picker-main">
+    <view class="picker-head">
+      <text class="picker-badge">{{note.badge}}</text>
+      <text wx:if="{{note.tagText}}" class="picker-tags">{{note.tagText}}</text>
+    </view>
+    <view class="picker-title">{{note.title}}</view>
+    <view class="picker-summary">{{note.primaryText}}</view>
+    <view class="picker-price" wx:if="{{note.gridPrice}}">{{note.gridPrice}}</view>
+  </view>
+  <button class="join-btn {{note.selected ? 'active' : ''}}" bindtap="handleToggle">{{note.selected ? '已加入' : '加入'}}</button>
+</view>

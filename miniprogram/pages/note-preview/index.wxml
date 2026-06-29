@@ -1,12 +1,288 @@
 <view class="page-shell">
-  <custom-nav title="客户页预览" />
+  <custom-nav title="{{view && view.isBusinessCard ? '电子名片' : view && view.isServiceOffer ? '服务方案' : '客户页预览'}}" showBack="{{true}}" />
 
   <view class="preview-page" wx:if="{{view}}">
+    <block wx:if="{{view.isBusinessCard}}">
+      <view class="business-card-detail-page {{view.templateToneClass}} {{view.templateId}}">
+        <view class="business-card-hero">
+          <view class="bc-card-bg"></view>
+          <image wx:if="{{view.businessCardHero.avatarUrl}}" class="bc-avatar" src="{{view.businessCardHero.avatarUrl}}" mode="aspectFill"></image>
+          <view wx:else class="bc-avatar placeholder">{{view.businessCardHero.initial}}</view>
+          <view class="bc-main">
+            <view class="bc-name">{{view.businessCardHero.name}}</view>
+            <view class="bc-role">{{view.businessCardHero.role}}</view>
+            <view class="bc-company">{{view.businessCardHero.company}}</view>
+            <view class="bc-service">{{view.businessCardHero.serviceScope}}</view>
+            <view class="bc-contact">{{view.businessCardHero.contactLine}}</view>
+          </view>
+        </view>
+
+        <view class="bc-action-bar count-{{view.businessCardActions.length}}">
+          <block wx:for="{{view.businessCardActions}}" wx:key="key">
+            <view class="bc-action-item" data-key="{{item.key}}" bindtap="handleAction">
+              <view class="bc-action-icon">{{item.icon}}</view>
+              <text>{{item.title}}</text>
+            </view>
+          </block>
+        </view>
+
+        <view class="bc-contact-selected" wx:if="{{selectedContactCard}}">
+          <text>{{selectedContactCard.label}}</text>
+          <view>{{selectedContactCard.value}}</view>
+          <text>{{selectedContactCard.hint}}</text>
+        </view>
+
+        <view class="lead-form bc-form" wx:if="{{showLeadForm}}">
+          <input value="{{leadDraft.name}}" data-key="name" bindinput="handleLeadInput" placeholder="姓名" />
+          <input value="{{leadDraft.phone}}" data-key="phone" bindinput="handleLeadInput" placeholder="电话" type="number" />
+          <input value="{{leadDraft.wechat}}" data-key="wechat" bindinput="handleLeadInput" placeholder="微信号，可选" />
+          <textarea value="{{leadDraft.remark}}" data-key="remark" bindinput="handleLeadInput" placeholder="备注，例如需求、预算或方便联系的时间"></textarea>
+          <button loading="{{submittingAction === 'lead-contact'}}" bindtap="handleSubmitLead">提交联系方式</button>
+        </view>
+        <view class="status-line" wx:if="{{leadSubmittedText}}">{{leadSubmittedText}}</view>
+
+        <view class="bc-section">
+          <view class="bc-section-title">服务介绍</view>
+          <view class="bc-section-body">{{view.businessCardDetail.intro}}</view>
+        </view>
+
+        <view class="bc-section">
+          <view class="bc-section-title">服务范围</view>
+          <view class="bc-scope-grid">
+            <block wx:for="{{view.businessCardDetail.scopeItems}}" wx:key="label">
+              <view class="bc-scope-item">
+                <view class="bc-scope-icon">{{index + 1}}</view>
+                <view>
+                  <view>{{item.label}}</view>
+                  <text>{{item.desc}}</text>
+                </view>
+              </view>
+            </block>
+          </view>
+        </view>
+
+        <view class="bc-section bc-contact-section">
+          <view>
+            <view class="bc-section-title">联系与二维码</view>
+            <view class="bc-contact-row" wx:if="{{view.businessCardDetail.phone}}">
+              <text>电话</text>
+              <view>{{view.businessCardDetail.phone}}</view>
+            </view>
+            <view class="bc-contact-row" wx:if="{{view.businessCardDetail.wechat}}">
+              <text>微信</text>
+              <view>{{view.businessCardDetail.wechat}}</view>
+            </view>
+            <view class="bc-contact-row" wx:if="{{view.businessCardDetail.email}}">
+              <text>邮箱</text>
+              <view>{{view.businessCardDetail.email}}</view>
+            </view>
+            <view class="bc-contact-row website" wx:if="{{view.businessCardDetail.website}}" data-key="website" bindtap="handleAction">
+              <text>网址</text>
+              <view>{{view.businessCardDetail.website}}</view>
+            </view>
+            <button class="bc-save-btn" data-key="save-card" bindtap="handleAction">保存名片</button>
+          </view>
+          <image wx:if="{{view.businessCardDetail.qrCodeUrl}}" class="bc-qr" src="{{view.businessCardDetail.qrCodeUrl}}" mode="aspectFill" data-url="{{view.businessCardDetail.qrCodeUrl}}" bindtap="handlePreviewImage"></image>
+          <view wx:else class="bc-qr placeholder">二维码</view>
+        </view>
+      </view>
+    </block>
+    <block wx:elif="{{view.isServiceOffer}}">
+      <view class="service-offer-page {{view.templateToneClass}} {{view.templateId}}">
+        <block wx:if="{{view.templateId === 'service_consultation' || view.templateId === 'service_campaign'}}">
+          <view class="service-offer-hero portrait-layout">
+            <view class="service-hero-copy">
+              <view class="service-template-label">{{view.serviceOfferDetail.templateName}}</view>
+              <view class="service-title">{{view.serviceOfferDetail.serviceName}}</view>
+              <view class="service-headline">{{view.serviceOfferDetail.headline}}</view>
+              <view class="service-tags" wx:if="{{view.serviceOfferDetail.supportChips.length}}">
+                <block wx:for="{{view.serviceOfferDetail.supportChips}}" wx:key="*this" wx:for-item="chip">
+                  <text>{{chip}}</text>
+                </block>
+              </view>
+            </view>
+            <image wx:if="{{view.serviceOfferDetail.coverUrl}}" class="service-hero-portrait" src="{{view.serviceOfferDetail.coverUrl}}" mode="aspectFill"></image>
+            <image wx:elif="{{view.serviceOfferDetail.heroPortraitUrl}}" class="service-hero-portrait" src="{{view.serviceOfferDetail.heroPortraitUrl}}" mode="aspectFill"></image>
+            <view wx:else class="service-hero-portrait placeholder">{{view.serviceOfferDetail.scene || '服务'}}</view>
+          </view>
+        </block>
+        <block wx:else>
+          <view class="service-offer-hero cover-layout">
+            <image wx:if="{{view.serviceOfferDetail.coverUrl}}" class="service-cover" src="{{view.serviceOfferDetail.coverUrl}}" mode="aspectFill"></image>
+            <view wx:else class="service-cover placeholder {{view.templateId}}">
+              <view wx:if="{{view.templateId === 'service_pricing'}}" class="service-room-preview">
+                <view class="room-wall"></view>
+                <view class="room-sofa"></view>
+                <view class="room-table"></view>
+              </view>
+              <view wx:else class="service-case-preview"></view>
+            </view>
+            <view class="service-hero-copy stacked">
+              <view class="service-template-label">{{view.serviceOfferDetail.templateName}}</view>
+              <view class="service-title">{{view.serviceOfferDetail.serviceName}}</view>
+              <view class="service-headline">{{view.serviceOfferDetail.headline}}</view>
+            </view>
+          </view>
+        </block>
+
+        <view class="service-metric-row">
+          <block wx:for="{{view.serviceOfferDetail.metricCards}}" wx:key="label" wx:for-item="metric">
+            <view class="service-metric-card">
+              <view>{{metric.value}}</view>
+              <text>{{metric.label}}</text>
+            </view>
+          </block>
+        </view>
+
+        <view class="service-section audience">
+          <view class="service-section-title">适合人群</view>
+          <block wx:for="{{view.serviceOfferDetail.audienceBullets}}" wx:key="*this" wx:for-item="bullet">
+            <view class="service-bullet-row"><text>•</text><text>{{bullet}}</text></view>
+          </block>
+        </view>
+
+        <view class="service-section">
+          <view class="service-section-title">服务内容</view>
+          <view class="service-feature-grid">
+            <block wx:for="{{view.serviceOfferDetail.serviceBullets}}" wx:key="*this" wx:for-item="serviceBullet">
+              <view class="service-feature-item">
+                <view class="service-feature-icon">{{index + 1}}</view>
+                <text>{{serviceBullet}}</text>
+              </view>
+            </block>
+          </view>
+        </view>
+
+        <view class="service-section" wx:if="{{view.templateId === 'service_pricing'}}">
+          <view class="service-section-title">报价说明</view>
+          <view class="service-price-tag-row">
+            <block wx:for="{{view.serviceOfferDetail.pricingTags}}" wx:key="*this" wx:for-item="priceTag">
+              <view class="service-price-tag">{{priceTag}}</view>
+            </block>
+          </view>
+          <view class="service-section-body">{{view.serviceOfferDetail.pricingNote}}</view>
+        </view>
+
+        <view class="service-section" wx:elif="{{view.templateId === 'service_case_story'}}">
+          <view class="service-section-title">案例 / 成果</view>
+          <view class="service-case-row">
+            <block wx:for="{{view.serviceOfferDetail.caseBullets}}" wx:key="*this" wx:for-item="caseBullet">
+              <view class="service-case-card">
+                <image wx:if="{{view.serviceOfferDetail.caseImages[index]}}" src="{{view.serviceOfferDetail.caseImages[index]}}" mode="aspectFill" data-url="{{view.serviceOfferDetail.caseImages[index]}}" bindtap="handlePreviewImage"></image>
+                <view wx:else class="service-case-placeholder"></view>
+                <text>{{caseBullet}}</text>
+              </view>
+            </block>
+          </view>
+          <view class="service-section-body" wx:if="{{view.serviceOfferDetail.caseHighlights}}">{{view.serviceOfferDetail.caseHighlights}}</view>
+        </view>
+
+        <view class="service-section" wx:elif="{{view.templateId === 'service_campaign'}}">
+          <view class="service-section-title">服务流程</view>
+          <view class="service-process">
+            <block wx:for="{{view.serviceOfferDetail.processSteps}}" wx:key="*this" wx:for-item="processStep">
+              <view>
+                <text>{{index + 1}}</text>
+                <view>{{processStep}}</view>
+              </view>
+            </block>
+          </view>
+        </view>
+
+        <view class="service-section" wx:else>
+          <view class="service-section-title">服务流程</view>
+          <view class="service-process">
+            <block wx:for="{{view.serviceOfferDetail.processSteps}}" wx:key="*this" wx:for-item="processStep">
+              <view>
+                <text>{{index + 1}}</text>
+                <view>{{processStep}}</view>
+              </view>
+            </block>
+          </view>
+        </view>
+
+        <view class="service-gallery" wx:if="{{view.galleryVideos.length}}">
+          <view class="service-section-title">展示视频</view>
+          <scroll-view scroll-x class="service-gallery-scroll video-scroll">
+            <block wx:for="{{view.galleryVideos}}" wx:key="*this">
+              <video src="{{item}}" controls object-fit="cover"></video>
+            </block>
+          </scroll-view>
+        </view>
+
+        <view class="service-contact-card">
+          <view class="service-contact-head">
+            <view class="service-section-title">联系与预约</view>
+            <view class="service-appoint-note" wx:if="{{view.serviceOfferDetail.appointmentNote}}">{{view.serviceOfferDetail.appointmentNote}}</view>
+          </view>
+          <view class="service-contact-row" wx:if="{{view.serviceOfferDetail.phone}}">
+            <text>电话</text>
+            <view>{{view.serviceOfferDetail.phone}}</view>
+          </view>
+          <view class="service-contact-row" wx:if="{{view.serviceOfferDetail.wechat}}">
+            <text>微信</text>
+            <view>{{view.serviceOfferDetail.wechat}}</view>
+          </view>
+          <view class="service-contact-row" wx:if="{{view.serviceOfferDetail.email}}" data-key="email" bindtap="handleAction">
+            <text>邮箱</text>
+            <view>{{view.serviceOfferDetail.email}}</view>
+          </view>
+          <view class="service-contact-row" wx:if="{{view.serviceOfferDetail.website}}" data-key="website" bindtap="handleAction">
+            <text>网址</text>
+            <view>{{view.serviceOfferDetail.website}}</view>
+          </view>
+          <view class="service-secondary-actions" wx:if="{{view.serviceOfferSecondaryActions.length}}">
+            <block wx:for="{{view.serviceOfferSecondaryActions}}" wx:key="key">
+              <view class="service-secondary-action" data-key="{{item.key}}" bindtap="handleAction">{{item.shortTitle}}</view>
+            </block>
+          </view>
+        </view>
+
+        <view class="lead-form service-form" wx:if="{{showLeadForm}}">
+          <input value="{{leadDraft.name}}" data-key="name" bindinput="handleLeadInput" placeholder="姓名" />
+          <input value="{{leadDraft.phone}}" data-key="phone" bindinput="handleLeadInput" placeholder="电话" type="number" />
+          <input value="{{leadDraft.wechat}}" data-key="wechat" bindinput="handleLeadInput" placeholder="微信号，可选" />
+          <textarea value="{{leadDraft.remark}}" data-key="remark" bindinput="handleLeadInput" placeholder="想咨询的问题、预算范围或方便联系的时间"></textarea>
+          <button loading="{{submittingAction === 'lead-contact'}}" bindtap="handleSubmitLead">提交联系方式</button>
+        </view>
+        <view class="appointment-form service-form" wx:if="{{showAppointmentForm}}">
+          <view class="quick-date">
+            <text data-offset="0" bindtap="handleQuickAppointment">今天</text>
+            <text data-offset="1" bindtap="handleQuickAppointment">明天</text>
+          </view>
+          <view class="picker-row">
+            <picker mode="date" value="{{appointmentDraft.date}}" bindchange="handleAppointmentDate">
+              <view>日期：{{appointmentDraft.date}}</view>
+            </picker>
+            <picker mode="time" value="{{appointmentDraft.time}}" bindchange="handleAppointmentTime">
+              <view>时间：{{appointmentDraft.time}}</view>
+            </picker>
+          </view>
+          <input value="{{appointmentDraft.remark}}" bindinput="handleAppointmentRemark" placeholder="想沟通的问题或期望服务方式" />
+          <button loading="{{submittingAction === 'appointment'}}" bindtap="handleSubmitAppointment">提交预约</button>
+        </view>
+        <view class="status-line" wx:if="{{leadSubmittedText}}">{{leadSubmittedText}}</view>
+        <view class="status-line" wx:if="{{appointmentText}}">预约意向：{{appointmentText}}</view>
+
+        <view class="service-bottom-bar" wx:if="{{view.serviceOfferPrimaryActions.length}}">
+          <block wx:for="{{view.serviceOfferPrimaryActions}}" wx:key="key">
+            <view class="service-bottom-action" data-key="{{item.key}}" bindtap="handleAction">
+              <view>{{item.icon}}</view>
+              <text>{{item.shortTitle}}</text>
+            </view>
+          </block>
+        </view>
+      </view>
+    </block>
+    <block wx:else>
     <image wx:if="{{view.coverUrl}}" class="cover" src="{{view.coverUrl}}" mode="aspectFill"></image>
     <view wx:else class="cover placeholder">{{view.badge}}</view>
     <view class="content">
       <view class="badge">{{view.badge}}</view>
       <view class="title">{{view.title}}</view>
+      <view class="property-highlight-row" wx:if="{{view.propertyHighlightChips.length}}">
+        <text wx:for="{{view.propertyHighlightChips}}" wx:key="*this">{{item}}</text>
+      </view>
       <view class="subtitle">{{view.subtitle}}</view>
       <view class="availability {{view.availability ? view.availability.status : ''}}" wx:if="{{view.availability}}">
         <view>{{view.availability.title}}</view>
@@ -61,7 +337,7 @@
         </view>
       </view>
       <view class="gallery" wx:if="{{view.galleryImages.length}}">
-        <view class="section-title">{{view.badge === '房源' ? '房源图片' : '商品图片'}}</view>
+        <view class="section-title">{{view.badge === '房源' ? '房源图片' : view.badge === '商品' ? '商品图片' : view.badge === '名片' ? '二维码 / 图片' : '案例图片'}}</view>
         <scroll-view scroll-x class="gallery-scroll">
           <block wx:for="{{view.galleryImages}}" wx:key="*this">
             <image src="{{item}}" mode="aspectFill" data-url="{{item}}" bindtap="handlePreviewImage"></image>
@@ -69,7 +345,7 @@
         </scroll-view>
       </view>
       <view class="gallery" wx:if="{{view.galleryVideos.length}}">
-        <view class="section-title">{{view.badge === '房源' ? '房源视频' : '商品视频'}}</view>
+        <view class="section-title">{{view.badge === '房源' ? '房源视频' : view.badge === '商品' ? '商品视频' : '展示视频'}}</view>
         <scroll-view scroll-x class="gallery-scroll video-scroll">
           <block wx:for="{{view.galleryVideos}}" wx:key="*this">
             <video src="{{item}}" controls object-fit="cover"></video>
@@ -102,6 +378,13 @@
             <text>{{item.desc}}</text>
           </view>
         </block>
+      </view>
+      <view class="property-same-card" wx:if="{{view.isProperty}}">
+        <view class="property-same-main">
+          <view class="property-same-title">我是中介，也想生成这张房源卡</view>
+          <view class="property-same-sub">复制公开房源内容，换成你的微信，上游联系人你自己留着。</view>
+        </view>
+        <button class="property-same-btn" bindtap="handleGenerateSame">生成同款</button>
       </view>
       <view class="lead-form" wx:if="{{showLeadForm}}">
         <input value="{{leadDraft.name}}" data-key="name" bindinput="handleLeadInput" placeholder="姓名" />
@@ -139,6 +422,7 @@
       <view class="status-line" wx:if="{{appointmentText}}">预约意向：{{appointmentText}}</view>
       <view class="status-line" wx:if="{{productOrderSubmitted}}">{{productOrderStatusText || (view.enableGroupRelay ? '已记录接龙意向' : '已下单')}}</view>
     </view>
+    </block>
     <view class="floating-share-actions">
       <button open-type="share">好友</button>
       <button bindtap="handleTimelineHint">朋友圈</button>
@@ -173,4 +457,10 @@
       </view>
     </view>
   </view>
+
+  <view class="standalone-return" wx:if="{{openedStandalone && view}}">
+    <button bindtap="handleBackHome">回到首页</button>
+  </view>
+
+  <canvas canvas-id="businessCardShareCanvas" class="business-card-share-canvas"></canvas>
 </view>

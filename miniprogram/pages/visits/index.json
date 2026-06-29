@@ -1,5 +1,5 @@
 {
-  "navigationBarTitleText": "\u8bbf\u95ee\u8bb0\u5f55",
+  "navigationBarTitleText": "\u5ba2\u6237\u96f7\u8fbe",
   "navigationStyle": "custom",
   "usingComponents": {
     "custom-nav": "/components/custom-nav/index"

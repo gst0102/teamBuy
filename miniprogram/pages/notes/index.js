@@ -1,21 +1,10 @@
 const api = require("../../services/api");
 const messagePlugin = require("../../plugins/message-plugin/index");
 const { getCurrentUser } = require("../../utils/dashboard");
+const { decorateNoteForList, isUsefulLabel } = require("../../utils/note-display");
+const { buildBusinessCardShareTitle, buildServiceOfferShareTitle, generateBusinessCardShareImage, generateServiceOfferShareImage } = require("../../utils/business-card-share");
 
-function formatDateTime(value) {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  const pad = (num) => `${num}`.padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
-
-function formatDate(value) {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
-}
+const SALES_CARD_SHARE_CANVAS_ID = "salesCardListShareCanvas";
 
 function scrmReadKey(userId, noteId) {
   return `note_scrm_read_${userId || "guest"}_${noteId || ""}`;
@@ -28,120 +17,32 @@ function hasUnreadCustomerAction(summary, userId, noteId) {
   return latest > readAt;
 }
 
-const NOISY_LABELS = new Set(["未整理", "待整理", "待跟进", "已整理", "房源候选", "团购候选"]);
+const SOURCE_FILTERS = [
+  { label: "全部", value: "", key: "all" },
+  { label: "笔记", value: "note", key: "source:note" },
+  { label: "链接", value: "link", key: "source:link" },
+  { label: "图片资料", value: "ocr", key: "source:ocr" },
+  { label: "图片与视频", value: "media", key: "source:media" },
+  { label: "语音", value: "voice", key: "source:voice" },
+  { label: "位置", value: "location", key: "source:location" },
+  { label: "聊天记录", value: "chat", key: "source:chat" },
+  { label: "文件", value: "file", key: "source:file" },
+  { label: "小程序", value: "miniapp", key: "source:miniapp" }
+];
 
-function isUsefulLabel(label) {
-  const value = String(label || "").trim();
-  return Boolean(value && !NOISY_LABELS.has(value) && value.length <= 8);
+function isPlainNoteItem(note) {
+  return note && note.cardType === "text_note" && !note.suggestionText && !note.migrationConfirmType;
 }
 
-function decorateNote(note) {
-  const config = note.visibilityConfig || {};
-  const tags = Array.isArray(config.tags) ? config.tags.filter(isUsefulLabel) : [];
-  const suggestions = Array.isArray(config.typeSuggestions) ? config.typeSuggestions : [];
-  const cardType = config.cardType || (config.contentMode === "bookmark" ? "link" : "text_note");
-  const structuredData = config.structuredData || {};
+function withInitialShareState(note) {
+  if (!note || !note.isServiceCard) return note;
   return {
     ...note,
-    cardType,
-    structuredData,
-    isBookmark: cardType === "link" && config.contentMode === "bookmark",
-    isProperty: cardType === "property_listing",
-    isGroupbuy: cardType === "groupbuy_product",
-    sourceUrl: config.sourceUrl || "",
-    sourceName: config.sourceName || "链接来源",
-    sourceLabel: config.sourceLabel || "网页链接",
-    sourceType: config.sourceType || "note",
-    systemCategory: config.systemCategory || config.category || "待整理",
-    bookmarkCategory: config.systemCategory || config.category || "文章收藏",
-    bookmarkTags: tags,
-    topicNames: Array.isArray(config.topics) ? config.topics.map((topic) => topic.name).filter(isUsefulLabel) : [],
-    primaryValue: buildPrimaryValue(cardType, structuredData, note),
-    secondaryValue: buildSecondaryValue(cardType, structuredData, note),
-    cardBadge: buildCardBadge(cardType, config),
-    propertyStatus: buildPropertyStatus(structuredData.propertyStatus),
-    cardAction: buildCardAction(cardType),
-    suggestionText: buildSuggestionText(suggestions),
-    collectedAtText: formatDateTime(note.createdAt),
-    uploadDateText: formatDate(note.createdAt),
-    scrmSummary: null,
-    scrmHasUnread: false
+    shareDisabled: true,
+    shareImageReady: false,
+    shareStatusText: "封面准备中"
   };
 }
-
-function buildPropertyStatus(value) {
-  if (value === "rented") return { text: "已租", className: "rented" };
-  if (value === "paused") return { text: "暂停推广", className: "paused" };
-  return { text: "推广中", className: "active" };
-}
-
-function buildPrimaryValue(cardType, data, note) {
-  if (cardType === "property_listing") {
-    return [data.price, data.layout].filter(Boolean).join(" · ") || note.summary || "房源信息";
-  }
-  if (cardType === "groupbuy_product") {
-    return [data.price, data.spec].filter(Boolean).join(" · ") || note.summary || "团购商品";
-  }
-  if (data.miniapp) {
-    return [data.miniapp.displayName || data.miniapp.description, data.miniapp.houseCode ? `房源编码 ${data.miniapp.houseCode}` : ""].filter(Boolean).join(" · ") || note.summary || "";
-  }
-  return note.summary || note.body || "";
-}
-
-function buildSecondaryValue(cardType, data, note) {
-  if (cardType === "property_listing") {
-    return [data.businessArea, data.address, data.utilities].filter(Boolean).join(" · ") || data.remark || "";
-  }
-  if (cardType === "groupbuy_product") {
-    return [data.pickupMethod, data.pickupLocation, data.deadline].filter(Boolean).join(" · ") || data.remark || "";
-  }
-  if (data.miniapp) {
-    return data.miniapp.title || note.body || "";
-  }
-  return note.body || "";
-}
-
-function buildCardBadge(cardType, config) {
-  if (config.sourceType === "miniapp") return "小程序";
-  const labels = {
-    property_listing: "房源",
-    groupbuy_product: "团购",
-    image_ocr: "图片",
-    article: "文章",
-    link: "链接",
-    text_note: "笔记"
-  };
-  return labels[cardType] || "资料";
-}
-
-function buildSuggestionText(suggestions) {
-  const labels = {
-    property_listing: "房源",
-    groupbuy_product: "团购"
-  };
-  const names = suggestions.map((item) => labels[item.cardType]).filter(Boolean);
-  if (!names.length) return "";
-  return `可能是：${names.join(" / ")}`;
-}
-
-function buildCardAction(cardType) {
-  if (cardType === "property_listing") return "转发给好友";
-  if (cardType === "groupbuy_product") return "转发给好友";
-  return "整理 / 编辑";
-}
-
-const SOURCE_FILTERS = [
-  { label: "全部", value: "" },
-  { label: "笔记", value: "note" },
-  { label: "链接", value: "link" },
-  { label: "图片资料", value: "ocr" },
-  { label: "图片与视频", value: "media" },
-  { label: "语音", value: "voice" },
-  { label: "位置", value: "location" },
-  { label: "聊天记录", value: "chat" },
-  { label: "文件", value: "file" },
-  { label: "小程序", value: "miniapp" }
-];
 
 Page({
   data: {
@@ -153,12 +54,20 @@ Page({
     activeTag: "",
     activeTopicId: "",
     activeSystemCategory: "",
+    activePlainNoteOnly: false,
+    activeCategoryKey: "all",
+    activeMigrationPending: false,
     sort: "collected",
+    viewMode: "list",
     showAllCategories: false,
     showAllTags: false,
     categoryQuickFilters: [
-      { label: "最近使用", value: "" },
-      { label: "笔记", value: "note" }
+      { label: "全部", value: "", mode: "all", key: "all" },
+      { label: "普通笔记", value: "plain_note", mode: "plain", key: "plain_note" },
+      { label: "房源", value: "房源", mode: "system", key: "system:房源" },
+      { label: "商品团购", value: "团购", mode: "system", key: "system:团购" },
+      { label: "电子名片", value: "名片", mode: "system", key: "system:名片" },
+      { label: "服务方案", value: "服务", mode: "system", key: "system:服务" }
     ],
     tagQuickFilters: [
       { name: "最近使用", value: "" },
@@ -168,11 +77,23 @@ Page({
     ],
     tagFilters: [],
     topics: [],
-    loading: false,
-    ocrUploading: false
+    migrationSummary: null,
+    noteShareImages: {},
+    loading: false
   },
   onLoad(options) {
-    this.setData({ activeTopicId: options.topicId || "" });
+    const sourceType = options.sourceType || "";
+    const migrationPending = options.migrationPending === "1";
+    const plainOnly = options.plain === "1";
+    const systemCategory = options.systemCategory || "";
+    this.setData({
+      activeTopicId: options.topicId || "",
+      activeSourceType: sourceType,
+      activeMigrationPending: migrationPending,
+      activePlainNoteOnly: plainOnly,
+      activeSystemCategory: systemCategory,
+      activeCategoryKey: plainOnly ? "plain_note" : sourceType ? `source:${sourceType}` : systemCategory ? `system:${systemCategory}` : "all"
+    });
   },
   onShow() {
     const user = getCurrentUser();
@@ -185,10 +106,10 @@ Page({
     this.loadNotes();
   },
   handleKeywordChange(event) {
-    this.setData({ keyword: event.detail.value });
+    this.setData({ keyword: event.detail.value, activeMigrationPending: false });
   },
   async loadNotes() {
-    const { user, keyword, activeSourceType, activeTag, activeTopicId, activeSystemCategory, sort } = this.data;
+    const { user, keyword, activeSourceType, activeTag, activeTopicId, activeSystemCategory, activePlainNoteOnly, sort } = this.data;
     if (!user) return;
     this.setData({ loading: true });
     try {
@@ -201,60 +122,98 @@ Page({
         topicId: activeTopicId,
         sort
       });
-      const notes = (res.data || []).map(decorateNote);
-      this.setData({ notes, tagFilters: this.buildTagFilters(notes) });
+      const allNotes = (res.data || []).map(decorateNoteForList);
+      let notes = activePlainNoteOnly ? allNotes.filter(isPlainNoteItem) : allNotes;
+      notes = this.data.activeMigrationPending ? notes.filter((note) => note.migrationNeedsAction) : notes;
+      notes = notes.map(withInitialShareState);
+      this.setData({ notes, tagFilters: this.buildTagFilters(notes), migrationSummary: this.buildMigrationSummary(allNotes) });
       this.loadScrmSummaries(notes);
+      this.prepareSalesCardShareImages(notes);
     } catch (error) {
       wx.showToast({ title: error.detail || "笔记加载失败", icon: "none" });
     } finally {
       this.setData({ loading: false });
     }
   },
+  async prepareSalesCardShareImages(notes) {
+    const salesCards = (notes || []).filter((note) => (
+      (note.isBusinessCard && note.businessCardPreview) ||
+      (note.isServiceOffer && note.serviceOfferPreview)
+    ));
+    if (!salesCards.length) {
+      this.setData({ noteShareImages: {} });
+      return;
+    }
+    const nextImages = {};
+    for (const note of salesCards) {
+      if (!note.id) continue;
+      try {
+        const imagePath = note.isServiceOffer
+          ? await generateServiceOfferShareImage(this, SALES_CARD_SHARE_CANVAS_ID, {
+              ...note.serviceOfferPreview,
+              structuredData: note.structuredData || {},
+              title: note.title,
+              summary: note.summary,
+              coverUrl: note.serviceOfferPreview.coverUrl || note.coverUrl
+            })
+          : await generateBusinessCardShareImage(this, SALES_CARD_SHARE_CANVAS_ID, {
+              ...note.businessCardPreview,
+              structuredData: note.structuredData || {},
+              title: note.title,
+              summary: note.summary,
+              coverUrl: note.coverUrl
+            });
+        if (imagePath) {
+          nextImages[note.id] = imagePath;
+          this.setData({ noteShareImages: { ...nextImages } });
+        }
+        this.updateShareState(note.id, Boolean(imagePath));
+      } catch (error) {
+        nextImages[note.id] = "";
+        this.updateShareState(note.id, false);
+      }
+    }
+  },
+  updateShareState(noteId, ready) {
+    this.setData({
+      notes: (this.data.notes || []).map((note) => (
+        note.id === noteId
+          ? {
+              ...note,
+              shareImageReady: ready,
+              shareDisabled: false,
+              shareStatusText: note.cardAction
+            }
+          : note
+      ))
+    });
+  },
   handleSearch() {
     this.loadNotes();
   },
-  handleOcrUpload() {
-    const { user, ocrUploading } = this.data;
-    if (!user) {
-      wx.reLaunch({ url: "/pages/login/index" });
-      return;
-    }
-    if (ocrUploading) return;
-    wx.chooseMedia({
-      count: 1,
-      mediaType: ["image"],
-      sourceType: ["album", "camera"],
-      success: ({ tempFiles = [] }) => {
-        const file = tempFiles[0];
-        if (!file || !file.tempFilePath) return;
-        this.uploadImageNote(file.tempFilePath);
-      }
-    });
-  },
-  async uploadImageNote(filePath) {
-    const { user } = this.data;
-    if (!user || !filePath) return;
-    this.setData({ ocrUploading: true });
-    wx.showLoading({ title: "保存中" });
-    try {
-      const result = await api.uploadImageNote({ filePath, ownerUserId: user.id });
-      wx.hideLoading();
-      const note = result.note || {};
-      wx.showToast({ title: "图片已保存", icon: "success" });
-      if (note.id) {
-        wx.navigateTo({ url: `/pages/note-edit/index?id=${note.id}` });
-      } else {
-        this.loadNotes();
-      }
-    } catch (error) {
-      wx.hideLoading();
-      wx.showToast({ title: error.detail || error.errMsg || "识别失败", icon: "none" });
-    } finally {
-      this.setData({ ocrUploading: false });
-    }
-  },
   toggleCategories() {
     this.setData({ showAllCategories: !this.data.showAllCategories });
+  },
+  handleCategoryFilter(event) {
+    const mode = event.currentTarget.dataset.mode || "all";
+    const value = event.currentTarget.dataset.value || "";
+    const key = event.currentTarget.dataset.key || "all";
+    const next = {
+      activeCategoryKey: key,
+      activeMigrationPending: false,
+      activeTag: ""
+    };
+    if (mode === "plain") {
+      Object.assign(next, { activePlainNoteOnly: true, activeSourceType: "", activeSystemCategory: "" });
+    } else if (mode === "system") {
+      Object.assign(next, { activePlainNoteOnly: false, activeSourceType: "", activeSystemCategory: value });
+    } else if (mode === "source") {
+      Object.assign(next, { activePlainNoteOnly: false, activeSourceType: value, activeSystemCategory: "" });
+    } else {
+      Object.assign(next, { activePlainNoteOnly: false, activeSourceType: "", activeSystemCategory: "" });
+    }
+    this.setData(next);
+    this.loadNotes();
   },
   toggleTags() {
     this.setData({ showAllTags: !this.data.showAllTags });
@@ -279,8 +238,37 @@ Page({
     });
     return Object.keys(counts).sort().map((name) => ({ name, count: counts[name] }));
   },
+  buildMigrationSummary(notes) {
+    const items = notes || [];
+    const pending = items.filter((note) => note.migrationNeedsAction);
+    const imagePending = items.filter((note) => note.cardType === "image_ocr" && note.migrationNeedsAction);
+    const suggested = items.filter((note) => note.suggestionText);
+    const wecom = items.filter((note) => /企业微信/.test(note.migrationSourceText || ""));
+    const manual = items.filter((note) => /手动|图片保存/.test(note.migrationSourceText || ""));
+    return {
+      total: items.length,
+      pendingCount: pending.length,
+      imagePendingCount: imagePending.length,
+      suggestedCount: suggested.length,
+      wecomCount: wecom.length,
+      manualCount: manual.length,
+      hasPending: pending.length > 0,
+      statusText: pending.length ? `${pending.length} 条待处理` : "全部已入库",
+      actionText: pending.length ? "只看待处理" : "查看全部",
+      firstPendingId: pending[0] ? pending[0].id : "",
+      firstPendingText: pending[0] ? (pending[0].migrationActionText || "继续整理") : ""
+    };
+  },
   handleSourceFilter(event) {
-    this.setData({ activeSourceType: event.currentTarget.dataset.value || "", activeTag: "" });
+    const value = event.currentTarget.dataset.value || "";
+    this.setData({
+      activeSourceType: value,
+      activeCategoryKey: value ? `source:${value}` : "all",
+      activePlainNoteOnly: false,
+      activeSystemCategory: "",
+      activeTag: "",
+      activeMigrationPending: false
+    });
     this.loadNotes();
   },
   handleAddCategory() {
@@ -292,7 +280,7 @@ Page({
   },
   handleTagFilter(event) {
     const tag = event.currentTarget.dataset.tag || event.currentTarget.dataset.value || "";
-    this.setData({ activeTag: this.data.activeTag === tag ? "" : tag });
+    this.setData({ activeTag: this.data.activeTag === tag ? "" : tag, activeMigrationPending: false });
     this.loadNotes();
   },
   handleAddTag() {
@@ -304,17 +292,41 @@ Page({
   },
   handleTopicFilter(event) {
     const topicId = event.currentTarget.dataset.id || "";
-    this.setData({ activeTopicId: this.data.activeTopicId === topicId ? "" : topicId });
+    this.setData({ activeTopicId: this.data.activeTopicId === topicId ? "" : topicId, activeMigrationPending: false });
     this.loadNotes();
   },
   handleUnorganizedFilter() {
     const active = this.data.activeSystemCategory === "待整理" ? "" : "待整理";
-    this.setData({ activeSystemCategory: active });
+    this.setData({
+      activeSystemCategory: active,
+      activeCategoryKey: active ? "system:待整理" : "all",
+      activePlainNoteOnly: false,
+      activeSourceType: "",
+      activeMigrationPending: false
+    });
     this.loadNotes();
+  },
+  handleMigrationPendingFilter() {
+    if (!this.data.migrationSummary || !this.data.migrationSummary.hasPending) {
+      this.setData({ activeMigrationPending: false, activeSystemCategory: "", activeSourceType: "", activePlainNoteOnly: false, activeCategoryKey: "all", activeTag: "" });
+      this.loadNotes();
+      return;
+    }
+    const active = !this.data.activeMigrationPending;
+    this.setData({ activeMigrationPending: active, activeSystemCategory: "", activeSourceType: "", activePlainNoteOnly: false, activeCategoryKey: "all", activeTag: "" });
+    this.loadNotes();
+  },
+  handleOpenFirstPending() {
+    const summary = this.data.migrationSummary || {};
+    if (!summary.firstPendingId) return;
+    wx.navigateTo({ url: `/pages/note-edit/index?id=${summary.firstPendingId}` });
   },
   handleSortToggle() {
     this.setData({ sort: this.data.sort === "collected" ? "updated" : "collected" });
     this.loadNotes();
+  },
+  handleViewModeChange(event) {
+    this.setData({ viewMode: event.currentTarget.dataset.mode || "list" });
   },
   handleOpen(event) {
     const { id, bookmark, url, title } = event.currentTarget.dataset;
@@ -327,10 +339,44 @@ Page({
   handleEdit(event) {
     wx.navigateTo({ url: `/pages/note-edit/index?id=${event.currentTarget.dataset.id}` });
   },
+  handleConfirmType(event) {
+    const noteId = event.currentTarget.dataset.id;
+    const cardType = event.currentTarget.dataset.type;
+    const { user } = this.data;
+    if (!noteId || !cardType || !user) return;
+    const title = cardType === "property_listing" ? "整理成房源" : "整理成商品";
+    wx.showModal({
+      title,
+      content: "确认后系统会按这个类型重新整理字段，原文和图片会保留。",
+      confirmText: "确认整理",
+      confirmColor: "#11924d",
+      success: async ({ confirm }) => {
+        if (!confirm) return;
+        wx.showLoading({ title: "整理中" });
+        try {
+          const res = await api.confirmNoteType(noteId, {
+            ownerUserId: user.id,
+            cardType
+          });
+          wx.hideLoading();
+          wx.showToast({ title: "已整理", icon: "success" });
+          const note = res.data || {};
+          if (note.id) {
+            wx.navigateTo({ url: `/pages/note-edit/index?id=${note.id}` });
+          } else {
+            this.loadNotes();
+          }
+        } catch (error) {
+          wx.hideLoading();
+          wx.showToast({ title: error.detail || error.errMsg || "整理失败", icon: "none" });
+        }
+      }
+    });
+  },
   async loadScrmSummaries(notes) {
     const { user } = this.data;
     if (!user) return;
-    const candidates = (notes || []).filter((item) => item.isProperty || item.isGroupbuy);
+    const candidates = (notes || []).filter((item) => item.isProperty || item.isGroupbuy || item.isServiceCard);
     if (!candidates.length) return;
     const summaries = await Promise.all(candidates.map(async (note) => {
       try {
@@ -400,7 +446,7 @@ Page({
     if (!noteId || !user) return;
     wx.showModal({
       title: "删除笔记",
-      content: "删除后不会删除企业微信原始消息，可在后续归档中追溯。确认删除吗？",
+      content: "删除后不会删除企业微信原始消息，可在归档中追溯。确认删除吗？",
       confirmColor: "#e5484d",
       success: async ({ confirm }) => {
         if (!confirm) return;
@@ -417,10 +463,15 @@ Page({
   onShareAppMessage(event) {
     const noteId = event && event.target && event.target.dataset && event.target.dataset.id;
     const note = (this.data.notes || []).find((item) => item.id === noteId) || {};
+    const shareImage = this.data.noteShareImages && this.data.noteShareImages[noteId];
     return {
-      title: note.structuredData && (note.structuredData.community || note.structuredData.productName) || note.title || "资料详情",
+      title: note.isBusinessCard && note.businessCardPreview
+        ? buildBusinessCardShareTitle(note.businessCardPreview)
+        : note.isServiceOffer && note.serviceOfferPreview
+          ? buildServiceOfferShareTitle(note.serviceOfferPreview)
+          : note.structuredData && (note.structuredData.community || note.structuredData.productName) || note.title || "资料详情",
       path: `/pages/note-preview/index?id=${noteId || ""}`,
-      imageUrl: note.coverUrl || ""
+      imageUrl: shareImage || (note.serviceOfferPreview && note.serviceOfferPreview.coverUrl) || (note.businessCardPreview && note.businessCardPreview.avatarUrl) || note.coverUrl || ""
     };
   }
 });

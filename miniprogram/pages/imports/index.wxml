@@ -14,7 +14,7 @@
   <view class="imports-head">
     <view>
       <view class="imports-title">新导入资料</view>
-      <view class="imports-subtitle">先确认标题和内容，再选择模板细分编辑。</view>
+      <view class="imports-subtitle">第一次认领会绑定房源助手，之后发来的资料自动进你的账号。</view>
     </view>
     <view class="imports-count">{{imports.length}}</view>
   </view>
@@ -53,7 +53,7 @@
 
       <view class="import-footer">
         <view class="import-meta">{{item.displayMeta}}</view>
-        <button class="claim-btn" data-id="{{item.id}}" bindtap="handleClaim">认领并编辑</button>
+        <button class="claim-btn" data-id="{{item.id}}" bindtap="handleClaim">认领并绑定</button>
       </view>
     </view>
   </block>

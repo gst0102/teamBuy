@@ -1,0 +1,8 @@
+<view class="page-shell">
+  <custom-nav title="展示页" />
+  <view class="landing-card">
+    <view wx:if="{{errorText}}" class="landing-title">展示页打不开</view>
+    <view wx:else class="landing-title">正在打开展示页</view>
+    <view class="landing-sub">{{errorText || '请稍候...'}}</view>
+  </view>
+</view>

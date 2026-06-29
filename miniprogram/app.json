@@ -3,10 +3,19 @@
     "pages/home/index",
     "pages/library/index",
     "pages/imports/index",
+    "pages/import-claim/index",
     "pages/visits/index",
     "pages/profile/index",
+    "pages/group-resource-library/index",
+    "pages/enterprise-resource-search/index",
+    "pages/help-feedback/index",
+    "pages/business-dashboard/index",
     "pages/login/index",
     "pages/resource-create/index",
+    "pages/business-card-studio/index",
+    "pages/service-offer-studio/index",
+    "pages/property-same/index",
+    "pages/sales-template-select/index",
     "pages/tag-manage/index",
     "pages/card-edit/index",
     "pages/card-view/index",
@@ -21,6 +30,8 @@
     "pages/note-preview/index",
     "pages/note-poster/index",
     "pages/showcases/index",
+    "pages/showcase-analytics/index",
+    "pages/showcase-share/index",
     "pages/showcase-edit/index",
     "pages/showcase-view/index",
     "pages/orders/index",
@@ -60,19 +71,19 @@
       },
       {
         "pagePath": "pages/library/index",
-        "text": "\u8d44\u6e90\u5e93",
+        "text": "\u8d44\u6599",
         "iconPath": "static/tab/ziyuan-a.png",
         "selectedIconPath": "static/tab/ziyuan-b.png"
       },
       {
-        "pagePath": "pages/resource-create/index",
-        "text": "\u6dfb\u52a0",
+        "pagePath": "pages/showcases/index",
+        "text": "\u5408\u96c6",
         "iconPath": "static/tab/tianjiakefu.png",
         "selectedIconPath": "static/tab/tianjiakefu.png"
       },
       {
         "pagePath": "pages/visits/index",
-        "text": "\u8bbf\u95ee\u8bb0\u5f55",
+        "text": "\u96f7\u8fbe",
         "iconPath": "static/tab/jilu-a.png",
         "selectedIconPath": "static/tab/jilu-b.png"
       },
@@ -83,6 +94,12 @@
         "selectedIconPath": "static/tab/wode-b.png"
       }
     ]
+  },
+  "plugins": {
+    "contactPlugin": {
+      "version": "1.4.7",
+      "provider": "wx104a1a20c3f81ec2"
+    }
   },
   "style": "v2",
   "sitemapLocation": "sitemap.json"

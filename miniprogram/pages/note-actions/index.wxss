@@ -214,6 +214,16 @@
   background: #edf2f7;
 }
 
+.relay-avatar.fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  background: linear-gradient(135deg, #1677ff, #20c997);
+  font-size: 28rpx;
+  font-weight: 900;
+}
+
 .relay-buttons .plain-btn {
   flex: 0 0 auto;
   width: auto;
@@ -231,6 +241,69 @@
 }
 
 .relay-buttons .plain-btn::after {
+  border: 0;
+}
+
+.relay-status-actions {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12rpx;
+  margin-top: 14rpx;
+}
+
+.relay-status-actions button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 60rpx;
+  line-height: 60rpx;
+  margin: 0;
+  border-radius: 8rpx;
+  background: #f1f5f9;
+  color: #475569;
+  font-size: 23rpx;
+  font-weight: 800;
+}
+
+.relay-status-actions button.active {
+  background: #11924d;
+  color: #ffffff;
+}
+
+.relay-status-actions button::after {
+  border: 0;
+}
+
+.lead-quick-actions {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10rpx;
+  margin-top: 16rpx;
+}
+
+.lead-quick-actions button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  height: 58rpx;
+  margin: 0;
+  padding: 0 6rpx;
+  border-radius: 8rpx;
+  background: #f1f5f9;
+  color: #475569;
+  font-size: 22rpx;
+  font-weight: 900;
+  line-height: 1.1;
+  box-sizing: border-box;
+}
+
+.lead-quick-actions button:first-child {
+  color: #11924d;
+  background: #e8f7ef;
+}
+
+.lead-quick-actions button::after {
   border: 0;
 }
 

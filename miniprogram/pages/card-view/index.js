@@ -1,5 +1,6 @@
 const api = require("../../services/api");
 const resourceStore = require("../../stores/resource-store");
+const { safeAvatarUrl } = require("../../utils/dashboard");
 
 function resolveRelayStatus(relay) {
   if (!relay) {
@@ -69,7 +70,7 @@ Page({
     await api.recordView(this.data.cardId, currentUser ? {
       viewerUserId: currentUser.id,
       nickname: currentUser.nickname,
-      avatarUrl: currentUser.avatarUrl
+      avatarUrl: safeAvatarUrl(currentUser.avatarUrl)
     } : {
       anonymousId: `anon_${Date.now()}`
     });
@@ -139,7 +140,7 @@ Page({
       await api.createRelay(this.data.cardId, {
         userId: currentUser.id,
         nickname: currentUser.nickname,
-        avatarUrl: currentUser.avatarUrl,
+        avatarUrl: safeAvatarUrl(currentUser.avatarUrl),
         phone: this.data.phone,
         address: this.data.address
       });

@@ -1,37 +1,119 @@
 <view class="page-shell">
-  <custom-nav title="展示页" />
+  <custom-nav title="合集" />
 
-  <view class="toolbar">
-    <view>
-      <view class="page-title">展示页</view>
-      <view class="page-sub">把多条资料组合成一个客户可打开的小程序页面</view>
+  <view class="library-hero">
+    <view class="hero-copy">
+      <view class="hero-kicker">多条资料打包成一页</view>
+      <view class="hero-title">{{collectionCopy.title}}</view>
+      <view class="hero-subtitle">多条资料，一页发客户。</view>
     </view>
-    <button class="primary-btn" bindtap="handleCreate">新建</button>
+    <view class="library-visual">合</view>
+  </view>
+
+  <view class="showcase-hero-panel">
+    <view class="showcase-hero-copy">
+      <view class="showcase-hero-label">{{directionCards[0].title || collectionCopy.title}}</view>
+      <view class="showcase-hero-title">打开小程序查看完整合集</view>
+      <view class="showcase-hero-sub">适合方案、案例、对比。</view>
+    </view>
+    <view class="showcase-hero-badges">
+      <view class="showcase-hero-badge primary">支持生成同款</view>
+      <view class="showcase-hero-badge">导出方案书</view>
+    </view>
+  </view>
+
+  <view class="showcase-action-bar">
+    <view class="mode-pill">{{modeName}}</view>
+    <button class="primary-btn compact-create" bindtap="handleCreate">{{collectionCopy.createText}}</button>
+  </view>
+
+  <view class="showcase-filter-row">
+    <block wx:for="{{showcaseFilters}}" wx:key="key">
+      <view class="showcase-filter {{activeShowcaseFilter === item.key ? 'active' : ''}}" data-key="{{item.key}}" bindtap="handleShowcaseFilter">{{item.label}}</view>
+    </block>
   </view>
 
   <view wx:if="{{loading}}" class="empty">加载中...</view>
 
-  <view wx:elif="{{!showcases.length}}" class="empty">
-    <view class="empty-title">还没有展示页</view>
-    <view class="empty-sub">先新建一个，把常用房源、商品或资料放进去。</view>
-    <button class="primary-btn wide" bindtap="handleCreate">新建展示页</button>
-  </view>
+  <block wx:else>
+    <view wx:if="{{refreshing && showcases.length}}" class="refresh-tip">正在同步最新合集</view>
 
-  <view wx:else class="list">
-    <view wx:for="{{showcases}}" wx:key="id" class="showcase-row">
-      <image wx:if="{{item.bannerUrl}}" class="banner" src="{{item.bannerUrl}}" mode="aspectFill"></image>
-      <view wx:else class="banner fallback">{{item.initial}}</view>
-      <view class="row-main" bindtap="handleEdit" data-id="{{item.id}}">
-        <view class="row-title">{{item.name}}</view>
-        <view class="row-desc">{{item.descText}}</view>
-        <view class="meta-line">
-          <text class="status {{item.status}}">{{item.statusText}}</text>
-          <text>{{item.itemCountText}}</text>
-        </view>
-      </view>
-      <view class="row-actions">
-        <button class="ghost-btn" bindtap="handlePreview" data-id="{{item.id}}">预览</button>
+    <view wx:if="{{!showcases.length}}" class="empty">
+      <view class="empty-title">还没有合集</view>
+      <view class="empty-sub">{{collectionCopy.emptySub}}</view>
+      <button class="primary-btn wide" bindtap="handleCreate">{{collectionCopy.createText}}</button>
+      <button wx:if="{{mode === 'groupbuy'}}" class="ghost-btn wide secondary-empty-btn" bindtap="handleCreateProduct">先建一个商品</button>
+      <view wx:if="{{mode === 'service'}}" class="service-empty-actions">
+        <button class="ghost-btn wide secondary-empty-btn" bindtap="handleGoServiceLibrary">去资料里做名片/方案</button>
       </view>
     </view>
-  </view>
+
+    <view wx:else class="list">
+      <view wx:for="{{showcases}}" wx:key="id" class="showcase-row">
+        <image wx:if="{{item.bannerUrl}}" class="banner" src="{{item.bannerUrl}}" mode="aspectFill"></image>
+        <view wx:else class="banner fallback tone-{{item.titleCover.tone}} lite">
+          <view class="title-cover-badge compact">{{item.titleCover.badge}}</view>
+          <view class="title-cover-line">{{item.titleCover.line1}}</view>
+          <view class="title-cover-line second" wx:if="{{item.titleCover.line2}}">{{item.titleCover.line2}}</view>
+          <view class="title-cover-hint">轻设计合集卡</view>
+        </view>
+        <view class="row-main" bindtap="handleEdit" data-id="{{item.id}}">
+          <view class="row-title">{{item.name}}</view>
+          <view class="row-desc">{{item.descText}}</view>
+          <view class="row-created-time" wx:if="{{item.createdText}}">{{item.createdText}}</view>
+          <view class="showcase-purpose {{item.purpose.tone}}">
+            <text>{{item.purpose.text}}</text>
+            <view>{{item.purpose.hint}}</view>
+          </view>
+          <view class="compact-status-row">
+            <text class="status {{item.status}}">{{item.statusText}}</text>
+            <text class="status-pill count">{{item.itemCountText}}</text>
+            <text class="status-pill {{item.deliveryStatus.tone}}">{{item.deliveryStatus.text}}</text>
+          </view>
+          <view wx:if="{{item.status === 'published'}}" class="effect-line">{{item.effectText}}</view>
+          <view class="share-growth-tip">
+            <text>打开小程序看完整合集</text>
+            <text>· 输入同款继续问</text>
+            <text>· 可导出方案书</text>
+          </view>
+        </view>
+        <view class="row-actions">
+          <button wx:if="{{item.status === 'published'}}" class="primary-btn small" open-type="share" bindtap="prepareShare" data-id="{{item.id}}" data-title="{{item.shareTitle}}" data-banner="{{item.bannerUrl}}">发客户</button>
+          <button wx:else class="ghost-btn small" bindtap="handleEdit" data-id="{{item.id}}">编辑</button>
+          <button class="more-btn" bindtap="handleMore" data-id="{{item.id}}" data-status="{{item.status}}">更多</button>
+        </view>
+        <view wx:if="{{expandedAnalyticsId === item.id}}" class="analytics-panel">
+          <view class="analytics-grid">
+            <view><strong>{{item.analytics.summary.pv || 0}}</strong><text>打开</text></view>
+            <view><strong>{{item.analytics.summary.uv || 0}}</strong><text>访客</text></view>
+            <view><strong>{{item.analytics.summary.noteClickCount || 0}}</strong><text>看资料</text></view>
+            <view><strong>{{item.analytics.summary.consultClickCount || 0}}</strong><text>咨询</text></view>
+          </view>
+          <view class="analytics-block">
+            <view class="analytics-title">最近访客</view>
+            <view wx:if="{{!item.analytics.recentViewers.length}}" class="analytics-empty">还没有登录访客</view>
+            <view wx:for="{{item.analytics.recentViewers}}" wx:for-item="viewer" wx:key="viewerUserId" class="viewer-row">
+              <image wx:if="{{viewer.avatarUrl}}" class="viewer-avatar" src="{{viewer.avatarUrl}}" mode="aspectFill"></image>
+              <view wx:else class="viewer-avatar fallback-small">{{viewer.avatarText}}</view>
+              <view class="viewer-main">
+                <view>{{viewer.nickname}}</view>
+                <text>打开 {{viewer.viewCount}} 次</text>
+              </view>
+            </view>
+            <view wx:if="{{item.analytics.summary.anonymousUv}}" class="analytics-empty">另有 {{item.analytics.summary.anonymousUv}} 位匿名访客</view>
+          </view>
+          <view class="analytics-block">
+            <view class="analytics-title">资料点击</view>
+            <view wx:if="{{!item.analytics.topNotes.length}}" class="analytics-empty">还没有资料点击</view>
+            <view wx:for="{{item.analytics.topNotes}}" wx:for-item="note" wx:key="noteId" class="note-click-row" data-note-id="{{note.noteId}}" bindtap="handleOpenNoteActions">
+              <text>{{note.title}}</text>
+              <strong>{{note.clickCount}}</strong>
+              <view wx:if="{{note.noteId}}" class="note-action">处理</view>
+            </view>
+          </view>
+        </view>
+      </view>
+    </view>
+  </block>
+  <canvas canvas-id="showcaseListShareCanvas" class="share-image-canvas"></canvas>
 </view>

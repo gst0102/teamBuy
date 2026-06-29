@@ -1,0 +1,28 @@
+.page-shell {
+  min-height: 100vh;
+  padding: 32rpx;
+  box-sizing: border-box;
+  background: #f5f8fc;
+}
+
+.landing-card {
+  margin-top: 180rpx;
+  padding: 40rpx 32rpx;
+  border-radius: 16rpx;
+  background: #ffffff;
+  border: 1rpx solid #e5edf6;
+  text-align: center;
+}
+
+.landing-title {
+  color: #162033;
+  font-size: 34rpx;
+  font-weight: 900;
+}
+
+.landing-sub {
+  margin-top: 16rpx;
+  color: #758196;
+  font-size: 26rpx;
+  line-height: 1.6;
+}

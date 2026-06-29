@@ -1,0 +1,88 @@
+<view class="page-shell">
+  <custom-nav title="选择模板" />
+
+  <view class="header">
+    <view>
+      <view class="title">挑一个销售页模板</view>
+      <view class="subtitle">选模板，改内容，直接发客户</view>
+    </view>
+  </view>
+
+  <view class="tabs">
+    <block wx:for="{{tabs}}" wx:key="value">
+      <button class="{{cardType === item.value ? 'active' : ''}}" data-type="{{item.value}}" bindtap="handleSwitchType">{{item.label}}</button>
+    </block>
+  </view>
+
+  <view class="template-list">
+    <block wx:for="{{templates}}" wx:key="id">
+      <view class="template-card {{item.toneClass}} {{selectedTemplateId === item.id ? 'selected' : ''}}" data-id="{{item.id}}" bindtap="handleSelectTemplate">
+        <view wx:if="{{item.cardType === 'business_card'}}" class="namecard-preview preview-{{item.layout}}">
+          <view class="namecard-shine"></view>
+          <view class="namecard-avatar">{{item.preview.initial}}</view>
+          <view class="namecard-main">
+            <view class="namecard-name">{{item.preview.title}}</view>
+            <view class="namecard-role">
+              <text>{{item.preview.roleBadge}}</text>
+            </view>
+            <view class="namecard-org">{{item.preview.organization}}</view>
+            <view class="namecard-service">{{item.preview.headline}}</view>
+            <view class="namecard-contact">{{item.preview.contactLine}}</view>
+          </view>
+        </view>
+        <view wx:else class="template-preview preview-{{item.layout}}">
+          <view class="preview-nav">
+            <text>{{item.badge}}</text>
+            <text>{{item.scene}}</text>
+          </view>
+          <view class="preview-hero">
+            <view class="preview-avatar" wx:if="{{item.cardType === 'business_card'}}">{{item.preview.initial}}</view>
+            <view class="preview-cover" wx:else>
+              <view></view>
+              <text>{{item.preview.title}}</text>
+            </view>
+            <view class="preview-title-wrap">
+              <view class="preview-title">{{item.preview.title}}</view>
+              <view class="preview-subtitle">{{item.preview.subtitle}}</view>
+            </view>
+          </view>
+          <view class="preview-headline">{{item.preview.headline}}</view>
+          <view class="preview-chips">
+            <block wx:for="{{item.preview.chips}}" wx:key="*this" wx:for-item="chip">
+              <text>{{chip}}</text>
+            </block>
+          </view>
+          <view class="preview-sections">
+            <block wx:for="{{item.preview.sections}}" wx:key="*this" wx:for-item="section">
+              <view>
+                <text>{{section}}</text>
+                <text></text>
+              </view>
+            </block>
+          </view>
+          <view class="preview-actions">
+            <text>电话咨询</text>
+            <text>预约沟通</text>
+          </view>
+        </view>
+        <view class="card-body">
+          <view class="card-head">
+            <view class="badge">{{item.scene}}</view>
+            <view class="selected-mark" wx:if="{{selectedTemplateId === item.id}}">已选</view>
+          </view>
+          <view class="template-name">{{item.name}}</view>
+          <view class="template-subtitle">{{item.subtitle}}</view>
+          <view class="template-features">{{item.featureText}}</view>
+        </view>
+      </view>
+    </block>
+  </view>
+
+  <view class="bottom-bar">
+    <view>
+      <view class="bar-title">{{selectedTemplate.name}}</view>
+      <view class="bar-sub">{{selectedTemplate.subtitle}}</view>
+    </view>
+    <button loading="{{creating}}" disabled="{{creating}}" bindtap="handleCreate">使用模板</button>
+  </view>
+</view>

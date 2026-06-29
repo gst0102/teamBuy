@@ -21,16 +21,52 @@
   font-size: 24rpx;
 }
 
+.mind-card {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14rpx;
+  margin-bottom: 20rpx;
+}
+
+.mind-card view {
+  min-width: 0;
+  padding: 18rpx;
+  border-radius: 8rpx;
+  background: #ffffff;
+  border: 1rpx solid #e3ebf5;
+  box-sizing: border-box;
+}
+
+.mind-card text {
+  display: block;
+}
+
+.mind-card text:first-child {
+  color: #1677ff;
+  font-size: 25rpx;
+  font-weight: 900;
+}
+
+.mind-card text:last-child {
+  margin-top: 8rpx;
+  color: #667085;
+  font-size: 22rpx;
+  line-height: 1.35;
+}
+
 .create-panel {
   display: grid;
-  grid-template-columns: 1fr 140rpx;
+  grid-template-columns: minmax(0, 1fr) 140rpx;
   gap: 14rpx;
   padding: 18rpx;
   border-radius: 8rpx;
   background: #fff;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .create-panel input {
+  min-width: 0;
   height: 72rpx;
   padding: 0 18rpx;
   border-radius: 8rpx;
@@ -40,13 +76,28 @@
 }
 
 .create-panel button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 140rpx;
+  min-width: 0;
+  max-width: 140rpx;
   height: 72rpx;
-  line-height: 72rpx;
+  line-height: 1;
+  margin: 0;
   padding: 0;
   border-radius: 8rpx;
   background: #11924d;
   color: #fff;
   font-size: 26rpx;
+  font-weight: 900;
+  box-sizing: border-box;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.create-panel button::after {
+  border: 0;
 }
 
 .topic-list {
@@ -87,6 +138,39 @@
   text-align: center;
   line-height: 64rpx;
   font-weight: 900;
+}
+
+.topic-side {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.topic-side button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 108rpx;
+  height: 56rpx;
+  margin: 0;
+  padding: 0;
+  border-radius: 999rpx;
+  background: #1677ff;
+  color: #ffffff;
+  font-size: 22rpx;
+  font-weight: 900;
+  line-height: 1;
+  box-sizing: border-box;
+}
+
+.topic-side button.danger {
+  background: #fff1f0;
+  color: #d92d20;
+}
+
+.topic-side button::after {
+  border: 0;
 }
 
 .empty-state {

@@ -1,0 +1,7 @@
+{
+  "navigationBarTitleText": "电子名片",
+  "navigationStyle": "custom",
+  "usingComponents": {
+    "custom-nav": "/components/custom-nav/index"
+  }
+}

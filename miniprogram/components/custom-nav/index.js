@@ -2,10 +2,13 @@ const { getButtonPositionData } = require("../../utils/nav");
 
 const ROUTE_TITLES = {
   "pages/home/index": "首页",
-  "pages/library/index": "资源库",
+  "pages/library/index": "资料",
   "pages/imports/index": "待认领导入",
-  "pages/visits/index": "访问记录",
+  "pages/visits/index": "客户雷达",
   "pages/profile/index": "我的",
+  "pages/group-resource-library/index": "群资源库",
+  "pages/enterprise-resource-search/index": "企业资源搜索",
+  "pages/help-feedback/index": "帮助与反馈",
   "pages/login/index": "登录",
   "pages/resource-create/index": "添加资源",
   "pages/tag-manage/index": "标签管理",

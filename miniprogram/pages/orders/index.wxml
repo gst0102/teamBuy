@@ -5,28 +5,160 @@
     <view>{{errorText}}</view>
     <button bindtap="handleRetry">重新加载</button>
   </view>
+  <view class="order-summary" wx:if="{{!loading && !errorText && orders.length}}">
+    <view>
+      <text>{{summary.total}}</text>
+      <text>全部</text>
+    </view>
+    <view>
+      <text>{{summary.pending}}</text>
+      <text>待处理</text>
+    </view>
+    <view>
+      <text>{{summary.completed}}</text>
+      <text>已完成</text>
+    </view>
+    <view>
+      <text>{{summary.relay}}</text>
+      <text>接龙</text>
+    </view>
+  </view>
+
+  <view class="drill-panel" wx:if="{{!loading && !errorText && orders.length}}">
+    <view class="drill-head">
+      <view>
+        <view class="drill-title">订单状态</view>
+        <view class="drill-sub">先看待处理，再处理具体买家。</view>
+      </view>
+      <view class="drill-more">{{summary.total}} 单</view>
+    </view>
+    <view class="stage-grid">
+      <view
+        wx:for="{{statusGroups}}"
+        wx:key="key"
+        class="stage-card {{activeStatusFilter === item.key ? 'active' : ''}}"
+        data-status="{{item.key}}"
+        bindtap="handleStatusFilterChange"
+      >
+        <view class="stage-value">{{item.count}}</view>
+        <view class="stage-label">{{item.label}}</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="drill-panel" wx:if="{{!loading && !errorText && sourceGroups.length}}">
+    <view class="drill-head">
+      <view>
+        <view class="drill-title">来源商品</view>
+        <view class="drill-sub">看哪条商品/团购带来订单。</view>
+      </view>
+      <view class="drill-more" bindtap="handleClearOrderFilters">全部 ›</view>
+    </view>
+    <view
+      class="source-group-line"
+      wx:for="{{sourceGroups}}"
+      wx:key="key"
+      data-source="{{item.key}}"
+      bindtap="handleSourceGroupTap"
+    >
+      <view class="source-group-main">
+        <view class="source-group-title">{{item.title}}</view>
+        <view class="source-group-sub">待处理 {{item.pending}} · 成交 {{item.completed}} · 接龙 {{item.relay}}</view>
+      </view>
+      <view class="source-group-count">{{item.total}} 单</view>
+    </view>
+  </view>
+
+  <view class="status-filter-row" wx:if="{{!loading && !errorText && orders.length}}">
+    <view class="status-filter {{activeDateFilter === 'all' ? 'active' : ''}}" data-date="all" bindtap="handleDateFilterChange">全部日期</view>
+    <view class="status-filter {{activeDateFilter === 'today' ? 'active' : ''}}" data-date="today" bindtap="handleDateFilterChange">今日新增</view>
+    <block wx:for="{{statusFilters}}" wx:key="key">
+      <view class="status-filter {{activeStatusFilter === item.key ? 'active' : ''}}" data-status="{{item.key}}" bindtap="handleStatusFilterChange">{{item.label}}</view>
+    </block>
+  </view>
+
+  <view class="active-view-card" wx:if="{{!loading && !errorText && orders.length}}">
+    <view>
+      <view class="active-view-title">当前筛选：{{activeViewText}}</view>
+      <view class="active-view-sub">共 {{filteredOrders.length}} 单，下面都是这组来源或状态里的具体买家。</view>
+    </view>
+    <button class="active-view-reset" bindtap="handleClearOrderFilters">{{activeNoteId ? '清除状态' : '全部订单'}}</button>
+  </view>
+
   <view class="empty" wx:elif="{{!loading && !orders.length}}">
-    <view>{{role === 'seller' ? '暂无收到的商品订单' : '暂无购买订单'}}</view>
+    <view>{{role === 'seller' ? '暂无收到的商品订单/接龙' : '暂无购买订单'}}</view>
     <text>{{role === 'seller' ? '客户下单后会出现在这里。' : '你在商品页下单后会出现在这里。'}}</text>
   </view>
-  <block wx:for="{{orders}}" wx:key="id">
-    <view class="order-card" data-id="{{item.id}}" bindtap="handleOpenOrder">
-      <image wx:if="{{item.coverUrl}}" class="cover" src="{{item.coverUrl}}" mode="aspectFill" />
-      <view wx:else class="cover placeholder">商</view>
+  <block wx:for="{{filteredOrders}}" wx:key="id">
+    <view class="order-card" data-id="{{item.id}}" bindtap="handleOpenOrderSheet">
+      <image wx:if="{{item.buyerAvatarUrl}}" class="buyer-avatar" src="{{item.buyerAvatarUrl}}" mode="aspectFill" />
+      <view wx:else class="buyer-avatar fallback">{{item.buyerAvatarText}}</view>
       <view class="main">
         <view class="topline">
-          <text class="title">{{item.title}}</text>
+          <text class="title">{{item.buyerDisplayName}}</text>
           <text class="status">{{item.statusText}}</text>
         </view>
+        <view class="summary">{{item.title}}</view>
         <view class="summary">{{item.summary}}</view>
         <view class="info" wx:if="{{item.address}}">地址：{{item.address}}</view>
         <view class="info" wx:if="{{item.contactText}}">联系：{{item.contactText}}</view>
         <view class="info" wx:if="{{item.remark}}">备注：{{item.remark}}</view>
+        <view class="order-actions" wx:if="{{role === 'seller' && (item.phone || item.wechat)}}">
+          <button wx:if="{{item.phone}}" data-phone="{{item.phone}}" catchtap="handleCallPhone">外呼</button>
+          <button wx:if="{{item.wechat}}" data-wechat="{{item.wechat}}" catchtap="handleCopyWechat">复制微信</button>
+        </view>
         <view class="meta">
-          <text>{{role === 'seller' ? item.buyerName : '商家'}}</text>
+          <text>{{item.actionKindText}}</text>
           <text>{{item.createdText}}</text>
         </view>
       </view>
     </view>
   </block>
+  <view class="empty" wx:if="{{!loading && orders.length && !filteredOrders.length}}">
+    <view>当前分组暂无记录</view>
+    <text>可以切换到其它状态查看。</text>
+  </view>
+
+  <view wx:if="{{orderDetailOpen && selectedOrder}}" class="order-detail-mask" catchtap="handleCloseOrderSheet">
+    <view class="order-detail-sheet" catchtap="noop">
+      <view class="detail-head">
+        <image class="detail-avatar" wx:if="{{selectedOrder.buyerAvatarUrl}}" src="{{selectedOrder.buyerAvatarUrl}}" mode="aspectFill" />
+        <view class="detail-avatar fallback" wx:else>{{selectedOrder.buyerAvatarText}}</view>
+        <view class="detail-main">
+          <view class="detail-name">{{selectedOrder.buyerDisplayName}}</view>
+          <view class="detail-sub">{{selectedOrder.statusText}} · {{selectedOrder.createdText}}</view>
+        </view>
+        <button class="detail-close" catchtap="handleCloseOrderSheet">×</button>
+      </view>
+
+      <view class="detail-section">
+        <view class="detail-section-title">来源订单</view>
+        <view class="detail-tags">
+          <view class="detail-tag blue">{{selectedOrder.title}}</view>
+          <view class="detail-tag green" wx:if="{{selectedOrder.summary}}">{{selectedOrder.summary}}</view>
+          <view class="detail-tag orange" wx:if="{{selectedOrder.actionKindText}}">{{selectedOrder.actionKindText}}</view>
+        </view>
+        <view class="detail-note" wx:if="{{selectedOrder.remark}}">备注：{{selectedOrder.remark}}</view>
+        <view class="detail-note" wx:if="{{selectedOrder.address}}">地址：{{selectedOrder.address}}</view>
+      </view>
+
+      <view class="detail-section" wx:if="{{role === 'seller'}}">
+        <view class="detail-section-title">联系方式</view>
+        <view class="detail-contact-row" wx:if="{{selectedOrder.phone}}">
+          <text>电话 {{selectedOrder.phone}}</text>
+          <button data-phone="{{selectedOrder.phone}}" catchtap="handleCallPhone">外呼</button>
+        </view>
+        <view class="detail-contact-row" wx:if="{{selectedOrder.wechat}}">
+          <text>微信 {{selectedOrder.wechat}}</text>
+          <button class="wechat" data-wechat="{{selectedOrder.wechat}}" catchtap="handleCopyWechat">复制微信</button>
+        </view>
+        <view class="detail-empty" wx:if="{{!selectedOrder.phone && !selectedOrder.wechat}}">暂未留下电话或微信</view>
+      </view>
+
+      <view class="detail-actions">
+        <button class="detail-secondary" catchtap="handleOpenSelectedOrder">查看订单</button>
+        <button class="detail-primary" catchtap="handleSelectedOrderPrimaryAction">{{role === 'seller' ? '立即处理' : '查看详情'}}</button>
+      </view>
+    </view>
+  </view>
 </view>

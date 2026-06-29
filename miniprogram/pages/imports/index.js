@@ -61,17 +61,26 @@ Page({
   },
   async handleClaim(event) {
     const currentUser = getApp().globalData.currentUser;
+    if (!currentUser || !currentUser.id) {
+      wx.navigateTo({ url: "/pages/login/index" });
+      return;
+    }
     try {
       const importId = event.currentTarget.dataset.id;
       const res = await api.claimImport(importId, currentUser.id);
       const selected = this.data.imports.find((item) => item.id === importId);
       const template = selected ? selected.selectedTemplate : "general";
       const noteId = res.data.note && res.data.note.id;
+      wx.showToast({ title: "已绑定房源助手", icon: "success" });
       if (noteId) {
-        wx.navigateTo({ url: `/pages/note-edit/index?id=${noteId}&template=${template}` });
+        setTimeout(() => {
+          wx.navigateTo({ url: `/pages/note-edit/index?id=${noteId}&template=${template}` });
+        }, 500);
         return;
       }
-      wx.navigateTo({ url: `/pages/card-edit/index?id=${res.data.card.id}` });
+      setTimeout(() => {
+        wx.navigateTo({ url: `/pages/card-edit/index?id=${res.data.card.id}` });
+      }, 500);
     } catch (error) {
       wx.showToast({ title: "认领失败", icon: "none" });
     }

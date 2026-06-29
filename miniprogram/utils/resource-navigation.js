@@ -22,6 +22,20 @@ async function navigateToResource(cardOrId, fallback = "view") {
   try {
     const card = await resolveCard(cardOrId);
     if (card && card.sourceNoteId) {
+      const config = card.visibilityConfig || {};
+      const cardType = card.cardType || config.cardType || "";
+      if (fallback === "view") {
+        wx.navigateTo({ url: `/pages/note-preview/index?id=${card.sourceNoteId}` });
+        return;
+      }
+      if (cardType === "business_card") {
+        wx.navigateTo({ url: `/pages/business-card-studio/index?id=${card.sourceNoteId}` });
+        return;
+      }
+      if (cardType === "service_offer") {
+        wx.navigateTo({ url: `/pages/service-offer-studio/index?id=${card.sourceNoteId}` });
+        return;
+      }
       wx.navigateTo({ url: `/pages/note-edit/index?id=${card.sourceNoteId}` });
       return;
     }

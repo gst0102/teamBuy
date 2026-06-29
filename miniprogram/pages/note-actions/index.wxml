@@ -6,7 +6,7 @@
     </view>
     <view>
       <text>{{summary.leadContact}}</text>
-      <text>留资</text>
+      <text>留言</text>
     </view>
     <view>
       <text>{{summary.appointment}}</text>
@@ -32,13 +32,14 @@
       <view class="action-item">
         <view class="item-head">
           <view class="relay-person">
-            <image class="relay-avatar" wx:if="{{item.customerAvatarUrl || item.payload.avatarUrl}}" src="{{item.customerAvatarUrl || item.payload.avatarUrl}}" mode="aspectFill" />
+            <image class="relay-avatar" wx:if="{{item.displayAvatarUrl}}" src="{{item.displayAvatarUrl}}" mode="aspectFill" />
+            <view class="relay-avatar fallback" wx:else>{{item.avatarText}}</view>
             <view class="relay-main">
               <view class="item-title">{{item.customerName}}</view>
               <view class="item-time">{{item.createdText}}</view>
             </view>
           </view>
-          <view class="status-pill">{{item.actionKey === 'relay-intent' ? '已接龙' : '已下单'}}</view>
+          <view class="status-pill">{{item.orderStatusText || (item.actionKey === 'relay-intent' ? '已接龙' : '已下单')}}</view>
         </view>
         <view class="detail-lines">
           <text wx:for="{{item.details}}" wx:key="*this">{{item}}</text>
@@ -49,6 +50,16 @@
           <button class="plain-btn" wx:if="{{item.payload.wechat}}" data-value="{{item.payload.wechat}}" bindtap="handleCopyContact">复制微信</button>
           <button class="plain-btn" wx:if="{{item.payload.phone}}" data-phone="{{item.payload.phone}}" bindtap="handleCallPhone">拨号</button>
           <message-entry variant="pill" title="发消息" desc="" note-id="{{noteId}}" order-action-id="{{item.id}}" />
+        </view>
+        <view class="relay-status-actions" wx:if="{{item.canProcessOrder}}">
+          <block wx:for="{{productStatusOptions}}" wx:key="value" wx:for-item="statusItem">
+            <button
+              class="{{item.orderStatus === statusItem.value ? 'active' : ''}}"
+              data-id="{{item.id}}"
+              data-status="{{statusItem.value}}"
+              bindtap="handleSetProductStatus"
+            >{{statusItem.label}}</button>
+          </block>
         </view>
       </view>
     </block>
@@ -74,6 +85,18 @@
           </view>
           <text wx:if="{{item.customerWechat}}">微信 {{item.customerWechat}}</text>
           <text>跟进 {{item.nextFollowUpText}}</text>
+        </view>
+        <view class="lead-quick-actions">
+          <button
+            wx:for="{{leadQuickActions}}"
+            wx:key="label"
+            wx:for-item="statusItem"
+            data-id="{{item.id}}"
+            data-status="{{statusItem.status}}"
+            data-label="{{statusItem.label}}"
+            data-log="{{statusItem.log}}"
+            catchtap="handleSetLeadStatus"
+          >{{statusItem.label}}</button>
         </view>
       </view>
     </block>

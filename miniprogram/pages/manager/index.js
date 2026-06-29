@@ -1,6 +1,6 @@
 const api = require("../../services/api");
 const resourceStore = require("../../stores/resource-store");
-const { formatTime, statusText } = require("../../utils/dashboard");
+const { avatarText, formatTime, safeAvatarUrl, statusText } = require("../../utils/dashboard");
 const { navigateToResourceEdit, navigateToResourceView } = require("../../utils/resource-navigation");
 
 function filterRelays(relays, filter) {
@@ -12,7 +12,7 @@ function filterRelays(relays, filter) {
 function filterEmptyText(filter) {
   if (filter === "pending") return "暂无待跟进线索。";
   if (filter === "followed") return "暂无已跟进线索。";
-  return "暂无接龙线索。";
+  return "暂无互动记录。";
 }
 
 function filterViewers(viewers, filter) {
@@ -107,6 +107,8 @@ Page({
       }, {});
     const viewers = applyViewerReminders((statsRes.data.loggedInViewers || []).map((item) => ({
       ...item,
+      avatarUrl: safeAvatarUrl(item.avatarUrl),
+      avatarText: avatarText(item.nickname),
       viewCount: Number(item.viewCount || 1),
       viewedText: formatTime(item.viewedAt),
       hasRelay: relayUserIds.has(item.userId)

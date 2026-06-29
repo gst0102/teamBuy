@@ -80,6 +80,14 @@ function wechatLogin(payload) {
   });
 }
 
+function updateUserProfile(userId, payload) {
+  return request({
+    url: `/api/auth/users/${userId}/profile`,
+    method: "PATCH",
+    data: payload
+  });
+}
+
 function fetchPendingImports() {
   return request({
     url: "/api/imports/pending"
@@ -100,6 +108,21 @@ function claimImport(importId, userId) {
     url: `/api/imports/${importId}/claim`,
     method: "POST",
     data: { userId }
+  }).then(async (res) => ({
+    ...res,
+    data: {
+      ...res.data,
+      card: await normalizeAndCacheCard(res.data && res.data.card),
+      note: await normalizeAndCacheNote(res.data && res.data.note)
+    }
+  }));
+}
+
+function claimImportByToken(token, userId) {
+  return request({
+    url: "/api/imports/claim-by-token",
+    method: "POST",
+    data: { token, userId }
   }).then(async (res) => ({
     ...res,
     data: {
@@ -139,6 +162,52 @@ function fetchTagSuggestions(params = {}) {
   return request({ url: `/api/notes/tag-suggestions${suffix}` });
 }
 
+function createManualNoteDraft(payload) {
+  return request({
+    url: "/api/notes/manual-draft",
+    method: "POST",
+    data: payload
+  }).then(async (res) => ({
+    ...res,
+    data: await normalizeAndCacheNote(res.data)
+  }));
+}
+
+function createQuickNoteCapture(payload) {
+  return request({
+    url: "/api/notes/quick-capture",
+    method: "POST",
+    data: payload
+  }).then(async (res) => ({
+    ...res,
+    data: await normalizeAndCacheNote(res.data)
+  }));
+}
+
+function parsePropertyBatch(payload) {
+  return request({
+    url: "/api/notes/property-batch/parse",
+    method: "POST",
+    data: payload
+  });
+}
+
+function createPropertyBatch(payload) {
+  return request({
+    url: "/api/notes/property-batch/create",
+    method: "POST",
+    data: payload
+  }).then(async (res) => ({
+    ...res,
+    data: {
+      ...res.data,
+      notes: Array.isArray(res.data && res.data.notes)
+        ? await Promise.all(res.data.notes.map(normalizeAndCacheNote))
+        : []
+    }
+  }));
+}
+
 function fetchTopics(ownerUserId) {
   return request({ url: `/api/notes/topics?ownerUserId=${ownerUserId}` });
 }
@@ -150,11 +219,25 @@ function createDemoData(ownerUserId) {
   });
 }
 
+function cleanupDemoData(ownerUserId) {
+  return request({
+    url: `/api/notes/demo-data/cleanup?ownerUserId=${ownerUserId}`,
+    method: "POST"
+  });
+}
+
 function createTopic(payload) {
   return request({
     url: "/api/notes/topics",
     method: "POST",
     data: payload
+  });
+}
+
+function deleteTopic(topicId, ownerUserId) {
+  return request({
+    url: `/api/notes/topics/${topicId}?ownerUserId=${ownerUserId}`,
+    method: "DELETE"
   });
 }
 
@@ -188,12 +271,30 @@ function fetchNote(noteId, ownerUserId) {
   }));
 }
 
+function fetchPublicNote(noteId) {
+  return request({
+    url: `/api/notes/public/${noteId}`
+  }).then(async (res) => ({
+    ...res,
+    data: await normalizeAndCacheNote(res.data)
+  }));
+}
+
 function geocodeAddress(params = {}) {
   const query = [];
   if (params.address) query.push(`address=${encodeURIComponent(params.address)}`);
   if (params.region) query.push(`region=${encodeURIComponent(params.region)}`);
   return request({
     url: `/api/location/geocode?${query.join("&")}`
+  });
+}
+
+function searchEnterpriseResources(params = {}) {
+  const query = [];
+  if (params.keyword) query.push(`keyword=${encodeURIComponent(params.keyword)}`);
+  if (params.pageSize) query.push(`page_size=${encodeURIComponent(params.pageSize)}`);
+  return request({
+    url: `/api/enterprise-resources/search?${query.join("&")}`
   });
 }
 
@@ -224,6 +325,7 @@ function fetchOrders(params = {}) {
   const query = [];
   if (params.userId) query.push(`userId=${encodeURIComponent(params.userId)}`);
   if (params.role) query.push(`role=${encodeURIComponent(params.role)}`);
+  if (params.noteId) query.push(`noteId=${encodeURIComponent(params.noteId)}`);
   return request({ url: `/api/orders?${query.join("&")}` });
 }
 
@@ -280,6 +382,46 @@ function updateNote(noteId, payload) {
     ...res,
     data: await normalizeAndCacheNote(res.data)
   }));
+}
+
+function duplicateNote(noteId, ownerUserId) {
+  return request({
+    url: `/api/notes/${noteId}/duplicate`,
+    method: "POST",
+    data: { ownerUserId }
+  }).then(async (res) => ({
+    ...res,
+    data: await normalizeAndCacheNote(res.data)
+  }));
+}
+
+function clonePropertySame(payload) {
+  return request({
+    url: "/api/notes/property-same/clone",
+    method: "POST",
+    data: payload
+  }).then(async (res) => {
+    const data = res.data || {};
+    if (data.type === "note" && data.note) {
+      return {
+        ...res,
+        data: {
+          ...data,
+          note: await normalizeAndCacheNote(data.note)
+        }
+      };
+    }
+    if (data.type === "showcase" && data.showcase) {
+      return {
+        ...res,
+        data: {
+          ...data,
+          showcase: normalizeShowcasePayload(data.showcase)
+        }
+      };
+    }
+    return res;
+  });
 }
 
 function organizeNote(noteId, ownerUserId) {
@@ -416,7 +558,7 @@ function uploadImageNote({ filePath, ownerUserId = "" }) {
   const app = getApp();
   return new Promise((resolve, reject) => {
     wx.uploadFile({
-      url: `${app.globalData.apiBaseUrl}/api/ocr/images`,
+      url: `${app.globalData.apiBaseUrl}/api/notes/image-capture`,
       filePath,
       name: "file",
       formData: {
@@ -427,7 +569,7 @@ function uploadImageNote({ filePath, ownerUserId = "" }) {
         try {
           data = JSON.parse(res.data);
         } catch (error) {
-          reject({ detail: "图片保存返回解析失败" });
+          reject({ detail: res.statusCode === 413 ? "图片太大，请换一张较小的图片" : `图片保存失败（${res.statusCode || "无状态码"}）` });
           return;
         }
         if (res.statusCode >= 200 && res.statusCode < 300) {
@@ -520,6 +662,28 @@ function archiveShowcase(showcaseId, ownerUserId) {
   }));
 }
 
+function deleteShowcase(showcaseId, ownerUserId) {
+  return request({
+    url: `/api/showcases/${showcaseId}/delete`,
+    method: "POST",
+    data: { ownerUserId }
+  });
+}
+
+function recordShowcaseEvent(showcaseId, payload = {}) {
+  return request({
+    url: `/api/showcases/${showcaseId}/events`,
+    method: "POST",
+    data: payload
+  });
+}
+
+function fetchShowcaseAnalytics(showcaseId, ownerUserId) {
+  return request({
+    url: `/api/showcases/${showcaseId}/analytics?ownerUserId=${encodeURIComponent(ownerUserId)}`
+  });
+}
+
 function fetchPublicShowcase(showcaseId) {
   return request({
     url: `/api/showcases/public/${showcaseId}`
@@ -527,6 +691,17 @@ function fetchPublicShowcase(showcaseId) {
     ...res,
     data: normalizeShowcasePayload(res.data)
   }));
+}
+
+function fetchBusinessDashboard(ownerUserId, requesterUserId = ownerUserId, mode = "") {
+  const query = [
+    `ownerUserId=${encodeURIComponent(ownerUserId)}`,
+    `requesterUserId=${encodeURIComponent(requesterUserId)}`
+  ];
+  if (mode) query.push(`mode=${encodeURIComponent(mode)}`);
+  return request({
+    url: `/api/dashboard/business?${query.join("&")}`
+  });
 }
 
 function updateCard(cardId, payload) {
@@ -572,6 +747,14 @@ function duplicateCard(cardId, userId) {
 function recordView(cardId, payload) {
   return request({
     url: `/api/cards/${cardId}/view`,
+    method: "POST",
+    data: payload
+  });
+}
+
+function recordNoteView(noteId, payload) {
+  return request({
+    url: `/api/notes/${noteId}/view`,
     method: "POST",
     data: payload
   });
@@ -667,17 +850,27 @@ function deleteLeadReminder(reminderId, ownerUserId) {
 module.exports = {
   mockLogin,
   wechatLogin,
+  updateUserProfile,
   fetchPendingImports,
   claimImport,
+  claimImportByToken,
   fetchNotes,
   fetchTagSuggestions,
+  createManualNoteDraft,
+  createQuickNoteCapture,
+  parsePropertyBatch,
+  createPropertyBatch,
   fetchTopics,
   createDemoData,
+  cleanupDemoData,
   createTopic,
+  deleteTopic,
   addNoteToTopic,
   removeNoteFromTopic,
   fetchNote,
+  fetchPublicNote,
   geocodeAddress,
+  searchEnterpriseResources,
   fetchCustomerActionConfig,
   fetchNoteCustomerActions,
   submitCustomerAction,
@@ -690,6 +883,8 @@ module.exports = {
   sendThreadMessage,
   markThreadRead,
   updateNote,
+  duplicateNote,
+  clonePropertySame,
   organizeNote,
   generateNote,
   confirmNoteType,
@@ -709,12 +904,17 @@ module.exports = {
   updateShowcase,
   publishShowcase,
   archiveShowcase,
+  deleteShowcase,
+  recordShowcaseEvent,
+  fetchShowcaseAnalytics,
   fetchPublicShowcase,
+  fetchBusinessDashboard,
   updateCard,
   deleteCard,
   publishCard,
   duplicateCard,
   recordView,
+  recordNoteView,
   fetchStats,
   createRelay,
   fetchRelays,

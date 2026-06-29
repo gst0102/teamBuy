@@ -66,6 +66,54 @@
     <view class="quick-pill">进入</view>
   </view>
 
+  <view class="drill-panel" wx:if="{{priorityLeads.length}}">
+    <view class="drill-head">
+      <view>
+        <view class="drill-title">优先处理</view>
+        <view class="drill-sub">逾期、今日和待联系客户排在前面。</view>
+      </view>
+      <view class="drill-more">{{priorityLeads.length}} 条</view>
+    </view>
+    <view
+      class="priority-line"
+      wx:for="{{priorityLeads}}"
+      wx:key="id"
+      data-id="{{item.id}}"
+      bindtap="handleOpenLeadDetail"
+    >
+      <image class="lead-avatar" wx:if="{{item.avatarUrl}}" src="{{item.avatarUrl}}" mode="aspectFill" />
+      <view class="lead-avatar fallback" wx:else>{{item.avatarText}}</view>
+      <view class="priority-main">
+        <view class="priority-title">{{item.nickname}}</view>
+        <view class="priority-sub">{{item.dueStateText}} · {{item.cardTitle}}</view>
+      </view>
+      <view class="priority-action">处理 ›</view>
+    </view>
+  </view>
+
+  <view class="drill-panel" wx:if="{{sourceGroups.length}}">
+    <view class="drill-head">
+      <view>
+        <view class="drill-title">按来源资料拆解</view>
+        <view class="drill-sub">先看哪条资料带来线索，再处理具体客户。</view>
+      </view>
+      <view class="drill-more">{{sourceGroups.length}} 个来源</view>
+    </view>
+    <view
+      class="source-group-line"
+      wx:for="{{sourceGroups}}"
+      wx:key="key"
+      data-source="{{item.key}}"
+      bindtap="handleSourceGroupTap"
+    >
+      <view class="source-group-main">
+        <view class="source-group-title">{{item.title}}</view>
+        <view class="source-group-sub">待联系 {{item.pending}} · 今日 {{item.today}} · 逾期 {{item.overdue}}</view>
+      </view>
+      <view class="source-group-count">{{item.total}} 人</view>
+    </view>
+  </view>
+
   <view class="viewer-filter-row">
     <block wx:for="{{filters}}" wx:key="key">
       <view class="viewer-filter {{activeFilter === item.key ? 'active' : ''}}" data-filter="{{item.key}}" bindtap="handleFilterChange">{{item.label}}</view>
@@ -77,14 +125,26 @@
     </block>
   </view>
 
+  <view class="active-view-card">
+    <view>
+      <view class="active-view-title">当前筛选：{{activeViewText}}</view>
+      <view class="active-view-sub">共 {{filteredLeads.length}} 条线索，下面都是这组来源里的具体客户。</view>
+    </view>
+    <button class="active-view-reset" bindtap="handleClearLeadFilters">回到待联系</button>
+  </view>
+
   <block wx:for="{{filteredLeads}}" wx:key="id">
     <view class="panel lead-card">
-      <view class="section-head">
-        <view>
-          <view class="section-title">{{item.nickname}}</view>
-          <view class="lead-status-row">
-            <text class="lead-status">{{item.statusText}}</text>
-            <text class="due-badge {{item.dueState}}">{{item.dueStateText}}</text>
+      <view class="section-head" data-id="{{item.id}}" bindtap="handleOpenLeadSheet">
+        <view class="lead-head-left">
+          <image class="lead-avatar" wx:if="{{item.avatarUrl}}" src="{{item.avatarUrl}}" mode="aspectFill" />
+          <view class="lead-avatar fallback" wx:else>{{item.avatarText}}</view>
+          <view class="lead-head-main">
+            <view class="section-title">{{item.nickname}}</view>
+            <view class="lead-status-row">
+              <text class="lead-status">{{item.statusText}}</text>
+              <text class="due-badge {{item.dueState}}">{{item.dueStateText}}</text>
+            </view>
           </view>
         </view>
         <view class="section-link">{{item.updatedText}}</view>
@@ -100,6 +160,10 @@
       <view class="phone-row" wx:if="{{item.customerPhone}}">
         <text>电话 {{item.customerPhone}}</text>
         <text class="call-action" data-id="{{item.id}}" data-phone="{{item.customerPhone}}" catchtap="handleCallPhone">拨号</text>
+      </view>
+      <view class="phone-row wechat" wx:if="{{item.customerWechat}}">
+        <text>微信 {{item.customerWechat}}</text>
+        <text class="call-action wechat" data-wechat="{{item.customerWechat}}" catchtap="handleCopyWechat">复制</text>
       </view>
       <view class="lead-brief" wx:if="{{item.note || item.latestFollowUp || item.conclusionReason}}">
         <view wx:if="{{item.note}}" class="brief-line">备注：{{item.note}}</view>
@@ -118,4 +182,50 @@
   </block>
 
   <view class="empty-state" wx:if="{{!filteredLeads.length}}">暂无对应线索。</view>
+
+  <view wx:if="{{leadDetailOpen && selectedLead}}" class="lead-detail-mask" catchtap="handleCloseLeadSheet">
+    <view class="lead-detail-sheet" catchtap="noop">
+      <view class="detail-head">
+        <image class="detail-avatar" wx:if="{{selectedLead.avatarUrl}}" src="{{selectedLead.avatarUrl}}" mode="aspectFill" />
+        <view class="detail-avatar fallback" wx:else>{{selectedLead.avatarText}}</view>
+        <view class="detail-main">
+          <view class="detail-name">{{selectedLead.nickname}}</view>
+          <view class="detail-sub">{{selectedLead.statusText}} · {{selectedLead.dueStateText}}</view>
+        </view>
+        <button class="detail-close" catchtap="handleCloseLeadSheet">×</button>
+      </view>
+
+      <view class="detail-section">
+        <view class="detail-section-title">联系方式</view>
+        <view class="detail-contact-row" wx:if="{{selectedLead.customerPhone}}">
+          <text>电话 {{selectedLead.customerPhone}}</text>
+          <button class="call-action" data-id="{{selectedLead.id}}" data-phone="{{selectedLead.customerPhone}}" catchtap="handleCallPhone">拨号</button>
+        </view>
+        <view class="detail-contact-row" wx:if="{{selectedLead.customerWechat}}">
+          <text>微信 {{selectedLead.customerWechat}}</text>
+          <button class="call-action wechat" data-wechat="{{selectedLead.customerWechat}}" catchtap="handleCopyWechat">复制</button>
+        </view>
+        <view class="detail-empty" wx:if="{{!selectedLead.customerPhone && !selectedLead.customerWechat}}">暂未留下电话或微信</view>
+      </view>
+
+      <view class="detail-section">
+        <view class="detail-section-title">来源和跟进</view>
+        <view class="detail-tags">
+          <view class="detail-tag blue" wx:if="{{selectedLead.cardTitle}}">来源：{{selectedLead.cardTitle}}</view>
+          <view class="detail-tag green">查看 {{selectedLead.viewCount || 0}} 次</view>
+          <view class="detail-tag" wx:if="{{selectedLead.lastViewedText}}">最近查看：{{selectedLead.lastViewedText}}</view>
+          <view class="detail-tag orange" wx:if="{{selectedLead.nextFollowUpValue}}">下次跟进：{{selectedLead.nextFollowUpValue}}</view>
+        </view>
+        <view class="detail-note" wx:if="{{selectedLead.note}}">备注：{{selectedLead.note}}</view>
+        <view class="detail-note" wx:if="{{selectedLead.latestFollowUp}}">最近跟进：{{selectedLead.latestFollowUp.content}}</view>
+        <view class="detail-note" wx:if="{{selectedLead.conclusionReason}}">归档原因：{{selectedLead.conclusionReason}}</view>
+      </view>
+
+      <view class="detail-actions">
+        <button class="detail-secondary" catchtap="handleOpenSelectedLeadDetail">查看线索</button>
+        <button class="detail-secondary" catchtap="handleOpenSelectedSource">来源资料</button>
+        <button class="detail-primary" catchtap="handleSelectedLeadPrimaryAction">立即处理</button>
+      </view>
+    </view>
+  </view>
 </view>

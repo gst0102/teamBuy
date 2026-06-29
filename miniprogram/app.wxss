@@ -49,8 +49,92 @@ page {
   border: 1rpx solid rgba(22, 119, 255, 0.14);
 }
 
+/* 全局交互控件基线：小程序原生 button 默认样式必须统一重置。 */
+button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  margin: 0;
+  padding: 0 24rpx;
+  line-height: 1.2;
+  box-sizing: border-box;
+  white-space: nowrap;
+}
+
+button::after {
+  border: 0;
+}
+
+/* 全局交互控件基线：按钮/标签默认必须上下左右居中。 */
+button.primary-btn,
+button.ghost-btn,
+button.danger-btn,
+button.warn-btn,
+button.share-btn,
+button.upload-btn,
+button.more-btn,
+button.toggle-section-btn,
+button.inline-share,
+button.hero-action-btn,
+button.action-btn,
+.ui-center,
+.ui-btn,
+.ui-pill,
+.status,
+.status-pill,
+.soft-chip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+button.primary-btn,
+button.ghost-btn,
+button.danger-btn,
+button.warn-btn,
+button.share-btn,
+button.upload-btn,
+button.more-btn,
+button.toggle-section-btn,
+button.inline-share,
+button.hero-action-btn,
+button.action-btn,
+.ui-btn {
+  margin: 0;
+  padding: 0 24rpx;
+  line-height: 1;
+}
+
+button.primary-btn::after,
+button.ghost-btn::after,
+button.danger-btn::after,
+button.warn-btn::after,
+button.share-btn::after,
+button.upload-btn::after,
+button.more-btn::after,
+button.toggle-section-btn::after,
+button.inline-share::after,
+button.hero-action-btn::after,
+button.action-btn::after,
+.ui-btn::after {
+  border: 0;
+}
+
+.ui-pill,
+.status,
+.status-pill,
+.soft-chip {
+  white-space: nowrap;
+  line-height: 1.2;
+}
+
 .tag {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
   padding: 8rpx 18rpx;
   border-radius: 999rpx;
   background: #edf5ff;
@@ -58,6 +142,8 @@ page {
   font-size: 22rpx;
   margin-right: 12rpx;
   margin-bottom: 12rpx;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
 .field-label {
@@ -130,7 +216,7 @@ page {
 }
 
 .stat-icon {
-  width: 66rpx;
+  width: 76rpx;
   height: 66rpx;
   border-radius: 24rpx;
   margin: 0 auto 10rpx;
@@ -138,7 +224,11 @@ page {
   align-items: center;
   justify-content: center;
   color: #fff;
-  font-size: 32rpx;
+  font-size: 21rpx;
+  font-weight: 900;
+  line-height: 1;
+  white-space: nowrap;
+  letter-spacing: 0;
 }
 
 .stat-value {

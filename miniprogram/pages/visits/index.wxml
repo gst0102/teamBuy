@@ -1,82 +1,206 @@
-<view class="page-shell">
-  <custom-nav title="&#x8BBF;&#x95EE;&#x8BB0;&#x5F55;" />
-  <view class="visits-hero">
-    <view>
-      <view class="hero-title">访问记录</view>
-      <view class="hero-subtitle">查看每个资源卡片的访客与互动行为</view>
-    </view>
-    <view class="visits-visual">线索</view>
-  </view>
+<view class="page-shell radar-page">
+  <custom-nav title="客户雷达" />
 
-  <view class="range-tabs">
-    <block wx:for="{{ranges}}" wx:key="key">
-      <view class="range-tab {{activeRange === item.key ? 'active' : ''}}" data-key="{{item.key}}" bindtap="handleRangeChange">{{item.label}}</view>
-    </block>
-  </view>
-
-  <view class="panel">
-    <view class="stat-grid">
-      <view class="stat-item">
-        <view class="stat-icon blue">客</view>
-        <text class="stat-value">{{summary.totalUv}}</text>
-        <text class="stat-label">访客</text>
-      </view>
-      <view class="stat-item">
-        <view class="stat-icon green">访</view>
-        <text class="stat-value">{{summary.totalPv}}</text>
-        <text class="stat-label">总访问</text>
-      </view>
-      <view class="stat-item">
-        <view class="stat-icon orange">重</view>
-        <text class="stat-value">{{summary.repeatVisits}}</text>
-        <text class="stat-label">重复访问</text>
-      </view>
-      <view class="stat-item">
-        <view class="stat-icon purple">意</view>
-        <text class="stat-value">{{summary.highIntent}}</text>
-        <text class="stat-label">高意向</text>
-      </view>
-    </view>
-  </view>
-
-  <view class="chip-row visits-filter">
-    <block wx:for="{{visitFilters}}" wx:key="key">
-      <text class="chip {{activeVisitFilter === item.key ? 'active' : ''}}" data-key="{{item.key}}" bindtap="handleVisitFilterChange">{{item.label}}</text>
-    </block>
-  </view>
-
-  <block wx:for="{{groups}}" wx:key="id">
-    <view class="visit-group">
-      <view class="visit-resource">
-        <image wx:if="{{item.coverUrl}}" class="visit-cover" src="{{item.coverUrl}}" mode="aspectFill"></image>
-        <view wx:else class="visit-cover placeholder">{{item.categoryName}}</view>
-        <view class="visit-info" bindtap="handleOpenCard" data-id="{{item.id}}">
-          <view class="visit-title">{{item.title}}</view>
-          <view class="muted">访问 {{item.stats.pv}} · 访客 {{item.stats.uv}}</view>
+  <view class="radar-hero">
+    <view class="radar-hero-main">
+      <view class="radar-hero-copy">
+        <view class="radar-hero-kicker">谁值得跟进</view>
+        <view class="radar-hero-title">先看信号，再决定怎么跟</view>
+        <view class="radar-hero-sub">先看谁值得跟。</view>
+        <view class="radar-hero-foot">
+          <view class="radar-hero-pill">今日机会</view>
+          <view class="radar-hero-pill">{{modeConfig.shortName || modeConfig.name}}</view>
         </view>
-        <button class="mini-btn" data-id="{{item.id}}" bindtap="handleOpenManager">查看详情</button>
       </view>
-      <block wx:for="{{item.viewers}}" wx:key="userId">
-        <view class="visit-row">
-          <image class="avatar small" src="{{item.avatarUrl}}" mode="aspectFill"></image>
-          <view class="visit-row-main">
-            <view class="visit-name">{{item.nickname}}</view>
-            <view class="muted">{{item.actionLabel}}</view>
-          </view>
-          <view class="visit-time">{{item.timeText}}</view>
+      <view class="radar-hero-visual">
+        <view class="radar-hero-orbit">
+          <view class="hero-orbit-ring outer"></view>
+          <view class="hero-orbit-ring middle"></view>
+          <view class="hero-orbit-ring inner"></view>
+          <view class="hero-orbit-cross horizontal"></view>
+          <view class="hero-orbit-cross vertical"></view>
+          <view class="hero-orbit-center">客</view>
+          <view class="hero-orbit-dot one"></view>
+          <view class="hero-orbit-dot two"></view>
+          <view class="hero-orbit-dot three"></view>
         </view>
-      </block>
-      <view class="empty-state compact" wx:if="{{!item.viewers.length}}">暂无登录访客，匿名访问只计入总量。</view>
+        <view class="hero-signal-card left">
+          <view>高意向</view>
+          <text>{{summary.highIntent || 0}} 人</text>
+        </view>
+        <view class="hero-signal-card right top">
+          <view>待跟进</view>
+          <text>{{summary.pending || 0}} 条</text>
+        </view>
+        <view class="hero-signal-card right bottom">
+          <view>复活机会</view>
+          <text>{{summary.revival || 0}} 条</text>
+        </view>
+      </view>
     </view>
-  </block>
+  </view>
 
-  <view class="empty-state" wx:if="{{!groups.length}}">暂无匹配的访问记录，先发布或分享一个资源吧。</view>
+  <view class="radar-tabs">
+    <view
+      wx:for="{{tabs}}"
+      wx:key="key"
+      class="radar-tab {{activeTab === item.key ? 'active' : ''}}"
+      data-key="{{item.key}}"
+      bindtap="handleTabChange"
+    >{{item.label}}</view>
+  </view>
 
-  <view class="intent-banner" wx:if="{{summary.highIntent}}">
+  <view class="source-filter-bar" wx:if="{{sourceFilter}}">
     <view>
-      <view class="intent-title">高意向提醒</view>
-      <view class="intent-desc">{{summary.highIntent}} 个资源出现重复访问或接龙线索，建议及时跟进。</view>
+      <text>当前只看</text>
+      <view>{{sourceFilter.title || '这条资料'}} 的客户反馈</view>
     </view>
-    <view class="intent-btn">去跟进</view>
+    <button bindtap="handleClearSourceFilter">看全部</button>
+  </view>
+
+  <view class="radar-summary-card">
+    <view class="summary-head">
+      <view>
+        <view class="summary-title">{{summaryView.title}}</view>
+        <view class="summary-sub">{{summaryView.sub}}</view>
+      </view>
+      <view class="summary-badge">{{summaryView.badge}}</view>
+    </view>
+    <view class="summary-grid">
+      <view class="summary-item" wx:for="{{summaryView.metrics}}" wx:key="key">
+        <view class="summary-value">{{item.value}}</view>
+        <view class="summary-label">{{item.label}}</view>
+      </view>
+    </view>
+    <view class="assistant-brief">
+      <view class="assistant-brief-label">今日建议</view>
+      <view class="assistant-brief-text">{{assistantBrief}}</view>
+    </view>
+    <view class="summary-soft-row">
+      <view class="summary-soft-pill">优先处理最值得联系的人</view>
+      <view class="summary-soft-pill muted">同行 {{summary.filtered || 0}} 已过滤</view>
+      <view class="summary-soft-pill muted">导出跟进方案</view>
+    </view>
+  </view>
+
+  <view wx:if="{{activeTab === 'followup'}}">
+    <view class="section-head radar-section-head">
+      <view>
+        <view class="section-title">今天优先跟进</view>
+        <view class="section-sub">高意向排前面。</view>
+      </view>
+      <view class="section-head-side">
+        <view class="section-side-badge">{{radarCards.length}} 条新提醒</view>
+        <view class="section-link" data-tab="followup" bindtap="handleOpenBusinessDashboard">明细</view>
+      </view>
+    </view>
+
+    <view class="empty-state assistant-empty" wx:if="{{!radarCards.length}}">
+      <view>{{radarCopy.emptyFollowup}}</view>
+      <view wx:if="{{sourceFilter}}">这条资料暂时还没有需要优先跟进的人。你可以先看全部雷达，或继续把它发给客户。</view>
+      <view wx:else>先发资料，雷达会亮。</view>
+      <button class="empty-action-btn" bindtap="handleGenerateCompare">先生成一份对比合集</button>
+    </view>
+    <view class="radar-customer-card" wx:for="{{radarCards}}" wx:key="id" data-index="{{index}}" bindtap="handleOpenRadarDetail">
+      <view class="customer-avatar">{{item.avatarText}}</view>
+      <view class="customer-main">
+        <view class="customer-top">
+          <view class="customer-name">{{item.name}}</view>
+          <view class="intent-tag">{{item.intentLabel}}</view>
+        </view>
+        <view class="customer-title">看过：{{item.noteTitle || item.title}}</view>
+        <view class="customer-reason"><text>为什么值得跟：</text>{{item.reason}}</view>
+        <view class="tag-row compact-tags">
+          <text wx:for="{{item.tags}}" wx:key="*this">{{item}}</text>
+          <text>{{item.stateLabel}}</text>
+        </view>
+        <view class="customer-action">
+          <text>AI建议：</text>
+          <view>{{item.action}}</view>
+        </view>
+        <view class="next-step {{item.nextStep.tone}}">
+          <button class="next-step-btn" data-index="{{index}}" catchtap="handleNextStepAction">详情</button>
+        </view>
+      </view>
+    </view>
+
+    <view class="assistant-advice-card" wx:if="{{suggestedActions.length}}">
+      <view class="section-title">AI建议你今天先做这几件事</view>
+      <view class="section-sub assistant-advice-sub">先做轻动作，先把最可能有回应的人接住。</view>
+      <view class="advice-line" wx:for="{{suggestedActions}}" wx:key="*this">
+        <view class="advice-dot"></view>
+        <view>{{item}}</view>
+      </view>
+    </view>
+
+    <view class="timeline-card" wx:if="{{timeline.length}}">
+      <view class="section-title">最近动作</view>
+      <view class="timeline-row" wx:for="{{timeline}}" wx:key="id">
+        <view class="timeline-dot"></view>
+        <view class="timeline-main">
+          <view class="timeline-title">{{item.title}}</view>
+          <view class="timeline-desc">{{item.desc}}</view>
+        </view>
+        <view class="timeline-time">{{item.timeText}}</view>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{activeTab === 'visitors'}}">
+    <view class="section-head radar-section-head">
+      <view>
+        <view class="section-title">访客画像</view>
+        <view class="section-sub">身份、意向、关注点和行为证据放在一起看。</view>
+      </view>
+      <view class="section-link" data-tab="visitors" bindtap="handleOpenBusinessDashboard">明细</view>
+    </view>
+    <view class="empty-state assistant-empty" wx:if="{{!visitorCards.length}}">
+      <view>访客画像还在等待数据。</view>
+      <view wx:if="{{sourceFilter}}">这条资料还没有形成访客画像。有人打开、复访或咨询后，会自动出现价格敏感、位置优先、沉默复活等标签。</view>
+      <view wx:else>{{radarCopy.emptyVisitor}}</view>
+    </view>
+    <view class="visitor-profile-card" wx:for="{{visitorCards}}" wx:key="id">
+      <view class="customer-avatar small">{{item.avatarText}}</view>
+      <view class="visitor-main">
+        <view class="customer-top">
+          <view class="customer-name">{{item.name}}</view>
+          <view class="intent-tag muted">{{item.intentLabel}}</view>
+        </view>
+        <view class="customer-reason">{{item.reason}}</view>
+        <view class="tag-row compact-tags">
+          <text wx:for="{{item.tags}}" wx:key="*this">{{item}}</text>
+          <text>{{item.stateLabel}}</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{activeTab === 'insights'}}">
+    <view class="section-head radar-section-head">
+      <view>
+        <view class="section-title">资料优化建议</view>
+        <view class="section-sub">根据客户行为反推资料哪里该补强。</view>
+      </view>
+      <view class="section-link" data-tab="propertyEffect" bindtap="handleOpenBusinessDashboard">明细</view>
+    </view>
+    <view class="empty-state assistant-empty" wx:if="{{!insights.length}}">
+      <view>{{radarCopy.emptyInsight}}</view>
+      <view wx:if="{{sourceFilter}}">这条资料还没有足够反馈。客户打开、停留、咨询后，我会告诉你标题、价格、联系方式或保障哪里该补强。</view>
+      <view wx:else>{{radarCopy.insightHelp}}</view>
+    </view>
+    <view class="insight-card" wx:for="{{insights}}" wx:key="id">
+      <view class="insight-title">{{item.title}}</view>
+      <view class="insight-stats">{{item.stats}}</view>
+      <view class="insight-suggestion">{{item.suggestion}}</view>
+      <button class="ghost-btn insight-action" data-id="{{item.noteId}}" bindtap="handleOpenResource">{{item.action}}</button>
+    </view>
+
+    <view class="compare-card">
+      <view>
+        <view class="section-title">{{radarCopy.compareTitle}}</view>
+        <view class="section-sub">{{radarCopy.compareDesc}}</view>
+      </view>
+      <button class="copy-btn compare-btn" bindtap="handleGenerateCompare">{{radarCopy.compareButton}}</button>
+    </view>
   </view>
 </view>

@@ -31,6 +31,7 @@
   <view class="action-bar" wx:if="{{order}}">
     <message-entry variant="row" title="发消息" desc="" note-id="{{order.noteId}}" order-action-id="{{order.id}}" />
     <button wx:if="{{role === 'seller'}}" bindtap="handleCallPhone">拨号</button>
+    <button wx:if="{{role === 'seller'}}" bindtap="handleCopyWechat">复制微信</button>
     <button wx:if="{{role === 'seller'}}" bindtap="handleCopyAddress">复制地址</button>
   </view>
 </view>

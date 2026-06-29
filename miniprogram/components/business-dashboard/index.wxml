@@ -1,0 +1,104 @@
+<view class="business-dashboard">
+  <view class="dashboard-head">
+    <view>
+      <view class="dashboard-title">经营看板</view>
+      <view class="dashboard-sub">客户打开、咨询和待处理事项</view>
+    </view>
+    <view class="today-chip">今日打开 {{displayDashboard.summary.todayEventCount || 0}} · 动作 {{displayDashboard.summary.todayActionCount || 0}}</view>
+  </view>
+
+  <view class="metric-grid">
+    <view class="metric-item">
+      <text class="metric-value">{{displayDashboard.summary.showcaseOpenCount || 0}}</text>
+      <text class="metric-label">打开</text>
+    </view>
+    <view class="metric-item">
+      <text class="metric-value">{{displayDashboard.summary.visitorCount || 0}}</text>
+      <text class="metric-label">访客</text>
+    </view>
+    <view class="metric-item">
+      <text class="metric-value">{{displayDashboard.summary.noteClickCount || 0}}</text>
+      <text class="metric-label">看资料</text>
+    </view>
+    <view class="metric-item">
+      <text class="metric-value">{{displayDashboard.summary.consultCount || 0}}</text>
+      <text class="metric-label">咨询</text>
+    </view>
+  </view>
+
+  <view class="entry-grid">
+    <view
+      class="entry-card"
+      wx:for="{{displayDashboard.entries}}"
+      wx:key="key"
+      data-target="{{item.target}}"
+      bindtap="handleOpen"
+    >
+      <view class="entry-main">
+        <text class="entry-title">{{item.title}}</text>
+        <text class="entry-desc">{{item.desc}}</text>
+      </view>
+      <view class="entry-side">
+        <text class="entry-count">{{item.count || 0}}</text>
+        <text class="entry-badge">{{item.badge}}</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="dashboard-section">
+    <view class="section-row">
+      <text>分享来源</text>
+      <text class="section-action" data-target="showcases" bindtap="handleOpen">{{displayDashboard.summary.shareSourceCount || 0}} 批次</text>
+    </view>
+    <view class="empty-line" wx:if="{{!displayDashboard.topShares.length}}">暂无分享来源</view>
+    <view class="share-row" wx:for="{{displayDashboard.topShares}}" wx:key="shareId">
+      <text class="rank-index">{{index + 1}}</text>
+      <view class="share-main">
+        <text class="rank-title">{{item.showcaseName || '展示页'}}</text>
+        <text class="share-desc">打开 {{item.openCount || 0}} · 看资料 {{item.noteClickCount || 0}} · 咨询 {{item.consultCount || 0}}</text>
+      </view>
+      <text class="rank-count">{{item.eventCount || 0}}次</text>
+    </view>
+  </view>
+
+  <view class="dashboard-section">
+    <view class="section-row">
+      <text>最近访客</text>
+      <text class="section-action" data-target="showcases" bindtap="handleOpen">展示页</text>
+    </view>
+    <view class="empty-line" wx:if="{{!displayDashboard.recentVisitors.length}}">暂无展示页访客</view>
+    <view class="visitor-row" wx:for="{{displayDashboard.recentVisitors}}" wx:key="id">
+      <view class="avatar-fallback" wx:if="{{!item.avatarUrl}}">{{item.avatarText}}</view>
+      <image class="visitor-avatar" wx:if="{{item.avatarUrl}}" src="{{item.avatarUrl}}" mode="aspectFill" />
+      <view class="visitor-main">
+        <view class="visitor-name">{{item.nickname}}</view>
+        <view class="visitor-desc">{{item.actionText}} · {{item.timeText}}</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="dashboard-section">
+    <view class="section-row">
+      <text>资料点击排行</text>
+      <text class="section-action" data-target="showcases" bindtap="handleOpen">效果</text>
+    </view>
+    <view class="empty-line" wx:if="{{!displayDashboard.topNotes.length}}">暂无资料点击</view>
+    <view class="rank-row" wx:for="{{displayDashboard.topNotes}}" wx:key="noteId">
+      <text class="rank-index">{{index + 1}}</text>
+      <text class="rank-title">{{item.title}}</text>
+      <text class="rank-count">{{item.clickCount}}次</text>
+    </view>
+  </view>
+
+  <view class="dashboard-section">
+    <view class="section-row">
+      <text>最近客户动作</text>
+      <text class="section-action" data-target="customers" bindtap="handleOpen">客户资料</text>
+    </view>
+    <view class="empty-line" wx:if="{{!displayDashboard.latestActions.length}}">暂无客户动作</view>
+    <view class="action-row" wx:for="{{displayDashboard.latestActions}}" wx:key="id">
+      <view class="action-title">{{item.customerName}} · {{item.actionLabel}}</view>
+      <view class="action-desc">{{item.noteTitle}} · {{item.timeText}}</view>
+    </view>
+  </view>
+</view>

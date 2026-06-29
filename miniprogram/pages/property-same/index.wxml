@@ -1,0 +1,64 @@
+<view class="page-shell">
+  <custom-nav title="生成同款" />
+
+  <view class="hero-card">
+    <view class="hero-badge">{{copy.badge}}</view>
+    <view class="hero-title">{{copy.title}}</view>
+    <view class="hero-desc">{{copy.desc}}</view>
+  </view>
+
+  <view class="section-card">
+    <view class="section-title">公开内容</view>
+    <view class="source-row">
+      <view class="source-label">来源</view>
+      <view class="source-main">
+        <view class="source-title">{{sourceTitle || '待发送给助手的房源资料'}}</view>
+        <view class="source-sub">{{publisherName ? '原发布者：' + publisherName : '把房源卡或合集发给助手后继续整理'}}</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="section-card">
+    <view class="section-title">换成我的联系方式</view>
+    <view class="form-field">
+      <view class="field-label">我的微信</view>
+      <input class="field-input" value="{{wechat}}" placeholder="客户和同行优先加这个微信" bindinput="handleWechatInput" />
+    </view>
+    <view class="form-field">
+      <view class="field-label">我的电话</view>
+      <input class="field-input" type="number" value="{{phone}}" placeholder="选填，用于电话联系" bindinput="handlePhoneInput" />
+    </view>
+  </view>
+
+  <view class="section-card">
+    <view class="section-title">我的上游联系人</view>
+    <view class="form-field">
+      <view class="field-label">上游联系人</view>
+      <input class="field-input" value="{{upstreamContact}}" placeholder="默认原发布中介，可自行修改" bindinput="handleUpstreamInput" />
+    </view>
+    <view class="privacy-note">
+      只复制公开房源内容，不复制原发布者私密保存的房东或二房东联系方式。客户页展示你的微信，上游联系人只给你自己看。
+    </view>
+  </view>
+
+  <view class="step-card">
+    <view class="step-item">
+      <view class="step-num">1</view>
+      <view>一键复制公开房源内容和图片</view>
+    </view>
+    <view class="step-item">
+      <view class="step-num">2</view>
+      <view>替换成你的微信和电话</view>
+    </view>
+    <view class="step-item">
+      <view class="step-num">3</view>
+      <view>生成你的房源卡或房源合集</view>
+    </view>
+    <view class="fallback-note" wx:if="{{fallbackReason}}">{{fallbackReason}}</view>
+  </view>
+
+  <view class="action-bar">
+    <button class="secondary-btn" bindtap="handleOpenAssistant">打开助手</button>
+    <button class="primary-btn" loading="{{generating}}" disabled="{{generating}}" bindtap="handleGenerateSame">生成同款</button>
+  </view>
+</view>

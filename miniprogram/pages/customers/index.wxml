@@ -34,6 +34,83 @@
     </view>
   </view>
 
+  <view class="drill-panel">
+    <view class="drill-head">
+      <view>
+        <view class="drill-title">处理阶段</view>
+        <view class="drill-sub">从总客户数递进到当前要处理的人。</view>
+      </view>
+      <view class="drill-more">{{filteredCustomers.length}} 位</view>
+    </view>
+    <view class="stage-grid">
+      <view
+        wx:for="{{stageSummary}}"
+        wx:key="key"
+        class="stage-card {{activeStageFilter === item.key ? 'active' : ''}}"
+        data-filter="{{item.key}}"
+        bindtap="handleStageSummaryTap"
+      >
+        <view class="stage-value">{{item.count}}</view>
+        <view class="stage-label">{{item.label}}</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="drill-panel" wx:if="{{sourceGroups.length}}">
+    <view class="drill-head">
+      <view>
+        <view class="drill-title">来源资料</view>
+        <view class="drill-sub">看客户来自哪条资料，再进入具体人。</view>
+      </view>
+      <view class="drill-more" bindtap="handleResetFilters">全部 ›</view>
+    </view>
+    <view
+      class="source-group-line"
+      wx:for="{{sourceGroups}}"
+      wx:key="key"
+      data-source="{{item.key}}"
+      bindtap="handleSourceGroupTap"
+    >
+      <view class="source-group-main">
+        <view class="source-group-title">{{item.label}}</view>
+        <view class="source-group-sub">高意向 {{item.high}} · 待处理 {{item.pending}}</view>
+      </view>
+      <view class="source-group-count">{{item.count}} 人</view>
+    </view>
+  </view>
+
+  <view class="drill-panel" wx:if="{{sellerOrders.length}}">
+    <view class="drill-head">
+      <view>
+        <view class="drill-title">下单 / 成交</view>
+        <view class="drill-sub">把团购接龙和商品下单落实到具体客户。</view>
+      </view>
+      <view class="drill-more">{{summary.orderCount}} 单 · 成交 {{summary.completedOrderCount}}</view>
+    </view>
+    <view class="stage-grid">
+      <view wx:for="{{orderStageSummary}}" wx:key="key" class="stage-card">
+        <view class="stage-value">{{item.count}}</view>
+        <view class="stage-label">{{item.label}}</view>
+      </view>
+    </view>
+    <view
+      class="order-customer-line"
+      wx:for="{{orderCustomerPreview}}"
+      wx:key="id"
+      data-id="{{item.id}}"
+      bindtap="handleOpenOrder"
+    >
+      <image class="customer-avatar" wx:if="{{item.avatarUrl}}" src="{{item.avatarUrl}}" mode="aspectFill" />
+      <view class="customer-avatar fallback tone-{{item.tone}}" wx:else>{{item.avatarText}}</view>
+      <view class="order-customer-main">
+        <view class="source-group-title">{{item.buyerDisplayName}}</view>
+        <view class="source-group-sub">{{item.statusText}} · {{item.summaryText}}</view>
+        <view class="source-group-sub">{{item.sourceText}} · {{item.createdText}}</view>
+      </view>
+      <view class="source-group-count">处理 ›</view>
+    </view>
+  </view>
+
   <view class="search-panel">
     <input class="customer-search" value="{{searchKeyword}}" placeholder="搜索昵称、手机号、微信号" bindinput="handleSearchChange" />
     <view class="clear-search" wx:if="{{searchKeyword}}" bindtap="handleClearSearch">清空</view>
@@ -42,6 +119,18 @@
   <view class="view-toolbar">
     <view class="view-action" bindtap="handleResetFilters">清空筛选</view>
     <view class="view-action primary" bindtap="handleSaveCurrentView">保存常用视图</view>
+  </view>
+
+  <view class="active-view-card">
+    <view>
+      <view class="active-view-title">当前筛选：{{activeViewText}}</view>
+      <view class="active-view-sub">共 {{filteredCustomers.length}} 位客户，下面都是这组来源或阶段里的具体人。</view>
+    </view>
+    <view class="active-view-actions">
+      <button class="active-view-reset" bindtap="handleOpenFilteredLeads">看待联系</button>
+      <button class="active-view-reset green" bindtap="handleOpenFilteredOrders">看订单</button>
+      <button class="active-view-reset" bindtap="handleResetFilters">全部客户</button>
+    </view>
   </view>
 
   <view class="filter-title" wx:if="{{savedViews.length}}">常用视图</view>
@@ -54,6 +143,11 @@
     </block>
   </view>
 
+  <view class="intent-filter-row">
+    <block wx:for="{{stageFilters}}" wx:key="key">
+      <view class="intent-filter {{activeStageFilter === item.key ? 'active' : ''}}" data-filter="{{item.key}}" bindtap="handleStageFilterChange">{{item.label}}</view>
+    </block>
+  </view>
   <view class="intent-filter-row">
     <block wx:for="{{intentFilters}}" wx:key="key">
       <view class="intent-filter {{activeIntent === item.key ? 'active' : ''}}" data-filter="{{item.key}}" bindtap="handleIntentFilterChange">{{item.label}}</view>
@@ -100,10 +194,14 @@
 
   <block wx:for="{{filteredCustomers}}" wx:key="id">
     <view class="panel customer-card">
-      <view class="customer-card-head">
-        <view>
-          <view class="section-title">{{item.nickname}}</view>
-          <view class="customer-meta">{{item.updatedText}} 更新</view>
+      <view class="customer-card-head" data-id="{{item.id}}" bindtap="handleOpenCustomerSheet">
+        <view class="customer-head-left">
+          <image class="customer-avatar" wx:if="{{item.avatarUrl}}" src="{{item.avatarUrl}}" mode="aspectFill" />
+          <view class="customer-avatar fallback" wx:else>{{item.avatarText}}</view>
+          <view class="customer-head-main">
+            <view class="section-title">{{item.nickname}}</view>
+            <view class="customer-meta">{{item.stageText}} · {{item.updatedText}} 更新</view>
+          </view>
         </view>
         <view class="intent-pill">{{item.intentLevel}}</view>
       </view>
@@ -128,6 +226,7 @@
         <view class="info-row" wx:if="{{item.customerPhone}}">
           <text class="info-label">电话</text>
           <text class="info-value">{{item.customerPhone}}</text>
+          <text class="copy-pill call" data-phone="{{item.customerPhone}}" bindtap="handleCallPhone">外呼</text>
           <text class="copy-pill" data-value="{{item.customerPhone}}" bindtap="handleCopyField">复制</text>
         </view>
         <view class="info-row" wx:if="{{item.customerWechat}}">
@@ -157,6 +256,7 @@
           </view>
         </view>
         <view class="latest-follow-text" wx:if="{{item.latestFollowUp}}">{{item.latestFollowUp}}</view>
+        <view class="latest-follow-text order" wx:if="{{item.latestOrderText}}">订单：{{item.latestOrderText}}</view>
       </view>
 
       <view class="source-strip" data-card-id="{{item.cardId}}" bindtap="handleOpenCard">
@@ -165,6 +265,7 @@
       </view>
 
       <view class="quick-follow-row">
+        <text class="primary-action" data-id="{{item.id}}" bindtap="handleOpenLatestOrder">{{item.nextActionText}}</text>
         <text data-id="{{item.id}}" bindtap="handleSetTodayFollowUp">设为今日跟进</text>
         <text data-id="{{item.id}}" bindtap="handleQuickFollowUp">添加跟进记录</text>
         <text data-id="{{item.id}}" bindtap="handleMarkContacted">标记已联系</text>
@@ -178,4 +279,51 @@
   </block>
 
   <view class="empty-state" wx:if="{{!filteredCustomers.length}}">暂无对应客户资料。</view>
+
+  <view wx:if="{{customerDetailOpen && selectedCustomer}}" class="customer-detail-mask" catchtap="handleCloseCustomerSheet">
+    <view class="customer-detail-sheet" catchtap="noop">
+      <view class="detail-head">
+        <image class="detail-avatar" wx:if="{{selectedCustomer.avatarUrl}}" src="{{selectedCustomer.avatarUrl}}" mode="aspectFill" />
+        <view class="detail-avatar fallback" wx:else>{{selectedCustomer.avatarText}}</view>
+        <view class="detail-main">
+          <view class="detail-name">{{selectedCustomer.nickname}}</view>
+          <view class="detail-sub">{{selectedCustomer.stageText}} · {{selectedCustomer.intentLevel}}</view>
+        </view>
+        <button class="detail-close" catchtap="handleCloseCustomerSheet">×</button>
+      </view>
+
+      <view class="detail-section">
+        <view class="detail-section-title">联系方式</view>
+        <view class="detail-contact-row" wx:if="{{selectedCustomer.customerPhone}}">
+          <text>电话 {{selectedCustomer.customerPhone}}</text>
+          <button class="copy-pill call" data-phone="{{selectedCustomer.customerPhone}}" catchtap="handleCallPhone">外呼</button>
+        </view>
+        <view class="detail-contact-row" wx:if="{{selectedCustomer.customerWechat}}">
+          <text>微信 {{selectedCustomer.customerWechat}}</text>
+          <button class="copy-pill" data-value="{{selectedCustomer.customerWechat}}" catchtap="handleCopyField">复制</button>
+        </view>
+        <view class="detail-empty" wx:if="{{!selectedCustomer.customerPhone && !selectedCustomer.customerWechat}}">暂未留下电话或微信</view>
+      </view>
+
+      <view class="detail-section">
+        <view class="detail-section-title">来源和状态</view>
+        <view class="detail-tags">
+          <view class="detail-tag blue" wx:if="{{selectedCustomer.cardTitle}}">来源：{{selectedCustomer.cardTitle}}</view>
+          <view class="detail-tag green" wx:if="{{selectedCustomer.lastViewedText}}">最近查看：{{selectedCustomer.lastViewedText}}</view>
+          <view class="detail-tag" wx:if="{{selectedCustomer.latestFollowUpText}}">最近跟进：{{selectedCustomer.latestFollowUpText}}</view>
+          <view class="detail-tag orange" wx:if="{{selectedCustomer.latestOrderText}}">订单：{{selectedCustomer.latestOrderText}}</view>
+        </view>
+        <view class="detail-tags" wx:if="{{selectedCustomer.customerTags.length}}">
+          <view class="detail-tag gray" wx:for="{{selectedCustomer.customerTags}}" wx:key="*this">{{item}}</view>
+        </view>
+        <view class="detail-note" wx:if="{{selectedCustomer.latestFollowUp}}">最近跟进：{{selectedCustomer.latestFollowUp}}</view>
+      </view>
+
+      <view class="detail-actions">
+        <button class="detail-secondary" catchtap="handleOpenSelectedLead">查看客户</button>
+        <button class="detail-secondary" catchtap="handleOpenSelectedCard">来源资料</button>
+        <button class="detail-primary" catchtap="handleSelectedPrimaryAction">{{selectedCustomer.nextActionText}}</button>
+      </view>
+    </view>
+  </view>
 </view>

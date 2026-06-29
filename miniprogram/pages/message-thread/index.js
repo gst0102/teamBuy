@@ -1,5 +1,5 @@
 const api = require("../../services/api");
-const { getCurrentUser, formatTime } = require("../../utils/dashboard");
+const { getCurrentUser, formatTime, safeAvatarUrl } = require("../../utils/dashboard");
 
 function firstChar(value, fallback) {
   const text = String(value || fallback || "").trim();
@@ -20,7 +20,7 @@ function hydrateMessages(messages, thread, userId) {
       ...item,
       mine,
       senderName,
-      senderAvatarUrl: sender.avatarUrl || "",
+      senderAvatarUrl: safeAvatarUrl(sender.avatarUrl),
       senderInitial: firstChar(senderName, mine ? "我" : "客"),
       timeText: formatTime(item.createdAt)
     };

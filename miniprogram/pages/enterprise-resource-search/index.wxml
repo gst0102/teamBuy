@@ -1,0 +1,174 @@
+<view class="page-shell enterprise-page">
+  <custom-nav title="企业资源搜索" show-back="{{true}}" />
+
+  <block wx:if="{{activeView === 'search'}}">
+    <view class="enterprise-hero">
+      <view>
+        <view class="hero-kicker">搜企业、看风险、存资源</view>
+        <view class="hero-title">企业资源搜索</view>
+        <view class="hero-sub">先搜企业，再看风险。</view>
+      </view>
+    </view>
+
+    <view class="search-panel">
+      <view class="search-box">
+        <input class="search-input" value="{{keyword}}" placeholder="搜企业名称、统一信用代码" confirm-type="search" bindinput="handleKeywordInput" bindconfirm="handleSearch" />
+        <button class="search-btn" bindtap="handleSearch">搜索</button>
+      </view>
+      <view class="hot-head">
+        <text>热门搜索</text>
+        <text>换一批</text>
+      </view>
+      <view class="chip-row">
+        <view wx:for="{{hotKeywords}}" wx:key="*this" class="hot-chip" data-keyword="{{item}}" bindtap="handleHotKeyword">{{item}}</view>
+      </view>
+    </view>
+
+    <view class="recent-panel" wx:if="{{recentSearches.length}}">
+      <view class="panel-head">
+        <view>最近搜索</view>
+        <view bindtap="handleClearRecent">清空</view>
+      </view>
+      <view wx:for="{{recentSearches}}" wx:key="*this" class="recent-row" data-keyword="{{item}}" bindtap="handleRecentTap">
+        <text>时</text>
+        <view>{{item}}</view>
+      </view>
+    </view>
+
+    <view class="result-head" wx:if="{{results.length}}">
+      <view>找到 {{results.length}} 家相关企业</view>
+      <text>先看状态和风险</text>
+    </view>
+    <view class="enterprise-list" wx:if="{{results.length}}">
+      <view wx:for="{{results}}" wx:key="id" class="enterprise-card" data-id="{{item.id}}" bindtap="handleOpenEnterprise">
+        <view class="enterprise-card-top">
+          <view class="company-logo">{{item.shortName}}</view>
+          <view class="company-main">
+            <view class="company-name">{{item.name}}</view>
+            <view class="company-tags">
+              <text>{{item.status}}</text>
+              <text>{{item.industry}}</text>
+            </view>
+          </view>
+        </view>
+        <view class="company-field"><text>法人</text><view>{{item.legalPerson}}</view></view>
+        <view class="company-field"><text>成立时间</text><view>{{item.foundedAt}}</view></view>
+        <view class="company-field"><text>注册资本</text><view>{{item.capital}}</view></view>
+        <view class="company-field"><text>所在地</text><view>{{item.city}}</view></view>
+        <view class="card-foot">
+          <view>更新于：2024-05-08</view>
+          <button class="outline-btn" data-id="{{item.id}}" catchtap="handleOpenEnterprise">查看企业卡</button>
+        </view>
+      </view>
+    </view>
+    <view class="empty-state" wx:elif="{{searched}}">
+      <view class="empty-title">还没有匹配企业</view>
+      <view class="empty-sub">换个企业简称、城市或统一信用代码试试。</view>
+    </view>
+    <view class="empty-state soft" wx:else>
+      <view class="empty-title">先搜一家企业</view>
+      <view class="empty-sub">适合查客户、合作方、供应商和本地商家。</view>
+    </view>
+  </block>
+
+  <block wx:elif="{{activeView === 'detail'}}">
+    <view class="flow-back" bindtap="handleBackToSearch">‹</view>
+    <view class="detail-title">企业详情</view>
+    <view class="detail-card">
+      <view class="enterprise-card-top">
+        <view class="company-logo">{{selected.shortName}}</view>
+        <view class="company-main">
+          <view class="company-name">{{selected.name}}</view>
+          <view class="company-tags">
+            <text>{{selected.status}}</text>
+            <text>{{selected.industry}}</text>
+          </view>
+        </view>
+        <button class="follow-btn">+ 关注</button>
+      </view>
+      <view class="info-grid">
+        <view><text>法人</text><strong>{{selected.legalPerson}}</strong></view>
+        <view><text>注册资本</text><strong>{{selected.capital}}</strong></view>
+        <view><text>成立时间</text><strong>{{selected.foundedAt}}</strong></view>
+        <view><text>统一信用代码</text><strong>{{selected.creditCode}}</strong></view>
+        <view class="wide"><text>地址</text><strong>{{selected.address}}</strong></view>
+      </view>
+    </view>
+
+    <view class="ai-advice">
+      <view class="advice-badge">建议</view>
+      <view>先看风险，再保存。</view>
+    </view>
+
+    <view class="query-title">查询功能 <text>命中 24 小时缓存不重复扣分</text></view>
+    <view class="query-grid">
+      <view wx:for="{{displayTools}}" wx:key="key" class="query-card" data-key="{{item.key}}" bindtap="handleRunQuery">
+        <view class="query-icon">{{item.icon}}</view>
+        <view class="query-label">{{item.label}}</view>
+        <view class="query-cost">{{item.displayCost}}</view>
+        <view class="query-cached" wx:if="{{item.result}}">{{item.result.cached ? '已缓存' : '已查询'}}</view>
+      </view>
+    </view>
+
+    <view class="query-result-panel" wx:if="{{hasQueryResults}}">
+      <view class="query-result-title">已查询结果</view>
+      <view wx:for="{{displayTools}}" wx:key="key">
+        <view class="query-result-row" wx:if="{{item.result}}">
+          <view>{{item.result.title}}</view>
+          <text>{{item.result.content}}</text>
+        </view>
+      </view>
+    </view>
+
+    <button class="primary-action" bindtap="handleOpenSave">保存企业资源卡</button>
+  </block>
+
+  <block wx:elif="{{activeView === 'save'}}">
+    <view class="flow-back" bindtap="handleBackToDetail">‹</view>
+    <view class="detail-title">保存企业资源卡</view>
+    <view class="save-success">
+      <view class="success-icon">✓</view>
+      <view>
+        <view class="success-title">企业查询完成</view>
+        <view class="success-sub">可保存到我的资源</view>
+      </view>
+    </view>
+    <view class="save-card">
+      <view class="save-row"><text>企业名称</text><view>{{selected.name}}</view></view>
+      <view class="save-row"><text>状态</text><view>{{selected.status}}</view></view>
+      <view class="save-row"><text>法人</text><view>{{selected.legalPerson}}</view></view>
+      <view class="save-row"><text>所属行业</text><view>{{selected.industry}}</view></view>
+      <view class="save-row"><text>所在城市</text><view>{{selected.city}}</view></view>
+      <view class="save-row"><text>风险提示</text><view>{{selected.risk}}</view></view>
+    </view>
+    <view class="tag-title">添加标签</view>
+    <view class="chip-row">
+      <view wx:for="{{tagChoices}}" wx:key="label" class="tag-chip {{item.selected ? 'active' : ''}}" data-tag="{{item.label}}" bindtap="handleToggleTag">{{item.label}}</view>
+    </view>
+    <button class="primary-action" bindtap="handleSaveCard">保存到我的资源</button>
+    <view class="bottom-tip">数据来源：公开企业信息。</view>
+  </block>
+
+  <block wx:else>
+    <view class="saved-state">
+      <view class="success-icon">✓</view>
+      <view class="success-title">保存成功</view>
+      <view class="success-sub">已加入你的企业资源池，可继续跟进和归类。</view>
+      <button class="primary-action" bindtap="handleBackToSearch">继续搜索</button>
+    </view>
+  </block>
+
+  <view class="rule-mask" wx:if="{{rulesVisible}}" bindtap="handleCloseRules">
+    <view class="rule-modal" catchtap="noop">
+      <view class="rule-title">积分规则</view>
+      <view class="rule-list">
+        <view wx:for="{{pointRules}}" wx:key="label" class="rule-row">
+          <text>{{item.label}}</text>
+          <strong>{{item.value}}</strong>
+        </view>
+      </view>
+      <view class="rule-desc">搜索候选不扣分；同企业同功能 24 小时内优先用缓存。</view>
+      <button class="primary-action modal-action" bindtap="handleCloseRules">知道了</button>
+    </view>
+  </view>
+</view>

@@ -1,0 +1,143 @@
+.picker-card {
+  display: flex;
+  align-items: stretch;
+  gap: 16rpx;
+  padding: 18rpx 0;
+  border-top: 1rpx solid #edf1f6;
+}
+
+.picker-card.grid {
+  display: block;
+  overflow: hidden;
+  padding: 0;
+  border: 1rpx solid #e2e8f0;
+  border-radius: 8rpx;
+  background: #fff;
+}
+
+.picker-card:first-child {
+  border-top: 0;
+}
+
+.picker-card.grid:first-child {
+  border-top: 1rpx solid #e2e8f0;
+}
+
+.picker-card.selected .picker-title {
+  color: #0d7140;
+}
+
+.picker-cover {
+  width: 132rpx;
+  height: 132rpx;
+  border-radius: 8rpx;
+  flex: 0 0 132rpx;
+  background: #e8eef7;
+}
+
+.picker-card.grid .picker-cover {
+  width: 100%;
+  height: 188rpx;
+  border-radius: 0;
+  display: block;
+}
+
+.picker-cover.fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #1677ff;
+  background: #eef5ff;
+  font-size: 24rpx;
+  font-weight: 800;
+}
+
+.picker-card.grid .picker-cover.fallback {
+  display: flex;
+}
+
+.picker-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.picker-card.grid .picker-main {
+  padding: 14rpx;
+}
+
+.picker-head {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+}
+
+.picker-badge {
+  flex: 0 0 auto;
+  padding: 4rpx 12rpx;
+  border-radius: 6rpx;
+  color: #1677ff;
+  background: #eef5ff;
+  font-size: 21rpx;
+}
+
+.picker-tags {
+  color: #8a94a6;
+  font-size: 21rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.picker-title {
+  margin-top: 10rpx;
+  color: #172033;
+  font-size: 29rpx;
+  font-weight: 900;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.picker-summary {
+  margin-top: 8rpx;
+  color: #697386;
+  font-size: 23rpx;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.picker-price {
+  margin-top: 8rpx;
+  color: #e5484d;
+  font-size: 28rpx;
+  font-weight: 900;
+}
+
+.join-btn {
+  align-self: center;
+  flex: 0 0 132rpx;
+  width: 132rpx;
+  height: 64rpx;
+  margin: 0;
+  padding: 0;
+  border-radius: 8rpx;
+  line-height: 64rpx;
+  color: #697386;
+  background: #eef1f6;
+  font-size: 23rpx;
+}
+
+.picker-card.grid .join-btn {
+  width: calc(100% - 28rpx);
+  height: 58rpx;
+  margin: 0 14rpx 14rpx;
+  line-height: 58rpx;
+}
+
+.join-btn.active {
+  color: #fff;
+  background: #11924d;
+}

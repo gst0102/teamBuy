@@ -1,42 +1,239 @@
-<view class="page-shell">
-  <custom-nav title="展示页" />
+<view class="page-shell {{templateClass}}">
+  <custom-nav title="资料整理助手" />
 
   <view wx:if="{{loading}}" class="empty">加载中...</view>
 
+  <view wx:elif="{{errorText}}" class="empty">
+    <view class="empty-title">展示页打不开</view>
+    <view class="empty-sub">{{errorText}}</view>
+  </view>
+
   <view wx:elif="{{page}}">
-    <view class="hero">
-      <image wx:if="{{page.bannerUrl}}" class="hero-image" src="{{page.bannerUrl}}" mode="aspectFill"></image>
-      <view wx:else class="hero-image fallback">{{page.name}}</view>
-      <view class="hero-main">
-        <view class="hero-title">{{page.name}}</view>
-        <view class="hero-desc">{{page.description}}</view>
+    <view wx:if="{{preview && canShare}}" class="share-strip">
+      <view>
+        <view class="share-title">客户可见展示页</view>
+        <view class="share-sub">发给客户后，对方打开看到这个页面。</view>
       </view>
+      <button class="share-btn" open-type="share">发给客户</button>
     </view>
 
-    <view class="contact" wx:if="{{page.contactConfig.phone || page.contactConfig.wechat || page.contactConfig.contactText}}">
-      <view class="contact-text">{{page.contactConfig.contactText}}</view>
-      <view class="contact-actions">
+    <view wx:if="{{template.id === 'featured_window'}}" class="tpl-page featured-page layout-{{displayLayout}}">
+      <view class="hero featured-hero">
+        <image wx:if="{{page.bannerUrl}}" class="hero-image" src="{{page.bannerUrl}}" mode="aspectFill"></image>
+        <image wx:elif="{{heroItem && heroItem.coverUrl}}" class="hero-image" src="{{heroItem.coverUrl}}" mode="aspectFill"></image>
+        <view wx:else class="hero-image fallback tone-{{heroItem && heroItem.titleCover ? heroItem.titleCover.tone : 0}}">
+          <view class="title-cover-badge">{{heroItem && heroItem.titleCover ? heroItem.titleCover.badge : '合集'}}</view>
+          <view class="title-cover-line">{{heroItem && heroItem.titleCover ? heroItem.titleCover.line1 : page.name}}</view>
+          <view class="title-cover-line second" wx:if="{{heroItem && heroItem.titleCover && heroItem.titleCover.line2}}">{{heroItem.titleCover.line2}}</view>
+        </view>
+        <view class="hero-mask"></view>
+        <view class="featured-hero-copy">
+          <view class="hero-title">{{page.name}}</view>
+          <view class="hero-desc">{{page.description}}</view>
+        </view>
+      </view>
+
+      <view class="agency-card">
+        <image wx:if="{{page.contactConfig.avatarUrl}}" class="agency-logo image-avatar" src="{{page.contactConfig.avatarUrl}}" mode="aspectFill"></image>
+        <view wx:else class="agency-logo">家</view>
+        <view class="agency-main">
+          <view class="agency-name">{{profileName}}</view>
+          <view class="agency-sub">{{page.contactConfig.contactText}}</view>
+        </view>
+        <view class="agency-pill">{{context.agencyPill}}</view>
+      </view>
+
+      <view class="stat-row">
+        <view><strong>{{stats.resources}}</strong><text>{{context.resourceMetric}}</text></view>
+        <view><strong>{{stats.updated}}</strong><text>{{context.updateMetric}}</text></view>
+        <view><strong>{{stats.contact}}</strong><text>{{context.contactMetric}}</text></view>
+      </view>
+
+      <view class="contact-actions featured-actions">
+        <button wx:if="{{page.contactConfig.showWechat && page.contactConfig.wechat}}" bindtap="copyWechat">微信联系</button>
         <button wx:if="{{page.contactConfig.showPhone && page.contactConfig.phone}}" bindtap="callPhone">电话咨询</button>
-        <button wx:if="{{page.contactConfig.showWechat && page.contactConfig.wechat}}" bindtap="copyWechat">复制微信</button>
       </view>
-    </view>
 
-    <view wx:if="{{!sections.length}}" class="empty">暂无可展示资料</view>
-
-    <view wx:for="{{sections}}" wx:key="title" class="section">
-      <view class="section-title">{{item.title}}</view>
-      <view wx:for="{{item.items}}" wx:for-item="note" wx:key="noteId" class="note-row" bindtap="openNote" data-id="{{note.noteId}}">
-        <image wx:if="{{note.coverUrl}}" class="cover" src="{{note.coverUrl}}" mode="aspectFill"></image>
-        <view wx:else class="cover fallback-small">{{note.badge}}</view>
-        <view class="note-main">
-          <view class="note-title">{{note.title}}</view>
-          <view class="note-summary">{{note.summary}}</view>
-          <view class="tag-line">
-            <text class="badge">{{note.badge}}</text>
-            <text wx:if="{{note.tagText}}">{{note.tagText}}</text>
+      <view class="section-headline">
+        <text>{{context.featuredTitle}}</text>
+        <text class="more">共{{flatItems.length}}条</text>
+      </view>
+      <view class="showcase-grid layout-{{displayLayout}}">
+        <view wx:for="{{flatItems}}" wx:key="noteId" class="showcase-card" bindtap="openNote" data-id="{{item.noteId}}">
+          <image wx:if="{{item.coverUrl}}" class="card-cover" src="{{item.coverUrl}}" mode="aspectFill"></image>
+          <view wx:else class="card-cover fallback-small tone-{{item.titleCover.tone}}">
+            <view class="title-cover-badge compact">{{item.titleCover.badge}}</view>
+            <view class="title-cover-line">{{item.titleCover.line1}}</view>
+            <view class="title-cover-line second" wx:if="{{item.titleCover.line2}}">{{item.titleCover.line2}}</view>
+          </view>
+          <view class="card-title">{{item.title}}</view>
+          <view class="card-summary">{{item.primaryText || item.summary}}</view>
+          <view class="product-meta-row" wx:if="{{item.isGroupbuy && item.productMeta.length}}">
+            <text wx:for="{{item.productMeta}}" wx:key="*this">{{item}}</text>
+          </view>
+          <view class="tag-grid {{item.tagClass}}">
+            <text wx:for="{{item.displayTags}}" wx:key="*this">{{item}}</text>
+          </view>
+          <view class="card-bottom">
+            <text class="price" wx:if="{{item.priceText}}">{{item.priceText}}</text>
+            <text class="product-action-text" wx:if="{{item.productActionText}}">{{item.productActionText}}</text>
           </view>
         </view>
       </view>
+      <button wx:if="{{canShare}}" class="sticky-share" open-type="share">{{context.shareText}}</button>
     </view>
+
+    <view wx:elif="{{template.id === 'moments_story'}}" class="tpl-page story-page layout-{{displayLayout}}">
+      <view class="story-hero">
+        <view>
+          <view class="story-title">{{page.name}}</view>
+          <view class="story-desc">{{page.description}}</view>
+          <view class="script-text">Good Life</view>
+        </view>
+        <image wx:if="{{page.bannerUrl}}" class="story-hero-img" src="{{page.bannerUrl}}" mode="aspectFill"></image>
+        <image wx:elif="{{heroItem && heroItem.coverUrl}}" class="story-hero-img" src="{{heroItem.coverUrl}}" mode="aspectFill"></image>
+        <view wx:else class="story-hero-img fallback tone-{{heroItem && heroItem.titleCover ? heroItem.titleCover.tone : 0}}">
+          <view class="title-cover-badge">{{heroItem && heroItem.titleCover ? heroItem.titleCover.badge : '合集'}}</view>
+          <view class="title-cover-line">{{heroItem && heroItem.titleCover ? heroItem.titleCover.line1 : page.name}}</view>
+          <view class="title-cover-line second" wx:if="{{heroItem && heroItem.titleCover && heroItem.titleCover.line2}}">{{heroItem.titleCover.line2}}</view>
+        </view>
+      </view>
+      <view class="service-bar">
+        <view wx:for="{{context.storyTabs}}" wx:key="*this">{{item}}</view>
+      </view>
+      <view class="story-block">
+        <view class="story-block-title">本周故事</view>
+        <view wx:if="{{heroItem}}" class="story-feature" bindtap="openNote" data-id="{{heroItem.noteId}}">
+          <view>
+            <view class="story-feature-title">{{heroItem.title}}</view>
+            <view class="story-feature-sub">{{heroItem.secondaryText || heroItem.summary}}</view>
+            <view class="story-more">查看详情 ></view>
+          </view>
+          <image wx:if="{{heroItem.coverUrl}}" src="{{heroItem.coverUrl}}" mode="aspectFill"></image>
+          <view wx:else class="fallback-small tone-{{heroItem.titleCover.tone}}">
+            <view class="title-cover-badge compact">{{heroItem.titleCover.badge}}</view>
+            <view class="title-cover-line">{{heroItem.titleCover.line1}}</view>
+            <view class="title-cover-line second" wx:if="{{heroItem.titleCover.line2}}">{{heroItem.titleCover.line2}}</view>
+          </view>
+        </view>
+      </view>
+      <view wx:for="{{sections}}" wx:key="title" class="story-section">
+        <view class="story-block-title">{{item.title}}</view>
+        <view wx:for="{{item.items}}" wx:for-item="note" wx:key="noteId" class="story-row" bindtap="openNote" data-id="{{note.noteId}}">
+          <image wx:if="{{note.coverUrl}}" src="{{note.coverUrl}}" mode="aspectFill"></image>
+          <view wx:else class="fallback-small tone-{{note.titleCover.tone}}">
+            <view class="title-cover-badge compact">{{note.titleCover.badge}}</view>
+            <view class="title-cover-line">{{note.titleCover.line1}}</view>
+            <view class="title-cover-line second" wx:if="{{note.titleCover.line2}}">{{note.titleCover.line2}}</view>
+          </view>
+          <view>
+            <view class="story-row-title">{{note.title}}</view>
+            <view class="story-row-sub">{{note.primaryText || note.summary}}</view>
+            <view class="product-meta-row story" wx:if="{{note.isGroupbuy && note.productMeta.length}}">
+              <text wx:for="{{note.productMeta}}" wx:key="*this">{{item}}</text>
+            </view>
+            <view class="tag-grid {{note.tagClass}}">
+              <text wx:for="{{note.displayTags}}" wx:key="*this">{{item}}</text>
+            </view>
+            <view class="story-price" wx:if="{{note.priceText}}">{{note.priceText}}</view>
+          </view>
+        </view>
+      </view>
+      <button wx:if="{{canShare}}" class="sticky-share warm" open-type="share">{{context.storyShareText}}</button>
+    </view>
+
+    <view wx:elif="{{template.id === 'catalog_list'}}" class="tpl-page catalog-page layout-{{displayLayout}}">
+      <view class="catalog-search">
+        <text>{{context.catalogSearch}}</text>
+        <text class="count-chip">共{{flatItems.length}}条</text>
+      </view>
+      <view class="catalog-tabs">
+        <text wx:for="{{context.catalogTabs}}" wx:key="*this">{{item}}</text>
+      </view>
+      <view wx:for="{{flatItems}}" wx:key="noteId" class="catalog-row" bindtap="openNote" data-id="{{item.noteId}}">
+        <view class="row-badge">{{item.badge}}</view>
+        <image wx:if="{{item.coverUrl}}" class="catalog-cover" src="{{item.coverUrl}}" mode="aspectFill"></image>
+        <view wx:else class="catalog-cover fallback-small tone-{{item.titleCover.tone}}">
+          <view class="title-cover-badge compact">{{item.titleCover.badge}}</view>
+          <view class="title-cover-line">{{item.titleCover.line1}}</view>
+          <view class="title-cover-line second" wx:if="{{item.titleCover.line2}}">{{item.titleCover.line2}}</view>
+        </view>
+        <view class="catalog-main">
+          <view class="catalog-title">{{item.title}}</view>
+          <view class="catalog-summary">{{item.primaryText || item.summary}}</view>
+          <view class="product-meta-row catalog" wx:if="{{item.isGroupbuy && item.productMeta.length}}">
+            <text wx:for="{{item.productMeta}}" wx:key="*this">{{item}}</text>
+          </view>
+          <view class="tag-grid {{item.tagClass}}">
+            <text wx:for="{{item.displayTags}}" wx:key="*this">{{item}}</text>
+          </view>
+          <view class="catalog-price" wx:if="{{item.priceText}}">{{item.priceText}}</view>
+        </view>
+        <view class="detail-btn" catchtap="openNote" data-id="{{item.noteId}}">查看详情</view>
+      </view>
+      <view class="bottom-contact {{(!page.contactConfig.showPhone || !page.contactConfig.phone) || (!page.contactConfig.showWechat || !page.contactConfig.wechat) ? 'single' : ''}}">
+        <button wx:if="{{page.contactConfig.showWechat && page.contactConfig.wechat}}" bindtap="copyWechat">微信联系</button>
+        <button wx:if="{{page.contactConfig.showPhone && page.contactConfig.phone}}" bindtap="callPhone">电话咨询</button>
+      </view>
+    </view>
+
+    <view wx:else class="tpl-page brand-page layout-{{displayLayout}}">
+      <view class="brand-hero">
+        <image wx:if="{{page.contactConfig.avatarUrl}}" class="brand-avatar" src="{{page.contactConfig.avatarUrl}}" mode="aspectFill"></image>
+        <view wx:else class="brand-avatar text-avatar">{{profileInitial}}</view>
+        <view>
+          <view class="brand-name">{{profileName}}</view>
+          <view class="brand-sub">{{page.description}}</view>
+          <view class="brand-pill">{{context.brandPill}}</view>
+        </view>
+      </view>
+      <view class="brand-stats">
+        <view><strong>{{stats.resources}}</strong><text>{{context.resourceMetric}}</text></view>
+        <view><strong>{{stats.updated}}</strong><text>{{context.updateMetric}}</text></view>
+        <view><strong>{{stats.contact}}</strong><text>{{context.contactMetric}}</text></view>
+      </view>
+      <view class="brand-contact">
+        <view class="contact-title">联系我</view>
+        <view class="contact-actions">
+          <button wx:if="{{page.contactConfig.showWechat && page.contactConfig.wechat}}" bindtap="copyWechat">微信联系</button>
+          <button wx:if="{{page.contactConfig.showPhone && page.contactConfig.phone}}" bindtap="callPhone">电话咨询</button>
+        </view>
+      </view>
+      <view class="section-headline">
+        <text>{{context.brandCases}}</text>
+        <text class="more">共{{flatItems.length}}条</text>
+      </view>
+      <scroll-view scroll-x="{{displayLayout === 'grid'}}" class="brand-scroll layout-{{displayLayout}}" show-scrollbar="{{false}}">
+        <view wx:for="{{flatItems}}" wx:key="noteId" class="brand-case" bindtap="openNote" data-id="{{item.noteId}}">
+          <image wx:if="{{item.coverUrl}}" src="{{item.coverUrl}}" mode="aspectFill"></image>
+          <view wx:else class="brand-case-cover fallback-small tone-{{item.titleCover.tone}}">
+            <view class="title-cover-badge compact">{{item.titleCover.badge}}</view>
+            <view class="title-cover-line">{{item.titleCover.line1}}</view>
+            <view class="title-cover-line second" wx:if="{{item.titleCover.line2}}">{{item.titleCover.line2}}</view>
+          </view>
+          <view class="brand-case-body">
+            <view class="brand-case-title">{{item.title}}</view>
+            <view class="brand-case-sub">{{item.primaryText || item.summary}}</view>
+            <view class="tag-grid {{item.tagClass}}">
+              <text wx:for="{{item.displayTags}}" wx:key="*this">{{item}}</text>
+            </view>
+            <view class="brand-case-price" wx:if="{{item.priceText}}">{{item.priceText}}</view>
+          </view>
+        </view>
+      </scroll-view>
+      <view class="trust-strip">
+        <text wx:for="{{context.trustItems}}" wx:key="*this">{{item}}</text>
+      </view>
+      <button wx:if="{{canShare}}" class="sticky-share teal" open-type="share">{{context.brandShareText}}</button>
+    </view>
+
+    <view wx:if="{{context.isProperty}}" class="agent-same-card">
+      <view class="agent-same-main">
+        <view class="agent-same-title">我是中介，也想生成这种合集</view>
+        <view class="agent-same-sub">复制公开房源内容，换成你的微信，上游联系人你自己留着。</view>
+      </view>
+      <view class="agent-same-btn" bindtap="handleGenerateSame">生成同款</view>
+    </view>
+    <canvas canvas-id="showcaseShareCanvas" class="showcase-share-canvas"></canvas>
   </view>
 </view>

@@ -9,6 +9,22 @@ function filterLeads(leads, filter) {
   return leads;
 }
 
+function safeAvatarUrl(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  if (!/^https:\/\//i.test(text)) return "";
+  if (/example\.com/i.test(text)) return "";
+  if (/avatar-default/i.test(text)) return "";
+  if (/^(wxfile|file|blob):/i.test(text)) return "";
+  if (/^\/tmp\//i.test(text)) return "";
+  return text;
+}
+
+function avatarText(name) {
+  const text = String(name || "客").trim();
+  return text.slice(0, 1);
+}
+
 function todayKey() {
   const date = new Date();
   const month = `${date.getMonth() + 1}`.padStart(2, "0");
@@ -42,8 +58,78 @@ function sortLeads(leads) {
   });
 }
 
-function applyFilters(leads, statusFilter, scheduleFilter) {
-  return filterBySchedule(filterLeads(sortLeads(leads), statusFilter), scheduleFilter);
+function buildSourceGroups(leads) {
+  const groups = leads.reduce((memo, item) => {
+    const key = item.cardTitle || "未知来源";
+    if (!memo[key]) {
+      memo[key] = {
+        key,
+        title: key,
+        total: 0,
+        pending: 0,
+        today: 0,
+        overdue: 0,
+        high: 0
+      };
+    }
+    memo[key].total += 1;
+    if (item.status === "pending") memo[key].pending += 1;
+    if (item.dueState === "today") memo[key].today += 1;
+    if (item.dueState === "overdue") memo[key].overdue += 1;
+    if (item.intentLevel === "高意向") memo[key].high += 1;
+    return memo;
+  }, {});
+  return Object.values(groups)
+    .sort((a, b) => (b.overdue + b.today + b.pending) - (a.overdue + a.today + a.pending))
+    .slice(0, 6);
+}
+
+function buildPriorityLeads(leads) {
+  return sortLeads(leads)
+    .filter((item) => item.status === "pending" || item.dueState === "today" || item.dueState === "overdue")
+    .slice(0, 4);
+}
+
+function applyFilters(leads, statusFilter, scheduleFilter, sourceFilter = "all") {
+  const sourceFiltered = sourceFilter === "all"
+    ? leads
+    : leads.filter((item) => (item.cardTitle || "未知来源") === sourceFilter);
+  return filterBySchedule(filterLeads(sortLeads(sourceFiltered), statusFilter), scheduleFilter);
+}
+
+function filterLabel(options, key, fallback) {
+  const match = options.find((item) => item.key === key);
+  return match ? match.label : fallback;
+}
+
+function decodeOption(value) {
+  if (!value) return "";
+  try {
+    return decodeURIComponent(value);
+  } catch (error) {
+    return value;
+  }
+}
+
+function buildActiveViewText(statusFilter, scheduleFilter, sourceFilter) {
+  const parts = [];
+  if (sourceFilter && sourceFilter !== "all") parts.push(`来源：${sourceFilter}`);
+  if (statusFilter && statusFilter !== "all") {
+    parts.push(filterLabel([
+      { key: "pending", label: "待联系" },
+      { key: "contacted", label: "已联系" },
+      { key: "closed", label: "已归档" }
+    ], statusFilter, statusFilter));
+  }
+  if (scheduleFilter && scheduleFilter !== "all") {
+    parts.push(filterLabel([
+      { key: "today", label: "今日" },
+      { key: "overdue", label: "逾期" },
+      { key: "future", label: "未来" },
+      { key: "unset", label: "未设置时间" }
+    ], scheduleFilter, scheduleFilter));
+  }
+  return parts.length ? parts.join(" · ") : "全部线索";
 }
 
 function formatDate(value) {
@@ -76,6 +162,8 @@ Page({
     filteredLeads: [],
     activeFilter: "pending",
     activeScheduleFilter: "all",
+    activeSourceFilter: "all",
+    activeViewText: "待联系",
     filters: [
       { key: "pending", label: "待联系" },
       { key: "contacted", label: "已联系" },
@@ -96,7 +184,25 @@ Page({
       today: 0,
       overdue: 0,
       unhandled: 0
-    }
+    },
+    sourceGroups: [],
+    priorityLeads: [],
+    leadDetailOpen: false,
+    selectedLead: null
+  },
+  onLoad(options = {}) {
+    const source = decodeOption(options.source);
+    const status = decodeOption(options.status);
+    const schedule = decodeOption(options.schedule);
+    const activeFilter = status || this.data.activeFilter;
+    const activeScheduleFilter = schedule || this.data.activeScheduleFilter;
+    const activeSourceFilter = source || this.data.activeSourceFilter;
+    this.setData({
+      activeFilter,
+      activeScheduleFilter,
+      activeSourceFilter,
+      activeViewText: buildActiveViewText(activeFilter, activeScheduleFilter, activeSourceFilter)
+    });
   },
   onShow() {
     const currentUser = getCurrentUser();
@@ -112,6 +218,8 @@ Page({
       const res = await api.fetchLeadReminders(currentUser.id);
       const leads = (res.data || []).map((item) => ({
         ...item,
+        avatarUrl: safeAvatarUrl(item.avatarUrl),
+        avatarText: avatarText(item.nickname),
         isClosed: ["invalid", "paused", "completed"].includes(item.status),
         statusText: leadStatusText(item.status),
         noteValue: item.note || "",
@@ -132,7 +240,10 @@ Page({
       }));
       this.setData({
         leads,
-        filteredLeads: applyFilters(leads, this.data.activeFilter, this.data.activeScheduleFilter),
+        filteredLeads: applyFilters(leads, this.data.activeFilter, this.data.activeScheduleFilter, this.data.activeSourceFilter),
+        activeViewText: buildActiveViewText(this.data.activeFilter, this.data.activeScheduleFilter, this.data.activeSourceFilter),
+        sourceGroups: buildSourceGroups(leads),
+        priorityLeads: buildPriorityLeads(leads),
         summary: {
           pending: leads.filter((item) => item.status === "pending").length,
           contacted: leads.filter((item) => item.status === "contacted").length,
@@ -153,14 +264,16 @@ Page({
     this.setData({
       activeFilter,
       activeScheduleFilter,
-      filteredLeads: applyFilters(this.data.leads, activeFilter, activeScheduleFilter)
+      filteredLeads: applyFilters(this.data.leads, activeFilter, activeScheduleFilter, this.data.activeSourceFilter),
+      activeViewText: buildActiveViewText(activeFilter, activeScheduleFilter, this.data.activeSourceFilter)
     });
   },
   handleScheduleFilterChange(event) {
     const activeScheduleFilter = event.currentTarget.dataset.filter;
     this.setData({
       activeScheduleFilter,
-      filteredLeads: applyFilters(this.data.leads, this.data.activeFilter, activeScheduleFilter)
+      filteredLeads: applyFilters(this.data.leads, this.data.activeFilter, activeScheduleFilter, this.data.activeSourceFilter),
+      activeViewText: buildActiveViewText(this.data.activeFilter, activeScheduleFilter, this.data.activeSourceFilter)
     });
   },
   handleReminderShortcut(event) {
@@ -169,7 +282,9 @@ Page({
       this.setData({
         activeFilter: "pending",
         activeScheduleFilter: "today",
-        filteredLeads: applyFilters(this.data.leads, "pending", "today")
+        activeSourceFilter: "all",
+        filteredLeads: applyFilters(this.data.leads, "pending", "today", "all"),
+        activeViewText: buildActiveViewText("pending", "today", "all")
       });
       return;
     }
@@ -177,14 +292,38 @@ Page({
       this.setData({
         activeFilter: "pending",
         activeScheduleFilter: "overdue",
-        filteredLeads: applyFilters(this.data.leads, "pending", "overdue")
+        activeSourceFilter: "all",
+        filteredLeads: applyFilters(this.data.leads, "pending", "overdue", "all"),
+        activeViewText: buildActiveViewText("pending", "overdue", "all")
       });
       return;
     }
     this.setData({
       activeFilter: "pending",
       activeScheduleFilter: "all",
-      filteredLeads: applyFilters(this.data.leads, "pending", "all")
+      activeSourceFilter: "all",
+      filteredLeads: applyFilters(this.data.leads, "pending", "all", "all"),
+      activeViewText: buildActiveViewText("pending", "all", "all")
+    });
+  },
+  handleSourceGroupTap(event) {
+    const source = event.currentTarget.dataset.source;
+    if (!source) return;
+    this.setData({
+      activeFilter: "all",
+      activeScheduleFilter: "all",
+      activeSourceFilter: source,
+      filteredLeads: applyFilters(this.data.leads, "all", "all", source),
+      activeViewText: buildActiveViewText("all", "all", source)
+    });
+  },
+  handleClearLeadFilters() {
+    this.setData({
+      activeFilter: "pending",
+      activeScheduleFilter: "all",
+      activeSourceFilter: "all",
+      filteredLeads: applyFilters(this.data.leads, "pending", "all", "all"),
+      activeViewText: buildActiveViewText("pending", "all", "all")
     });
   },
   async handleMarkContacted(event) {
@@ -233,6 +372,52 @@ Page({
   handleOpenLeadDetail(event) {
     wx.navigateTo({ url: `/pages/lead-detail/index?id=${event.currentTarget.dataset.id}` });
   },
+  handleOpenLeadSheet(event) {
+    const leadId = event.currentTarget.dataset.id;
+    const lead = (this.data.filteredLeads || []).find((item) => item.id === leadId);
+    if (!lead) return;
+    this.setData({
+      selectedLead: lead,
+      leadDetailOpen: true
+    });
+  },
+  handleCloseLeadSheet() {
+    this.setData({
+      selectedLead: null,
+      leadDetailOpen: false
+    });
+  },
+  noop() {},
+  handleOpenSelectedLeadDetail() {
+    const lead = this.data.selectedLead;
+    if (!lead) return;
+    wx.navigateTo({ url: `/pages/lead-detail/index?id=${lead.id}` });
+  },
+  handleOpenSelectedSource() {
+    const lead = this.data.selectedLead;
+    if (!lead || !lead.cardId) return;
+    navigateToResourceView(lead.cardId);
+  },
+  handleSelectedLeadPrimaryAction() {
+    const lead = this.data.selectedLead;
+    if (!lead) return;
+    if (lead.customerPhone) {
+      wx.makePhoneCall({
+        phoneNumber: lead.customerPhone,
+        success: () => this.confirmMarkContacted(lead.id),
+        fail: () => wx.showToast({ title: "拨号失败", icon: "none" })
+      });
+      return;
+    }
+    if (lead.customerWechat) {
+      wx.setClipboardData({
+        data: lead.customerWechat,
+        success: () => wx.showToast({ title: "微信已复制", icon: "success" })
+      });
+      return;
+    }
+    wx.navigateTo({ url: `/pages/lead-detail/index?id=${lead.id}` });
+  },
   handleCallPhone(event) {
     const phone = event.currentTarget.dataset.phone;
     const id = event.currentTarget.dataset.id;
@@ -244,6 +429,17 @@ Page({
       phoneNumber: phone,
       success: () => this.confirmMarkContacted(id),
       fail: () => wx.showToast({ title: "拨号失败", icon: "none" })
+    });
+  },
+  handleCopyWechat(event) {
+    const wechat = event.currentTarget.dataset.wechat;
+    if (!wechat) {
+      wx.showToast({ title: "暂无微信号", icon: "none" });
+      return;
+    }
+    wx.setClipboardData({
+      data: wechat,
+      success: () => wx.showToast({ title: "已复制", icon: "success" })
     });
   },
   confirmMarkContacted(id) {

@@ -1,0 +1,102 @@
+<view class="page-shell">
+  <custom-nav title="展示页效果" showBack="{{true}}" />
+
+  <view class="hero">
+    <view>
+      <view class="hero-title">{{showcase.name || '展示页效果'}}</view>
+      <view class="hero-sub">{{showcase.description || '查看这个展示页带来的访客和咨询'}}</view>
+    </view>
+    <button class="ghost-btn" bindtap="handleOpenShowcase">预览</button>
+  </view>
+
+  <view class="metric-grid">
+    <view class="metric-card"><text>{{analytics.summary.pv}}</text><view>打开</view></view>
+    <view class="metric-card"><text>{{analytics.summary.uv}}</text><view>访客</view></view>
+    <view class="metric-card"><text>{{analytics.summary.noteClickCount}}</text><view>看资料</view></view>
+    <view class="metric-card"><text>{{analytics.summary.consultClickCount}}</text><view>咨询</view></view>
+  </view>
+
+  <view class="panel">
+    <view class="section-title">咨询动作</view>
+    <view class="sub-grid">
+      <view><text>{{analytics.summary.phoneClickCount}}</text><view>电话</view></view>
+      <view><text>{{analytics.summary.wechatCopyCount}}</text><view>复制微信</view></view>
+      <view><text>{{analytics.summary.shareCount}}</text><view>分享</view></view>
+      <view><text>{{analytics.summary.shareSourceCount}}</text><view>分享批次</view></view>
+    </view>
+  </view>
+
+  <view class="panel">
+    <view class="section-title">分享批次</view>
+    <view class="empty" wx:if="{{!analytics.topShares.length}}">暂无分享来源</view>
+    <view class="share-row" wx:for="{{analytics.topShares}}" wx:key="shareId">
+      <view class="share-index">{{index + 1}}</view>
+      <view class="row-main">
+        <view class="share-head">
+          <view class="row-title">{{item.shareTitle}}</view>
+          <view class="share-status {{item.statusTone}}">{{item.statusText}}</view>
+        </view>
+        <view class="row-sub">{{item.sceneText}} · 最近 {{item.timeText}} · 批次尾号 {{item.shortId}}</view>
+        <view class="share-metrics">
+          <text>打开 {{item.openCount}}</text>
+          <text>看资料 {{item.noteClickCount}}</text>
+          <text>咨询 {{item.consultCount}}</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view class="panel">
+    <view class="section-title">最近访客</view>
+    <view class="empty" wx:if="{{!analytics.recentViewers.length}}">暂无登录访客</view>
+    <view class="viewer-row" wx:for="{{analytics.recentViewers}}" wx:key="viewerUserId" data-keyword="{{item.nickname}}" bindtap="handleOpenViewerCustomer">
+      <image class="avatar" wx:if="{{item.avatarUrl}}" src="{{item.avatarUrl}}" mode="aspectFill" />
+      <view class="avatar fallback tone-{{item.tone}}" wx:else>{{item.avatarText}}</view>
+      <view class="row-main">
+        <view class="row-title">{{item.nickname}}</view>
+        <view class="row-sub">打开 {{item.viewCount}} 次 · {{item.timeText}}</view>
+      </view>
+      <view class="row-link">看客户</view>
+    </view>
+  </view>
+
+  <view class="panel">
+    <view class="section-title">资料点击排行</view>
+    <view class="empty" wx:if="{{!analytics.topNotes.length}}">暂无资料点击</view>
+    <view class="note-row" wx:for="{{analytics.topNotes}}" wx:key="noteId" data-note-id="{{item.noteId}}" bindtap="handleOpenNoteActions">
+      <view class="rank">{{index + 1}}</view>
+      <view class="row-main">
+        <view class="row-title">{{item.title}}</view>
+        <view class="row-sub">客户点击资料</view>
+      </view>
+      <view class="count">{{item.clickCount}}次</view>
+      <view class="row-link" wx:if="{{item.actionText}}">{{item.actionText}}</view>
+    </view>
+  </view>
+
+  <view class="panel">
+    <view class="section-title">客户看房轨迹</view>
+    <view class="empty" wx:if="{{!analytics.customerTrails.length}}">暂无可复盘轨迹</view>
+    <view class="trail-row" wx:for="{{analytics.customerTrails}}" wx:key="id" data-note-id="{{item.noteId}}" bindtap="handleOpenEventTarget">
+      <view class="event-dot tone-{{item.tone}}">{{item.eventInitial}}</view>
+      <view class="row-main">
+        <view class="row-title">{{item.nickname || '客户'}} · {{item.eventLabel}}</view>
+        <view class="row-sub">{{item.noteTitle || '展示页'}} · {{item.timeText}}</view>
+      </view>
+      <view class="row-link" wx:if="{{item.noteId}}">处理</view>
+    </view>
+  </view>
+
+  <view class="panel">
+    <view class="section-title">最近事件</view>
+    <view class="empty" wx:if="{{!analytics.recentEvents.length}}">暂无事件</view>
+    <view class="event-row" wx:for="{{analytics.recentEvents}}" wx:key="id" data-note-id="{{item.noteId}}" bindtap="handleOpenEventTarget">
+      <view class="event-dot tone-{{item.tone}}">{{item.eventInitial}}</view>
+      <view class="row-main">
+        <view class="row-title">{{item.eventLabel}}</view>
+        <view class="row-sub">{{item.nickname}} {{item.noteTitle ? '· ' + item.noteTitle : ''}} · {{item.timeText}}</view>
+      </view>
+      <view class="row-link" wx:if="{{item.noteId}}">处理</view>
+    </view>
+  </view>
+</view>

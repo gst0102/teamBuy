@@ -1,0 +1,97 @@
+<view class="page-shell feedback-page">
+  <custom-nav title="帮助与反馈" show-back="{{true}}" />
+
+  <view class="feedback-hero">
+    <view>
+      <view class="hero-kicker">就互动共创奖励</view>
+      <view class="hero-title">你的反馈，会变成产品升级</view>
+      <view class="hero-sub">有效 Bug 和被采纳建议，将奖励 100-1000 积分。</view>
+    </view>
+    <view class="hero-badge">100-1000</view>
+  </view>
+
+  <view class="reward-card">
+    <view class="reward-title">我们认真看每一条反馈</view>
+    <view class="reward-sub">被采纳，就给奖励。</view>
+    <view class="reward-grid">
+      <view wx:for="{{rewardRules}}" wx:key="label" class="reward-item">
+        <text>{{item.label}}</text>
+        <strong>{{item.value}}</strong>
+      </view>
+    </view>
+  </view>
+
+  <view class="panel-tabs">
+    <view class="{{activePanel === 'submit' ? 'active' : ''}}" data-panel="submit" bindtap="handlePanelTap">提交反馈</view>
+    <view class="{{activePanel === 'records' ? 'active' : ''}}" data-panel="records" bindtap="handlePanelTap">我的反馈</view>
+  </view>
+
+  <block wx:if="{{activePanel === 'submit'}}">
+    <view class="type-grid">
+      <view wx:for="{{feedbackTypes}}" wx:key="key" class="type-card {{form.type === item.key ? 'active' : ''}}" data-key="{{item.key}}" bindtap="handleTypeTap">
+        <view class="type-icon">{{item.icon}}</view>
+        <view class="type-main">
+          <view class="type-title">{{item.label}}</view>
+          <view class="type-hint">{{item.hint}}</view>
+        </view>
+        <view class="type-reward">{{item.reward}}</view>
+      </view>
+    </view>
+
+    <view class="form-card">
+      <view class="form-field">
+        <view class="field-label">标题</view>
+        <input class="field-input" value="{{form.title}}" data-key="title" placeholder="一句话说清楚问题或建议" bindinput="handleInput" />
+      </view>
+      <view class="form-field">
+        <view class="field-label">详细描述</view>
+        <textarea class="field-textarea" value="{{form.content}}" data-key="content" maxlength="800" placeholder="发生了什么？你希望怎么改？越具体越容易被采纳。" bindinput="handleInput" />
+      </view>
+      <view class="form-field">
+        <view class="field-label">关联页面 <text>选填</text></view>
+        <input class="field-input" value="{{form.page}}" data-key="page" placeholder="例如：我的页、资料页、群资源库" bindinput="handleInput" />
+      </view>
+      <view class="form-field">
+        <view class="field-label">联系方式 <text>选填</text></view>
+        <input class="field-input" value="{{form.contact}}" data-key="contact" placeholder="微信号或手机号，方便确认奖励" bindinput="handleInput" />
+      </view>
+
+      <view class="form-field">
+        <view class="field-label">截图 <text>最多 3 张</text></view>
+        <view class="image-row">
+          <view wx:for="{{form.images}}" wx:key="*this" class="image-thumb">
+            <image src="{{item}}" mode="aspectFill"></image>
+            <view data-index="{{index}}" bindtap="handleRemoveImage">×</view>
+          </view>
+          <view class="image-add" bindtap="handleChooseImage">+</view>
+        </view>
+      </view>
+
+      <button class="submit-btn" bindtap="handleSubmit">提交反馈，参与共创</button>
+      <view class="contact-line" bindtap="handleOpenContact">急事也可以联系人工客服</view>
+    </view>
+  </block>
+
+  <block wx:else>
+    <view class="record-empty" wx:if="{{!records.length}}">
+      <view class="empty-title">还没有反馈记录</view>
+      <view class="empty-sub">提交一个问题或建议，就能在这里跟进处理状态。</view>
+    </view>
+    <view class="record-list" wx:else>
+      <view wx:for="{{records}}" wx:key="id" class="record-card">
+        <view class="record-top">
+          <view>
+            <view class="record-title">{{item.title}}</view>
+            <view class="record-meta">{{item.typeLabel}} · {{item.timeText}}</view>
+          </view>
+          <view class="record-status">{{item.statusText}}</view>
+        </view>
+        <view class="record-content">{{item.content}}</view>
+        <view class="record-foot">
+          <view>{{item.rewardText}}</view>
+          <view>处理后站内消息通知</view>
+        </view>
+      </view>
+    </view>
+  </block>
+</view>

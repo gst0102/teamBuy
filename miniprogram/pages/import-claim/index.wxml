@@ -1,0 +1,16 @@
+<view class="claim-page">
+  <custom-nav title="房源助手" />
+
+  <view class="claim-card">
+    <view class="claim-icon">房</view>
+    <view class="claim-title">{{statusTitle}}</view>
+    <view class="claim-desc">{{statusDesc}}</view>
+    <button
+      wx:if="{{showRetry}}"
+      class="claim-btn"
+      bindtap="handleRetry"
+      loading="{{claiming}}"
+      disabled="{{claiming}}"
+    >重新接收</button>
+  </view>
+</view>

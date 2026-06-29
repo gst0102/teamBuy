@@ -1,7 +1,8 @@
 <block wx:for="{{displayRelays}}" wx:key="id">
   <view class="relay-card {{item.isPending ? 'pending' : ''}}">
     <view class="relay-head">
-      <image class="relay-avatar" src="{{item.avatarUrl}}" mode="aspectFill"></image>
+      <image wx:if="{{item.avatarUrl}}" class="relay-avatar" src="{{item.avatarUrl}}" mode="aspectFill"></image>
+      <view wx:else class="relay-avatar fallback">{{item.avatarText}}</view>
       <view class="relay-main">
         <view class="relay-name">{{item.nickname}}</view>
         <view class="muted">{{item.createdText || item.createdAt}}</view>

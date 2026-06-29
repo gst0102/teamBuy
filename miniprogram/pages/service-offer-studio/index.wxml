@@ -1,0 +1,596 @@
+<view class="page-shell service-studio">
+  <custom-nav title="服务方案工作台" />
+
+  <view class="page-error-card" wx:if="{{pageError}}">
+    <view>服务方案加载失败</view>
+    <text>{{pageError}}</text>
+    <view class="page-error-actions">
+      <button bindtap="handleRetryLoad">重试</button>
+      <button bindtap="handleGoLogin">去登录</button>
+    </view>
+  </view>
+
+  <view wx:if="{{!pageError}}" class="studio-surface">
+    <view class="studio-hero">
+      <view class="hero-kicker">服务方案独立工作台</view>
+      <view class="studio-title">先选模板，再填资料，再确认效果</view>
+      <view class="studio-subtitle">这次直接按参考稿重做成完整链路：模板选择、资料填写、详情预览、保存分享一套走通。</view>
+    </view>
+
+    <view class="existing-offer" wx:if="{{savedNoteId}}">
+      <view class="existing-main">
+        <view class="existing-kicker">当前方案</view>
+        <view class="existing-title">{{existingNoteTitle || preview.serviceName || '服务方案'}}</view>
+        <view class="existing-sub">{{hasUnsavedChanges ? '你有未保存改动，建议先保存再分享。' : (existingNoteSummary || preview.headline || '可继续切换模板、修改内容或直接分享给客户。')}}</view>
+      </view>
+      <view class="existing-actions">
+        <view data-step="form" bindtap="handleStepTap">继续编辑</view>
+        <view bindtap="handleOpenSavedPreview">查看客户页</view>
+      </view>
+    </view>
+
+    <view class="step-bar">
+      <block wx:for="{{steps}}" wx:key="key">
+        <view class="step-item {{activeStep === item.key ? 'active' : ''}}" data-step="{{item.key}}" bindtap="handleStepTap">
+          <text class="step-index">{{index + 1}}</text>
+          <view class="step-copy">
+            <text>{{item.label}}</text>
+            <text>{{item.key === 'style' ? '先挑模板' : item.key === 'form' ? '再填资料' : '最后确认'}}</text>
+          </view>
+        </view>
+      </block>
+    </view>
+
+    <view wx:if="{{activeStep === 'style'}}" class="stage-panel stage-style">
+      <view class="stage-head">
+        <view class="stage-title">1. 选择服务方案模板</view>
+        <view class="stage-desc">模板卡横向切换，下面的服务详情预览会跟着一起变化，方便边看边定。</view>
+      </view>
+
+      <scroll-view class="template-menu-scroll" scroll-x="true" enable-flex="true">
+        <view class="template-menu">
+          <block wx:for="{{templates}}" wx:key="id">
+            <view class="template-menu-item {{selectedTemplateId === item.id ? 'active' : ''}}" data-id="{{item.id}}" bindtap="handleSelectTemplate">
+              <view class="template-menu-top">
+                <view class="template-menu-badge">{{index + 1}}</view>
+                <text class="template-menu-tag">{{item.badge}}</text>
+              </view>
+              <text class="template-menu-name">{{item.name}}</text>
+              <text class="template-menu-desc">{{item.subtitle}}</text>
+              <view class="template-menu-state">{{selectedTemplateId === item.id ? '当前预览' : '点击查看'}}</view>
+            </view>
+          </block>
+        </view>
+      </scroll-view>
+
+      <view class="style-preview-wrap theme-{{preview.templateId}}">
+        <view class="style-preview-head">
+          <view>
+            <view class="style-preview-title">{{selectedTemplate.name}}</view>
+            <view class="style-preview-subtitle">{{selectedTemplate.summary}}</view>
+          </view>
+          <view class="style-preview-tip">查看详情页效果</view>
+        </view>
+
+        <view class="preview-phone">
+          <view class="phone-status-row">
+            <text>9:41</text>
+            <text>{{preview.templateScene}}</text>
+          </view>
+
+          <block wx:if="{{preview.templateId === 'service_consultation'}}">
+            <view class="phone-hero consultation">
+              <view class="hero-copy">
+                <view class="hero-title">{{preview.serviceName}}</view>
+                <view class="hero-headline">{{preview.headline}}</view>
+                <view class="hero-chip-row">
+                  <block wx:for="{{preview.supportChips}}" wx:key="*this" wx:for-item="chip">
+                    <text>{{chip}}</text>
+                  </block>
+                </view>
+              </view>
+              <image wx:if="{{preview.heroAvatarUrl}}" class="hero-portrait" src="{{preview.heroAvatarUrl}}" mode="aspectFill"></image>
+              <view wx:else class="hero-portrait placeholder">咨询</view>
+            </view>
+            <view class="mini-section">
+              <view class="mini-section-title">适合人群</view>
+              <block wx:for="{{preview.audienceBullets}}" wx:key="*this" wx:for-item="bullet">
+                <view class="mini-bullet"><text>•</text><text>{{bullet}}</text></view>
+              </block>
+            </view>
+            <view class="mini-icon-grid">
+              <block wx:for="{{preview.serviceItems}}" wx:key="*this" wx:for-item="serviceItem">
+                <view class="mini-icon-item">
+                  <view class="mini-icon-circle">{{index + 1}}</view>
+                  <text>{{serviceItem}}</text>
+                </view>
+              </block>
+            </view>
+            <view class="mini-action-row">
+              <view class="primary">{{preview.primaryAction}}</view>
+              <view class="secondary">{{preview.secondaryAction}}</view>
+            </view>
+          </block>
+
+          <block wx:elif="{{preview.templateId === 'service_pricing'}}">
+            <view class="phone-hero pricing">
+              <view class="hero-cover-block">
+                <image wx:if="{{preview.coverUrl}}" class="hero-cover-image" src="{{preview.coverUrl}}" mode="aspectFill"></image>
+                <view wx:else class="hero-cover-fallback">
+                  <view class="room-wall"></view>
+                  <view class="room-sofa"></view>
+                  <view class="room-table"></view>
+                </view>
+              </view>
+              <view class="pricing-copy">
+                <view class="hero-title">{{preview.serviceName}}</view>
+                <view class="hero-headline">{{preview.headline}}</view>
+              </view>
+            </view>
+            <view class="mini-section">
+              <view class="mini-section-title">服务范围</view>
+              <view class="mini-icon-grid compact">
+                <block wx:for="{{preview.serviceItems}}" wx:key="*this" wx:for-item="serviceItem">
+                  <view class="mini-icon-item">
+                    <view class="mini-icon-circle">{{index + 1}}</view>
+                    <text>{{serviceItem}}</text>
+                  </view>
+                </block>
+              </view>
+            </view>
+            <view class="pricing-tag-row">
+              <block wx:for="{{preview.pricingTags}}" wx:key="*this" wx:for-item="priceTag">
+                <view class="pricing-tag">{{priceTag}}</view>
+              </block>
+            </view>
+            <view class="mini-action-row dark">
+              <view class="primary">{{preview.primaryAction}}</view>
+              <view class="secondary">{{preview.secondaryAction}}</view>
+            </view>
+          </block>
+
+          <block wx:elif="{{preview.templateId === 'service_case_story'}}">
+            <view class="phone-hero case">
+              <image wx:if="{{preview.coverUrl}}" class="case-hero-cover" src="{{preview.coverUrl}}" mode="aspectFill"></image>
+              <view wx:else class="case-hero-cover placeholder"></view>
+              <view class="hero-title">{{preview.serviceName}}</view>
+              <view class="hero-headline">{{preview.headline}}</view>
+              <view class="case-metric-row">
+                <block wx:for="{{preview.metricItems}}" wx:key="label" wx:for-item="metric">
+                  <view class="case-metric-card">
+                    <view>{{metric.value}}</view>
+                    <text>{{metric.label}}</text>
+                  </view>
+                </block>
+              </view>
+            </view>
+            <view class="mini-section">
+              <view class="mini-section-title">精选案例</view>
+              <view class="case-thumb-row">
+                <block wx:for="{{preview.caseBullets}}" wx:key="*this" wx:for-item="caseBullet">
+                  <view class="case-thumb-card">
+                    <image wx:if="{{preview.caseImages[index]}}" class="case-thumb-image" src="{{preview.caseImages[index]}}" mode="aspectFill"></image>
+                    <view wx:else class="case-thumb-image"></view>
+                    <text>{{caseBullet}}</text>
+                  </view>
+                </block>
+              </view>
+            </view>
+            <view class="mini-action-row warm">
+              <view class="primary">{{preview.primaryAction}}</view>
+              <view class="secondary">{{preview.secondaryAction}}</view>
+            </view>
+          </block>
+
+          <block wx:else>
+            <view class="phone-hero campaign">
+              <view class="hero-copy">
+                <view class="hero-title">{{preview.serviceName}}</view>
+                <view class="hero-headline">{{preview.headline}}</view>
+                <view class="hero-chip-row">
+                  <block wx:for="{{preview.supportChips}}" wx:key="*this" wx:for-item="chip">
+                    <text>{{chip}}</text>
+                  </block>
+                </view>
+              </view>
+              <image wx:if="{{preview.heroAvatarUrl}}" class="hero-portrait" src="{{preview.heroAvatarUrl}}" mode="aspectFill"></image>
+              <view wx:else class="hero-portrait placeholder">活动</view>
+            </view>
+            <view class="countdown-row">
+              <block wx:for="{{preview.countdown}}" wx:key="index" wx:for-item="countItem">
+                <view class="countdown-card">
+                  <view>{{countItem}}</view>
+                  <text>{{preview.countdownLabels[index]}}</text>
+                </view>
+              </block>
+            </view>
+            <view class="mini-section">
+              <view class="mini-section-title">适合人群</view>
+              <block wx:for="{{preview.audienceBullets}}" wx:key="*this" wx:for-item="bullet">
+                <view class="mini-bullet"><text>•</text><text>{{bullet}}</text></view>
+              </block>
+            </view>
+            <view class="mini-action-row purple">
+              <view class="primary">{{preview.primaryAction}}</view>
+              <view class="secondary">{{preview.secondaryAction}}</view>
+            </view>
+          </block>
+        </view>
+
+        <view class="style-feature-row">
+          <block wx:for="{{selectedTemplate.features}}" wx:key="*this" wx:for-item="feature">
+            <view class="style-feature-pill">{{feature}}</view>
+          </block>
+        </view>
+      </view>
+    </view>
+
+    <view wx:if="{{activeStep === 'form'}}" class="stage-panel stage-form">
+      <view class="stage-head">
+        <view class="stage-title">2. 填写服务方案信息</view>
+        <view class="stage-desc">内容只填一次，后面切换模板不会覆盖你已经写好的方案。</view>
+      </view>
+
+      <view class="form-top-card theme-{{preview.templateId}}">
+        <view>
+          <view class="form-top-kicker">当前模板</view>
+          <view class="form-top-title">{{selectedTemplate.name}}</view>
+          <view class="form-top-desc">{{preview.headline}}</view>
+        </view>
+        <view class="form-top-switch" data-step="style" bindtap="handleStepTap">切换模板</view>
+      </view>
+
+      <view class="media-card">
+        <view class="group-card-title">封面与案例图</view>
+        <view class="media-grid">
+          <view class="image-picker large" data-field="coverUrl" bindtap="chooseImage">
+            <image wx:if="{{form.coverUrl}}" src="{{form.coverUrl}}" mode="aspectFill"></image>
+            <view wx:else class="image-placeholder">上传封面图</view>
+            <text>{{uploadingField === 'coverUrl' ? '上传中' : '封面图'}}</text>
+          </view>
+          <view class="image-picker" data-field="caseImage" bindtap="chooseImage">
+            <view class="case-stack">
+              <block wx:if="{{preview.caseImages.length}}">
+                <image wx:for="{{preview.caseImages}}" wx:key="*this" wx:for-item="caseImage" src="{{caseImage}}" mode="aspectFill"></image>
+              </block>
+              <view wx:else class="image-placeholder">案例图</view>
+            </view>
+            <text>{{uploadingField === 'caseImage' ? '上传中' : '添加案例图'}}</text>
+          </view>
+        </view>
+      </view>
+
+      <view class="group-card">
+        <view class="group-card-title">基础信息</view>
+        <view class="form-grid">
+          <view class="form-field">
+            <view class="field-label">服务名称</view>
+            <input class="field-input" value="{{form.serviceName}}" data-key="serviceName" bindinput="handleInput" placeholder="例如：高端收纳咨询服务" />
+          </view>
+          <view class="form-field">
+            <view class="field-label">一句话卖点</view>
+            <input class="field-input" value="{{form.headline}}" data-key="headline" bindinput="handleInput" placeholder="例如：先沟通需求，再给你清晰建议" />
+          </view>
+          <view class="form-field half">
+            <view class="field-label">服务地区</view>
+            <input class="field-input" value="{{form.serviceArea}}" data-key="serviceArea" bindinput="handleInput" placeholder="例如：线上 / 杭州同城" />
+          </view>
+          <view class="form-field half">
+            <view class="field-label">预约说明</view>
+            <input class="field-input" value="{{form.appointmentNote}}" data-key="appointmentNote" bindinput="handleInput" placeholder="例如：建议提前一天预约" />
+          </view>
+        </view>
+      </view>
+
+      <view class="group-card">
+        <view class="group-card-title">方案内容</view>
+        <view class="form-grid">
+          <view class="form-field">
+            <view class="field-label">适合人群</view>
+            <textarea class="field-input textarea" value="{{form.targetAudience}}" data-key="targetAudience" bindinput="handleInput" placeholder="可用换行、顿号或斜杠分隔，例如：想提升成交转化 / 需要一对一陪跑 / 希望先得到清晰建议"></textarea>
+          </view>
+          <view class="form-field">
+            <view class="field-label">服务内容</view>
+            <textarea class="field-input textarea long" value="{{form.serviceContent}}" data-key="serviceContent" bindinput="handleInput" placeholder="说明服务包含什么、怎么帮助客户、核心交付是什么"></textarea>
+          </view>
+          <view class="form-field">
+            <view class="field-label">价格 / 报价说明</view>
+            <input class="field-input" value="{{form.pricingNote}}" data-key="pricingNote" bindinput="handleInput" placeholder="例如：按服务内容和服务周期报价" />
+          </view>
+          <view class="form-field">
+            <view class="field-label">服务流程</view>
+            <textarea class="field-input textarea" value="{{form.serviceProcess}}" data-key="serviceProcess" bindinput="handleInput" placeholder="例如：提交需求 - 预约沟通 - 输出建议 - 后续跟进"></textarea>
+          </view>
+          <view class="form-field">
+            <view class="field-label">案例 / 成果</view>
+            <textarea class="field-input textarea" value="{{form.caseHighlights}}" data-key="caseHighlights" bindinput="handleInput" placeholder="写客户案例、服务成果、交付亮点或客户反馈"></textarea>
+          </view>
+        </view>
+      </view>
+
+      <view class="group-card">
+        <view class="group-card-title">联系方式</view>
+        <view class="form-grid">
+          <view class="form-field third">
+            <view class="field-label">电话</view>
+            <input class="field-input" value="{{form.phone}}" data-key="phone" bindinput="handleInput" placeholder="手机号" type="number" />
+          </view>
+          <view class="form-field third">
+            <view class="field-label">微信</view>
+            <input class="field-input" value="{{form.wechat}}" data-key="wechat" bindinput="handleInput" placeholder="微信号" />
+          </view>
+          <view class="form-field third">
+            <view class="field-label">邮箱</view>
+            <input class="field-input" value="{{form.email}}" data-key="email" bindinput="handleInput" placeholder="选填" />
+          </view>
+          <view class="form-field">
+            <view class="field-label">公司网址 / 介绍链接</view>
+            <input class="field-input" value="{{form.website}}" data-key="website" bindinput="handleInput" placeholder="选填，例如：https://example.com" />
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <view wx:if="{{activeStep === 'confirm'}}" class="stage-panel stage-confirm">
+      <view class="stage-head">
+        <view class="stage-title">3. 确认详情页效果</view>
+        <view class="stage-desc">这一步按客户看到的详情页来预览，点击内容可直接修改。</view>
+      </view>
+
+      <view class="confirm-phone theme-{{preview.templateId}}">
+        <view class="confirm-phone-status">
+          <text>9:41</text>
+          <text>{{preview.serviceName}}</text>
+        </view>
+
+        <block wx:if="{{preview.templateId === 'service_consultation'}}">
+          <view class="confirm-hero consultation">
+            <view class="confirm-hero-copy">
+              <view class="confirm-template-label">{{preview.templateName}}</view>
+              <view class="inline-editable light" data-key="serviceName" catchtap="handleOpenInlineEditor">
+                <view class="confirm-hero-title">{{preview.serviceName}}</view>
+                <text class="inline-edit-tip">编辑</text>
+              </view>
+              <view class="inline-editable light" data-key="headline" catchtap="handleOpenInlineEditor">
+                <view class="confirm-hero-headline">{{preview.headline}}</view>
+                <text class="inline-edit-tip">编辑</text>
+              </view>
+              <view class="confirm-chip-row">
+                <block wx:for="{{preview.supportChips}}" wx:key="*this" wx:for-item="chip">
+                  <text>{{chip}}</text>
+                </block>
+              </view>
+            </view>
+            <image wx:if="{{preview.coverUrl}}" class="confirm-hero-image image-editable" src="{{preview.coverUrl}}" mode="aspectFill" catchtap="handleChooseCoverImage"></image>
+            <image wx:elif="{{preview.heroAvatarUrl}}" class="confirm-hero-portrait image-editable" src="{{preview.heroAvatarUrl}}" mode="aspectFill" catchtap="handleChooseCoverImage"></image>
+            <view wx:else class="confirm-hero-placeholder image-editable" catchtap="handleChooseCoverImage">换图</view>
+          </view>
+        </block>
+
+        <block wx:elif="{{preview.templateId === 'service_pricing'}}">
+          <view class="confirm-hero pricing">
+            <image wx:if="{{preview.coverUrl}}" class="confirm-cover-image image-editable" src="{{preview.coverUrl}}" mode="aspectFill" catchtap="handleChooseCoverImage"></image>
+            <view wx:else class="confirm-cover-fallback image-editable" catchtap="handleChooseCoverImage">
+              <view class="room-wall"></view>
+              <view class="room-sofa"></view>
+              <view class="room-table"></view>
+            </view>
+            <view class="confirm-hero-copy">
+              <view class="confirm-template-label">{{preview.templateName}}</view>
+              <view class="inline-editable light" data-key="serviceName" catchtap="handleOpenInlineEditor">
+                <view class="confirm-hero-title">{{preview.serviceName}}</view>
+                <text class="inline-edit-tip">编辑</text>
+              </view>
+              <view class="inline-editable light" data-key="headline" catchtap="handleOpenInlineEditor">
+                <view class="confirm-hero-headline">{{preview.headline}}</view>
+                <text class="inline-edit-tip">编辑</text>
+              </view>
+            </view>
+          </view>
+        </block>
+
+        <block wx:elif="{{preview.templateId === 'service_case_story'}}">
+          <view class="confirm-hero case">
+            <image wx:if="{{preview.coverUrl}}" class="case-hero-cover image-editable" src="{{preview.coverUrl}}" mode="aspectFill" catchtap="handleChooseCoverImage"></image>
+            <view wx:else class="case-hero-cover placeholder image-editable" catchtap="handleChooseCoverImage"></view>
+            <view class="confirm-template-label">{{preview.templateName}}</view>
+            <view class="inline-editable light" data-key="serviceName" catchtap="handleOpenInlineEditor">
+              <view class="confirm-hero-title">{{preview.serviceName}}</view>
+              <text class="inline-edit-tip">编辑</text>
+            </view>
+            <view class="inline-editable light" data-key="headline" catchtap="handleOpenInlineEditor">
+              <view class="confirm-hero-headline">{{preview.headline}}</view>
+              <text class="inline-edit-tip">编辑</text>
+            </view>
+            <view class="confirm-stat-row">
+              <block wx:for="{{preview.metricCards}}" wx:key="label" wx:for-item="metric">
+                <view class="confirm-stat-card">
+                  <view>{{metric.value}}</view>
+                  <text>{{metric.label}}</text>
+                </view>
+              </block>
+            </view>
+          </view>
+        </block>
+
+        <block wx:else>
+          <view class="confirm-hero campaign">
+            <view class="confirm-hero-copy">
+              <view class="confirm-template-label">{{preview.templateName}}</view>
+              <view class="inline-editable light" data-key="serviceName" catchtap="handleOpenInlineEditor">
+                <view class="confirm-hero-title">{{preview.serviceName}}</view>
+                <text class="inline-edit-tip">编辑</text>
+              </view>
+              <view class="inline-editable light" data-key="headline" catchtap="handleOpenInlineEditor">
+                <view class="confirm-hero-headline">{{preview.headline}}</view>
+                <text class="inline-edit-tip">编辑</text>
+              </view>
+            </view>
+            <image wx:if="{{preview.coverUrl}}" class="confirm-hero-image image-editable" src="{{preview.coverUrl}}" mode="aspectFill" catchtap="handleChooseCoverImage"></image>
+            <image wx:elif="{{preview.heroAvatarUrl}}" class="confirm-hero-portrait image-editable" src="{{preview.heroAvatarUrl}}" mode="aspectFill" catchtap="handleChooseCoverImage"></image>
+            <view wx:else class="confirm-hero-placeholder image-editable" catchtap="handleChooseCoverImage">换图</view>
+          </view>
+          <view class="countdown-row detail">
+            <block wx:for="{{preview.countdown}}" wx:key="index" wx:for-item="countItem">
+              <view class="countdown-card">
+                <view>{{countItem}}</view>
+                <text>{{preview.countdownLabels[index]}}</text>
+              </view>
+            </block>
+          </view>
+        </block>
+
+        <view class="confirm-metric-row" wx:if="{{preview.templateId !== 'service_case_story'}}">
+          <block wx:for="{{preview.metricCards}}" wx:key="label" wx:for-item="metric">
+            <view class="confirm-mini-stat">
+              <view>{{metric.value}}</view>
+              <text>{{metric.label}}</text>
+            </view>
+          </block>
+        </view>
+
+        <view class="confirm-section inline-editable" data-key="targetAudience" catchtap="handleOpenInlineEditor">
+          <view class="confirm-section-title">{{preview.sections[0] || '适合人群'}}</view>
+          <text class="inline-edit-tip">编辑</text>
+          <block wx:for="{{preview.audienceBullets}}" wx:key="*this" wx:for-item="bullet">
+            <view class="confirm-bullet-row"><text>•</text><text>{{bullet}}</text></view>
+          </block>
+        </view>
+
+        <view class="confirm-section inline-editable" data-key="serviceContent" catchtap="handleOpenInlineEditor">
+          <view class="confirm-section-title">{{preview.sections[1] || '服务内容'}}</view>
+          <text class="inline-edit-tip">编辑</text>
+          <view class="confirm-icon-grid">
+            <block wx:for="{{preview.serviceBullets}}" wx:key="*this" wx:for-item="serviceBullet">
+              <view class="confirm-icon-item">
+                <view class="confirm-icon-circle">{{index + 1}}</view>
+                <text>{{serviceBullet}}</text>
+              </view>
+            </block>
+          </view>
+        </view>
+
+        <view class="confirm-section inline-editable" data-key="{{preview.templateId === 'service_case_story' ? 'caseHighlights' : preview.templateId === 'service_pricing' ? 'pricingNote' : 'serviceProcess'}}" catchtap="handleOpenInlineEditor">
+          <view class="confirm-section-title">{{preview.templateId === 'service_case_story' ? '案例 / 成果' : preview.templateId === 'service_pricing' ? '报价说明' : preview.sections[2] || '服务流程'}}</view>
+          <text class="inline-edit-tip">编辑</text>
+          <block wx:if="{{preview.templateId === 'service_case_story'}}">
+            <view class="confirm-case-row">
+              <block wx:for="{{preview.caseBullets}}" wx:key="*this" wx:for-item="caseBullet">
+                <view class="confirm-case-card">
+                  <image wx:if="{{preview.caseImages[index]}}" class="image-editable" src="{{preview.caseImages[index]}}" mode="aspectFill" catchtap="handleChooseCaseImage"></image>
+                  <view wx:else class="confirm-case-placeholder image-editable" catchtap="handleChooseCaseImage"></view>
+                  <text>{{caseBullet}}</text>
+                </view>
+              </block>
+            </view>
+          </block>
+          <block wx:elif="{{preview.templateId === 'service_pricing'}}">
+            <view class="confirm-price-tag-row">
+              <block wx:for="{{preview.pricingTags}}" wx:key="*this" wx:for-item="priceTag">
+                <view class="confirm-price-tag">{{priceTag}}</view>
+              </block>
+            </view>
+            <view class="confirm-muted-copy">{{preview.pricingNote}}</view>
+          </block>
+          <block wx:else>
+            <view class="confirm-process-row">
+              <block wx:for="{{preview.processSteps}}" wx:key="*this" wx:for-item="processStep">
+                <view class="confirm-process-item">
+                  <view>{{index + 1}}</view>
+                  <text>{{processStep}}</text>
+                </view>
+              </block>
+            </view>
+          </block>
+        </view>
+
+        <view class="confirm-contact-card">
+          <view class="confirm-contact-title">联系与预约</view>
+          <view class="confirm-contact-row inline-editable flat" wx:if="{{preview.phone}}" data-key="phone" catchtap="handleOpenInlineEditor">
+            <text>电话</text>
+            <view>{{preview.phone}}</view>
+          </view>
+          <view class="confirm-contact-row inline-editable flat" wx:if="{{preview.wechat}}" data-key="wechat" catchtap="handleOpenInlineEditor">
+            <text>微信</text>
+            <view>{{preview.wechat}}</view>
+          </view>
+          <view class="confirm-contact-row inline-editable flat" wx:if="{{preview.email}}" data-key="email" catchtap="handleOpenInlineEditor">
+            <text>邮箱</text>
+            <view>{{preview.email}}</view>
+          </view>
+          <view class="confirm-contact-row inline-editable flat" wx:if="{{preview.website}}" data-key="website" catchtap="handleOpenInlineEditor">
+            <text>网址</text>
+            <view>{{preview.website}}</view>
+          </view>
+          <view class="confirm-contact-note inline-editable flat" wx:if="{{preview.appointmentNote}}" data-key="appointmentNote" catchtap="handleOpenInlineEditor">{{preview.appointmentNote}}</view>
+          <view class="contact-add-row">
+            <view wx:if="{{!preview.phone}}" data-key="phone" catchtap="handleOpenInlineEditor">补电话</view>
+            <view wx:if="{{!preview.wechat}}" data-key="wechat" catchtap="handleOpenInlineEditor">补微信</view>
+            <view wx:if="{{!preview.email}}" data-key="email" catchtap="handleOpenInlineEditor">补邮箱</view>
+            <view wx:if="{{!preview.website}}" data-key="website" catchtap="handleOpenInlineEditor">补网址</view>
+          </view>
+        </view>
+
+        <view class="confirm-bottom-bar">
+          <block wx:for="{{preview.actionTiles}}" wx:key="key">
+            <view class="confirm-bottom-action" data-key="{{item.editKey}}" catchtap="handleOpenInlineEditor">
+              <view>{{item.icon}}</view>
+              <text>{{item.label}}</text>
+            </view>
+          </block>
+        </view>
+      </view>
+
+      <view class="confirm-template-row">
+        <block wx:for="{{templates}}" wx:key="id">
+          <view class="confirm-template-pill {{selectedTemplateId === item.id ? 'active' : ''}}" data-id="{{item.id}}" bindtap="handleSelectTemplate">
+            <text>{{item.name}}</text>
+          </view>
+        </block>
+      </view>
+
+      <view class="publish-check-card">
+        <view class="publish-check-head">
+          <view>
+            <view class="publish-check-kicker">发给客户前检查</view>
+            <view class="publish-check-title">确认服务方案可以直接转发</view>
+          </view>
+          <view class="publish-check-state">{{savedNoteId && !hasUnsavedChanges ? '可分享' : '需保存'}}</view>
+        </view>
+        <view class="publish-check-list">
+          <block wx:for="{{publishChecks}}" wx:key="key">
+            <view class="publish-check-item {{item.status}}">
+              <text>{{item.status === 'done' ? '已完成' : item.status === 'warn' ? '待完善' : '建议'}}</text>
+              <view>
+                <view>{{item.label}}</view>
+                <view>{{item.desc}}</view>
+              </view>
+            </view>
+          </block>
+        </view>
+      </view>
+    </view>
+
+    <view class="studio-bottom-spacer"></view>
+
+    <view class="studio-bottom">
+      <button class="bottom-btn ghost-btn" bindtap="handleBackStep">{{activeStep === 'style' ? '返回' : '上一步'}}</button>
+      <button wx:if="{{activeStep !== 'confirm'}}" class="bottom-btn primary-btn" bindtap="handleNext">{{activeStep === 'style' ? '使用这个模板' : '确认效果'}}</button>
+      <button wx:else class="bottom-btn primary-btn" loading="{{saving}}" bindtap="handleSavePreview">保存并预览</button>
+      <button wx:if="{{activeStep === 'confirm' && savedNoteId && !hasUnsavedChanges}}" class="bottom-btn mini-btn" bindtap="handleOpenSavedPreview">预览</button>
+      <button wx:if="{{activeStep === 'confirm' && savedNoteId && !hasUnsavedChanges}}" class="bottom-btn mini-btn" open-type="share">分享</button>
+    </view>
+
+    <view wx:if="{{inlineEditor.open}}" class="inline-editor-mask" catchtap="handleCloseInlineEditor">
+      <view class="inline-editor-panel" catchtap="noop">
+        <view class="inline-editor-head">
+          <view>{{inlineEditor.label}}</view>
+          <text bindtap="handleCloseInlineEditor">取消</text>
+        </view>
+        <textarea wx:if="{{inlineEditor.multiline}}" class="inline-editor-textarea" value="{{inlineEditor.value}}" placeholder="{{inlineEditor.placeholder}}" maxlength="800" auto-height bindinput="handleInlineEditorInput" />
+        <input wx:else class="inline-editor-input" value="{{inlineEditor.value}}" placeholder="{{inlineEditor.placeholder}}" bindinput="handleInlineEditorInput" />
+        <button class="inline-editor-save" bindtap="handleSaveInlineEditor">保存修改</button>
+      </view>
+    </view>
+  </view>
+</view>

@@ -16,10 +16,28 @@ function relayStatusText(value) {
   return value || "待跟进";
 }
 
+function safeAvatarUrl(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  if (!/^https:\/\//i.test(text)) return "";
+  if (/example\.com/i.test(text)) return "";
+  if (/avatar-default/i.test(text)) return "";
+  if (/^(wxfile|file|blob):/i.test(text)) return "";
+  if (/^\/tmp\//i.test(text)) return "";
+  return text;
+}
+
+function avatarText(value) {
+  const text = String(value || "客").trim();
+  return text.slice(0, 1);
+}
+
 function normalizeRelay(item = {}) {
   const followUpStatus = item.followUpStatus || "pending";
   return {
     ...item,
+    avatarUrl: safeAvatarUrl(item.avatarUrl),
+    avatarText: avatarText(item.nickname),
     followUpStatus,
     isPending: followUpStatus !== "followed",
     createdText: item.createdText || formatRelayTime(item.createdAt),

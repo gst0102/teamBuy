@@ -1,47 +1,178 @@
 <view class="page-shell">
-  <custom-nav title="编辑展示页" />
+  <custom-nav title="{{id ? '编辑合集' : sceneTexts.createTitle}}" />
 
   <view class="status-bar">
-    <text class="status {{status}}">{{status === 'published' ? '已发布' : status === 'archived' ? '已下架' : '草稿'}}</text>
-    <text class="count">{{selectedRows.length}} 条资料</text>
+    <view>
+      <text class="status {{status}}">{{status === 'published' ? '已发布' : status === 'archived' ? '已下架' : '草稿'}}</text>
+      <text class="count">{{selectedCount}} 条已加入</text>
+    </view>
+    <button wx:if="{{status === 'published' && !unpublishedChanges}}" class="share-top-btn" open-type="share">{{sceneTexts.shareAction}}</button>
+    <button wx:elif="{{status === 'published' && unpublishedChanges}}" class="share-top-btn" bindtap="handlePublish" loading="{{saving}}">发布新版</button>
   </view>
 
-  <view class="section">
-    <view class="section-title">基础信息</view>
-    <input class="input" value="{{name}}" placeholder="店名或展示页名称" bindinput="updateField" data-key="name" />
-    <textarea class="textarea" value="{{description}}" placeholder="简介" bindinput="updateField" data-key="description"></textarea>
-    <input class="input" value="{{shareTitle}}" placeholder="分享标题" bindinput="updateField" data-key="shareTitle" />
-    <view class="banner-upload">
-      <image wx:if="{{bannerUrl}}" class="banner-preview" src="{{bannerUrl}}" mode="aspectFill"></image>
-      <view wx:else class="banner-preview banner-empty">banner</view>
-      <view class="banner-main">
-        <input class="input banner-input" value="{{bannerUrl}}" placeholder="banner 图片地址" bindinput="updateField" data-key="bannerUrl" />
-        <button class="upload-btn" bindtap="handleBannerUpload">上传图片</button>
+  <view class="section hero-section">
+    <view class="eyebrow">1 · 先选模板</view>
+    <view class="section-title compact">先看客户会看到什么</view>
+    <view class="template-grid">
+      <view wx:for="{{templates}}" wx:key="id" class="template-card {{activeTemplateId === item.id ? 'active' : ''}} {{item.tone}}" bindtap="handleTemplateSelect" data-id="{{item.id}}">
+        <view class="template-badge">{{item.badge}}</view>
+        <image class="template-preview-image" src="{{item.previewImage}}" mode="aspectFit"></image>
+        <view class="template-name">{{item.name}}</view>
+        <view class="template-sub">{{item.subtitle}}</view>
+      </view>
+    </view>
+    <view class="layout-picker">
+      <view>
+        <view class="layout-title">房源排列</view>
+        <view class="layout-sub">默认一列更稳，房源图和按钮不容易挤压。</view>
+      </view>
+      <view class="layout-segment">
+        <text wx:for="{{displayLayoutOptions}}" wx:key="key" class="{{displayLayout === item.key ? 'active' : ''}}" data-layout="{{item.key}}" bindtap="handleDisplayLayoutSelect">{{item.label}}</text>
       </view>
     </view>
   </view>
 
   <view class="section">
-    <view class="section-title">联系方式</view>
-    <input class="input" value="{{phone}}" placeholder="联系电话" type="number" bindinput="updateField" data-key="phone" />
-    <input class="input" value="{{wechat}}" placeholder="微信号" bindinput="updateField" data-key="wechat" />
-    <input class="input" value="{{contactText}}" placeholder="联系文案" bindinput="updateField" data-key="contactText" />
-  </view>
-
-  <view class="section">
-    <view class="section-title">展示方式</view>
-    <radio-group class="radio-row" bindchange="handleGroupChange">
-      <label class="radio-item"><radio value="none" checked="{{groupBy === 'none'}}" />不分组</label>
-      <label class="radio-item"><radio value="cardType" checked="{{groupBy === 'cardType'}}" />按类型</label>
-      <label class="radio-item"><radio value="tag" checked="{{groupBy === 'tag'}}" />按标签</label>
-      <label class="radio-item"><radio value="custom" checked="{{groupBy === 'custom'}}" />自定义</label>
-    </radio-group>
+    <view class="section-head">
+      <view class="section-title compact">2 · {{sceneTexts.createTitle}}</view>
+      <text class="hint">可改，不改也能发布</text>
+    </view>
+    <input class="input" value="{{name}}" placeholder="{{sceneTexts.createPlaceholder}}" bindinput="updateField" data-key="name" />
+    <textarea class="textarea" value="{{description}}" placeholder="{{sceneTexts.descriptionPlaceholder}}" bindinput="updateField" data-key="description"></textarea>
+    <input class="input" value="{{shareTitle}}" placeholder="微信分享标题" bindinput="updateField" data-key="shareTitle" />
+    <view class="banner-upload">
+      <image wx:if="{{bannerUrl}}" class="banner-preview" src="{{bannerUrl}}" mode="aspectFill"></image>
+      <view wx:else class="banner-preview banner-empty">{{sceneTexts.isGroupbuy ? '默认取第一个商品图' : sceneTexts.isProperty ? '默认取第一套房源图' : '默认取第一条资料图'}}</view>
+      <button class="upload-btn" bindtap="handleBannerUpload">换封面</button>
+    </view>
   </view>
 
   <view class="section">
     <view class="section-head">
-      <view class="section-title">已选资料</view>
-      <text class="hint">上移 / 下移会影响客户页顺序</text>
+      <view>
+        <view class="eyebrow">3 · 选择生成方式</view>
+        <view class="section-title compact">{{sceneTexts.generationTitle}}</view>
+      </view>
+      <text class="mode-text">{{activeGenerationMethod === 'manual' ? '手动' : '筛选'}}</text>
+    </view>
+    <view class="method-grid">
+      <view wx:for="{{generationMethods}}" wx:key="key" class="method-card {{activeGenerationMethod === item.key ? 'active' : ''}} {{!item.enabled ? 'disabled' : ''}}" data-key="{{item.key}}" bindtap="handleGenerationMethodSelect">
+        <view>{{item.title}}</view>
+        <text>{{item.desc}}</text>
+      </view>
+    </view>
+    <view class="condition-panel" wx:if="{{activeGenerationMethod === 'condition' && sceneTexts.isProperty}}">
+      <view class="condition-title">{{sceneTexts.conditionTitle}}</view>
+      <view class="price-range-row">
+        <input class="price-input" type="number" value="{{propertyPriceMin}}" data-key="propertyPriceMin" bindinput="handlePropertyPriceInput" placeholder="最低价" />
+        <text>至</text>
+        <input class="price-input" type="number" value="{{propertyPriceMax}}" data-key="propertyPriceMax" bindinput="handlePropertyPriceInput" placeholder="最高价" />
+        <text>元</text>
+      </view>
+      <view class="filter-chip-row">
+        <text wx:for="{{propertyPricePresets}}" wx:key="key" class="filter-chip {{propertyPricePreset === item.key ? 'active' : ''}}" data-key="{{item.key}}" bindtap="handlePropertyPricePreset">{{item.label}}</text>
+      </view>
+      <view class="filter-line-title">户型</view>
+      <view class="filter-chip-row">
+        <text wx:for="{{propertyLayoutFilters}}" wx:key="*this" class="filter-chip {{propertyLayoutFilter === item ? 'active' : ''}}" data-key="propertyLayoutFilter" data-value="{{item}}" bindtap="handlePropertyQuickFilter">{{item}}</text>
+      </view>
+      <view class="filter-line-title">位置 / 楼层</view>
+      <view class="filter-chip-row">
+        <text wx:for="{{propertyMetroFilters}}" wx:key="*this" class="filter-chip {{propertyMetroFilter === item ? 'active' : ''}}" data-key="propertyMetroFilter" data-value="{{item}}" bindtap="handlePropertyQuickFilter">{{item}}</text>
+        <text wx:for="{{propertyElevatorFilters}}" wx:key="*this" class="filter-chip {{propertyElevatorFilter === item ? 'active' : ''}}" data-key="propertyElevatorFilter" data-value="{{item}}" bindtap="handlePropertyQuickFilter">{{item}}</text>
+      </view>
+      <view class="filter-line-title">面积 / 押付 / 入住</view>
+      <view class="filter-chip-row">
+        <text wx:for="{{propertyAreaFilters}}" wx:key="*this" class="filter-chip {{propertyAreaFilter === item ? 'active' : ''}}" data-key="propertyAreaFilter" data-value="{{item}}" bindtap="handlePropertyQuickFilter">{{item}}</text>
+        <text wx:for="{{propertyPaymentFilters}}" wx:key="*this" class="filter-chip {{propertyPaymentFilter === item ? 'active' : ''}}" data-key="propertyPaymentFilter" data-value="{{item}}" bindtap="handlePropertyQuickFilter">{{item}}</text>
+        <text wx:for="{{propertyMoveInFilters}}" wx:key="*this" class="filter-chip {{propertyMoveInFilter === item ? 'active' : ''}}" data-key="propertyMoveInFilter" data-value="{{item}}" bindtap="handlePropertyQuickFilter">{{item}}</text>
+      </view>
+      <view class="filter-line-title">状态</view>
+      <view class="filter-chip-row">
+        <text wx:for="{{propertyStatusFilters}}" wx:key="*this" class="filter-chip {{propertyStatusFilter === item ? 'active' : ''}}" data-key="propertyStatusFilter" data-value="{{item}}" bindtap="handlePropertyQuickFilter">{{item}}</text>
+      </view>
+      <button class="filter-reset-btn" bindtap="handleResetPropertyFilters">重置条件</button>
+    </view>
+    <view class="condition-panel product-condition-panel" wx:if="{{activeGenerationMethod === 'condition' && sceneTexts.isGroupbuy}}">
+      <view class="condition-title">{{sceneTexts.conditionTitle}}</view>
+      <view class="price-range-row">
+        <input class="price-input" type="digit" value="{{groupbuyPriceMin}}" data-key="groupbuyPriceMin" bindinput="handleGroupbuyPriceInput" placeholder="最低价" />
+        <text>至</text>
+        <input class="price-input" type="digit" value="{{groupbuyPriceMax}}" data-key="groupbuyPriceMax" bindinput="handleGroupbuyPriceInput" placeholder="最高价" />
+        <text>元</text>
+      </view>
+      <view class="filter-chip-row">
+        <text wx:for="{{groupbuyPricePresets}}" wx:key="key" class="filter-chip {{groupbuyPricePreset === item.key ? 'active' : ''}}" data-key="{{item.key}}" bindtap="handleGroupbuyPricePreset">{{item.label}}</text>
+      </view>
+      <view class="filter-line-title">取货方式</view>
+      <view class="filter-chip-row">
+        <text wx:for="{{groupbuyPickupFilters}}" wx:key="*this" class="filter-chip {{groupbuyPickupFilter === item ? 'active' : ''}}" data-key="groupbuyPickupFilter" data-value="{{item}}" bindtap="handleGroupbuyQuickFilter">{{item}}</text>
+      </view>
+      <view class="filter-line-title">截止时间</view>
+      <view class="filter-chip-row">
+        <text wx:for="{{groupbuyDeadlineFilters}}" wx:key="*this" class="filter-chip {{groupbuyDeadlineFilter === item ? 'active' : ''}}" data-key="groupbuyDeadlineFilter" data-value="{{item}}" bindtap="handleGroupbuyQuickFilter">{{item}}</text>
+      </view>
+      <button class="filter-reset-btn" bindtap="handleResetGroupbuyFilters">重置条件</button>
+    </view>
+  </view>
+
+  <view class="section">
+    <view class="section-head">
+      <view>
+        <view class="eyebrow">4 · {{sceneTexts.confirmTitle}}</view>
+        <view class="section-title compact">{{sceneTexts.noteSectionMeta}}</view>
+      </view>
+      <button class="toggle-section-btn" bindtap="toggleNotePicker">{{showNotePicker ? '隐藏' : '展示'}}</button>
+    </view>
+    <view class="topic-source-card" wx:if="{{preselectTopicId}}">
+      <view>
+        <view class="topic-source-title">来自专题：{{preselectTopicName || '未命名专题'}}</view>
+        <view class="topic-source-desc">专题用于内部整理和检索；合集用于整理成可分享的页面。</view>
+      </view>
+    </view>
+    <view class="topic-source-card radar-source-card" wx:if="{{radarCompareMode}}">
+      <view>
+        <view class="topic-source-title">来自雷达建议</view>
+        <view class="topic-source-desc">客户连续查看或正在比较时，可以把相关资料放进一个对比合集再发客户。</view>
+      </view>
+    </view>
+    <view class="note-section-meta">{{activeCategory}} · {{activeGenerationMethod === 'manual' ? '手动勾选' : '当前筛选已自动加入'}} · 已加入 {{selectedCount}} 条</view>
+    <scroll-view scroll-x class="category-scroll" show-scrollbar="{{false}}">
+      <block wx:for="{{categoryOptions}}" wx:key="value">
+        <text class="category-chip {{activeCategory === item.value ? 'active' : ''}}" data-value="{{item.value}}" bindtap="handleCategorySelect">{{item.label}} {{item.count}}</text>
+      </block>
+    </scroll-view>
+    <view wx:if="{{showNotePicker}}">
+      <view class="view-switch">
+        <text class="{{noteViewMode === 'list' ? 'active' : ''}}" data-mode="list" bindtap="handleNoteViewModeChange">列表</text>
+        <text class="{{noteViewMode === 'grid' ? 'active' : ''}}" data-mode="grid" bindtap="handleNoteViewModeChange">双列卡片</text>
+      </view>
+      <view wx:if="{{loading}}" class="empty-line">加载中...</view>
+      <view wx:elif="{{!filteredNotes.length}}" class="empty-line">这个分类暂无资料</view>
+      <view wx:else class="note-picker-list {{noteViewMode === 'grid' ? 'grid' : ''}}">
+        <note-select-card wx:for="{{visibleFilteredNotes}}" wx:key="id" note="{{item}}" mode="{{noteViewMode}}" bind:toggle="toggleNote" />
+      </view>
+      <view class="note-page-footer" wx:if="{{filteredNotes.length}}">
+        <text>已显示 {{visibleFilteredNotes.length}} / {{filteredTotalCount}}</text>
+        <button wx:if="{{hasMoreFilteredNotes}}" bindtap="handleLoadMoreNotes">再显示 10 条</button>
+      </view>
+    </view>
+  </view>
+
+  <view class="section">
+    <view class="section-head">
+      <view class="section-title compact">联系与转化</view>
+      <text class="hint">{{sceneTexts.contactHint}}</text>
+    </view>
+    <input class="input" value="{{phone}}" placeholder="联系电话，默认从资料或账号取" type="number" bindinput="updateField" data-key="phone" />
+    <input class="input" value="{{wechat}}" placeholder="微信号，可选" bindinput="updateField" data-key="wechat" />
+    <input class="input" value="{{contactText}}" placeholder="联系文案" bindinput="updateField" data-key="contactText" />
+  </view>
+
+  <view class="section">
+    <view class="section-head">
+      <view class="section-title compact">{{sceneTexts.selectedTitle}}</view>
+      <text class="hint">可上移 / 下移</text>
     </view>
     <view wx:if="{{!selectedRows.length}}" class="empty-line">还没有选择资料</view>
     <view wx:for="{{selectedRows}}" wx:key="noteId" class="selected-row">
@@ -49,13 +180,11 @@
       <view wx:else class="thumb fallback">{{item.badge}}</view>
       <view class="selected-main">
         <view class="selected-title">{{item.title}}</view>
-        <view class="selected-summary">{{item.summary}}</view>
         <view class="row-meta">
           <text>{{item.badge}}</text>
           <text>{{item.visibleText}}</text>
         </view>
         <input class="inline-input" value="{{item.displayTitle}}" placeholder="展示标题，留空用资料标题" bindinput="updateSelectedField" data-id="{{item.noteId}}" data-key="displayTitle" />
-        <input class="inline-input" value="{{item.sectionTitle}}" placeholder="自定义分组，选自定义分组时生效" bindinput="updateSelectedField" data-id="{{item.noteId}}" data-key="sectionTitle" />
       </view>
       <view class="mini-actions">
         <button bindtap="moveSelected" data-id="{{item.noteId}}" data-direction="up">↑</button>
@@ -66,27 +195,35 @@
     </view>
   </view>
 
-  <view class="section">
-    <view class="section-title">资料库</view>
-    <view wx:if="{{loading}}" class="empty-line">加载中...</view>
-    <view wx:elif="{{!notes.length}}" class="empty-line">暂无资料</view>
-    <view wx:else class="note-list">
-      <view wx:for="{{notes}}" wx:key="id" class="note-row" bindtap="toggleNote" data-id="{{item.id}}">
-        <image wx:if="{{item.coverUrl}}" class="thumb" src="{{item.coverUrl}}" mode="aspectFill"></image>
-        <view wx:else class="thumb fallback">{{item.badge}}</view>
-        <view class="note-main">
-          <view class="note-title">{{item.title}}</view>
-          <view class="note-summary">{{item.summary}}</view>
+  <view class="section preview-step">
+    <view class="section-head">
+      <view>
+        <view class="eyebrow">5 · 预览和发布</view>
+        <view class="section-title compact">{{sceneTexts.previewTitle}}</view>
+      </view>
+      <button class="toggle-section-btn" bindtap="handlePreview">预览</button>
+    </view>
+    <view class="note-section-meta">{{sceneTexts.previewMeta}}</view>
+    <view class="publish-check-list">
+      <view wx:for="{{publishChecks}}" wx:key="key" class="publish-check-row {{item.tone}}">
+        <text>{{item.statusText}}</text>
+        <view>
+          <view>{{item.label}}</view>
+          <view wx:if="{{!item.ok}}">{{item.fix}}</view>
         </view>
-        <view class="select-pill {{item.selected ? 'active' : ''}}">{{item.selectedText}}</view>
       </view>
     </view>
   </view>
 
   <view class="bottom-actions">
-    <button class="ghost-btn" bindtap="handleSave" loading="{{saving}}">保存</button>
-    <button class="ghost-btn" bindtap="handlePreview">预览</button>
-    <button wx:if="{{status === 'published'}}" class="warn-btn" bindtap="handleArchive">下架</button>
-    <button wx:else class="primary-btn" bindtap="handlePublish">发布</button>
+    <view class="bottom-actions-box {{status === 'published' ? 'published' : 'draft'}} {{id ? 'has-delete' : 'no-delete'}}">
+      <button class="ghost-btn" bindtap="handleSave" loading="{{saving}}">保存</button>
+      <button class="ghost-btn" bindtap="handlePreview">预览</button>
+      <button wx:if="{{id}}" class="danger-btn" bindtap="handleDelete">删除</button>
+      <button wx:if="{{status === 'published' && !unpublishedChanges}}" class="primary-btn" open-type="share">{{sceneTexts.shareAction}}</button>
+      <button wx:elif="{{status === 'published' && unpublishedChanges}}" class="primary-btn" bindtap="handlePublish" loading="{{saving}}">发布新版</button>
+      <button wx:if="{{status === 'published'}}" class="warn-btn" bindtap="handleArchive">下架</button>
+      <button wx:else class="primary-btn" bindtap="handlePublish">{{sceneTexts.publishButton}}</button>
+    </view>
   </view>
 </view>

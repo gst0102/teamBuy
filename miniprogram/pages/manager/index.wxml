@@ -77,7 +77,8 @@
     </view>
     <block wx:for="{{filteredViewers}}" wx:key="userId">
       <view class="viewer-row {{item.isHighIntent ? 'high-intent' : ''}}">
-        <image class="avatar" src="{{item.avatarUrl}}" mode="aspectFill"></image>
+        <image wx:if="{{item.avatarUrl}}" class="avatar" src="{{item.avatarUrl}}" mode="aspectFill"></image>
+        <view wx:else class="avatar fallback">{{item.avatarText}}</view>
         <view class="viewer-main">
           <view class="viewer-name-row">
             <view class="viewer-name">{{item.nickname}}</view>

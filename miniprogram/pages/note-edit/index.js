@@ -1,6 +1,10 @@
 const api = require("../../services/api");
 const messagePlugin = require("../../plugins/message-plugin/index");
 const { getCurrentUser } = require("../../utils/dashboard");
+const { buildBusinessCardShareTitle, generatePropertyShareImage, generateBusinessCardShareImage } = require("../../utils/business-card-share");
+const { getSalesPageTemplates, templateToneClass } = require("../../utils/sales-page-templates");
+
+const BUSINESS_CARD_SHARE_CANVAS_ID = "businessCardEditShareCanvas";
 
 const TEMPLATE_META = {
   general: {
@@ -37,6 +41,8 @@ const CARD_TYPES = {
   text_note: "文本卡",
   property_listing: "房源字段卡",
   groupbuy_product: "团购商品卡",
+  business_card: "电子名片",
+  service_offer: "服务方案卡",
   image_ocr: "图片 OCR 卡"
 };
 
@@ -74,7 +80,7 @@ function hasUnreadCustomerAction(summary, userId, noteId) {
 
 const FEATURE_PRESETS = [
   { key: "enableLightScrm", label: "轻 CRM" },
-  { key: "collectLeads", label: "留资表单" },
+  { key: "collectLeads", label: "留言表单" },
   { key: "enableAppointment", label: "预约" },
   { key: "enableGroupRelay", label: "接龙" }
 ];
@@ -90,7 +96,11 @@ const PROPERTY_FIELDS = [
   { key: "community", label: "小区 / 标题", placeholder: "例如：碧桂园城市之光1栋1210" },
   { key: "layout", label: "户型", placeholder: "例如：公寓一房", quickOptions: ["公寓一房", "一室一厅", "两室一厅", "三室两厅"] },
   { key: "price", label: "价格 / 租金", placeholder: "例如：1600元/月" },
+  { key: "area", label: "面积", placeholder: "例如：38㎡", quickOptions: ["30㎡内", "30-50㎡", "50㎡以上"] },
+  { key: "floor", label: "楼层 / 电梯", placeholder: "例如：电梯高层", quickOptions: ["电梯房", "楼梯房", "低楼层", "高楼层"] },
   { key: "utilities", label: "水电物业", placeholder: "例如：自缴", quickOptions: ["民水民电", "商水商电", "水电自缴", "物业已含"] },
+  { key: "paymentMethod", label: "押付方式", placeholder: "例如：押一付一", quickOptions: ["押一付一", "押一付三", "押二付一"] },
+  { key: "moveInTime", label: "入住时间", placeholder: "例如：随时入住", quickOptions: ["随时入住", "本周可住", "月底可住"] },
   { key: "businessArea", label: "商圈 / 区域", placeholder: "例如：万家丽、高桥北", quickOptions: ["万家丽", "高桥北", "汽车东站", "袁隆平地铁口", "高桥"] },
   { key: "address", label: "地址 / 位置", placeholder: "可选" },
   { key: "serviceFee", label: "服务费", placeholder: "例如：服务费200", quickOptions: ["无服务费", "服务费200", "合同期内收一次服务费"] },
@@ -119,15 +129,41 @@ const PRODUCT_FULFILLMENT_FIELDS = [
   { key: "contact", label: "联系方式", placeholder: "可选" }
 ];
 
+const BUSINESS_CARD_FIELDS = [
+  { key: "name", label: "姓名", placeholder: "例如：王小满" },
+  { key: "title", label: "职位 / 身份", placeholder: "例如：置业顾问 / 课程顾问" },
+  { key: "company", label: "公司 / 门店", placeholder: "例如：某某门店" },
+  { key: "serviceScope", label: "服务范围", placeholder: "例如：长沙租房、二手房咨询" },
+  { key: "headline", label: "一句话介绍", placeholder: "例如：专注帮你快速找到合适房源" },
+  { key: "phone", label: "电话", placeholder: "可选" },
+  { key: "wechat", label: "微信", placeholder: "可选" },
+  { key: "email", label: "邮箱", placeholder: "可选，例如：hello@example.com" },
+  { key: "city", label: "城市 / 区域", placeholder: "例如：长沙" },
+  { key: "website", label: "公司网址", placeholder: "可选，例如：https://example.com" }
+];
+
+const SERVICE_OFFER_FIELDS = [
+  { key: "serviceName", label: "服务名称", placeholder: "例如：全屋收纳咨询" },
+  { key: "headline", label: "一句话卖点", placeholder: "例如：一次沟通，整理出可执行方案" },
+  { key: "targetAudience", label: "适合人群", placeholder: "例如：准备装修 / 想提升收纳效率的家庭" },
+  { key: "pricingNote", label: "价格 / 报价说明", placeholder: "例如：到店咨询免费，方案按面积报价" },
+  { key: "serviceArea", label: "服务地区", placeholder: "例如：长沙全城" },
+  { key: "phone", label: "电话", placeholder: "可选" },
+  { key: "wechat", label: "微信", placeholder: "可选" },
+  { key: "email", label: "邮箱", placeholder: "可选，例如：hello@example.com" },
+  { key: "website", label: "公司网址 / 介绍链接", placeholder: "可选，例如：https://example.com" },
+  { key: "appointmentNote", label: "预约说明", placeholder: "例如：提前一天预约沟通时间" }
+];
+
 const CONVERSION_OPTIONS = [
-  { key: "showContactPhone", label: "展示联系电话", desc: "生成页展示电话或联系按钮", property: true, groupbuy: true },
-  { key: "enableLightScrm", label: "轻 SCRM 跟进", desc: "记录浏览、收藏、咨询等转化行为", property: true, groupbuy: false },
-  { key: "collectLeads", label: "收集线索", desc: "允许用户提交联系方式和备注", property: true, groupbuy: false },
-  { key: "enableAppointment", label: "预约看房", desc: "房源页展示预约看房入口", property: true, groupbuy: false },
-  { key: "enablePrivateConsultation", label: "私聊咨询", desc: "房源页展示私聊咨询入口", property: true, groupbuy: false },
-  { key: "enableSharePoster", label: "保存分享图", desc: "保留可保存到相册的图片素材入口", property: true, groupbuy: true },
+  { key: "showContactPhone", label: "展示联系电话", desc: "生成页展示电话或联系按钮", property: true, groupbuy: true, service: true },
+  { key: "enableLightScrm", label: "客户反馈记录", desc: "记录浏览、咨询、留言和待跟进", property: true, groupbuy: false, service: true },
+  { key: "collectLeads", label: "留电话/微信", desc: "允许客户提交联系方式和备注", property: true, groupbuy: false, service: true },
+  { key: "enableAppointment", label: "预约看房", desc: "客户页展示预约看房入口", property: true, groupbuy: false, service: true },
+  { key: "enablePrivateConsultation", label: "微信咨询", desc: "客户页展示微信咨询入口", property: true, groupbuy: false, service: true },
+  { key: "enableSharePoster", label: "保存分享图", desc: "保留可保存到相册的图片素材入口", property: true, groupbuy: true, service: true },
   { key: "enableGroupRelay", label: "团购接龙", desc: "团购页展示接龙/报名入口", property: false, groupbuy: true },
-  { key: "enablePaymentPlaceholder", label: "下单按钮预留", desc: "只展示预留入口，不接真实支付", property: false, groupbuy: false }
+  { key: "enablePaymentPlaceholder", label: "下单按钮", desc: "展示下单入口，暂不接真实支付", property: false, groupbuy: false }
 ];
 
 const PROPERTY_STATUS_OPTIONS = [
@@ -137,6 +173,7 @@ const PROPERTY_STATUS_OPTIONS = [
 ];
 
 const NOISY_LABELS = new Set(["未整理", "待整理", "待跟进", "已整理", "房源候选", "团购候选"]);
+const PROPERTY_CONTEXT_LABELS = ["房产", "房源", "租房", "小区", "公寓", "万家丽", "高桥北", "汽车东站", "袁隆平地铁口", "高桥"];
 const LAST_CONTACT_PHONE_KEY = "teambuy:lastContactPhone";
 const LAST_PROPERTY_CITY_KEY = "teambuy:lastPropertyCity";
 const FLOAT_SAVE_SIZE = 42;
@@ -171,6 +208,11 @@ function inferCityFromText(value) {
   if (cityMatch) return cityMatch[1];
   if (text.includes("长沙") || text.includes("湖南")) return "长沙市";
   return "";
+}
+
+function isUsefulMapRegion(value) {
+  const region = String(value || "").trim();
+  return Boolean(region && /省$|市$|自治区$|特别行政区$/.test(region));
 }
 
 function readLastPropertyCity() {
@@ -208,8 +250,9 @@ function formatUploadDate(value) {
 
 function buildBookmark(note) {
   const config = note.visibilityConfig || {};
-  const tags = filterUsefulLabels(Array.isArray(config.tags) ? config.tags : []);
+  const cardType = config.cardType || (config.contentMode === "bookmark" ? "link" : "text_note");
   const userTags = filterUsefulLabels(Array.isArray(config.userTags) ? config.userTags : []);
+  const tags = filterContextualLabels(Array.isArray(config.tags) ? config.tags : [], userTags, cardType);
   return {
     sourceUrl: config.sourceUrl || "",
     sourceName: config.sourceName || "链接来源",
@@ -219,8 +262,8 @@ function buildBookmark(note) {
     category: config.systemCategory || config.category || "文章",
     tags,
     userTags,
-    topics: Array.isArray(config.topics) ? config.topics.filter((topic) => topic && topic.id && topic.name) : [],
-    cardType: config.cardType || (config.contentMode === "bookmark" ? "link" : "text_note"),
+    topics: filterContextualTopics(Array.isArray(config.topics) ? config.topics : [], cardType),
+    cardType,
     cardState: config.cardState || "collected",
     collectedAtText: formatDateTime(note.createdAt)
   };
@@ -252,7 +295,7 @@ function buildOcrInfo(config, structuredData) {
   const statusLabels = {
     pending: "图片已保存",
     done: "已识别文字",
-    not_configured: "OCR 引擎未配置",
+    not_configured: "识别服务未开启",
     empty: "未识别到文字"
   };
   const reason = (ocr.details && ocr.details.reason) || "";
@@ -264,7 +307,7 @@ function buildOcrInfo(config, structuredData) {
     configured: Boolean(ocr.configured),
     textPreview: ocr.text || structuredData.rawText || "",
     reason,
-    buttonText: status === "done" ? "重新识别图片文字" : "识别图片文字",
+    buttonText: status === "done" ? "重新识别" : "识别文字",
     hint: status === "done"
       ? "识别结果已进入资料字段，可继续人工校对。"
       : status === "not_configured"
@@ -320,6 +363,40 @@ function buildMediaItems(form) {
   return items;
 }
 
+function resolveBusinessCardQrUrl(data, form) {
+  const explicit = data.qrCodeUrl || data.qrcodeUrl || data.qrUrl || data.wechatQrCodeUrl || data.wechatQrUrl || data.qrCode || "";
+  if (explicit) return explicit;
+  const avatar = data.avatarUrl || form.coverUrl || "";
+  const images = [
+    ...(Array.isArray(form.media) ? form.media.filter((item) => item && item.type === "image").map((item) => item.url) : []),
+    ...(Array.isArray(data.images) ? data.images : [])
+  ].filter(Boolean);
+  return images.find((url) => url && url !== avatar && url !== data.avatarUrl) || "";
+}
+
+function buildBusinessCardImageState(form, data) {
+  if (!data) data = {};
+  const avatarUrl = data.avatarUrl || form.coverUrl || "";
+  const qrCodeUrl = resolveBusinessCardQrUrl(data, form);
+  return {
+    avatarUrl,
+    qrCodeUrl,
+    hasAvatar: Boolean(avatarUrl),
+    hasQrCode: Boolean(qrCodeUrl)
+  };
+}
+
+function buildBusinessCardTemplateOptions(currentId) {
+  return getSalesPageTemplates("business_card").map((template) => ({
+    id: template.id,
+    name: template.name,
+    scene: template.scene,
+    badge: template.badge,
+    toneClass: templateToneClass(template),
+    active: template.id === currentId
+  }));
+}
+
 function normalizePropertyStatus(value) {
   return PROPERTY_STATUS_OPTIONS.some((item) => item.value === value) ? value : "active";
 }
@@ -355,6 +432,18 @@ function defaultConversionConfig(cardType) {
       enablePrivateConsultation: false,
       enableSharePoster: true,
       enableGroupRelay: true,
+      enablePaymentPlaceholder: false
+    };
+  }
+  if (cardType === "business_card" || cardType === "service_offer") {
+    return {
+      showContactPhone: true,
+      enableLightScrm: true,
+      collectLeads: true,
+      enableAppointment: true,
+      enablePrivateConsultation: true,
+      enableSharePoster: true,
+      enableGroupRelay: false,
       enablePaymentPlaceholder: false
     };
   }
@@ -462,7 +551,8 @@ function buildProductPriceText(structuredData) {
 function hydrateConversionOptions(cardType, config) {
   const merged = { ...defaultConversionConfig(cardType), ...(config || {}) };
   return CONVERSION_OPTIONS
-    .filter((option) => (cardType === "property_listing" ? option.property : cardType === "groupbuy_product" ? option.groupbuy : false))
+    .filter((option) => (cardType === "property_listing" ? option.property : cardType === "groupbuy_product" ? option.groupbuy : ["business_card", "service_offer"].includes(cardType) ? option.service : false))
+    .filter((option) => !(cardType === "business_card" && option.key === "enableAppointment"))
     .map((option) => ({
       ...option,
       checked: Boolean(merged[option.key])
@@ -481,6 +571,8 @@ function buildSuggestionButtons(suggestions) {
   const labels = {
     property_listing: "房源",
     groupbuy_product: "商品",
+    business_card: "名片",
+    service_offer: "服务",
     text_note: "普通笔记"
   };
   return (Array.isArray(suggestions) ? suggestions : [])
@@ -516,7 +608,7 @@ function buildWorkflowSteps(activeState) {
 
 function getStateTitle(cardType, state) {
   const isProperty = cardType === "property_listing";
-  const noun = isProperty ? "房源" : cardType === "groupbuy_product" ? "团购" : "资料";
+  const noun = isProperty ? "房源" : cardType === "groupbuy_product" ? "团购" : cardType === "business_card" ? "名片" : cardType === "service_offer" ? "服务方案" : "资料";
   const titles = {
     collected: `${noun}已收藏`,
     editing: `编辑${noun}资料`,
@@ -528,9 +620,10 @@ function getStateTitle(cardType, state) {
 
 function getStateHint(cardType, state) {
   const isProperty = cardType === "property_listing";
+  const isService = cardType === "business_card" || cardType === "service_offer";
   const hints = {
-    collected: isProperty ? "系统已识别为房源候选，先确认内容，再进入字段编辑。" : "系统已识别资料类型，先确认内容，再进入字段编辑。",
-    editing: isProperty ? "先把房源字段修准，转化功能单独配置，不混进房源本体字段。" : "先把商品字段修准，转化功能单独配置。",
+    collected: isProperty ? "系统已识别为房源候选，先确认内容，再进入字段编辑。" : isService ? "先补齐展示给客户看的身份、服务和联系方式。" : "系统已识别资料类型，先确认内容，再进入字段编辑。",
+    editing: isProperty ? "先把房源字段修准，转化功能单独配置，不混进房源本体字段。" : isService ? "服务内容和客户动作分开保存，方便统一查看客户反馈。" : "先把商品字段修准，转化功能单独配置。",
     organized: "系统已按字段整理，重点检查待确认项和生成建议。",
     generated: "当前是生成态管理预览，可查看启用动作并继续回到编辑。"
   };
@@ -567,6 +660,16 @@ function buildKeyChips(cardType, structuredData, config) {
     if (priceText) chips.push(priceText);
     if (structuredData.spec) chips.push(structuredData.spec);
     if (structuredData.pickupMethod) chips.push(structuredData.pickupMethod);
+  } else if (cardType === "business_card") {
+    chips.push("电子名片");
+    if (structuredData.name) chips.push(structuredData.name);
+    if (structuredData.title) chips.push(structuredData.title);
+    if (structuredData.serviceScope) chips.push(structuredData.serviceScope);
+  } else if (cardType === "service_offer") {
+    chips.push("服务方案");
+    if (structuredData.serviceName) chips.push(structuredData.serviceName);
+    if (structuredData.pricingNote) chips.push(structuredData.pricingNote);
+    if (structuredData.serviceArea) chips.push(structuredData.serviceArea);
   }
   chips.push(config.sourceName || "企业微信导入");
   return chips.filter(Boolean).slice(0, 5);
@@ -591,15 +694,128 @@ function buildMissingWarnings(cardType, structuredData) {
         ["address", "详细地址不完整"],
         ["price", "租金待确认"]
       ]
-    : [
+    : cardType === "groupbuy_product" ? [
         ["contact", "联系方式待确认"],
         ["pickupLocation", "取货地点待确认"]
-      ];
+      ] : cardType === "business_card" ? [
+        ["name", "姓名待确认"],
+        ["phone", "电话待确认"],
+        ["serviceScope", "服务范围待确认"]
+      ] : cardType === "service_offer" ? [
+        ["serviceName", "服务名称待确认"],
+        ["serviceContent", "服务内容待确认"],
+        ["contact", "联系方式待确认"]
+      ] : [];
   return checks.filter(([key]) => !structuredData[key]).map(([, label]) => label);
+}
+
+function buildPropertyCustomerPreview(form = {}, structuredData = {}, conversionConfig = {}) {
+  const title = form.title || structuredData.community || "房源标题待补";
+  const firstImage = (form.media || []).find((item) => item && item.type === "image" && item.url);
+  const coverUrl = form.coverUrl || (firstImage && firstImage.url) || "";
+  const location = structuredData.businessArea || structuredData.address || "位置待补";
+  const highlights = [
+    structuredData.price || "租金待补",
+    structuredData.layout || "户型待补",
+    structuredData.area,
+    structuredData.floor,
+    structuredData.paymentMethod,
+    structuredData.moveInTime
+  ].filter(Boolean).slice(0, 6);
+  const actions = [
+    conversionConfig.showContactPhone ? "电话" : "",
+    conversionConfig.enablePrivateConsultation ? "微信咨询" : "",
+    conversionConfig.enableAppointment ? "预约看房" : "",
+    conversionConfig.collectLeads ? "留电话/微信" : ""
+  ].filter(Boolean);
+  return {
+    title,
+    coverUrl,
+    location,
+    highlights,
+    remark: structuredData.remark || "亮点待补",
+    actions: actions.length ? actions : ["未开启联系入口"]
+  };
+}
+
+function buildPropertyPublishChecks(form = {}, structuredData = {}, conversionConfig = {}) {
+  const hasImage = Boolean(form.coverUrl || (form.media || []).some((item) => item && item.type === "image" && item.url));
+  const checks = [
+    { key: "cover", label: "封面图片", ok: hasImage, fix: "建议设置一张客户第一眼能看清的房源图" },
+    { key: "price", label: "租金", ok: Boolean(structuredData.price), fix: "补租金后客户更容易判断是否合适" },
+    { key: "layout", label: "户型", ok: Boolean(structuredData.layout), fix: "补户型，方便客户快速筛选" },
+    { key: "location", label: "位置", ok: Boolean(structuredData.businessArea || structuredData.address), fix: "补商圈或地址，减少反复询问" },
+    { key: "contact", label: "联系方式", ok: Boolean(structuredData.contact || form.phone || conversionConfig.collectLeads || conversionConfig.enablePrivateConsultation), fix: "至少开启一种联系方式或留言入口" }
+  ];
+  const status = normalizePropertyStatus(structuredData.propertyStatus);
+  if (status === "rented") {
+    checks.push({ key: "status", label: "房源状态", ok: false, fix: "当前是已租，发给客户前建议确认是否还可推荐" });
+  } else if (status === "paused") {
+    checks.push({ key: "status", label: "房源状态", ok: false, fix: "当前暂停推广，发布前建议改为可租或确认用途" });
+  }
+  return checks.map((item) => ({
+    ...item,
+    tone: item.ok ? "ok" : "warn",
+    statusText: item.ok ? "已完成" : "待完善"
+  }));
+}
+
+function buildProductCustomerPreview(form = {}, structuredData = {}, conversionConfig = {}) {
+  const title = structuredData.productName || form.title || "商品标题待补";
+  const firstImage = (form.media || []).find((item) => item && item.type === "image" && item.url);
+  const coverUrl = form.coverUrl || (firstImage && firstImage.url) || "";
+  const priceText = buildProductPriceText(structuredData);
+  const highlights = [
+    priceText || "价格待补",
+    structuredData.spec,
+    structuredData.pickupMethod,
+    structuredData.deadline ? `截止 ${structuredData.deadline}` : ""
+  ].filter(Boolean).slice(0, 5);
+  const actions = [
+    conversionConfig.enableGroupRelay ? "下单并接龙" : "下单",
+    conversionConfig.showContactPhone ? "电话联系" : "",
+    conversionConfig.enableSharePoster ? "保存分享图" : ""
+  ].filter(Boolean);
+  return {
+    title,
+    coverUrl,
+    location: structuredData.pickupLocation || "取货地点待补",
+    highlights,
+    remark: structuredData.remark || "商品卖点待补",
+    actions: actions.length ? actions : ["未开启下单入口"]
+  };
+}
+
+function buildProductPublishChecks(form = {}, structuredData = {}, conversionConfig = {}) {
+  const hasImage = Boolean(form.coverUrl || (form.media || []).some((item) => item && item.type === "image" && item.url));
+  const skuConfig = normalizeSkuConfig(structuredData);
+  const hasPrice = Boolean(buildProductPriceText(structuredData));
+  const hasAvailableSku = (skuConfig.skus || []).some((sku) => !sku.soldOut);
+  const checks = [
+    { key: "cover", label: "商品图片", ok: hasImage, fix: "建议设置一张清晰商品图，发群更容易成交" },
+    { key: "name", label: "商品名称", ok: Boolean(structuredData.productName || form.title), fix: "补商品名，客户才能快速判断是什么" },
+    { key: "price", label: "价格 / 规格", ok: hasPrice, fix: "补价格或 SKU 价格，避免客户反复询问" },
+    { key: "pickup", label: "取货方式", ok: Boolean(structuredData.pickupMethod || structuredData.pickupLocation), fix: "补自提、配送或取货地点" },
+    { key: "contact", label: "联系方式", ok: Boolean(structuredData.contact || form.phone || conversionConfig.showContactPhone || conversionConfig.enableGroupRelay), fix: "至少保留接龙或联系方式，方便客户提交" }
+  ];
+  if ((skuConfig.skus || []).length && !hasAvailableSku) {
+    checks.push({ key: "sku", label: "SKU 库存", ok: false, fix: "当前所有规格都售罄，发群前建议确认库存" });
+  }
+  return checks.map((item) => ({
+    ...item,
+    tone: item.ok ? "ok" : "warn",
+    statusText: item.ok ? "已完成" : "待完善"
+  }));
 }
 
 function buildEnabledLabels(options) {
   return (options || []).filter((item) => item.checked).map((item) => item.label);
+}
+
+function buildEnabledCustomerFeatures(options) {
+  return (options || [])
+    .filter((item) => item.checked && ["showContactPhone", "enableLightScrm", "collectLeads", "enableAppointment", "enablePrivateConsultation"].includes(item.key))
+    .map((item) => item.label);
 }
 
 function buildGenerationOptions(cardType, structuredData) {
@@ -609,6 +825,8 @@ function buildGenerationOptions(cardType, structuredData) {
   }
   if (cardType === "property_listing") return ["房源推广页", "微信群文案", "客户话术", "对比表"];
   if (cardType === "groupbuy_product") return ["团购分享图", "发群文案", "接龙格式", "商品卖点"];
+  if (cardType === "business_card") return ["个人名片页", "微信介绍文案", "客户沟通话术"];
+  if (cardType === "service_offer") return ["服务介绍页", "咨询邀约文案", "客户沟通话术"];
   return [];
 }
 
@@ -620,8 +838,10 @@ function buildGeneratedActions(structuredData, enabledLabels) {
 }
 
 function buildDisplayTitle(cardType, form, structuredData) {
-  if (cardType === "property_listing") return structuredData.community || form.title || "房源资料";
+  if (cardType === "property_listing") return form.title || structuredData.community || "房源资料";
   if (cardType === "groupbuy_product") return structuredData.productName || form.title || "团购商品";
+  if (cardType === "business_card") return structuredData.name || form.title || "电子名片";
+  if (cardType === "service_offer") return structuredData.serviceName || form.title || "服务方案";
   return form.title || "资料";
 }
 
@@ -633,7 +853,36 @@ function buildDisplaySubtitle(cardType, form, structuredData) {
     const skuConfig = normalizeSkuConfig(structuredData);
     return [buildPriceRange(skuConfig, structuredData.price), structuredData.spec, structuredData.pickupMethod].filter(Boolean).join(" · ") || form.summary || "商品信息";
   }
+  if (cardType === "business_card") {
+    return [structuredData.title, structuredData.company, structuredData.serviceScope].filter(Boolean).join(" · ") || form.summary || "个人顾问信息";
+  }
+  if (cardType === "service_offer") {
+    return [structuredData.headline, structuredData.pricingNote, structuredData.serviceArea].filter(Boolean).join(" · ") || form.summary || "服务介绍";
+  }
   return form.summary || "";
+}
+
+function buildBusinessCardHero(form, structuredData, templateName) {
+  const name = structuredData.name || form.title || "电子名片";
+  const role = structuredData.title || "个人顾问";
+  const company = structuredData.company || "我的公司 / 门店";
+  const serviceScope = structuredData.serviceScope || structuredData.headline || form.summary || "补充服务范围后即可发给客户";
+  const phone = structuredData.phone || form.phone || "";
+  const wechat = structuredData.wechat || structuredData.contactWechat || "";
+  const email = structuredData.email || "";
+  const contactLine = [phone, wechat, email].filter(Boolean).join(" · ") || "补充电话 / 微信 / 邮箱";
+  return {
+    name,
+    role,
+    company,
+    serviceScope,
+    contactLine,
+    templateName: templateName || "电子名片",
+    templateId: ((form.visibilityConfig || {}).displayTemplate) || "",
+    tone: ((form.visibilityConfig || {}).displayTemplateTone) || "",
+    avatarUrl: structuredData.avatarUrl || form.coverUrl || "",
+    initial: String(name || "名").slice(0, 1)
+  };
 }
 
 function buildShareText(cardType, form, structuredData) {
@@ -658,7 +907,34 @@ function buildShareText(cardType, form, structuredData) {
       structuredData.remark || form.summary
     ].filter(Boolean).join("\n");
   }
+  if (cardType === "business_card") {
+    return [
+      structuredData.name || form.title,
+      [structuredData.title, structuredData.company].filter(Boolean).join(" · "),
+      structuredData.serviceScope ? `服务：${structuredData.serviceScope}` : "",
+      structuredData.headline || form.summary,
+      structuredData.phone ? `电话：${structuredData.phone}` : "",
+      structuredData.wechat ? `微信：${structuredData.wechat}` : "",
+      structuredData.email ? `邮箱：${structuredData.email}` : ""
+    ].filter(Boolean).join("\n");
+  }
+  if (cardType === "service_offer") {
+    return [
+      structuredData.serviceName || form.title,
+      structuredData.headline || form.summary,
+      structuredData.targetAudience ? `适合：${structuredData.targetAudience}` : "",
+      structuredData.pricingNote ? `报价：${structuredData.pricingNote}` : "",
+      structuredData.serviceArea ? `地区：${structuredData.serviceArea}` : "",
+      structuredData.contact ? `联系：${structuredData.contact}` : ""
+    ].filter(Boolean).join("\n");
+  }
   return [form.title, form.summary, form.body].filter(Boolean).join("\n");
+}
+
+function buildPropertyShareTitle(form, structuredData) {
+  const headline = form.title || structuredData.community || "房源资料";
+  const chips = [structuredData.price, structuredData.layout].filter(Boolean);
+  return chips.length ? `${headline}\n${chips.join(" · ")}` : headline;
 }
 
 function buildCustomerTalkText(cardType, form, structuredData) {
@@ -681,6 +957,19 @@ function buildCustomerTalkText(cardType, form, structuredData) {
       structuredData.pickupMethod ? `取货：${structuredData.pickupMethod}` : "",
       structuredData.deadline ? `截止：${structuredData.deadline}` : "",
       structuredData.remark || form.summary,
+      structuredData.contact ? `联系：${structuredData.contact}` : ""
+    ].filter(Boolean).join("\n");
+  }
+  if (cardType === "business_card") {
+    return buildShareText(cardType, form, structuredData);
+  }
+  if (cardType === "service_offer") {
+    return [
+      structuredData.serviceName || form.title,
+      structuredData.headline || form.summary,
+      structuredData.serviceContent,
+      structuredData.serviceProcess ? `流程：${structuredData.serviceProcess}` : "",
+      structuredData.appointmentNote ? `预约：${structuredData.appointmentNote}` : "",
       structuredData.contact ? `联系：${structuredData.contact}` : ""
     ].filter(Boolean).join("\n");
   }
@@ -725,6 +1014,43 @@ function buildStructuredDataForType(cardType, form, current) {
       rawText: current.rawText || form.body
     };
   }
+  if (cardType === "business_card") {
+    return {
+      ...miniapp,
+      name: current.name || form.title,
+      title: current.title || "",
+      company: current.company || "",
+      serviceScope: current.serviceScope || "",
+      headline: current.headline || form.summary || "",
+      bio: current.bio || form.body,
+      phone: current.phone || form.phone || "",
+      wechat: current.wechat || "",
+      email: current.email || "",
+      city: current.city || form.locationText || "",
+      website: current.website || "",
+      avatarUrl: current.avatarUrl || form.coverUrl || "",
+      qrCodeUrl: current.qrCodeUrl || "",
+      images,
+      rawText: current.rawText || form.body
+    };
+  }
+  if (cardType === "service_offer") {
+    return {
+      ...miniapp,
+      serviceName: current.serviceName || form.title,
+      headline: current.headline || form.summary || "",
+      targetAudience: current.targetAudience || "",
+      serviceContent: current.serviceContent || form.body,
+      pricingNote: current.pricingNote || "",
+      serviceProcess: current.serviceProcess || "",
+      caseHighlights: current.caseHighlights || "",
+      serviceArea: current.serviceArea || form.locationText || "",
+      contact: current.contact || form.phone || "",
+      appointmentNote: current.appointmentNote || "",
+      images,
+      rawText: current.rawText || form.body
+    };
+  }
   return { ...miniapp, rawText: form.body, images };
 }
 
@@ -742,11 +1068,30 @@ function splitUsefulLabels(value) {
 function isUsefulLabel(label) {
   const value = String(label || "").trim();
   if (!value || NOISY_LABELS.has(value)) return false;
-  return value.length <= 8;
+  if (/^\d{3,5}-\d{3,5}$/.test(value)) return true;
+  return value.length <= 10;
 }
 
 function filterUsefulLabels(values) {
   return Array.from(new Set((values || []).map((item) => String(item || "").trim()).filter(isUsefulLabel)));
+}
+
+function isPropertyContextLabel(label) {
+  const value = String(label || "").trim();
+  return Boolean(value && PROPERTY_CONTEXT_LABELS.some((keyword) => value.includes(keyword)));
+}
+
+function filterContextualLabels(labels, userLabels, cardType) {
+  const userSet = new Set(userLabels || []);
+  const useful = filterUsefulLabels(labels || []);
+  if (cardType === "property_listing") return useful;
+  return useful.filter((label) => userSet.has(label) || !isPropertyContextLabel(label));
+}
+
+function filterContextualTopics(topics, cardType) {
+  const items = (topics || []).filter((topic) => topic && topic.id && topic.name);
+  if (cardType === "property_listing") return items;
+  return items.filter((topic) => !isPropertyContextLabel(topic.name));
 }
 
 function buildMapPreview(structuredData) {
@@ -799,28 +1144,41 @@ function buildMapPreview(structuredData) {
 }
 
 function buildMapAddress(structuredData) {
-  const address = [
-    structuredData.address,
-    structuredData.community,
-    structuredData.businessArea
+  return buildMapAddressCandidates(structuredData)[0] || "";
+}
+
+function buildMapAddressCandidates(structuredData) {
+  const source = structuredData || {};
+  const fields = {
+    address: String(source.address || "").trim(),
+    community: String(source.community || "").trim(),
+    businessArea: String(source.businessArea || "").trim()
+  };
+  const candidates = [
+    fields.address,
+    [fields.address, fields.community].filter(Boolean).join(" "),
+    [fields.community, fields.businessArea].filter(Boolean).join(" "),
+    fields.community,
+    [fields.address, fields.community, fields.businessArea].filter(Boolean).join(" ")
   ]
     .map((item) => String(item || "").trim())
     .filter(Boolean)
-    .filter((item, index, arr) => arr.indexOf(item) === index)
-    .join(" ");
-  const city = inferCityFromText(address) || readLastPropertyCity();
-  if (city && address && !address.includes(city) && !address.includes(city.replace("市", ""))) {
-    return `${city} ${address}`;
-  }
-  return address;
+    .filter((item, index, arr) => arr.indexOf(item) === index);
+  const remembered = readLastPropertyCity();
+  const city = inferCityFromText(candidates.join(" ")) || (isUsefulMapRegion(remembered) ? remembered : "");
+  if (!city) return candidates;
+  const withCity = candidates.map((item) => (
+    item.includes(city) || item.includes(city.replace("市", "")) ? item : `${city} ${item}`
+  ));
+  return [...candidates, ...withCity].filter((item, index, arr) => arr.indexOf(item) === index);
 }
 
 function inferMapRegion(structuredData) {
   const text = buildMapAddress(structuredData);
-  const remembered = readLastPropertyCity();
-  if (remembered) return remembered;
   const city = inferCityFromText(text);
   if (city) return city;
+  const remembered = readLastPropertyCity();
+  if (isUsefulMapRegion(remembered)) return remembered;
   if (text.includes("长沙")) return "长沙市";
   if (text.includes("湖南")) return "湖南省";
   return "";
@@ -840,8 +1198,111 @@ function buildSuggestedTagOptions(cardType, structuredData, form, config) {
     ? ["房产", "房源", ...splitUsefulLabels(structuredData.businessArea), structuredData.layout]
     : cardType === "groupbuy_product"
       ? ["团购", "商品", structuredData.productName, structuredData.pickupMethod]
-      : [];
+      : cardType === "business_card"
+        ? ["名片", "顾问", structuredData.title, structuredData.company, ...splitUsefulLabels(structuredData.serviceScope)]
+        : cardType === "service_offer"
+          ? ["服务", "方案", "咨询", structuredData.serviceName]
+          : [];
   return filterUsefulLabels(base).filter((item) => !existing.has(item)).slice(0, 6);
+}
+
+function buildCommonTagOptions(categories = [], config = {}) {
+  const existing = new Set([...(config.tags || []), ...(config.userTags || [])].map((item) => String(item || "").trim()));
+  return (categories || [])
+    .map((item) => String(item.name || "").trim())
+    .filter((name) => name && !existing.has(name))
+    .slice(0, 12);
+}
+
+function parsePropertyRent(value) {
+  const text = String(value || "");
+  const labeled = text.match(/(?:租金|价格|房租)?[：:\s]*([1-9]\d{2,5})\s*(?:元|块|\/月|每月|月租|月)?/);
+  return labeled ? Number(labeled[1]) : 0;
+}
+
+function buildPropertySystemTags(structuredData = {}) {
+  const text = [
+    structuredData.price,
+    structuredData.layout,
+    structuredData.area,
+    structuredData.floor,
+    structuredData.address,
+    structuredData.businessArea,
+    structuredData.paymentMethod,
+    structuredData.moveInTime,
+    structuredData.remark,
+    structuredData.utilities
+  ].filter(Boolean).join(" ");
+  const rent = parsePropertyRent(structuredData.price || "");
+  const tags = ["房源"];
+  if (rent) {
+    if (rent <= 1300) tags.push("1300以下");
+    else if (rent <= 1800) tags.push("1300-1800");
+    else if (rent <= 2500) tags.push("1800-2500");
+    else tags.push("2500以上");
+  }
+  if (/公寓/.test(text)) tags.push("公寓");
+  if (/([1-2]\d|30)㎡?内|小户型/.test(text)) tags.push("小户型");
+  if (/30\s*[-至]\s*50|3\d㎡|4\d㎡/.test(text)) tags.push("30-50㎡");
+  if (/50㎡?以上|[5-9]\d㎡/.test(text)) tags.push("50㎡以上");
+  if (/(一房|一室|公寓一房)/.test(text)) tags.push("一房");
+  if (/(两房|两室|二房|二室)/.test(text)) tags.push("两房");
+  if (/(三房|三室)/.test(text)) tags.push("三房");
+  if (/(地铁口|地铁站|近地铁|步行.*地铁)/.test(text)) tags.push("地铁口");
+  else if (/地铁/.test(text)) tags.push("地铁");
+  if (/电梯/.test(text)) tags.push("电梯房");
+  if (/楼梯/.test(text)) tags.push("楼梯房");
+  if (/押一付一/.test(text)) tags.push("押一付一");
+  if (/押一付三/.test(text)) tags.push("押一付三");
+  if (/随时入住|拎包入住|空置/.test(text)) tags.push("随时入住");
+  if (/本周可住|本周入住/.test(text)) tags.push("本周可住");
+  const status = normalizePropertyStatus(structuredData.propertyStatus);
+  if (status === "active") tags.push("可租");
+  if (status === "rented") tags.push("已租");
+  if (status === "paused") tags.push("暂停推广");
+  if (!rent || !structuredData.layout) tags.push("待确认");
+  return filterUsefulLabels(tags);
+}
+
+function buildGroupbuySystemTags(structuredData = {}) {
+  const skuConfig = normalizeSkuConfig(structuredData);
+  const text = [
+    structuredData.productName,
+    structuredData.price,
+    structuredData.spec,
+    structuredData.pickupMethod,
+    structuredData.pickupLocation,
+    structuredData.deadline,
+    structuredData.remark
+  ].filter(Boolean).join(" ");
+  const tags = ["团购", "商品"];
+  if (/自提|小区取|到店取/.test(text)) tags.push("自提");
+  if (/配送|送货|送上门/.test(text)) tags.push("配送");
+  if (/快递|邮寄/.test(text)) tags.push("快递");
+  if (/今日截止|今天截止|今晚截止|当天截止/.test(text)) tags.push("今日截止");
+  else if (/本周截止|周末截止|这周截止|截止/.test(text)) tags.push("本周截止");
+  if ((skuConfig.skus || []).length > 1) tags.push("有SKU");
+  if ((skuConfig.skus || []).length && (skuConfig.skus || []).every((sku) => sku.soldOut)) tags.push("已售罄");
+  const priceText = buildProductPriceText(structuredData);
+  if (!priceText) tags.push("待补价格");
+  if (!structuredData.pickupMethod && !structuredData.pickupLocation) tags.push("待补取货");
+  return filterUsefulLabels(tags);
+}
+
+function applySystemTagsToConfig(config = {}, structuredData = {}) {
+  if (!["property_listing", "groupbuy_product"].includes(config.cardType || "")) return config;
+  const systemTags = config.cardType === "groupbuy_product"
+    ? buildGroupbuySystemTags(structuredData)
+    : buildPropertySystemTags(structuredData);
+  const previousSystemTags = new Set(Array.isArray(config.systemTags) ? config.systemTags : []);
+  const userTags = filterUsefulLabels(config.userTags || []);
+  const preservedTags = filterUsefulLabels(config.tags || []).filter((tag) => !previousSystemTags.has(tag));
+  return {
+    ...config,
+    userTags,
+    systemTags,
+    tags: filterUsefulLabels([...systemTags, ...preservedTags, ...userTags])
+  };
 }
 
 function buildSuggestedTopicOptions(cardType, structuredData, form, topics, config) {
@@ -850,7 +1311,11 @@ function buildSuggestedTopicOptions(cardType, structuredData, form, topics, conf
     ? [structuredData.businessArea ? `${splitUsefulLabels(structuredData.businessArea)[0] || structuredData.businessArea}房源` : ""]
     : cardType === "groupbuy_product"
       ? [isUsefulLabel(structuredData.productName) ? `${structuredData.productName}团购` : "", "团购资料"]
-      : [];
+      : cardType === "business_card"
+        ? [structuredData.name ? `${structuredData.name}名片` : "", "顾问名片"]
+        : cardType === "service_offer"
+          ? [isUsefulLabel(structuredData.serviceName) ? `${structuredData.serviceName}服务` : "", "服务方案"]
+          : [];
   const existingNames = new Set((topics || []).map((item) => item.name).filter(Boolean));
   return base
     .map((item) => String(item || "").trim())
@@ -876,12 +1341,24 @@ Page({
       visibilityConfig: {}
     },
     isBookmark: false,
+    isPlainNote: false,
+    plainNoteOpsOpen: false,
+    abilityPluginOpen: false,
+    abilityPlugins: [
+      { key: "message", name: "留言", status: "按需添加", desc: "让查看者留下补充说明或反馈。" },
+      { key: "consult", name: "咨询", status: "按需添加", desc: "适合需要进一步沟通的资料。" },
+      { key: "relay", name: "接龙", status: "按需添加", desc: "适合报名、收集名单或轻量统计。" }
+    ],
+    showOperationalControls: true,
     bookmark: {},
     sourceTypes: SOURCE_TYPES,
     systemCategories: SYSTEM_CATEGORIES,
     cardTypeLabel: CARD_TYPES.text_note,
     isProperty: false,
     isGroupbuy: false,
+    isBusinessCard: false,
+    isServiceOffer: false,
+    isServiceCard: false,
     cardState: "collected",
     workflowSteps: buildWorkflowSteps("collected"),
     stateTitle: "资料已收藏",
@@ -900,6 +1377,8 @@ Page({
     skuConfig: normalizeSkuConfig({}),
     conversionConfig: {},
     conversionOptions: [],
+    customerFeatureLabels: [],
+    featureSettingsOpen: false,
     featurePresets: hydrateFeaturePresets({}),
     suggestionButtons: [],
     recognitionExplanation: {},
@@ -908,18 +1387,36 @@ Page({
     noteCreatedAt: "",
     displayTitle: "",
     displaySubtitle: "",
+    displayTemplateName: "",
+    businessCardTemplates: buildBusinessCardTemplateOptions(""),
+    businessCardHero: null,
+    businessCardShareImage: "",
+    propertyShareImage: "",
+    activePropertyDetailTab: "operate",
+    businessCardImages: buildBusinessCardImageState({ media: [] }, {}),
     mediaCountText: "",
     mediaItems: [],
     propertyStatusOptions: buildPropertyStatusOptions("active"),
+    propertyCustomerPreview: buildPropertyCustomerPreview(),
+    propertyPublishChecks: [],
+    productCustomerPreview: buildProductCustomerPreview(),
+    productPublishChecks: [],
+    showGroupbuyEdit: false,
+    showTagTopicPanel: true,
     mapPreview: buildMapPreview({}),
     geocodingAddress: false,
     propertyFields: hydrateFields(PROPERTY_FIELDS, {}),
     groupbuyFields: hydrateFields(GROUPBUY_FIELDS, {}),
     productInfoFields: hydrateFields(PRODUCT_INFO_FIELDS, {}),
     productFulfillmentFields: hydrateFields(PRODUCT_FULFILLMENT_FIELDS, {}),
+    businessCardFields: hydrateFields(BUSINESS_CARD_FIELDS, {}),
+    serviceOfferFields: hydrateFields(SERVICE_OFFER_FIELDS, {}),
     topics: [],
+    globalCategories: [],
+    commonTagOptions: [],
     tagDraft: "",
     topicDraft: "",
+    tagTopicOpen: false,
     suggestedTagOptions: [],
     suggestedTopicOptions: [],
     scrmSummary: EMPTY_SCRM_SUMMARY,
@@ -946,8 +1443,23 @@ Page({
       return;
     }
     this.setData({ user });
+    this.loadGlobalCategories();
     this.loadTopics();
     this.loadNote();
+  },
+  async loadGlobalCategories() {
+    const { user } = this.data;
+    if (!user) return;
+    try {
+      const res = await api.fetchCategories(user.id);
+      const globalCategories = res.data || [];
+      this.setData({
+        globalCategories,
+        commonTagOptions: buildCommonTagOptions(globalCategories, this.data.form.visibilityConfig || {})
+      });
+    } catch (error) {
+      this.setData({ globalCategories: [], commonTagOptions: [] });
+    }
   },
   async loadTopics() {
     const { user } = this.data;
@@ -982,8 +1494,8 @@ Page({
     }
   },
   async loadNoteCustomerActions() {
-    const { user, noteId, isProperty, isGroupbuy } = this.data;
-    if (!user || !noteId || (!isProperty && !isGroupbuy)) {
+    const { user, noteId, isProperty, isGroupbuy, isServiceCard } = this.data;
+    if (!user || !noteId || (!isProperty && !isGroupbuy && !isServiceCard)) {
       this.setData({ scrmSummary: EMPTY_SCRM_SUMMARY });
       return;
     }
@@ -1018,6 +1530,7 @@ Page({
     if (cardType === "groupbuy_product") {
       structuredData.skuConfig = normalizeSkuConfig(structuredData);
     }
+    const isServiceCard = cardType === "business_card" || cardType === "service_offer";
     const cardState = normalizeCardState(config.cardState);
     const miniappInfo = buildMiniappInfo(structuredData);
     const conversionConfig = {
@@ -1025,9 +1538,25 @@ Page({
       ...defaultMiniappConversionConfig(structuredData),
       ...(config.conversionConfig || {})
     };
-    const effectiveConfig = { ...config, structuredData, conversionConfig };
+    const contextualTopics = filterContextualTopics(Array.isArray(config.topics) ? config.topics : [], cardType);
+    const effectiveConfig = applySystemTagsToConfig({
+      ...config,
+      tags: filterContextualLabels(Array.isArray(config.tags) ? config.tags : [], Array.isArray(config.userTags) ? config.userTags : [], cardType),
+      topics: contextualTopics,
+      topicIds: cardType === "property_listing" ? config.topicIds : contextualTopics.map((topic) => topic.id),
+      structuredData,
+      conversionConfig
+    }, structuredData);
     const conversionOptions = hydrateConversionOptions(cardType, conversionConfig);
-    const typedFields = cardType === "property_listing" ? PROPERTY_FIELDS : cardType === "groupbuy_product" ? GROUPBUY_FIELDS : [];
+    const typedFields = cardType === "property_listing"
+      ? PROPERTY_FIELDS
+      : cardType === "groupbuy_product"
+        ? GROUPBUY_FIELDS
+        : cardType === "business_card"
+          ? BUSINESS_CARD_FIELDS
+          : cardType === "service_offer"
+            ? SERVICE_OFFER_FIELDS
+            : [];
     const enabledActionLabels = buildEnabledLabels(conversionOptions);
     const form = {
       title: note.title || "",
@@ -1042,11 +1571,20 @@ Page({
     };
     const mediaItems = buildMediaItems(form);
     const ocrInfo = buildOcrInfo(effectiveConfig, structuredData);
+    const suggestionButtons = buildSuggestionButtons(effectiveConfig.typeSuggestions);
+    const isPlainNote = cardType === "text_note" && !isBookmark && !miniappInfo.visible && !ocrInfo.visible && !suggestionButtons.length;
+    const showOperationalControls = !isPlainNote || this.data.plainNoteOpsOpen;
     this.setData({
       form,
       isBookmark,
       isProperty: cardType === "property_listing",
       isGroupbuy: cardType === "groupbuy_product",
+      isBusinessCard: cardType === "business_card",
+      isServiceOffer: cardType === "service_offer",
+      isServiceCard,
+      isPlainNote,
+      showOperationalControls,
+      abilityPluginOpen: false,
       cardState,
       workflowSteps: buildWorkflowSteps(cardState),
       stateTitle: getStateTitle(cardType, cardState),
@@ -1066,15 +1604,26 @@ Page({
       ocrInfo,
       conversionConfig,
       conversionOptions,
+      customerFeatureLabels: buildEnabledCustomerFeatures(conversionOptions),
       featurePresets: hydrateFeaturePresets(conversionConfig),
-      suggestionButtons: buildSuggestionButtons(effectiveConfig.typeSuggestions),
+      suggestionButtons,
       recognitionExplanation: effectiveConfig.recognitionExplanation || {},
       hiddenSections: hiddenSectionMap(effectiveConfig),
       uploadDateText: formatUploadDate(note.createdAt),
       noteCreatedAt: note.createdAt || "",
       displayTitle: buildDisplayTitle(cardType, form, structuredData),
       displaySubtitle: buildDisplaySubtitle(cardType, form, structuredData),
-      mediaCountText: mediaItems.length ? `共 ${mediaItems.length} 个素材，可隐藏但不会删除。` : "暂无素材，可后续补充。",
+      displayTemplateName: effectiveConfig.displayTemplateName || "",
+      propertyCustomerPreview: cardType === "property_listing" ? buildPropertyCustomerPreview(form, structuredData, conversionConfig) : buildPropertyCustomerPreview(),
+      propertyPublishChecks: cardType === "property_listing" ? buildPropertyPublishChecks(form, structuredData, conversionConfig) : [],
+      productCustomerPreview: cardType === "groupbuy_product" ? buildProductCustomerPreview(form, structuredData, conversionConfig) : buildProductCustomerPreview(),
+      productPublishChecks: cardType === "groupbuy_product" ? buildProductPublishChecks(form, structuredData, conversionConfig) : [],
+      showGroupbuyEdit: cardType === "groupbuy_product" && this.data.activePropertyDetailTab === "edit",
+      showTagTopicPanel: showOperationalControls && (cardType === "property_listing" || cardType === "groupbuy_product" ? this.data.activePropertyDetailTab === "edit" : true),
+      businessCardTemplates: buildBusinessCardTemplateOptions(effectiveConfig.displayTemplate || ""),
+      businessCardHero: cardType === "business_card" ? buildBusinessCardHero(form, structuredData, effectiveConfig.displayTemplateName || "") : null,
+      businessCardImages: buildBusinessCardImageState(form, structuredData),
+      mediaCountText: mediaItems.length ? `共 ${mediaItems.length} 个素材，可隐藏但不会删除。` : "暂无素材，可稍后补充。",
       mediaItems,
       propertyStatusOptions: buildPropertyStatusOptions(structuredData.propertyStatus),
       mapPreview: buildMapPreview(structuredData),
@@ -1082,12 +1631,51 @@ Page({
       groupbuyFields: hydrateFields(GROUPBUY_FIELDS, structuredData),
       productInfoFields: hydrateFields(PRODUCT_INFO_FIELDS, structuredData),
       productFulfillmentFields: hydrateFields(PRODUCT_FULFILLMENT_FIELDS, structuredData),
+      businessCardFields: hydrateFields(BUSINESS_CARD_FIELDS, structuredData),
+      serviceOfferFields: hydrateFields(SERVICE_OFFER_FIELDS, structuredData),
       suggestedTagOptions: buildSuggestedTagOptions(cardType, structuredData, form, effectiveConfig),
+      commonTagOptions: buildCommonTagOptions(this.data.globalCategories, effectiveConfig),
       suggestedTopicOptions: buildSuggestedTopicOptions(cardType, structuredData, form, this.data.topics, effectiveConfig),
-      bookmark: buildBookmark(note)
+      bookmark: buildBookmark({ ...note, visibilityConfig: effectiveConfig })
     }, () => {
       this.autoResolveMapLocation({ silent: true });
+      this.prepareBusinessCardShareImage();
+      this.preparePropertyShareImage();
     });
+  },
+  async prepareBusinessCardShareImage() {
+    const hero = this.data.businessCardHero || null;
+    if (!this.data.isBusinessCard || !hero) {
+      this.setData({ businessCardShareImage: "" });
+      return;
+    }
+    try {
+      const imagePath = await generateBusinessCardShareImage(this, BUSINESS_CARD_SHARE_CANVAS_ID, hero);
+      this.setData({ businessCardShareImage: imagePath || "" });
+    } catch (error) {
+      this.setData({ businessCardShareImage: "" });
+    }
+  },
+  async preparePropertyShareImage() {
+    if (!this.data.isProperty) {
+      this.setData({ propertyShareImage: "" });
+      return;
+    }
+    try {
+      const form = this.data.form || {};
+      const data = this.data.structuredData || {};
+      const imagePath = await generatePropertyShareImage(this, BUSINESS_CARD_SHARE_CANVAS_ID, {
+        title: form.title || data.community || "房源资料",
+        price: data.price || "",
+        layout: data.layout || "",
+        area: data.area || "",
+        address: data.address || data.businessArea || "",
+        coverUrl: form.coverUrl || ""
+      });
+      this.setData({ propertyShareImage: imagePath || "" });
+    } catch (error) {
+      this.setData({ propertyShareImage: "" });
+    }
   },
   async handleRecognizeOcr() {
     const { user, noteId, ocrRecognizing } = this.data;
@@ -1148,7 +1736,49 @@ Page({
   },
   handleInput(event) {
     const key = event.currentTarget.dataset.key;
-    this.setData({ [`form.${key}`]: event.detail.value });
+    const value = event.detail.value;
+    const form = { ...this.data.form, [key]: value };
+    const config = form.visibilityConfig || {};
+    const cardType = config.cardType || "text_note";
+    const structuredData = this.data.structuredData || {};
+    this.setData({
+      form,
+      [`form.${key}`]: value,
+      productCustomerPreview: cardType === "groupbuy_product" ? buildProductCustomerPreview(form, structuredData, this.data.conversionConfig || {}) : this.data.productCustomerPreview,
+      productPublishChecks: cardType === "groupbuy_product" ? buildProductPublishChecks(form, structuredData, this.data.conversionConfig || {}) : this.data.productPublishChecks
+    });
+  },
+  handleOpenPlainNoteOps() {
+    this.setData({
+      abilityPluginOpen: true
+    });
+  },
+  handleEnablePlainNoteOrganize() {
+    this.setData({
+      plainNoteOpsOpen: true,
+      abilityPluginOpen: false,
+      showOperationalControls: true,
+      showTagTopicPanel: true
+    });
+  },
+  handleClosePlainNoteOps() {
+    this.setData({
+      plainNoteOpsOpen: false,
+      abilityPluginOpen: false,
+      showOperationalControls: false,
+      showTagTopicPanel: false
+    });
+  },
+  async handleAddToShowcase() {
+    const { noteId } = this.data;
+    if (!noteId) return;
+    try {
+      await this.handleSaveOnly();
+    } catch (error) {
+      wx.showToast({ title: error.detail || error.message || "保存失败", icon: "none" });
+      return;
+    }
+    wx.navigateTo({ url: `/pages/showcase-edit/index?mode=notes&noteId=${encodeURIComponent(noteId)}` });
   },
   handleBookmarkField(event) {
     const key = event.currentTarget.dataset.key;
@@ -1175,13 +1805,56 @@ Page({
       groupbuyFields: hydrateFields(GROUPBUY_FIELDS, structuredData),
       productInfoFields: hydrateFields(PRODUCT_INFO_FIELDS, structuredData),
       productFulfillmentFields: hydrateFields(PRODUCT_FULFILLMENT_FIELDS, structuredData),
+      businessCardFields: hydrateFields(BUSINESS_CARD_FIELDS, structuredData),
+      serviceOfferFields: hydrateFields(SERVICE_OFFER_FIELDS, structuredData),
+      businessCardImages: buildBusinessCardImageState(this.data.form, structuredData),
       displayTitle: buildDisplayTitle(cardType, this.data.form, structuredData),
       displaySubtitle: buildDisplaySubtitle(cardType, this.data.form, structuredData),
+      propertyCustomerPreview: cardType === "property_listing" ? buildPropertyCustomerPreview(this.data.form, structuredData, this.data.conversionConfig || {}) : this.data.propertyCustomerPreview,
+      propertyPublishChecks: cardType === "property_listing" ? buildPropertyPublishChecks(this.data.form, structuredData, this.data.conversionConfig || {}) : this.data.propertyPublishChecks,
+      productCustomerPreview: cardType === "groupbuy_product" ? buildProductCustomerPreview(this.data.form, structuredData, this.data.conversionConfig || {}) : this.data.productCustomerPreview,
+      productPublishChecks: cardType === "groupbuy_product" ? buildProductPublishChecks(this.data.form, structuredData, this.data.conversionConfig || {}) : this.data.productPublishChecks,
+      businessCardHero: cardType === "business_card" ? buildBusinessCardHero(this.data.form, structuredData, (config || {}).displayTemplateName || "") : this.data.businessCardHero,
       suggestedTagOptions: buildSuggestedTagOptions(cardType, structuredData, this.data.form, config),
       suggestedTopicOptions: buildSuggestedTopicOptions(cardType, structuredData, this.data.form, this.data.topics, config),
       mapPreview: buildMapPreview(structuredData),
       "form.visibilityConfig": config
     });
+  },
+  async handleSwitchBusinessCardTemplate(event) {
+    const templateId = event.currentTarget.dataset.id;
+    const template = getSalesPageTemplates("business_card").find((item) => item.id === templateId);
+    if (!template || !this.data.isBusinessCard) return;
+    const currentConfig = { ...(this.data.form.visibilityConfig || {}) };
+    if (currentConfig.displayTemplate === template.id) return;
+    const structuredData = this.data.structuredData || {};
+    const config = {
+      ...currentConfig,
+      displayTemplate: template.id,
+      displayTemplateName: template.name,
+      displayTemplateScene: template.scene,
+      displayTemplateTone: template.tone,
+      structuredData,
+      cardState: "editing"
+    };
+    const form = { ...this.data.form, visibilityConfig: config };
+    this.setData({
+      form,
+      displayTemplateName: template.name,
+      businessCardTemplates: buildBusinessCardTemplateOptions(template.id),
+      businessCardHero: buildBusinessCardHero(form, structuredData, template.name),
+      "form.visibilityConfig": config,
+      saving: true
+    });
+    try {
+      await this.handleSaveOnly();
+      this.prepareBusinessCardShareImage();
+      wx.showToast({ title: "名片风格已切换", icon: "success" });
+    } catch (error) {
+      wx.showToast({ title: error.detail || error.message || "风格保存失败", icon: "none" });
+    } finally {
+      this.setData({ saving: false });
+    }
   },
   handleQuickFieldOption(event) {
     const key = event.currentTarget.dataset.key;
@@ -1196,8 +1869,16 @@ Page({
       groupbuyFields: hydrateFields(GROUPBUY_FIELDS, structuredData),
       productInfoFields: hydrateFields(PRODUCT_INFO_FIELDS, structuredData),
       productFulfillmentFields: hydrateFields(PRODUCT_FULFILLMENT_FIELDS, structuredData),
+      businessCardFields: hydrateFields(BUSINESS_CARD_FIELDS, structuredData),
+      serviceOfferFields: hydrateFields(SERVICE_OFFER_FIELDS, structuredData),
+      businessCardImages: buildBusinessCardImageState(this.data.form, structuredData),
       displayTitle: buildDisplayTitle(cardType, this.data.form, structuredData),
       displaySubtitle: buildDisplaySubtitle(cardType, this.data.form, structuredData),
+      propertyCustomerPreview: cardType === "property_listing" ? buildPropertyCustomerPreview(this.data.form, structuredData, this.data.conversionConfig || {}) : this.data.propertyCustomerPreview,
+      propertyPublishChecks: cardType === "property_listing" ? buildPropertyPublishChecks(this.data.form, structuredData, this.data.conversionConfig || {}) : this.data.propertyPublishChecks,
+      productCustomerPreview: cardType === "groupbuy_product" ? buildProductCustomerPreview(this.data.form, structuredData, this.data.conversionConfig || {}) : this.data.productCustomerPreview,
+      productPublishChecks: cardType === "groupbuy_product" ? buildProductPublishChecks(this.data.form, structuredData, this.data.conversionConfig || {}) : this.data.productPublishChecks,
+      businessCardHero: cardType === "business_card" ? buildBusinessCardHero(this.data.form, structuredData, (config || {}).displayTemplateName || "") : this.data.businessCardHero,
       suggestedTagOptions: buildSuggestedTagOptions(cardType, structuredData, this.data.form, config),
       suggestedTopicOptions: buildSuggestedTopicOptions(cardType, structuredData, this.data.form, this.data.topics, config),
       mapPreview: buildMapPreview(structuredData),
@@ -1214,6 +1895,8 @@ Page({
       structuredData,
       skuConfig: structuredData.skuConfig,
       displaySubtitle: buildDisplaySubtitle(config.cardType || "groupbuy_product", this.data.form, structuredData),
+      productCustomerPreview: config.cardType === "groupbuy_product" ? buildProductCustomerPreview(this.data.form, structuredData, this.data.conversionConfig || {}) : this.data.productCustomerPreview,
+      productPublishChecks: config.cardType === "groupbuy_product" ? buildProductPublishChecks(this.data.form, structuredData, this.data.conversionConfig || {}) : this.data.productPublishChecks,
       "form.visibilityConfig": config
     });
   },
@@ -1309,6 +1992,8 @@ Page({
           structuredData,
           propertyFields: hydrateFields(PROPERTY_FIELDS, structuredData),
           displaySubtitle: buildDisplaySubtitle(cardType, this.data.form, structuredData),
+          propertyCustomerPreview: cardType === "property_listing" ? buildPropertyCustomerPreview(this.data.form, structuredData, this.data.conversionConfig || {}) : this.data.propertyCustomerPreview,
+          propertyPublishChecks: cardType === "property_listing" ? buildPropertyPublishChecks(this.data.form, structuredData, this.data.conversionConfig || {}) : this.data.propertyPublishChecks,
           suggestedTagOptions: buildSuggestedTagOptions(cardType, structuredData, this.data.form, config),
           suggestedTopicOptions: buildSuggestedTopicOptions(cardType, structuredData, this.data.form, this.data.topics, config),
           mapPreview: buildMapPreview(structuredData),
@@ -1339,24 +2024,49 @@ Page({
       }
     });
   },
+  async handleResolveDefaultMap() {
+    if (this.data.geocodingAddress) return;
+    const address = buildMapAddress(this.data.structuredData || {});
+    if (!address) {
+      wx.showToast({ title: "请先填写地址", icon: "none" });
+      return;
+    }
+    const resolved = await this.autoResolveMapLocation({ silent: false });
+    if (!resolved && !(this.data.mapPreview || {}).hasPoint) {
+      wx.showToast({ title: "未匹配到位置，可手动选择", icon: "none" });
+    }
+  },
   async autoResolveMapLocation({ silent = false } = {}) {
     const structuredData = this.data.structuredData || {};
     const currentPreview = buildMapPreview(structuredData);
     const address = buildMapAddress(structuredData);
-    if (!this.data.isProperty || currentPreview.hasPoint || !address || this.data.geocodingAddress) return;
+    if (!this.data.isProperty || !address || this.data.geocodingAddress) return false;
+    if (currentPreview.hasPoint) return true;
+    const addressCandidates = buildMapAddressCandidates(structuredData);
 
     this.setData({ geocodingAddress: true });
     try {
-      const res = await api.geocodeAddress({
-        address,
-        region: inferMapRegion(structuredData)
-      });
-      const location = (res && res.data) || {};
-      if (!location.found || !location.latitude || !location.longitude) {
-        if (!silent && location.configured) {
-          wx.showToast({ title: "默认地址暂未匹配到地图", icon: "none" });
+      let location = null;
+      const region = inferMapRegion(structuredData);
+      const regions = region ? [region, ""] : [""];
+      for (let regionIndex = 0; regionIndex < regions.length; regionIndex += 1) {
+        for (let index = 0; index < addressCandidates.length; index += 1) {
+          const candidate = addressCandidates[index];
+          const res = await api.geocodeAddress({
+            address: candidate,
+            region: regions[regionIndex]
+          });
+          const data = (res && res.data) || {};
+          if (data.found && data.latitude && data.longitude) {
+            location = data;
+            break;
+          }
         }
-        return;
+        if (location) break;
+      }
+      if (!location) {
+        if (!silent) wx.showToast({ title: "默认地址暂未匹配到地图", icon: "none" });
+        return false;
       }
       const nextStructuredData = {
         ...this.data.structuredData,
@@ -1379,6 +2089,8 @@ Page({
         structuredData: nextStructuredData,
         propertyFields: hydrateFields(PROPERTY_FIELDS, nextStructuredData),
         displaySubtitle: buildDisplaySubtitle(cardType, this.data.form, nextStructuredData),
+        propertyCustomerPreview: cardType === "property_listing" ? buildPropertyCustomerPreview(this.data.form, nextStructuredData, this.data.conversionConfig || {}) : this.data.propertyCustomerPreview,
+        propertyPublishChecks: cardType === "property_listing" ? buildPropertyPublishChecks(this.data.form, nextStructuredData, this.data.conversionConfig || {}) : this.data.propertyPublishChecks,
         suggestedTagOptions: buildSuggestedTagOptions(cardType, nextStructuredData, this.data.form, config),
         suggestedTopicOptions: buildSuggestedTopicOptions(cardType, nextStructuredData, this.data.form, this.data.topics, config),
         mapPreview: buildMapPreview(nextStructuredData),
@@ -1390,8 +2102,10 @@ Page({
           if (!silent) wx.showToast({ title: error.detail || error.message || "地图位置保存失败", icon: "none" });
         }
       });
+      return true;
     } catch (error) {
       if (!silent) wx.showToast({ title: error.detail || error.message || "默认地址暂未匹配到地图", icon: "none" });
+      return false;
     } finally {
       this.setData({ geocodingAddress: false });
     }
@@ -1407,8 +2121,28 @@ Page({
     this.setData({
       conversionConfig,
       conversionOptions: hydrateConversionOptions(config.cardType, conversionConfig),
+      customerFeatureLabels: buildEnabledCustomerFeatures(hydrateConversionOptions(config.cardType, conversionConfig)),
+      propertyCustomerPreview: config.cardType === "property_listing" ? buildPropertyCustomerPreview(this.data.form, this.data.structuredData || {}, conversionConfig) : this.data.propertyCustomerPreview,
+      propertyPublishChecks: config.cardType === "property_listing" ? buildPropertyPublishChecks(this.data.form, this.data.structuredData || {}, conversionConfig) : this.data.propertyPublishChecks,
+      productCustomerPreview: config.cardType === "groupbuy_product" ? buildProductCustomerPreview(this.data.form, this.data.structuredData || {}, conversionConfig) : this.data.productCustomerPreview,
+      productPublishChecks: config.cardType === "groupbuy_product" ? buildProductPublishChecks(this.data.form, this.data.structuredData || {}, conversionConfig) : this.data.productPublishChecks,
       featurePresets: hydrateFeaturePresets(conversionConfig),
       "form.visibilityConfig": config
+    });
+  },
+  handleToggleFeatureSettings() {
+    this.setData({ featureSettingsOpen: !this.data.featureSettingsOpen });
+  },
+  handleToggleTagTopic() {
+    this.setData({ tagTopicOpen: !this.data.tagTopicOpen });
+  },
+  handlePropertyDetailTab(event) {
+    const activePropertyDetailTab = event.currentTarget.dataset.tab || "operate";
+    const isScopedWorkbench = this.data.isProperty || this.data.isGroupbuy;
+    this.setData({
+      activePropertyDetailTab,
+      showGroupbuyEdit: this.data.isGroupbuy && activePropertyDetailTab === "edit",
+      showTagTopicPanel: this.data.showOperationalControls && (isScopedWorkbench ? activePropertyDetailTab === "edit" : true)
     });
   },
   handleToggleSection(event) {
@@ -1439,6 +2173,8 @@ Page({
     this.setData({
       conversionConfig,
       featurePresets: hydrateFeaturePresets(conversionConfig),
+      productCustomerPreview: config.cardType === "groupbuy_product" ? buildProductCustomerPreview(this.data.form, this.data.structuredData || {}, conversionConfig) : this.data.productCustomerPreview,
+      productPublishChecks: config.cardType === "groupbuy_product" ? buildProductPublishChecks(this.data.form, this.data.structuredData || {}, conversionConfig) : this.data.productPublishChecks,
       "form.visibilityConfig": config
     });
   },
@@ -1525,6 +2261,14 @@ Page({
     });
     wx.navigateTo({ url: `/pages/note-actions/index?id=${this.data.noteId}` });
   },
+  handleOpenBusinessCardStudio() {
+    if (!this.data.noteId) return;
+    wx.navigateTo({ url: `/pages/business-card-studio/index?id=${this.data.noteId}` });
+  },
+  handleOpenServiceOfferStudio() {
+    if (!this.data.noteId) return;
+    wx.navigateTo({ url: `/pages/service-offer-studio/index?id=${this.data.noteId}` });
+  },
   handleOpenMessages() {
     messagePlugin.openMessageCenter();
   },
@@ -1533,6 +2277,28 @@ Page({
     if (!url) return;
     const form = { ...this.data.form, coverUrl: url };
     await this.persistMediaState(form, "封面已设置");
+  },
+  async handleSetBusinessCardImage(event) {
+    const url = event.currentTarget.dataset.url;
+    const field = event.currentTarget.dataset.field;
+    if (!url || !["avatarUrl", "qrCodeUrl"].includes(field)) return;
+    const structuredData = { ...(this.data.structuredData || {}), [field]: url };
+    const form = {
+      ...this.data.form,
+      coverUrl: field === "avatarUrl" ? url : this.data.form.coverUrl,
+      visibilityConfig: {
+        ...(this.data.form.visibilityConfig || {}),
+        structuredData,
+        cardState: "editing"
+      }
+    };
+    this.applyMediaState(form);
+    try {
+      await this.handleSaveOnly();
+      wx.showToast({ title: field === "avatarUrl" ? "头像已设置" : "二维码已设置", icon: "success" });
+    } catch (error) {
+      wx.showToast({ title: error.detail || error.message || "保存失败", icon: "none" });
+    }
   },
   async handleDeleteMedia(event) {
     const source = event.currentTarget.dataset.source;
@@ -1573,6 +2339,8 @@ Page({
       propertyStatusOptions: buildPropertyStatusOptions(status),
       propertyFields: hydrateFields(PROPERTY_FIELDS, structuredData),
       displaySubtitle: buildDisplaySubtitle(cardType, this.data.form, structuredData),
+      propertyCustomerPreview: cardType === "property_listing" ? buildPropertyCustomerPreview(this.data.form, structuredData, this.data.conversionConfig || {}) : this.data.propertyCustomerPreview,
+      propertyPublishChecks: cardType === "property_listing" ? buildPropertyPublishChecks(this.data.form, structuredData, this.data.conversionConfig || {}) : this.data.propertyPublishChecks,
       "form.visibilityConfig": config,
       saving: true
     });
@@ -1674,7 +2442,8 @@ Page({
     }
   },
   applyMediaState(form) {
-    const structuredData = { ...(this.data.structuredData || {}), images: buildImageUrls(form) };
+    const incomingData = ((form.visibilityConfig || {}).structuredData) || this.data.structuredData || {};
+    const structuredData = { ...incomingData, images: buildImageUrls(form) };
     const config = { ...(form.visibilityConfig || {}), structuredData, cardState: "editing" };
     form.visibilityConfig = config;
     const mediaItems = buildMediaItems(form);
@@ -1682,7 +2451,12 @@ Page({
       form,
       structuredData,
       mediaItems,
-      mediaCountText: mediaItems.length ? `共 ${mediaItems.length} 个素材，可隐藏但不会删除。` : "暂无素材，可后续补充。",
+      businessCardImages: buildBusinessCardImageState(form, structuredData),
+      propertyCustomerPreview: config.cardType === "property_listing" ? buildPropertyCustomerPreview(form, structuredData, this.data.conversionConfig || {}) : this.data.propertyCustomerPreview,
+      propertyPublishChecks: config.cardType === "property_listing" ? buildPropertyPublishChecks(form, structuredData, this.data.conversionConfig || {}) : this.data.propertyPublishChecks,
+      productCustomerPreview: config.cardType === "groupbuy_product" ? buildProductCustomerPreview(form, structuredData, this.data.conversionConfig || {}) : this.data.productCustomerPreview,
+      productPublishChecks: config.cardType === "groupbuy_product" ? buildProductPublishChecks(form, structuredData, this.data.conversionConfig || {}) : this.data.productPublishChecks,
+      mediaCountText: mediaItems.length ? `共 ${mediaItems.length} 个素材，可隐藏但不会删除。` : "暂无素材，可稍后补充。",
       "form.visibilityConfig": config
     });
   },
@@ -1716,6 +2490,7 @@ Page({
       "form.visibilityConfig": config,
       "bookmark.userTags": userTags,
       "bookmark.tags": tags,
+      commonTagOptions: buildCommonTagOptions(this.data.globalCategories, config),
       suggestedTagOptions: buildSuggestedTagOptions(config.cardType || "text_note", this.data.structuredData || {}, this.data.form, config),
       tagDraft: ""
     });
@@ -1733,6 +2508,7 @@ Page({
       "form.visibilityConfig": config,
       "bookmark.userTags": userTags,
       "bookmark.tags": tags,
+      commonTagOptions: buildCommonTagOptions(this.data.globalCategories, config),
       suggestedTagOptions: buildSuggestedTagOptions(config.cardType || "text_note", this.data.structuredData || {}, this.data.form, config)
     });
   },
@@ -1746,6 +2522,7 @@ Page({
       "form.visibilityConfig": config,
       "bookmark.userTags": config.userTags,
       "bookmark.tags": config.tags,
+      commonTagOptions: buildCommonTagOptions(this.data.globalCategories, config),
       suggestedTagOptions: buildSuggestedTagOptions(config.cardType || "text_note", this.data.structuredData || {}, this.data.form, config)
     });
   },
@@ -1849,21 +2626,38 @@ Page({
     const { user, noteId, form } = this.data;
     const structuredData = this.data.structuredData || {};
     const cardType = (form.visibilityConfig && form.visibilityConfig.cardType) || "text_note";
+    const visibilityConfig = applySystemTagsToConfig({
+      ...(form.visibilityConfig || {}),
+      structuredData
+    }, structuredData);
+    const nextForm = {
+      ...form,
+      visibilityConfig
+    };
     const primaryTitle = cardType === "property_listing"
       ? structuredData.community || form.title
       : cardType === "groupbuy_product"
         ? structuredData.productName || form.title
-        : form.title;
+        : cardType === "business_card"
+          ? structuredData.name || form.title
+          : cardType === "service_offer"
+            ? structuredData.serviceName || form.title
+            : form.title;
     const title = String(primaryTitle || "").trim();
     if (!title) {
       throw new Error("标题不能为空");
     }
-    rememberContactPhone((this.data.structuredData || {}).contact || form.phone);
+    rememberContactPhone((this.data.structuredData || {}).contact || (this.data.structuredData || {}).phone || form.phone);
+    this.setData({
+      form: nextForm,
+      bookmark: buildBookmark({ ...nextForm, visibilityConfig }),
+      commonTagOptions: buildCommonTagOptions(this.data.globalCategories, visibilityConfig)
+    });
     await api.updateNote(noteId, {
       ownerUserId: user.id,
-      ...form,
+      ...nextForm,
       title,
-      body: form.body.trim() || title
+      body: nextForm.body.trim() || title
     });
   },
   initFloatingSave() {
@@ -1958,11 +2752,17 @@ Page({
     });
   },
   onShareAppMessage() {
-    const title = this.data.displayTitle || this.data.form.title || "资料详情";
+    const hero = this.data.businessCardHero || null;
+    const isProperty = this.data.isProperty;
+    const title = hero
+      ? buildBusinessCardShareTitle(hero)
+      : isProperty
+        ? buildPropertyShareTitle(this.data.form, this.data.structuredData || {})
+        : this.data.displayTitle || this.data.form.title || "资料详情";
     return {
       title,
       path: `/pages/note-preview/index?id=${this.data.noteId}`,
-      imageUrl: this.data.form.coverUrl || ""
+      imageUrl: this.data.businessCardShareImage || this.data.propertyShareImage || (hero && hero.avatarUrl) || this.data.form.coverUrl || ""
     };
   }
 });

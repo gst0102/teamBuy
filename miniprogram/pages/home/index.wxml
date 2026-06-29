@@ -1,125 +1,172 @@
-<view class="page-shell">
-  <custom-nav title="&#x9996;&#x9875;" />
+<view class="page-shell home-page">
+  <custom-nav title="首页" />
 
-  <view class="home-hero">
-    <view class="hero-copy">
-      <view class="hero-title">微信内容<text class="hero-highlight">资源助手</text></view>
-      <view class="hero-subtitle">快速录入资料，整理成可分享的资源页。</view>
-      <view class="feature-row">
-        <text class="feature-pill">自动整理</text>
-        <text class="feature-pill">生成页面</text>
-        <text class="feature-pill">追踪访问</text>
-        <text class="feature-pill">访问提醒</text>
+  <view class="mode-picker-mask" wx:if="{{modeChooserVisible}}">
+    <view class="mode-picker">
+      <view class="mode-picker-kicker">使用场景</view>
+      <view class="mode-picker-title">你今天主要用哪个场景？</view>
+      <view class="mode-picker-sub">只影响首页和雷达展示。</view>
+      <view class="mode-option-list">
+        <block wx:for="{{modeOptions}}" wx:key="key">
+          <view class="mode-option {{item.tone}} {{item.activeClass}}" data-mode="{{item.key}}" bindtap="handleChooseMode">
+            <view class="mode-option-icon">{{item.icon}}</view>
+            <view class="mode-option-main">
+              <view class="mode-option-title">{{item.name}}</view>
+              <view class="mode-option-desc">{{item.desc}}</view>
+              <view class="mode-option-fit">{{item.fit}}</view>
+            </view>
+          </view>
+        </block>
       </view>
-      <button class="primary-btn hero-btn" bindtap="handleQuickAdd">快速入库</button>
-      <view class="hero-note">支持图片 / 视频 / 文字 / 文件 / 链接等</view>
-    </view>
-    <view class="hero-visual">
-      <view class="phone-card">
-        <view class="phone-line long"></view>
-        <view class="phone-line"></view>
-        <view class="phone-tile blue"></view>
-        <view class="phone-tile green"></view>
-      </view>
-      <view class="float-badge wx">微</view>
-      <view class="float-badge link">链</view>
-      <view class="float-badge file">文</view>
+      <button class="daily-btn" bindtap="handleUseDailyMode">先用日常资料</button>
     </view>
   </view>
 
-  <view class="panel">
-    <view class="stat-grid">
-      <view class="stat-item">
-        <view class="stat-icon blue">资</view>
-        <text class="stat-value">{{totalResources}}</text>
-        <text class="stat-label">我的资源</text>
-      </view>
-      <view class="stat-item">
-        <view class="stat-icon green">访</view>
-        <text class="stat-value">{{totalUv}}</text>
-        <text class="stat-label">访问人数</text>
-      </view>
-      <view class="stat-item">
-        <view class="stat-icon orange">热</view>
-        <text class="stat-value">{{totalPv}}</text>
-        <text class="stat-label">访问总量</text>
-      </view>
-      <view class="stat-item">
-        <view class="stat-icon purple">接</view>
-        <text class="stat-value">{{totalRelay}}</text>
-        <text class="stat-label">接龙线索</text>
-      </view>
-    </view>
-  </view>
-
-  <view class="panel shortcut-panel">
-    <view class="shortcut-item" bindtap="handleGoImports">
-      <view class="shortcut-icon red">领</view>
-      <view class="shortcut-title">待认领</view>
-      <view class="shortcut-desc">认领企微导入</view>
-    </view>
-    <view class="shortcut-item" bindtap="handleQuickAdd">
-      <view class="shortcut-icon blue">房</view>
-      <view class="shortcut-title">房源发布</view>
-      <view class="shortcut-desc">一键生成房源页</view>
-    </view>
-    <view class="shortcut-item" bindtap="handleQuickAdd">
-      <view class="shortcut-icon orange">团</view>
-      <view class="shortcut-title">团购发布</view>
-      <view class="shortcut-desc">创建团购接龙</view>
-    </view>
-    <view class="shortcut-item" bindtap="handleGoVisits">
-      <view class="shortcut-icon green">访</view>
-      <view class="shortcut-title">谁看过我</view>
-      <view class="shortcut-desc">查看访问线索</view>
-    </view>
-    <view class="shortcut-item" bindtap="handleGoLibrary">
-      <view class="shortcut-icon purple">库</view>
-      <view class="shortcut-title">我的资源库</view>
-      <view class="shortcut-desc">管理全部资源</view>
-    </view>
-  </view>
-
-  <view class="panel">
-    <view class="section-head">
-      <view class="section-title">谁看过我</view>
-      <view class="section-link" bindtap="handleGoVisits">查看全部 ></view>
-    </view>
-    <view class="visitor-row" wx:if="{{viewers.length}}">
-      <block wx:for="{{viewers}}" wx:key="userId">
-        <view class="visitor-card">
-          <image class="avatar" src="{{item.avatarUrl}}" mode="aspectFill"></image>
-          <view class="visitor-name">{{item.nickname}}</view>
-          <view class="visitor-desc">{{item.timeText}}</view>
+  <view class="opportunity-hero">
+    <view class="hero-topline">
+      <view class="hero-copy-block">
+        <view class="hero-kicker-row">
+          <view class="hero-kicker">今天先做什么</view>
+          <view class="mode-switch-mini" bindtap="handleOpenModeChooser">{{modeConfig.shortName || '房源'}}</view>
         </view>
-      </block>
+        <view class="hero-title">先看机会，再决定下一步</view>
+        <view class="hero-subtitle">谁动了，我先知。</view>
+      </view>
+      <view class="radar-visual">
+        <view class="radar-orbit">
+          <view class="orbit-ring outer"></view>
+          <view class="orbit-ring middle"></view>
+          <view class="orbit-ring"></view>
+          <view class="orbit-cross horizontal"></view>
+          <view class="orbit-cross vertical"></view>
+          <view class="orbit-center">客</view>
+          <view class="orbit-dot one"></view>
+          <view class="orbit-dot two"></view>
+        </view>
+        <view class="radar-person-card left">
+          <view>王女士</view>
+          <text>高意向</text>
+        </view>
+        <view class="radar-person-card right top">
+          <view>李先生</view>
+          <text>待跟进</text>
+        </view>
+        <view class="radar-person-card right bottom">
+          <view>张先生</view>
+          <text>复访</text>
+        </view>
+      </view>
     </view>
-    <view class="empty-state" wx:else>还没有登录访客，匿名访问只会计入总量。</view>
+    <view class="hero-bottomline">
+      <view class="hero-scene-pill" bindtap="handleOpenModeChooser">当前：{{modeConfig.name}}</view>
+    </view>
   </view>
 
-  <view class="panel">
+  <view class="opportunity-panel">
+    <view class="section-head clean">
+      <view>
+        <view class="section-title">今日机会</view>
+        <view class="section-sub">先盯谁，再跟谁。</view>
+      </view>
+      <view class="section-link" bindtap="handleGoRadar">去雷达</view>
+    </view>
+    <view class="home-stat-row">
+      <view class="home-stat" wx:for="{{homeStats}}" wx:key="key" data-key="{{item.key}}" bindtap="handleOpenStatCard">
+        <view class="home-stat-value {{item.valueClass}}">{{item.value}}</view>
+        <view class="home-stat-label">{{item.label}}</view>
+      </view>
+    </view>
+    <view class="top-opportunity {{homeOpportunity.statusClass}}" bindtap="handleGoRadar">
+      <view class="intent-pill">{{homeOpportunity.intentLabel}}</view>
+      <view class="top-opportunity-main">
+        <view class="top-opportunity-title">{{homeOpportunity.title}}</view>
+        <view class="top-opportunity-desc">{{homeOpportunity.desc}}</view>
+        <view wx:if="{{homeOpportunity.hasAlert}}" class="top-opportunity-action">{{homeOpportunity.action}}</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="assistant-panel">
+    <view class="section-head clean">
+      <view>
+        <view class="section-title">{{homeUi.assistantTitle}}</view>
+        <view class="section-sub">{{homeUi.assistantSub}}</view>
+      </view>
+    </view>
+    <view class="assistant-actions">
+      <view class="assistant-action primary" data-action="{{homeUi.primaryAction.action}}" bindtap="handleQuickAction">
+        <image wx:if="{{homeUi.primaryAction.iconImage}}" class="assistant-action-icon" src="{{homeUi.primaryAction.iconImage}}" mode="aspectFit"></image>
+        <view wx:else class="assistant-action-mark">{{homeUi.primaryAction.icon}}</view>
+        <view>
+          <view class="assistant-action-title">{{homeUi.primaryAction.label}}</view>
+          <view class="assistant-action-desc">{{homeUi.primaryAction.desc}}</view>
+        </view>
+        <view class="contact-overlay" wx:if="{{homeUi.primaryAction.contact}}">
+          <cell
+            plugid="{{propertyContactPluginId}}"
+            styleType="{{2}}"
+            blockStyle="button"
+            buttonText="{{1}}"
+            buttonStyle="light"
+            bind:startmessage="handleContactStart"
+            bind:completemessage="handleContactComplete"
+          />
+        </view>
+      </view>
+      <view class="assistant-action" data-action="{{homeUi.secondaryAction.action}}" bindtap="handleQuickAction">
+        <view class="assistant-action-mark">{{homeUi.secondaryAction.icon}}</view>
+        <view>
+          <view class="assistant-action-title">{{homeUi.secondaryAction.label}}</view>
+          <view class="assistant-action-desc">{{homeUi.secondaryAction.desc}}</view>
+        </view>
+      </view>
+      <view class="assistant-action wecom" wx:if="{{homeUi.wecomTitle}}">
+        <view class="assistant-action-mark wecom-mark">微</view>
+        <view>
+          <view class="assistant-action-title">{{homeUi.wecomTitle}}</view>
+          <view class="assistant-action-desc">{{homeUi.wecomSub}}</view>
+        </view>
+        <view class="assistant-action-chip">添加</view>
+        <view class="contact-overlay">
+          <cell
+            plugid="{{propertyContactPluginId}}"
+            styleType="{{2}}"
+            blockStyle="button"
+            buttonText="{{1}}"
+            buttonStyle="light"
+            bind:startmessage="handleContactStart"
+            bind:completemessage="handleContactComplete"
+          />
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view class="panel recent-panel">
     <view class="section-head">
-      <view class="section-title">今日热门资源</view>
-      <view class="section-link" bindtap="handleGoLibrary">查看全部 ></view>
+      <view>
+        <view class="section-title">最近有反馈的资料</view>
+        <view class="section-sub">客户有动作的内容会排在前面。</view>
+      </view>
+      <view class="section-link" bindtap="handleGoLibrary">看资料</view>
     </view>
     <scroll-view scroll-x class="hot-scroll" wx:if="{{hotResources.length}}">
       <block wx:for="{{hotResources}}" wx:key="id">
         <view class="hot-card" data-id="{{item.id}}" bindtap="handleOpenResource">
-          <image wx:if="{{item.coverUrl}}" class="hot-cover" src="{{item.coverDisplayUrl || item.coverUrl}}" mode="aspectFill"></image>
-          <view wx:else class="hot-cover placeholder">资源</view>
+          <image wx:if="{{item.coverUrl}}" class="hot-cover" src="{{item.coverUrl}}" mode="aspectFill"></image>
+          <view wx:else class="hot-cover placeholder tone-{{item.titleCover.tone}} lite">
+            <view class="title-cover-badge compact">{{item.titleCover.badge}}</view>
+            <view class="title-cover-line">{{item.titleCover.line1}}</view>
+            <view class="title-cover-line second" wx:if="{{item.titleCover.line2}}">{{item.titleCover.line2}}</view>
+            <view class="title-cover-hint">最近有反馈</view>
+          </view>
           <view class="hot-title">{{item.title}}</view>
-          <view class="resource-meta">访问 {{item.stats.pv}} · 接龙 {{item.stats.relayCount}}</view>
+          <view class="resource-meta">打开 {{item.stats.pv}} · 互动 {{item.stats.relayCount}}</view>
         </view>
       </block>
     </scroll-view>
-    <view class="empty-state" wx:else>暂无热门资源，可以先快速添加一张资源卡片。</view>
+    <view class="empty-state" wx:else>{{homeUi.recentEmpty}}</view>
   </view>
 
-  <view class="invite-banner" bindtap="handleInvitePlaceholder">
-    <view>
-      <view class="invite-title">邀请好友使用，双方得会员天数</view>
-      <view class="invite-desc">多邀多得，免费解锁更多功能</view>
-    </view>
-    <view class="invite-btn">即将开放</view>
-  </view>
+  <view class="scene-soft-link" bindtap="handleOpenModeChooser">也可以用于商品、服务商机和资料包 · 切换场景</view>
 </view>

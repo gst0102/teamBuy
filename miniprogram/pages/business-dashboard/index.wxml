@@ -1,0 +1,554 @@
+<view class="page-shell">
+  <custom-nav title="{{pageTitle}}" />
+
+  <view class="error-card" wx:if="{{errorText}}">
+    <view>{{errorText}}</view>
+  </view>
+
+  <view class="tab-row">
+    <view
+      wx:for="{{tabs}}"
+      wx:key="key"
+      class="tab-item {{activeTab === item.key ? 'active' : ''}}"
+      data-key="{{item.key}}"
+      bindtap="handleTabChange"
+    >{{item.label}}</view>
+  </view>
+
+  <view wx:if="{{activeTab === 'followup'}}" class="board-screen">
+    <view class="screen-head">
+      <view>
+          <view class="screen-title">{{mode === 'groupbuy' ? (activeRange === 'today' ? '今日接龙处理' : '接龙优先处理') : mode === 'service' ? (activeRange === 'today' ? '今日咨询处理' : '咨询优先处理') : (activeRange === 'today' ? '今日优先联系' : '优先联系')}}</view>
+          <view class="screen-sub">{{mode === 'groupbuy' ? (activeRange === 'today' ? '先处理今天新增接龙、下单和咨询。' : '先看待处理接龙，再观察商品访客。') : mode === 'service' ? (activeRange === 'today' ? '先处理今天新增咨询、留言和预约。' : '先看待咨询客户，再观察方案访客。') : (activeRange === 'today' ? '先处理今天新增的预约、留言和明确咨询。' : '先看最值得联系的人，再观察客户动态。')}}</view>
+      </view>
+      <button class="icon-btn" bindtap="handleRetry" loading="{{loading}}">刷</button>
+    </view>
+
+    <view class="priority-hero">
+      <view class="priority-hero-head">
+        <view>
+          <view class="priority-kicker">{{mode === 'groupbuy' ? '接龙待处理' : mode === 'service' ? '咨询待处理' : '今日要处理'}}</view>
+          <view class="priority-title">{{priorityContacts.length}} {{mode === 'groupbuy' ? '条优先处理' : mode === 'service' ? '人待沟通' : '人优先联系'}}</view>
+        </view>
+        <view class="priority-chip">{{activeRange === 'today' ? '今日' : '累计'}}</view>
+      </view>
+      <view class="priority-desc">{{mode === 'groupbuy' ? '系统优先抬出接龙、下单、咨询和高意向商品访客；是否联系由你判断。' : mode === 'service' ? '系统优先抬出留言、预约、明确咨询和高意向方案访客；是否联系由你判断。' : '系统只把预约、留言、明确咨询和高意向访客抬上来；是否联系由你判断。'}}</view>
+      <view class="priority-metrics">
+        <view class="priority-metric strong" bindtap="handleTabChange" data-key="followup">
+          <text>{{visibleFollowupActions.length}}</text>
+          <view>{{mode === 'groupbuy' ? '待处理' : '待处理'}}</view>
+        </view>
+        <view class="priority-metric" bindtap="handleMetricDrilldown" data-filter-type="consult">
+          <text>{{visibleSummary.consultCount}}</text>
+          <view>{{mode === 'groupbuy' ? '咨询下单' : mode === 'service' ? '咨询预约' : '咨询预约'}}</view>
+        </view>
+        <view class="priority-metric" bindtap="handleTabChange" data-key="visitors">
+          <text>{{visibleSummary.visitorCount}}</text>
+          <view>{{mode === 'groupbuy' ? '商品访客' : mode === 'service' ? '方案访客' : '今日访客'}}</view>
+        </view>
+        <view class="priority-metric" bindtap="handleTabChange" data-key="propertyEffect">
+          <text>{{visibleSummary.noteClickCount}}</text>
+          <view>{{mode === 'groupbuy' ? '商品查看' : mode === 'service' ? '方案查看' : '房源查看'}}</view>
+        </view>
+      </view>
+    </view>
+
+    <view class="white-card radar-card">
+      <view class="section-head">
+        <view>
+          <view class="section-title">客户雷达提醒</view>
+          <view class="section-desc">系统把客户行为翻译成意向原因和下一步建议。</view>
+        </view>
+        <view class="section-more">{{opportunityAlerts.length}} 条</view>
+      </view>
+      <view class="empty radar-empty" wx:if="{{!opportunityAlerts.length}}">
+        <view>暂无客户雷达提醒。把资料发给客户后，重点浏览、停留较久、重复打开和咨询动作会出现在这里。</view>
+        <view class="empty-script-line">
+          <text>有提醒后，每条都会带跟进话术。</text>
+          <button class="radar-copy ghost" data-index="-1" catchtap="handleCopyOpportunityScript">复制话术</button>
+        </view>
+      </view>
+      <view class="radar-alert" wx:for="{{opportunityAlerts}}" wx:key="id">
+        <view class="radar-badge">{{item.intentLabel}}</view>
+        <view class="radar-main">
+          <view class="radar-title">{{item.message}}</view>
+          <view class="radar-reason">{{item.reason}}</view>
+          <view class="radar-advice">{{item.suggestedAction}} · {{item.timeText}}</view>
+          <view class="radar-script">{{item.followupScript}}</view>
+        </view>
+        <button class="radar-copy" data-index="{{index}}" catchtap="handleCopyOpportunityScript">复制话术</button>
+      </view>
+    </view>
+
+    <view class="white-card insight-card">
+      <view class="section-head">
+        <view>
+          <view class="section-title">资料优化建议</view>
+          <view class="section-desc">根据客户浏览和咨询动作，反向提示资料页哪里更值得调整。</view>
+        </view>
+        <view class="section-more">{{contentInsights.length}} 条</view>
+      </view>
+      <view class="empty" wx:if="{{!contentInsights.length}}">暂无资料优化建议。资料发出去并产生打开、停留或咨询后，系统会提示哪些内容该提前、补充或强化。</view>
+      <view class="insight-line" wx:for="{{contentInsights}}" wx:key="noteId">
+        <view class="line-main">
+          <view class="line-title">{{item.title}}</view>
+          <view class="line-sub">打开 {{item.viewCount}} · 咨询 {{item.consultCount}}</view>
+          <view class="line-sub">{{item.suggestion}}</view>
+        </view>
+      </view>
+    </view>
+
+    <view class="white-card">
+      <view class="section-head">
+        <view>
+          <view class="section-title">{{mode === 'groupbuy' ? '接龙处理队列' : mode === 'service' ? '咨询处理队列' : '优先联系队列'}}</view>
+          <view class="section-desc">{{mode === 'groupbuy' ? '按接龙、下单、咨询和浏览强度排序，先处理最明确的商品意向。' : mode === 'service' ? '按留言、预约、咨询和方案浏览强度排序，先处理最明确的客户。' : '按预约、留言、咨询和浏览强度排序，先处理最明确的人。'}}</view>
+        </view>
+        <view class="section-more" bindtap="handleOpenLeads">待联系 ›</view>
+      </view>
+      <view class="empty" wx:if="{{!priorityContacts.length}}">{{mode === 'groupbuy' ? '暂无待处理接龙。商品发群后，接龙、下单和高意向访客会出现在这里。' : mode === 'service' ? '暂无待处理咨询。名片或服务方案发出后，留言、预约和高意向访客会出现在这里。' : (activeRange === 'today' ? '今天暂无必须优先处理的客户。下面客户动态仍可观察。' : '暂无优先联系客户。房源发出后，预约、留言、咨询和高意向访客会出现在这里。')}}</view>
+      <view class="priority-card" wx:for="{{priorityContacts}}" wx:key="viewKey" data-index="{{index}}" bindtap="handleOpenPriorityContact">
+        <view class="priority-rank">{{item.priorityNo}}</view>
+        <image class="avatar" wx:if="{{item.avatarUrl}}" src="{{item.avatarUrl}}" mode="aspectFill" />
+        <view class="avatar-fallback tone-{{item.tone}}" wx:else>{{item.avatarText}}</view>
+        <view class="priority-main">
+          <view class="priority-name">{{item.customerName || item.nickname || '微信客户'}}</view>
+          <view class="priority-tags">
+            <view class="priority-tag" wx:for="{{item.priorityTags}}" wx:key="*this">{{item}}</view>
+          </view>
+          <view class="priority-source">{{item.sourceText}}</view>
+          <view class="priority-reason">{{item.reasonText}}</view>
+          <view class="contact-line" wx:if="{{item.displayPhone || item.displayWechat}}">
+            <text wx:if="{{item.displayPhone}}">电话 {{item.displayPhone}}</text>
+            <text wx:if="{{item.displayWechat}}">微信 {{item.displayWechat}}</text>
+          </view>
+          <view class="contact-actions compact" wx:if="{{item.displayPhone || item.displayWechat}}">
+            <button wx:if="{{item.displayPhone}}" class="contact-btn call" data-phone="{{item.displayPhone}}" catchtap="handleCallPhone">外呼</button>
+            <button wx:if="{{item.displayWechat}}" class="contact-btn" data-wechat="{{item.displayWechat}}" catchtap="handleCopyWechat">复制微信</button>
+          </view>
+        </view>
+        <view class="row-action">{{item.actionText}}</view>
+      </view>
+    </view>
+
+    <view class="white-card dynamic-card">
+      <view class="section-head">
+        <view>
+          <view class="section-title">{{mode === 'groupbuy' ? '买家动态' : '客户动态'}}</view>
+          <view class="section-desc">{{mode === 'groupbuy' ? '用于观察和复盘：哪个商品被看、谁接龙、哪次发群有效。' : '用于观察和复盘：为什么优先、谁有动静、哪套房被看得多。'}}</view>
+        </view>
+        <view class="section-more" bindtap="handleTabChange" data-key="visitors">筛选 ›</view>
+      </view>
+      <view class="dynamic-tabs">
+        <view class="dynamic-tab active">全部动态</view>
+        <view class="dynamic-tab" bindtap="handleTabChange" data-key="visitors">{{mode === 'groupbuy' ? '商品访客' : '新访客'}}</view>
+        <view class="dynamic-tab" bindtap="handleMetricDrilldown" data-filter-type="consult">{{mode === 'groupbuy' ? '咨询下单' : '预约咨询'}}</view>
+        <view class="dynamic-tab" bindtap="handleTabChange" data-key="propertyEffect">{{mode === 'groupbuy' ? '商品效果' : '房源效果'}}</view>
+      </view>
+      <view class="empty" wx:if="{{!customerDynamics.length}}">{{mode === 'groupbuy' ? '暂无买家动态。商品发群后，打开、接龙、下单和咨询会出现在这里。' : mode === 'service' ? '暂无咨询动态。名片、服务方案或案例合集发出后，打开、留言和预约会出现在这里。' : '暂无客户动态。客户打开房源、查看推荐包或留下联系方式后会出现在这里。'}}</view>
+      <view class="dynamic-line" wx:for="{{customerDynamics}}" wx:key="viewKey" data-index="{{index}}" bindtap="handleOpenDynamicItem">
+        <view class="dynamic-dot {{item.isPriorityRelated ? 'hot' : ''}}"></view>
+        <view class="line-main">
+          <view class="line-title">{{item.dynamicTitle}}</view>
+          <view class="line-sub">{{item.dynamicSub}}</view>
+        </view>
+        <view class="dynamic-type">{{item.dynamicType}}</view>
+      </view>
+    </view>
+
+    <view class="bottom-actions">
+      <button bindtap="handleAddFollowUp">已联系</button>
+      <button class="solid" bindtap="handleAddRemark">备注</button>
+    </view>
+  </view>
+
+  <view wx:if="{{activeTab === 'showcasePackage'}}" class="board-screen">
+    <view class="screen-head">
+      <view>
+        <view class="screen-title">{{mode === 'property' ? '推荐包效果' : mode === 'groupbuy' ? '发群效果' : mode === 'service' ? '案例合集效果' : '分享效果'}}</view>
+        <view class="screen-sub">{{mode === 'property' ? '多套房源一起发给客户后的打开和点击。' : mode === 'groupbuy' ? '商品合集发到群后，查看打开、商品点击和咨询。' : mode === 'service' ? '名片、服务方案和案例合集发出后的打开、访客和咨询。' : '日常合集和分享页发出后的打开、访客和咨询。'}}</view>
+      </view>
+      <button class="icon-btn" bindtap="handleRetry" loading="{{loading}}">刷</button>
+    </view>
+
+    <view class="metric-grid">
+      <view class="metric-card" bindtap="handleMetricDrilldown" data-filter-type="view">
+        <view class="metric-icon blue">眼</view>
+        <view class="metric-label">打开</view>
+        <view class="metric-value">{{visibleSummary.showcaseOpenCount}}</view>
+      </view>
+      <view class="metric-card" bindtap="handleMetricDrilldown" data-filter-type="all">
+        <view class="metric-icon green">客</view>
+        <view class="metric-label">访客</view>
+        <view class="metric-value">{{visibleSummary.visitorCount}}</view>
+      </view>
+      <view class="metric-card" bindtap="handleMetricDrilldown" data-filter-type="note_click">
+        <view class="metric-icon orange">资</view>
+        <view class="metric-label">{{mode === 'property' ? '看房源' : mode === 'groupbuy' ? '看商品' : mode === 'service' ? '看方案' : '看资料'}}</view>
+        <view class="metric-value">{{visibleSummary.noteClickCount}}</view>
+      </view>
+      <view class="metric-card" bindtap="handleMetricDrilldown" data-filter-type="consult">
+        <view class="metric-icon purple">聊</view>
+        <view class="metric-label">咨询</view>
+        <view class="metric-value">{{visibleSummary.consultCount}}</view>
+      </view>
+    </view>
+
+    <view class="white-card">
+      <view class="section-head">
+        <view>
+          <view class="section-title">{{mode === 'property' ? '按推荐包拆解' : mode === 'groupbuy' ? '按商品合集拆解' : mode === 'service' ? '按案例合集拆解' : '按分享页拆解'}}</view>
+          <view class="section-desc">{{mode === 'property' ? '每一行就是一个多房源推荐包的数据。' : mode === 'groupbuy' ? '每一行就是一次商品合集或发群页的数据。' : mode === 'service' ? '每一行就是一次案例合集、名片或服务页的数据。' : '每一行就是一个日常合集或分享页的数据。'}}</view>
+        </view>
+        <view class="section-more" bindtap="handleOpenShowcases">{{mode === 'property' ? '全部推荐包' : mode === 'groupbuy' ? '全部商品合集' : mode === 'service' ? '全部案例合集' : '全部分享页'}} ›</view>
+      </view>
+      <view class="empty" wx:if="{{!dashboard.showcaseBreakdown.length}}">{{mode === 'property' ? '暂无推荐包数据' : mode === 'groupbuy' ? '暂无发群效果数据。先建商品合集并发到群里。' : mode === 'service' ? '暂无案例合集数据。先做名片或服务方案，再发给客户。' : '暂无分享效果数据'}}</view>
+      <view class="showcase-line" wx:for="{{dashboard.showcaseBreakdown}}" wx:key="showcaseId" data-showcase-name="{{item.showcaseName}}" bindtap="handleFilterByShowcase">
+        <view class="rank-badge rank-{{item.rankTone}}">{{item.rankNo}}</view>
+        <view class="line-main">
+          <view class="line-title">{{item.showcaseName}}</view>
+          <view class="line-sub">{{item.totalText}}</view>
+          <view class="line-sub">分享来源 {{item.shareSourceCount || 0}} · {{item.statusText}} · {{item.timeText}}</view>
+        </view>
+        <view class="row-action">看客户</view>
+      </view>
+    </view>
+
+    <view class="white-card">
+      <view class="section-head">
+        <view>
+          <view class="section-title">{{mode === 'property' ? '推荐包分享' : mode === 'groupbuy' ? '发群来源' : mode === 'service' ? '分享来源' : '分享来源'}}</view>
+          <view class="section-desc">{{mode === 'groupbuy' ? '每次发群带来的打开、看商品和咨询。' : mode === 'service' ? '每次转发名片、方案或案例合集带来的打开、看方案和咨询。' : '每次转发带来的打开、看资料和咨询。'}}</view>
+        </view>
+        <view class="section-more">{{visibleSummary.shareSourceCount}} 个批次</view>
+      </view>
+      <view class="empty" wx:if="{{!dashboard.topShares.length}}">{{mode === 'property' ? '暂无推荐包分享' : mode === 'groupbuy' ? '暂无发群来源' : mode === 'service' ? '暂无服务分享来源' : '暂无分享来源'}}</view>
+      <view class="share-line" wx:for="{{dashboard.topShares}}" wx:key="shareId" data-share-id="{{item.shareId}}" data-showcase-name="{{item.sourceText}}" bindtap="handleFilterByShare">
+        <view class="rank-badge rank-{{item.rankTone}}">{{item.rankNo}}</view>
+        <view class="line-main">
+          <view class="line-title">{{item.sourceText}}</view>
+          <view class="line-sub">打开 {{item.openCount}} · {{mode === 'groupbuy' ? '看商品' : '看资料'}} {{item.noteClickCount}} · 咨询 {{item.consultCount}} · {{item.timeText}}</view>
+          <view class="line-sub">{{item.visitorText}}</view>
+        </view>
+        <view class="share-id">{{item.shortId}}</view>
+      </view>
+    </view>
+
+    <view class="white-card">
+      <view class="section-head">
+        <view>
+          <view class="section-title">{{mode === 'property' ? '推荐包客户' : mode === 'groupbuy' ? '最近买家' : mode === 'service' ? '最近咨询客户' : '最近客户'}}</view>
+          <view class="section-desc">{{mode === 'groupbuy' ? '能处理的买家会显示电话、微信、接龙或订单入口。' : mode === 'service' ? '能处理的客户会显示电话、微信、留言或预约入口。' : '能处理的客户会显示电话、微信和入口。'}}</view>
+        </view>
+        <view class="section-more" bindtap="handleTabChange" data-key="visitors">更多 ›</view>
+      </view>
+      <view class="empty" wx:if="{{!visibleVisitorProfiles.length}}">{{mode === 'groupbuy' ? '暂无买家明细' : mode === 'service' ? '暂无咨询客户明细' : '暂无客户明细'}}</view>
+      <view class="visitor-line" wx:for="{{visibleVisitorProfiles}}" wx:key="id" data-index="{{index}}" bindtap="handleOpenVisitorProfile">
+        <image class="avatar" wx:if="{{item.avatarUrl}}" src="{{item.avatarUrl}}" mode="aspectFill" />
+        <view class="avatar-fallback tone-{{item.tone}}" wx:else>{{item.avatarText}}</view>
+        <view class="line-main">
+          <view class="line-title">{{item.nickname}}</view>
+          <view class="line-sub">{{item.sourceText}}</view>
+          <view class="line-sub">{{item.statsText}} · {{item.timeText}}</view>
+          <view class="contact-line" wx:if="{{item.displayPhone || item.displayWechat}}">
+            <text wx:if="{{item.displayPhone}}">电话 {{item.displayPhone}}</text>
+            <text wx:if="{{item.displayWechat}}">微信 {{item.displayWechat}}</text>
+          </view>
+        </view>
+        <view class="row-action">{{item.targetText}}</view>
+      </view>
+    </view>
+
+    <view class="white-card">
+      <view class="section-head">
+        <view class="section-title">{{mode === 'property' ? '房源点击排行' : mode === 'groupbuy' ? '商品点击排行' : mode === 'service' ? '方案点击排行' : '资料点击排行'}}</view>
+        <view class="section-more" bindtap="handleOpenShowcases">更多 ›</view>
+      </view>
+      <view class="empty" wx:if="{{!dashboard.topNotes.length}}">{{mode === 'property' ? '暂无房源点击' : mode === 'groupbuy' ? '暂无商品点击' : mode === 'service' ? '暂无方案点击' : '暂无资料点击'}}</view>
+      <view class="rank-line" wx:for="{{dashboard.topNotes}}" wx:key="noteId" data-note-id="{{item.noteId}}" data-note-title="{{item.title}}" bindtap="handleFilterByNote">
+        <view class="rank-badge rank-{{item.rankTone}}">{{item.rankNo}}</view>
+        <view class="note-thumb tone-{{index % 4}}">{{item.avatarText}}</view>
+        <view class="line-main">
+          <view class="line-title">{{item.title}}</view>
+          <view class="line-sub">{{mode === 'property' ? '推荐包内点击' : mode === 'groupbuy' ? '商品合集内点击' : '分享页内点击'}}</view>
+        </view>
+        <view class="rank-count">{{item.clickCount}}次 · 看访客</view>
+      </view>
+    </view>
+
+    <view class="white-card">
+      <view class="section-head">
+        <view>
+          <view class="section-title">资料优化建议</view>
+          <view class="section-desc">根据客户浏览和咨询动作，反向提示资料页哪里更值得调整。</view>
+        </view>
+      </view>
+      <view class="empty" wx:if="{{!contentInsights.length}}">暂无资料优化建议。资料发出去并产生打开、停留或咨询后，系统会提示哪些内容该提前、补充或强化。</view>
+      <view class="insight-line" wx:for="{{contentInsights}}" wx:key="noteId">
+        <view class="line-main">
+          <view class="line-title">{{item.title}}</view>
+          <view class="line-sub">打开 {{item.viewCount}} · 咨询 {{item.consultCount}}</view>
+          <view class="line-sub">{{item.suggestion}}</view>
+        </view>
+      </view>
+    </view>
+
+    <button class="primary-wide" bindtap="handleTabChange" data-key="visitors">查看最近访客</button>
+  </view>
+
+  <view wx:if="{{activeTab === 'visitors'}}" class="board-screen">
+    <view class="screen-title">最近访客</view>
+    <view class="screen-sub">匿名访客只展示浏览事实，留言后再进入跟进。</view>
+    <view class="filter-card">
+      <view>
+        <view class="filter-title">当前筛选：{{activeVisitorFilter.label}}</view>
+        <view class="filter-desc">{{activeVisitorFilter.desc}}</view>
+      </view>
+      <button class="filter-reset" wx:if="{{activeVisitorFilter.type !== 'all'}}" bindtap="handleClearVisitorFilter">全部</button>
+    </view>
+    <view class="identity-filter-row">
+      <view
+        wx:for="{{visitorIdentityFilters}}"
+        wx:key="key"
+        class="identity-filter {{activeVisitorIdentity === item.key ? 'active' : ''}}"
+        data-key="{{item.key}}"
+        bindtap="handleVisitorIdentityChange"
+      >{{item.label}}</view>
+    </view>
+    <view class="customer-card" wx:if="{{visibleVisitorProfiles.length}}" data-index="0" bindtap="handleOpenVisitorProfile">
+      <image class="profile-avatar" wx:if="{{visibleVisitorProfiles[0].avatarUrl}}" src="{{visibleVisitorProfiles[0].avatarUrl}}" mode="aspectFill" />
+      <view class="profile-avatar fallback tone-0" wx:else>{{visibleVisitorProfiles[0].avatarText}}</view>
+      <view class="profile-main">
+        <view class="profile-name">{{visibleVisitorProfiles[0].nickname}}</view>
+        <view class="profile-sub">{{visibleVisitorProfiles[0].sourceText}}</view>
+          <view class="chip-row">
+          <view class="soft-chip identity {{visibleVisitorProfiles[0].visitorIdentityType}}">{{visibleVisitorProfiles[0].visitorIdentityLabel}}</view>
+          <view class="soft-chip">{{visibleVisitorProfiles[0].statsText}}</view>
+          <view class="soft-chip green">最近 {{visibleVisitorProfiles[0].timeText}}</view>
+        </view>
+      </view>
+    </view>
+
+    <view class="mini-stat-row">
+      <view class="mini-stat"><view>客户</view><text>{{identitySummary.customerCount}}</text></view>
+      <view class="mini-stat"><view>同行</view><text>{{identitySummary.peerAgentCount}}</text></view>
+      <view class="mini-stat"><view>上游</view><text>{{identitySummary.upstreamCount}}</text></view>
+      <view class="mini-stat"><view>看资料</view><text>{{visibleVisitorSummary.noteClickCount}}</text></view>
+    </view>
+
+    <view class="white-card">
+      <view class="section-title">访客列表</view>
+      <view class="empty" wx:if="{{!visibleVisitorProfiles.length}}">暂无客户明细</view>
+      <view class="visitor-profile-row" wx:for="{{visibleVisitorProfiles}}" wx:key="id" data-index="{{index}}" bindtap="handleOpenVisitorProfile">
+        <image class="avatar" wx:if="{{item.avatarUrl}}" src="{{item.avatarUrl}}" mode="aspectFill" />
+        <view class="avatar-fallback tone-{{item.tone}}" wx:else>{{item.avatarText}}</view>
+        <view class="line-main">
+          <view class="line-title">{{item.nickname}}</view>
+          <view class="identity-badge {{item.visitorIdentityType}}">{{item.visitorIdentityLabel}}</view>
+          <view class="line-sub">{{item.sourceText}}</view>
+          <view class="line-sub">{{item.statsText}} · {{item.timeText}}</view>
+          <view class="contact-line" wx:if="{{item.displayPhone || item.displayWechat}}">
+            <text wx:if="{{item.displayPhone}}">电话 {{item.displayPhone}}</text>
+            <text wx:if="{{item.displayWechat}}">微信 {{item.displayWechat}}</text>
+          </view>
+        </view>
+        <view class="row-action">{{item.targetText}}</view>
+      </view>
+    </view>
+
+    <view class="white-card">
+      <view class="section-title">动作流水</view>
+      <view class="empty" wx:if="{{!visibleLatestActions.length}}">当前筛选下暂无客户动作</view>
+      <view class="timeline-row" wx:for="{{visibleLatestActions}}" wx:key="id" data-index="{{index}}" data-source="visible" bindtap="handleOpenCustomerAction">
+        <view class="timeline-time">{{item.clockText || item.timeText}}</view>
+        <view class="timeline-dot orange">动</view>
+        <view class="timeline-main">
+          <view class="timeline-title">{{item.actionLabel}}</view>
+          <view class="identity-badge {{item.visitorIdentityType}}">{{item.visitorIdentityLabel}}</view>
+          <view class="timeline-sub">{{item.noteTitle}}</view>
+          <view class="contact-line" wx:if="{{item.displayPhone || item.displayWechat}}">
+            <text wx:if="{{item.displayPhone}}">电话 {{item.displayPhone}}</text>
+            <text wx:if="{{item.displayWechat}}">微信 {{item.displayWechat}}</text>
+          </view>
+          <view class="contact-actions" wx:if="{{item.displayPhone || item.displayWechat}}">
+            <button wx:if="{{item.displayPhone}}" class="contact-btn call" data-phone="{{item.displayPhone}}" catchtap="handleCallPhone">外呼</button>
+            <button wx:if="{{item.displayWechat}}" class="contact-btn" data-wechat="{{item.displayWechat}}" catchtap="handleCopyWechat">复制微信</button>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <view class="bottom-actions">
+      <button bindtap="handleAddFollowUp">添加跟进</button>
+      <button class="solid" bindtap="handleAddRemark">备注</button>
+    </view>
+  </view>
+
+  <view wx:if="{{activeTab === 'propertyEffect'}}" class="board-screen">
+    <view class="screen-head">
+      <view>
+        <view class="screen-title">{{mode === 'property' ? '房源效果' : '资料数据'}}</view>
+        <view class="screen-sub">{{mode === 'property' ? '按打开和客户动作查看哪套房源更吸引客户。' : '按打开和客户动作查看哪些资料更有效。'}}</view>
+      </view>
+      <button class="range-btn" bindtap="handleRetry">最近7天⌄</button>
+    </view>
+
+    <view class="metric-grid">
+      <view class="metric-card">
+        <view class="metric-icon blue">眼</view>
+        <view class="metric-label">打开</view>
+        <view class="metric-value">{{visibleSummary.noteClickCount}}</view>
+      </view>
+      <view class="metric-card">
+        <view class="metric-icon green">客</view>
+        <view class="metric-label">访客</view>
+        <view class="metric-value">{{visibleSummary.visitorCount}}</view>
+      </view>
+      <view class="metric-card">
+        <view class="metric-icon orange">单</view>
+        <view class="metric-label">待跟进</view>
+        <view class="metric-value">{{visibleFollowupActions.length}}</view>
+      </view>
+      <view class="metric-card">
+        <view class="metric-icon purple">群</view>
+        <view class="metric-label">推荐包</view>
+        <view class="metric-value">{{dashboard.summary.showcaseCount || 0}}</view>
+      </view>
+    </view>
+
+    <view class="white-card">
+      <view class="inner-tabs">
+        <view class="inner-tab active">{{mode === 'property' ? '房源排行' : '资料排行'}}</view>
+        <view class="inner-tab">客户动作</view>
+        <view class="inner-tab">推荐包来源</view>
+      </view>
+      <view class="empty" wx:if="{{!dashboard.propertyEffectRows.length}}">{{mode === 'property' ? '暂无房源效果数据。把房源或推荐包发给客户后，这里会显示打开、访客和待跟进。' : mode === 'groupbuy' ? '暂无商品效果数据。把商品或商品合集发到群里后，这里会显示打开、访客和接龙。' : mode === 'service' ? '暂无方案效果数据。把名片、服务方案或案例合集发给客户后，这里会显示打开、访客和咨询。' : '暂无资料数据。把资料或日常合集发出去后，这里会显示打开、访客和互动。'}}</view>
+      <view class="list-line" wx:for="{{dashboard.propertyEffectRows}}" wx:key="noteId" data-note-id="{{item.noteId}}" data-note-title="{{item.title}}" bindtap="handleFilterByNote">
+        <view class="rank-badge rank-{{item.rankTone}}">{{item.rankNo}}</view>
+        <view class="line-main">
+          <view class="line-title">{{item.title}}</view>
+          <view class="line-sub">打开 {{item.openCount}} · 访客 {{item.visitorCount}} · 待跟进 {{item.followupCount}}</view>
+          <view class="line-sub" wx:if="{{item.timeText}}">最近客户动作 {{item.timeText}}</view>
+        </view>
+        <view class="row-action">看客户</view>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{activeTab === 'customers'}}" class="board-screen">
+    <view class="screen-title">客户资料</view>
+    <view class="customer-card">
+      <image class="profile-avatar" wx:if="{{dashboard.primaryCustomer && dashboard.primaryCustomer.avatarUrl}}" src="{{dashboard.primaryCustomer.avatarUrl}}" mode="aspectFill" />
+      <view class="profile-avatar fallback tone-1" wx:else>{{dashboard.primaryCustomer ? dashboard.primaryCustomer.avatarText : '客'}}</view>
+      <view class="profile-main">
+        <view class="profile-name">{{dashboard.primaryCustomer ? dashboard.primaryCustomer.customerName : '暂无客户'}}</view>
+        <view class="profile-sub">电话 {{dashboard.primaryCustomer && dashboard.primaryCustomer.displayPhone ? dashboard.primaryCustomer.displayPhone : '未留电话'}}</view>
+        <view class="profile-sub">微信 {{dashboard.primaryCustomer && dashboard.primaryCustomer.displayWechat ? dashboard.primaryCustomer.displayWechat : '未添加'}}</view>
+        <view class="profile-sub">最近来源：推荐包 / 房源互动</view>
+        <view class="contact-actions" wx:if="{{dashboard.primaryCustomer && (dashboard.primaryCustomer.displayPhone || dashboard.primaryCustomer.displayWechat)}}">
+          <button wx:if="{{dashboard.primaryCustomer.displayPhone}}" class="contact-btn call" data-phone="{{dashboard.primaryCustomer.displayPhone}}" catchtap="handleCallPhone">外呼</button>
+          <button wx:if="{{dashboard.primaryCustomer.displayWechat}}" class="contact-btn" data-wechat="{{dashboard.primaryCustomer.displayWechat}}" catchtap="handleCopyWechat">复制微信</button>
+        </view>
+      </view>
+    </view>
+
+    <view class="white-card">
+      <view class="section-title">客户旅程</view>
+      <view class="empty" wx:if="{{!dashboard.recentVisitors.length && !dashboard.latestActions.length}}">暂无客户旅程</view>
+      <view class="journey-row" wx:for="{{dashboard.recentVisitors}}" wx:key="id">
+        <view class="journey-dot"></view>
+        <view class="journey-time">{{item.clockText || item.timeText}}</view>
+        <view class="journey-main">
+          <view class="journey-title">看过推荐包</view>
+          <view class="journey-sub">{{item.showcaseName}}</view>
+        </view>
+      </view>
+      <view class="journey-row" wx:for="{{dashboard.latestActions}}" wx:key="id">
+        <view class="journey-dot orange"></view>
+        <view class="journey-time">{{item.clockText || item.timeText}}</view>
+        <view class="journey-main">
+          <view class="journey-title">{{item.actionLabel}}</view>
+          <view class="journey-sub">{{item.noteTitle}}</view>
+          <view class="contact-line" wx:if="{{item.displayPhone || item.displayWechat}}">
+            <text wx:if="{{item.displayPhone}}">电话 {{item.displayPhone}}</text>
+            <text wx:if="{{item.displayWechat}}">微信 {{item.displayWechat}}</text>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <view class="white-card">
+      <view class="section-head">
+        <view class="section-title">跟进记录</view>
+        <button class="outline-btn" bindtap="handleOpenLeads">新增跟进</button>
+      </view>
+      <view class="record-row" wx:for="{{dashboard.latestActions}}" wx:key="id" data-index="{{index}}" bindtap="handleOpenCustomerAction">
+        <view class="record-time">{{item.timeText}}</view>
+        <view class="record-main">
+          <view class="record-title">{{item.customerName}} · {{item.actionLabel}}</view>
+          <view class="record-sub">{{item.statusText}}</view>
+          <view class="contact-line" wx:if="{{item.displayPhone || item.displayWechat}}">
+            <text wx:if="{{item.displayPhone}}">电话 {{item.displayPhone}}</text>
+            <text wx:if="{{item.displayWechat}}">微信 {{item.displayWechat}}</text>
+          </view>
+          <view class="contact-actions compact" wx:if="{{item.displayPhone || item.displayWechat}}">
+            <button wx:if="{{item.displayPhone}}" class="contact-btn call" data-phone="{{item.displayPhone}}" catchtap="handleCallPhone">外呼</button>
+            <button wx:if="{{item.displayWechat}}" class="contact-btn" data-wechat="{{item.displayWechat}}" catchtap="handleCopyWechat">复制微信</button>
+          </view>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{visitorDetailOpen && selectedVisitor}}" class="visitor-detail-mask" catchtap="handleCloseVisitorDetail">
+    <view class="visitor-detail-sheet" catchtap="noop">
+      <view class="detail-head">
+        <image class="detail-avatar" wx:if="{{selectedVisitor.avatarUrl}}" src="{{selectedVisitor.avatarUrl}}" mode="aspectFill" />
+        <view class="detail-avatar fallback tone-{{selectedVisitor.tone}}" wx:else>{{selectedVisitor.avatarText}}</view>
+        <view class="detail-main">
+          <view class="detail-name">{{selectedVisitor.nickname}}</view>
+          <view class="detail-sub">{{selectedVisitor.sourceText}}</view>
+          <view class="identity-badge {{selectedVisitor.visitorIdentityType}}">{{selectedVisitor.visitorIdentityLabel}}</view>
+        </view>
+        <button class="detail-close" catchtap="handleCloseVisitorDetail">×</button>
+      </view>
+
+      <view class="detail-stat-row">
+        <view class="detail-stat"><text>{{selectedVisitor.viewCount || 0}}</text><view>打开</view></view>
+        <view class="detail-stat"><text>{{selectedVisitor.noteClickCount || 0}}</text><view>看资料</view></view>
+        <view class="detail-stat"><text>{{selectedVisitor.consultCount || 0}}</text><view>咨询</view></view>
+      </view>
+
+      <view class="detail-section">
+        <view class="detail-section-title">联系方式</view>
+        <view class="detail-contact-row" wx:if="{{selectedVisitor.displayPhone}}">
+          <text>电话 {{selectedVisitor.displayPhone}}</text>
+          <button class="contact-btn call" data-phone="{{selectedVisitor.displayPhone}}" catchtap="handleCallPhone">外呼</button>
+        </view>
+        <view class="detail-contact-row" wx:if="{{selectedVisitor.displayWechat}}">
+          <text>微信 {{selectedVisitor.displayWechat}}</text>
+          <button class="contact-btn" data-wechat="{{selectedVisitor.displayWechat}}" catchtap="handleCopyWechat">复制微信</button>
+        </view>
+        <view class="detail-empty" wx:if="{{!selectedVisitor.displayPhone && !selectedVisitor.displayWechat}}">暂未留下电话或微信</view>
+      </view>
+
+      <view class="detail-section">
+        <view class="detail-section-title">来源和兴趣</view>
+        <view class="detail-tags" wx:if="{{selectedVisitor.showcaseNames.length}}">
+          <view class="detail-tag" wx:for="{{selectedVisitor.showcaseNames}}" wx:key="*this">推荐包：{{item}}</view>
+        </view>
+        <view class="detail-tags" wx:if="{{selectedVisitor.noteTitles.length}}">
+          <view class="detail-tag green" wx:for="{{selectedVisitor.noteTitles}}" wx:key="*this">看过：{{item}}</view>
+        </view>
+        <view class="detail-tags" wx:if="{{selectedVisitor.shortShareIds.length}}">
+          <view class="detail-tag gray" wx:for="{{selectedVisitor.shortShareIds}}" wx:key="*this">分享：{{item}}</view>
+        </view>
+      </view>
+
+      <view class="detail-actions">
+        <button class="detail-secondary" catchtap="handleCloseVisitorDetail">回到列表</button>
+        <button class="detail-primary" catchtap="handleOpenSelectedVisitorTarget">{{selectedVisitor.targetText}}</button>
+      </view>
+    </view>
+  </view>
+</view>

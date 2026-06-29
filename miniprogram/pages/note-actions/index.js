@@ -1,9 +1,22 @@
 const api = require("../../services/api");
 const messagePlugin = require("../../plugins/message-plugin/index");
-const { getCurrentUser, formatTime } = require("../../utils/dashboard");
+const { avatarText, getCurrentUser, formatTime, safeAvatarUrl } = require("../../utils/dashboard");
+
+const PRODUCT_STATUS_OPTIONS = [
+  { value: "contacted", label: "已联系" },
+  { value: "completed", label: "已完成" },
+  { value: "cancelled", label: "取消" }
+];
+
+const LEAD_QUICK_ACTIONS = [
+  { status: "contacted", label: "已联系", log: "已联系客户" },
+  { status: "paused", label: "暂不合适", log: "客户暂不合适，暂停跟进" },
+  { status: "completed", label: "已完成", log: "线索已完成" },
+  { status: "pending", label: "重点跟进", log: "标记为重点跟进" }
+];
 
 function actionTitle(action) {
-  if (action.actionKey === "lead-contact") return "客户留资";
+  if (action.actionKey === "lead-contact") return "客户留言";
   if (action.actionKey === "appointment") return "预约看房";
   if (action.actionKey === "order-intent") return "商品下单";
   if (action.actionKey === "relay-intent") return "商品接龙";
@@ -118,8 +131,12 @@ Page({
       const data = res.data || {};
       const actions = (data.actions || []).map((item) => ({
         ...item,
+        displayAvatarUrl: safeAvatarUrl(item.customerAvatarUrl || (item.payload && item.payload.avatarUrl)),
+        avatarText: avatarText(item.customerName),
         title: actionTitle(item),
         createdText: formatTime(item.createdAt),
+        orderStatusText: item.orderStatusText || "",
+        canProcessOrder: item.actionKey === "relay-intent" || item.actionKey === "order-intent",
         details: item.displayRows && item.displayRows.length
           ? item.displayRows.map((row) => `${row.label}：${row.value}`)
           : actionDetails(item)
@@ -156,7 +173,9 @@ Page({
         productCopyToast: hasRelayMode ? "接龙信息已复制" : "下单信息已复制",
         finishedLeads: leads.filter((item) => item.status !== "pending"),
         otherActions: actions.filter((item) => item.actionKey !== "appointment" && item.actionKey !== "relay-intent" && item.actionKey !== "order-intent"),
-        isProductRelay: data.cardType === "groupbuy_product" || (data.summary || {}).mode === "product_relay"
+        isProductRelay: data.cardType === "groupbuy_product" || (data.summary || {}).mode === "product_relay",
+        productStatusOptions: PRODUCT_STATUS_OPTIONS,
+        leadQuickActions: LEAD_QUICK_ACTIONS
       });
     } catch (error) {
       wx.showToast({ title: error.detail || "客户动作加载失败", icon: "none" });
@@ -233,6 +252,19 @@ Page({
       filteredRelayActions: filterProductActions(this.data.relayActions, key)
     });
   },
+  async handleSetProductStatus(event) {
+    const actionId = event.currentTarget.dataset.id;
+    const status = event.currentTarget.dataset.status;
+    const user = getCurrentUser();
+    if (!actionId || !status || !user) return;
+    try {
+      await api.updateOrderStatus(actionId, { userId: user.id, status });
+      wx.showToast({ title: "状态已更新", icon: "success" });
+      this.loadActions(user.id);
+    } catch (error) {
+      wx.showToast({ title: error.detail || "更新失败", icon: "none" });
+    }
+  },
   confirmMarkContacted(id) {
     if (!id) return;
     wx.showModal({
@@ -256,6 +288,25 @@ Page({
         logContent: "已电话联系客户"
       });
       wx.showToast({ title: "已标记联系", icon: "success" });
+      this.loadActions(user.id);
+    } catch (error) {
+      wx.showToast({ title: error.detail || "更新失败", icon: "none" });
+    }
+  },
+  async handleSetLeadStatus(event) {
+    const id = event.currentTarget.dataset.id;
+    const status = event.currentTarget.dataset.status;
+    const label = event.currentTarget.dataset.label || "状态";
+    const logContent = event.currentTarget.dataset.log || `标记为${label}`;
+    const user = getCurrentUser();
+    if (!id || !status || !user) return;
+    try {
+      await api.updateLeadReminder(id, {
+        ownerUserId: user.id,
+        status,
+        logContent
+      });
+      wx.showToast({ title: `已标记${label}`, icon: "success" });
       this.loadActions(user.id);
     } catch (error) {
       wx.showToast({ title: error.detail || "更新失败", icon: "none" });

@@ -1,15 +1,55 @@
-<view class="page-shell">
-  <custom-nav title="&#x767B;&#x5F55;" />
-  <view class="login-hero">
-    <view class="hero-title">欢迎登录</view>
-    <view class="hero-subtitle">使用微信身份进入，只查看属于你的资料和线索。</view>
+<view class="login-page">
+  <custom-nav title="登录" />
+
+  <view class="hero">
+    <view class="hero-kicker">房源工作台</view>
+    <view class="hero-title">一键生成你的房源卡</view>
+    <view class="hero-subtitle">复制公开房源内容，换成你的微信，客户和同行看到的是你的版本。</view>
   </view>
-  <view class="panel">
-    <view class="title">微信登录</view>
-    <view class="muted">真机测试会按微信 openid 隔离资料；分享出去的客户页除外。</view>
-    <view class="field-label" style="margin-top: 24rpx;">昵称</view>
-    <input class="field-input" value="{{nickname}}" bindinput="handleNicknameChange" />
-    <button class="primary-btn" bindtap="handleWechatLogin">微信登录</button>
-    <button wx:if="{{allowMockLogin}}" class="secondary-btn" bindtap="handleMockLogin">本地 mock 登录</button>
+
+  <view class="preview-panel">
+    <view class="preview-head">
+      <view>
+        <view class="preview-title">生成同款后</view>
+        <view class="preview-sub">资料、线索、合集都归到你的账号</view>
+      </view>
+      <view class="preview-badge">微信官方隔离</view>
+    </view>
+    <view class="mini-card">
+      <image class="mini-cover" src="/static/workspace/login-room.webp" mode="aspectFill"></image>
+      <view class="mini-body">
+        <view class="mini-name">龙悦和府 · 两房</view>
+        <view class="mini-meta">近地铁 / 可带看</view>
+        <view class="mini-contact">微信联系：你的微信</view>
+      </view>
+      <view class="mini-map">
+        <view class="map-road road-main"></view>
+        <view class="map-road road-left"></view>
+        <view class="map-road road-right"></view>
+        <view class="map-pin"><view></view></view>
+        <view class="map-pill">导航</view>
+      </view>
+    </view>
+    <view class="feature-row">
+      <view class="feature-item">
+        <view>房源卡</view>
+      </view>
+      <view class="feature-item">
+        <view>房源合集</view>
+      </view>
+      <view class="feature-item">
+        <view>查看客户线索</view>
+      </view>
+      <view class="feature-item">
+        <view>位置导航</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="login-panel">
+    <view class="login-title">登录后保存到你的账号</view>
+    <view class="login-desc">用于生成同款、查看线索，下次打开还能继续管理。</view>
+    <button class="wechat-btn" loading="{{loggingIn}}" disabled="{{loggingIn}}" bindtap="handleWechatLogin">微信一键登录</button>
+    <button wx:if="{{allowMockLogin}}" class="mock-btn" loading="{{loggingIn}}" disabled="{{loggingIn}}" bindtap="handleMockLogin">便捷登录</button>
   </view>
 </view>

@@ -4,15 +4,33 @@
   <view class="tag-hero">
     <view>
       <view class="hero-title">标签管理</view>
-      <view class="hero-subtitle">管理资源分类标签，标签会用于资源库筛选和手动添加资源。</view>
+      <view class="hero-subtitle">提前建好常用标签，新增或编辑资料时可直接选择，也方便筛选资料和生成合集。</view>
     </view>
     <view class="tag-visual">签</view>
   </view>
 
+  <view class="tag-guide panel">
+    <view class="guide-title">标签用来做什么</view>
+    <view class="guide-grid">
+      <view>
+        <text>快速筛选</text>
+        <text>例如只看“客户资料”“活动素材”。</text>
+      </view>
+      <view>
+        <text>自动归类</text>
+        <text>系统可按资料内容帮你补标签。</text>
+      </view>
+      <view>
+        <text>生成合集</text>
+        <text>按标签快速挑出一批资料生成合集。</text>
+      </view>
+    </view>
+  </view>
+
   <view class="panel">
-    <view class="section-title">新增标签</view>
+    <view class="section-title">新增常用标签</view>
     <view class="tag-input-row">
-      <input class="field-input tag-input" value="{{name}}" placeholder="例如：学区房 / 水果团购 / 合同模板" bindinput="handleNameChange" />
+      <input class="field-input tag-input" value="{{name}}" placeholder="例如：客户资料 / 活动素材 / 重点" bindinput="handleNameChange" />
       <button class="primary-btn add-btn" bindtap="handleCreate">添加</button>
     </view>
   </view>
@@ -26,7 +44,7 @@
       <view class="tag-row-item">
         <view>
           <view class="tag-name">{{item.name}}</view>
-          <view class="muted">用于资源库分类筛选</view>
+          <view class="muted">用于资料分类筛选</view>
         </view>
         <button class="mini-danger" data-id="{{item.id}}" bindtap="handleDelete">删除</button>
       </view>

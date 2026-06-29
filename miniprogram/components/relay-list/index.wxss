@@ -27,6 +27,17 @@
   background: #edf5ff;
 }
 
+.relay-avatar.fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: #ffffff;
+  background: linear-gradient(135deg, #1677ff, #20c997);
+  font-size: 28rpx;
+  font-weight: 900;
+}
+
 .relay-main {
   flex: 1;
   margin-left: 18rpx;

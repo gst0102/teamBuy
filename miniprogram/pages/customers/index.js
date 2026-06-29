@@ -29,6 +29,14 @@ const ACTIVITY_FILTERS = [
   { key: "dormant", label: "14天未跟进" }
 ];
 
+const STAGE_FILTERS = [
+  { key: "all", label: "全部" },
+  { key: "todo", label: "待处理" },
+  { key: "today", label: "今日跟进" },
+  { key: "contacted", label: "已联系" },
+  { key: "closed", label: "已归档" }
+];
+
 const RECENT_DAYS = 7;
 const DORMANT_DAYS = 14;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -39,6 +47,7 @@ const DEFAULT_VIEW_FILTERS = {
   activeSourceFilter: "all",
   activeTagFilter: "all",
   activeActivityFilter: "all",
+  activeStageFilter: "all",
   activeSort: "intent",
   searchKeyword: ""
 };
@@ -54,6 +63,15 @@ function todayValue() {
   return `${now.getFullYear()}-${month}-${day}`;
 }
 
+function decodeOption(value) {
+  if (!value) return "";
+  try {
+    return decodeURIComponent(value);
+  } catch (error) {
+    return value;
+  }
+}
+
 function daysSince(value) {
   if (!value) return null;
   const time = new Date(value).getTime();
@@ -63,6 +81,84 @@ function daysSince(value) {
 
 function hasProfile(item) {
   return !!(item.customerPhone || item.customerWechat || item.budgetText || item.intentLevel || (item.customerTags || []).length);
+}
+
+function safeAvatarUrl(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  if (!/^https:\/\//i.test(text)) return "";
+  if (/example\.com/i.test(text)) return "";
+  if (/avatar-default/i.test(text)) return "";
+  if (/^(wxfile|file|blob):/i.test(text)) return "";
+  if (/^\/tmp\//i.test(text)) return "";
+  return text;
+}
+
+function avatarText(name) {
+  const text = String(name || "客").trim();
+  return text.slice(0, 1);
+}
+
+function leadStatusText(status) {
+  const map = {
+    pending: "待联系",
+    contacted: "已联系",
+    invalid: "无效",
+    paused: "暂不跟进",
+    completed: "已完成"
+  };
+  return map[status] || "待联系";
+}
+
+function customerStage(item) {
+  if (["invalid", "paused", "completed"].includes(item.status)) return "closed";
+  if (item.status === "contacted") return "contacted";
+  if (item.nextFollowUpAt && String(item.nextFollowUpAt).slice(0, 10) === todayValue()) return "today";
+  return "todo";
+}
+
+function customerStageText(stage) {
+  if (stage === "closed") return "已归档";
+  if (stage === "contacted") return "已联系";
+  if (stage === "today") return "今日跟进";
+  return "待处理";
+}
+
+function nextActionText(item) {
+  if (item.latestOrderId) return item.latestOrderStatus === "completed" ? "查看成交" : "处理订单";
+  if (item.stage === "closed") return "查看归档";
+  if (item.stage === "contacted") return "继续跟进";
+  if (item.stage === "today") return "今日联系";
+  if (item.customerPhone) return "立即外呼";
+  if (item.customerWechat) return "复制微信";
+  return "补充资料";
+}
+
+function normalizeSellerOrder(order = {}, index = 0) {
+  const phone = String(order.phone || "").replace(/\s/g, "");
+  const wechat = String(order.wechat || "").replace(/\s/g, "");
+  const name = order.receiverName || order.buyerName || "客户";
+  return {
+    ...order,
+    buyerDisplayName: name,
+    avatarUrl: safeAvatarUrl(order.buyerAvatarUrl),
+    avatarText: avatarText(name),
+    displayPhone: phone,
+    displayWechat: wechat,
+    createdText: formatTime(order.createdAt),
+    summaryText: [order.actionKindText, order.skuName, order.quantity ? `x ${order.quantity}` : ""].filter(Boolean).join(" · "),
+    sourceText: order.title || "商品资料",
+    tone: index % 4
+  };
+}
+
+function buildOrderStageSummary(orders) {
+  return [
+    { key: "submitted", label: "待处理", count: orders.filter((item) => item.status === "submitted").length },
+    { key: "contacted", label: "已联系", count: orders.filter((item) => item.status === "contacted").length },
+    { key: "completed", label: "已成交", count: orders.filter((item) => item.status === "completed").length },
+    { key: "cancelled", label: "已取消", count: orders.filter((item) => item.status === "cancelled").length }
+  ];
 }
 
 function matchesSearch(item, keyword) {
@@ -114,6 +210,10 @@ function matchesActivityFilter(item, filter) {
   return true;
 }
 
+function matchesStageFilter(item, filter) {
+  return filter === "all" || item.stage === filter;
+}
+
 function buildCountFilters(items, pickValue, allLabel) {
   const counts = items.reduce((memo, item) => {
     const value = pickValue(item);
@@ -138,10 +238,33 @@ function buildTagFilters(customers) {
   ];
 }
 
-function filterCustomers(customers, intentFilter, keyword = "", profileFilter = "all", sourceFilter = "all", tagFilter = "all", activityFilter = "all") {
+function buildSourceGroups(customers) {
+  return buildCountFilters(customers, (item) => item.cardTitle || "未知来源", "全部来源")
+    .filter((item) => item.key !== "all")
+    .slice(0, 6)
+    .map((item) => ({
+      ...item,
+      high: customers.filter((customer) => (customer.cardTitle || "未知来源") === item.key && customer.intentLevel === "高意向").length,
+      pending: customers.filter((customer) => (customer.cardTitle || "未知来源") === item.key && customer.stage === "todo").length
+    }));
+}
+
+function buildStageSummary(customers) {
+  const counts = customers.reduce((memo, item) => {
+    memo[item.stage] = (memo[item.stage] || 0) + 1;
+    return memo;
+  }, {});
+  return STAGE_FILTERS.filter((item) => item.key !== "all").map((item) => ({
+    ...item,
+    count: counts[item.key] || 0
+  }));
+}
+
+function filterCustomers(customers, intentFilter, keyword = "", profileFilter = "all", sourceFilter = "all", tagFilter = "all", activityFilter = "all", stageFilter = "all") {
   return customers.filter((item) => {
     const intentMatched = intentFilter === "all" || (item.intentLevel || "待判断") === intentFilter;
     return intentMatched &&
+      matchesStageFilter(item, stageFilter) &&
       matchesProfileFilter(item, profileFilter) &&
       matchesSourceFilter(item, sourceFilter) &&
       matchesTagFilter(item, tagFilter) &&
@@ -162,8 +285,8 @@ function sortCustomers(customers, sortMode = "intent") {
   });
 }
 
-function applyCustomerView(customers, intentFilter, profileFilter, keyword, sortMode, sourceFilter, tagFilter, activityFilter) {
-  return sortCustomers(filterCustomers(customers, intentFilter, keyword, profileFilter, sourceFilter, tagFilter, activityFilter), sortMode);
+function applyCustomerView(customers, intentFilter, profileFilter, keyword, sortMode, sourceFilter, tagFilter, activityFilter, stageFilter = "all") {
+  return sortCustomers(filterCustomers(customers, intentFilter, keyword, profileFilter, sourceFilter, tagFilter, activityFilter, stageFilter), sortMode);
 }
 
 function buildCustomerSummary(customers) {
@@ -205,6 +328,22 @@ function buildViewName(filters) {
   return parts.length ? parts.join(" + ") : "全部客户";
 }
 
+function buildActiveCustomerViewText(filters) {
+  const profileOption = PROFILE_FILTERS.find((item) => item.key === filters.activeProfileFilter);
+  const activityOption = ACTIVITY_FILTERS.find((item) => item.key === filters.activeActivityFilter);
+  const stageOption = STAGE_FILTERS.find((item) => item.key === filters.activeStageFilter);
+  const parts = [
+    filters.activeSourceFilter !== "all" ? `来源：${filters.activeSourceFilter}` : "",
+    filters.activeStageFilter !== "all" && stageOption ? stageOption.label : "",
+    filters.activeIntent !== "all" ? filters.activeIntent : "",
+    filters.activeProfileFilter !== "all" && profileOption ? profileOption.label : "",
+    filters.activeActivityFilter !== "all" && activityOption ? activityOption.label : "",
+    filters.activeTagFilter !== "all" ? `标签：${filters.activeTagFilter}` : "",
+    filters.searchKeyword ? `搜索：${filters.searchKeyword}` : ""
+  ].filter(Boolean);
+  return parts.length ? parts.join(" · ") : "全部客户";
+}
+
 Page({
   data: {
     customers: [],
@@ -212,22 +351,51 @@ Page({
     activeIntent: "all",
     activeProfileFilter: "all",
     activeSourceFilter: "all",
-    activeTagFilter: "all",
-    activeActivityFilter: "all",
-    activeSort: "intent",
+  activeTagFilter: "all",
+  activeActivityFilter: "all",
+  activeStageFilter: "all",
+  activeSort: "intent",
+    activeViewText: "全部客户",
     searchKeyword: "",
     intentFilters: INTENT_FILTERS,
     profileFilters: PROFILE_FILTERS,
     activityFilters: ACTIVITY_FILTERS,
+    stageFilters: STAGE_FILTERS,
     sourceFilters: [],
     tagFilters: [],
+    sourceGroups: [],
+    stageSummary: [],
+    sellerOrders: [],
+    orderStageSummary: [],
+    orderCustomerPreview: [],
     sortOptions: SORT_OPTIONS,
     savedViews: [],
     summary: {
       total: 0,
       high: 0,
       withPhone: 0,
-      withWechat: 0
+      withWechat: 0,
+      orderCount: 0,
+      completedOrderCount: 0
+    },
+    customerDetailOpen: false,
+    selectedCustomer: null
+  },
+  onLoad(options = {}) {
+    const patch = {};
+    const keyword = decodeOption(options.keyword);
+    const source = decodeOption(options.source);
+    const stage = decodeOption(options.stage);
+    const intent = decodeOption(options.intent);
+    if (keyword) patch.searchKeyword = keyword;
+    if (source) patch.activeSourceFilter = source;
+    if (stage) patch.activeStageFilter = stage;
+    if (intent) patch.activeIntent = intent;
+    if (Object.keys(patch).length) {
+      this.setData({
+        ...patch,
+        activeViewText: buildActiveCustomerViewText({ ...this.getCurrentViewFilters(), ...patch })
+      });
     }
   },
   onShow() {
@@ -251,9 +419,38 @@ Page({
   async loadCustomers() {
     const currentUser = getCurrentUser();
     try {
-      const res = await api.fetchLeadReminders(currentUser.id);
-      const customers = sortCustomers((res.data || []).filter(hasProfile).map((item) => ({
+      const [leadRes, orderRes] = await Promise.all([
+        api.fetchLeadReminders(currentUser.id),
+        api.fetchOrders({ userId: currentUser.id, role: "seller" }).catch(() => ({ data: { orders: [] } }))
+      ]);
+      const sellerOrders = (((orderRes.data && orderRes.data.orders) || [])).map(normalizeSellerOrder);
+      const ordersByContact = sellerOrders.reduce((memo, order) => {
+        const keys = [order.displayPhone, order.displayWechat, order.buyerDisplayName].filter(Boolean);
+        keys.forEach((key) => {
+          if (!memo[key]) memo[key] = [];
+          memo[key].push(order);
+        });
+        return memo;
+      }, {});
+      const customers = sortCustomers((leadRes.data || []).filter(hasProfile).map((item) => {
+        const matchedOrders = [
+          ...(ordersByContact[item.customerPhone] || []),
+          ...(ordersByContact[item.customerWechat] || []),
+          ...(ordersByContact[item.nickname] || [])
+        ].filter((order, index, source) => source.findIndex((candidate) => candidate.id === order.id) === index);
+        const latestOrder = matchedOrders[0] || null;
+        return {
         ...item,
+        avatarUrl: safeAvatarUrl(item.avatarUrl),
+        avatarText: avatarText(item.nickname),
+        statusText: leadStatusText(item.status),
+        stage: customerStage(item),
+        stageText: customerStageText(customerStage(item)),
+        orderCount: matchedOrders.length,
+        latestOrderId: latestOrder ? latestOrder.id : "",
+        latestOrderStatus: latestOrder ? latestOrder.status : "",
+        latestOrderText: latestOrder ? `${latestOrder.statusText} · ${latestOrder.summaryText}` : "",
+        nextActionText: nextActionText({ ...item, stage: customerStage(item), latestOrderId: latestOrder ? latestOrder.id : "", latestOrderStatus: latestOrder ? latestOrder.status : "" }),
         customerTags: item.customerTags || [],
         intentLevel: item.intentLevel || "待判断",
         updatedText: formatTime(item.updatedAt),
@@ -261,26 +458,38 @@ Page({
         latestFollowUpText: getLatestFollowUpAt(item) ? formatTime(getLatestFollowUpAt(item)) : "",
         nextFollowUpText: item.nextFollowUpAt ? String(item.nextFollowUpAt).slice(0, 10) : "",
         latestFollowUp: (item.followUpLogs || [])[0] ? (item.followUpLogs || [])[0].content : ""
-      })));
+        };
+      }));
+      const viewFilters = this.getCurrentViewFilters();
+      const filteredCustomers = applyCustomerView(
+        customers,
+        viewFilters.activeIntent,
+        viewFilters.activeProfileFilter,
+        viewFilters.searchKeyword,
+        viewFilters.activeSort,
+        viewFilters.activeSourceFilter,
+        viewFilters.activeTagFilter,
+        viewFilters.activeActivityFilter,
+        viewFilters.activeStageFilter
+      );
       this.setData({
         customers,
-        filteredCustomers: applyCustomerView(
-          customers,
-          this.data.activeIntent,
-          this.data.activeProfileFilter,
-          this.data.searchKeyword,
-          this.data.activeSort,
-          this.data.activeSourceFilter,
-          this.data.activeTagFilter,
-          this.data.activeActivityFilter
-        ),
+        filteredCustomers,
+        activeViewText: buildActiveCustomerViewText(viewFilters),
         sourceFilters: buildCountFilters(customers, (item) => item.cardTitle, "全部来源"),
         tagFilters: buildTagFilters(customers),
+        sourceGroups: buildSourceGroups(customers),
+        stageSummary: buildStageSummary(customers),
+        sellerOrders,
+        orderStageSummary: buildOrderStageSummary(sellerOrders),
+        orderCustomerPreview: sellerOrders.slice(0, 4),
         summary: {
           total: customers.length,
           high: customers.filter((item) => item.intentLevel === "高意向").length,
           withPhone: customers.filter((item) => item.customerPhone).length,
-          withWechat: customers.filter((item) => item.customerWechat).length
+          withWechat: customers.filter((item) => item.customerWechat).length,
+          orderCount: sellerOrders.length,
+          completedOrderCount: sellerOrders.filter((item) => item.status === "completed").length
         }
       });
     } catch (error) {
@@ -288,145 +497,51 @@ Page({
     }
   },
   handleIntentFilterChange(event) {
-    const activeIntent = event.currentTarget.dataset.filter;
-    this.setData({
-      activeIntent,
-      filteredCustomers: applyCustomerView(
-        this.data.customers,
-        activeIntent,
-        this.data.activeProfileFilter,
-        this.data.searchKeyword,
-        this.data.activeSort,
-        this.data.activeSourceFilter,
-        this.data.activeTagFilter,
-        this.data.activeActivityFilter
-      )
-    });
+    this.commitCustomerView({ activeIntent: event.currentTarget.dataset.filter });
   },
   handleProfileFilterChange(event) {
-    const activeProfileFilter = event.currentTarget.dataset.filter;
-    this.setData({
-      activeProfileFilter,
-      filteredCustomers: applyCustomerView(
-        this.data.customers,
-        this.data.activeIntent,
-        activeProfileFilter,
-        this.data.searchKeyword,
-        this.data.activeSort,
-        this.data.activeSourceFilter,
-        this.data.activeTagFilter,
-        this.data.activeActivityFilter
-      )
-    });
+    this.commitCustomerView({ activeProfileFilter: event.currentTarget.dataset.filter });
   },
   handleActivityFilterChange(event) {
-    const activeActivityFilter = event.currentTarget.dataset.filter;
-    this.setData({
-      activeActivityFilter,
-      filteredCustomers: applyCustomerView(
-        this.data.customers,
-        this.data.activeIntent,
-        this.data.activeProfileFilter,
-        this.data.searchKeyword,
-        this.data.activeSort,
-        this.data.activeSourceFilter,
-        this.data.activeTagFilter,
-        activeActivityFilter
-      )
-    });
+    this.commitCustomerView({ activeActivityFilter: event.currentTarget.dataset.filter });
+  },
+  handleStageFilterChange(event) {
+    this.commitCustomerView({ activeStageFilter: event.currentTarget.dataset.filter });
   },
   handleSourceFilterChange(event) {
-    const activeSourceFilter = event.currentTarget.dataset.filter;
-    this.setData({
-      activeSourceFilter,
-      filteredCustomers: applyCustomerView(
-        this.data.customers,
-        this.data.activeIntent,
-        this.data.activeProfileFilter,
-        this.data.searchKeyword,
-        this.data.activeSort,
-        activeSourceFilter,
-        this.data.activeTagFilter,
-        this.data.activeActivityFilter
-      )
-    });
+    this.commitCustomerView({ activeSourceFilter: event.currentTarget.dataset.filter });
   },
   handleTagFilterChange(event) {
-    const activeTagFilter = event.currentTarget.dataset.filter;
-    this.setData({
-      activeTagFilter,
-      filteredCustomers: applyCustomerView(
-        this.data.customers,
-        this.data.activeIntent,
-        this.data.activeProfileFilter,
-        this.data.searchKeyword,
-        this.data.activeSort,
-        this.data.activeSourceFilter,
-        activeTagFilter,
-        this.data.activeActivityFilter
-      )
-    });
+    this.commitCustomerView({ activeTagFilter: event.currentTarget.dataset.filter });
   },
   handleSortChange(event) {
-    const activeSort = event.currentTarget.dataset.sort;
-    this.setData({
-      activeSort,
-      filteredCustomers: applyCustomerView(
-        this.data.customers,
-        this.data.activeIntent,
-        this.data.activeProfileFilter,
-        this.data.searchKeyword,
-        activeSort,
-        this.data.activeSourceFilter,
-        this.data.activeTagFilter,
-        this.data.activeActivityFilter
-      )
-    });
+    this.commitCustomerView({ activeSort: event.currentTarget.dataset.sort });
   },
   handleSearchChange(event) {
-    const searchKeyword = event.detail.value;
-    this.setData({
-      searchKeyword,
-      filteredCustomers: applyCustomerView(
-        this.data.customers,
-        this.data.activeIntent,
-        this.data.activeProfileFilter,
-        searchKeyword,
-        this.data.activeSort,
-        this.data.activeSourceFilter,
-        this.data.activeTagFilter,
-        this.data.activeActivityFilter
-      )
-    });
+    this.commitCustomerView({ searchKeyword: event.detail.value });
   },
   handleClearSearch() {
-    this.setData({
-      searchKeyword: "",
-      filteredCustomers: applyCustomerView(
-        this.data.customers,
-        this.data.activeIntent,
-        this.data.activeProfileFilter,
-        "",
-        this.data.activeSort,
-        this.data.activeSourceFilter,
-        this.data.activeTagFilter,
-        this.data.activeActivityFilter
-      )
-    });
+    this.commitCustomerView({ searchKeyword: "" });
   },
   handleResetFilters() {
+    this.commitCustomerView({ ...DEFAULT_VIEW_FILTERS });
+  },
+  commitCustomerView(nextFilters = {}) {
+    const filters = { ...this.getCurrentViewFilters(), ...nextFilters };
     this.setData({
-      ...DEFAULT_VIEW_FILTERS,
+      ...nextFilters,
       filteredCustomers: applyCustomerView(
         this.data.customers,
-        DEFAULT_VIEW_FILTERS.activeIntent,
-        DEFAULT_VIEW_FILTERS.activeProfileFilter,
-        DEFAULT_VIEW_FILTERS.searchKeyword,
-        DEFAULT_VIEW_FILTERS.activeSort,
-        DEFAULT_VIEW_FILTERS.activeSourceFilter,
-        DEFAULT_VIEW_FILTERS.activeTagFilter,
-        DEFAULT_VIEW_FILTERS.activeActivityFilter
-      )
+        filters.activeIntent,
+        filters.activeProfileFilter,
+        filters.searchKeyword,
+        filters.activeSort,
+        filters.activeSourceFilter,
+        filters.activeTagFilter,
+        filters.activeActivityFilter,
+        filters.activeStageFilter || "all"
+      ),
+      activeViewText: buildActiveCustomerViewText(filters)
     });
   },
   getCurrentViewFilters() {
@@ -436,6 +551,7 @@ Page({
       activeSourceFilter: this.data.activeSourceFilter,
       activeTagFilter: this.data.activeTagFilter,
       activeActivityFilter: this.data.activeActivityFilter,
+      activeStageFilter: this.data.activeStageFilter,
       activeSort: this.data.activeSort,
       searchKeyword: this.data.searchKeyword
     };
@@ -464,19 +580,7 @@ Page({
     const view = (this.data.savedViews || []).find((item) => item.id === viewId);
     if (!view) return;
     const filters = { ...DEFAULT_VIEW_FILTERS, ...(view.filters || {}) };
-    this.setData({
-      ...filters,
-      filteredCustomers: applyCustomerView(
-        this.data.customers,
-        filters.activeIntent,
-        filters.activeProfileFilter,
-        filters.searchKeyword,
-        filters.activeSort,
-        filters.activeSourceFilter,
-        filters.activeTagFilter,
-        filters.activeActivityFilter
-      )
-    });
+    this.commitCustomerView(filters);
   },
   handleRemoveSavedView(event) {
     const viewId = event.currentTarget.dataset.id;
@@ -494,6 +598,106 @@ Page({
       data: value,
       success: () => wx.showToast({ title: "已复制", icon: "success" })
     });
+  },
+  handleCallPhone(event) {
+    const phone = event.currentTarget.dataset.phone;
+    if (!phone) {
+      wx.showToast({ title: "暂无电话", icon: "none" });
+      return;
+    }
+    wx.makePhoneCall({
+      phoneNumber: phone,
+      fail: () => wx.showToast({ title: "拨号失败", icon: "none" })
+    });
+  },
+  handleOpenCustomerSheet(event) {
+    const customerId = event.currentTarget.dataset.id;
+    const customer = (this.data.filteredCustomers || []).find((item) => item.id === customerId);
+    if (!customer) return;
+    this.setData({
+      selectedCustomer: customer,
+      customerDetailOpen: true
+    });
+  },
+  handleCloseCustomerSheet() {
+    this.setData({
+      selectedCustomer: null,
+      customerDetailOpen: false
+    });
+  },
+  noop() {},
+  handleSelectedPrimaryAction() {
+    const customer = this.data.selectedCustomer;
+    if (!customer) return;
+    if (customer.latestOrderId) {
+      wx.navigateTo({ url: `/pages/order-detail/index?id=${customer.latestOrderId}&role=seller` });
+      return;
+    }
+    if (customer.customerPhone) {
+      wx.makePhoneCall({
+        phoneNumber: customer.customerPhone,
+        fail: () => wx.showToast({ title: "拨号失败", icon: "none" })
+      });
+      return;
+    }
+    if (customer.customerWechat) {
+      wx.setClipboardData({
+        data: customer.customerWechat,
+        success: () => wx.showToast({ title: "微信已复制", icon: "success" })
+      });
+      return;
+    }
+    wx.navigateTo({ url: `/pages/lead-detail/index?id=${customer.id}` });
+  },
+  handleOpenSelectedLead() {
+    const customer = this.data.selectedCustomer;
+    if (!customer) return;
+    wx.navigateTo({ url: `/pages/lead-detail/index?id=${customer.id}` });
+  },
+  handleOpenSelectedCard() {
+    const customer = this.data.selectedCustomer;
+    if (!customer || !customer.cardId) return;
+    navigateToResourceView(customer.cardId);
+  },
+  handleOpenOrder(event) {
+    const orderId = event.currentTarget.dataset.id;
+    if (!orderId) return;
+    wx.navigateTo({ url: `/pages/order-detail/index?id=${orderId}&role=seller` });
+  },
+  handleOpenLatestOrder(event) {
+    const customer = (this.data.filteredCustomers || []).find((item) => item.id === event.currentTarget.dataset.id);
+    if (!customer || !customer.latestOrderId) {
+      this.handleOpenLead(event);
+      return;
+    }
+    wx.navigateTo({ url: `/pages/order-detail/index?id=${customer.latestOrderId}&role=seller` });
+  },
+  handleSourceGroupTap(event) {
+    const source = event.currentTarget.dataset.source;
+    this.commitCustomerView({ activeSourceFilter: source });
+  },
+  handleOpenFilteredLeads() {
+    const source = this.data.activeSourceFilter !== "all" ? this.data.activeSourceFilter : "";
+    const stage = this.data.activeStageFilter;
+    const statusMap = {
+      todo: "pending",
+      contacted: "contacted",
+      closed: "closed"
+    };
+    const query = [
+      source ? `source=${encodeURIComponent(source)}` : "",
+      statusMap[stage] ? `status=${statusMap[stage]}` : "",
+      stage === "today" ? "schedule=today" : ""
+    ].filter(Boolean).join("&");
+    wx.navigateTo({ url: `/pages/leads/index${query ? `?${query}` : ""}` });
+  },
+  handleOpenFilteredOrders() {
+    const source = this.data.activeSourceFilter !== "all" ? this.data.activeSourceFilter : "";
+    const query = source ? `?role=seller&source=${encodeURIComponent(source)}` : "?role=seller";
+    wx.navigateTo({ url: `/pages/orders/index${query}` });
+  },
+  handleStageSummaryTap(event) {
+    this.handleStageFilterChange(event);
   },
   handleCopySummary() {
     const customers = this.data.filteredCustomers || [];

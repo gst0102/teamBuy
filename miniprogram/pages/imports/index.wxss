@@ -73,13 +73,16 @@
 }
 
 .template-chip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex: 1;
   height: 68rpx;
-  line-height: 68rpx;
   border-radius: 8rpx;
   background: #eef3f8;
   color: #526070;
   font-size: 26rpx;
+  line-height: 1.2;
 }
 
 .template-chip.active {
@@ -134,14 +137,18 @@
 }
 
 .claim-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 220rpx;
   height: 76rpx;
-  line-height: 76rpx;
   border-radius: 8rpx;
   background: #12b76a;
   color: #fff;
   font-size: 26rpx;
   font-weight: 800;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
 .notice-row {

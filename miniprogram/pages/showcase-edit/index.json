@@ -1,6 +1,7 @@
 {
   "usingComponents": {
-    "custom-nav": "/components/custom-nav/index"
+    "custom-nav": "/components/custom-nav/index",
+    "note-select-card": "/components/note-select-card/index"
   },
   "navigationBarTitleText": "编辑展示页"
 }

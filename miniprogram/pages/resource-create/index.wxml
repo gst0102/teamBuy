@@ -1,106 +1,106 @@
-<view class="page-shell">
-  <custom-nav />
+<view class="page-shell capture-page">
+  <custom-nav title="放进笔记库" />
 
-  <view class="create-hero">
-    <view class="hero-copy">
-      <view class="hero-title">手动添加资源</view>
-      <view class="hero-subtitle">自己上传创建，轻松管理你的优质资源</view>
-      <view class="hero-badges">
-        <text class="hero-badge">多种类型支持</text>
-        <text class="hero-badge">自定义标签</text>
-        <text class="hero-badge">分类管理</text>
-        <text class="hero-badge">一键生成资源页</text>
-      </view>
-    </view>
-    <view class="create-visual">+</view>
+  <view class="capture-head">
+    <view class="hero-title">放进笔记库</view>
+    <view class="hero-subtitle">随手记一条，房源和团购文案会自动整理成资料草稿。</view>
   </view>
 
-  <view class="panel upload-panel">
-    <view class="upload-header">
-      <view class="section-title">上传图片 / 视频</view>
-      <view class="muted">首张图片默认作为资源页封面，其他图片、视频和附件会放入详情说明</view>
+  <view class="capture-space"></view>
+
+  <view class="capture-panel">
+    <textarea
+      class="capture-input"
+      value="{{inputText}}"
+      focus="{{inputFocused}}"
+      placeholder="记账、备忘、客户需求，或粘贴房源/团购文案..."
+      maxlength="3000"
+      show-confirm-bar="{{false}}"
+      adjust-position="{{true}}"
+      bindinput="handleInput"
+    ></textarea>
+
+    <view class="capture-toolbar">
+      <button class="tool-btn text-tool" bindtap="handleInsertTag">#</button>
+      <button class="tool-btn" loading="{{ocrUploading}}" disabled="{{ocrUploading}}" bindtap="handleImageUpload">图片</button>
+      <button class="tool-btn" bindtap="handleInsertList">列表</button>
+      <button class="tool-btn more-tool" bindtap="handleMore">...</button>
+      <button class="send-btn" loading="{{saving}}" disabled="{{saving}}" bindtap="handleSubmit">发送</button>
     </view>
-    <view class="upload-dropzone" bindtap="handleChooseUpload">
-      <view class="upload-plus">+</view>
-      <view class="upload-title">{{uploading ? '上传中...' : '点击上传'}}</view>
-      <view class="upload-subtitle">支持图片、短视频和文件</view>
-      <view class="upload-hint">支持 JPG / PNG / MP4 / PDF，单个文件不超过 200MB</view>
+  </view>
+
+  <view class="saved-bar" wx:if="{{savedBarVisible}}">
+    <text>{{savedText}}</text>
+    <text class="saved-link" bindtap="handleViewSaved">查看详情</text>
+  </view>
+
+  <view class="property-batch-card" wx:if="{{propertyBatchVisible}}">
+    <view class="property-batch-head">
+      <view>
+        <view class="property-batch-kicker">房源批量识别</view>
+        <view class="property-batch-title">识别到 {{propertyBatchCount}} 套房源</view>
+      </view>
+      <view class="property-batch-count">已选 {{propertyBatchSelectedCount}}</view>
     </view>
-    <view class="upload-tips" wx:if="{{uploadedAssets.length}}">
-      <view class="tip-item">封面图会展示在资源页顶部。</view>
-      <view class="tip-item">其他图片、视频、附件会作为详情素材保留。</view>
-      <view class="tip-item">如果要换首页图，点击“设为封面”。</view>
+
+    <view class="property-private-notice">
+      <text class="property-private-lock">私密</text>
+      <text>已把{{propertyBatchPrivacyText}}放进上游备注，客户页不展示。</text>
     </view>
-    <view class="upload-list" wx:if="{{uploadedAssets.length}}">
-      <block wx:for="{{uploadedAssets}}" wx:key="url">
-        <view class="upload-item">
-          <image wx:if="{{item.type === 'image'}}" class="upload-thumb" src="{{item.displayUrl || item.url}}" mode="aspectFill"></image>
-          <view wx:else class="upload-thumb upload-thumb-video">{{item.type === 'video' ? '视频' : '文件'}}</view>
-          <view class="upload-meta">
-            <view class="upload-name">{{item.name}}</view>
-            <view class="upload-tag">{{item.roleText}}</view>
+
+    <view class="property-candidate-list">
+      <view
+        class="property-candidate {{item.selected ? 'selected' : ''}}"
+        wx:for="{{propertyBatchCandidates}}"
+        wx:key="candidateId"
+        data-index="{{index}}"
+        bindtap="togglePropertyCandidate"
+      >
+        <view class="property-candidate-check">{{item.selected ? '✓' : ''}}</view>
+        <view class="property-candidate-body">
+          <view class="property-candidate-title">{{item.title}}</view>
+          <view class="property-candidate-summary">{{item.summary || '待补充卖点'}}</view>
+          <view class="property-candidate-price">{{item.price}}</view>
+          <view class="property-tag-row" wx:if="{{item.publicTagsText}}">
+            <text class="property-tag public">{{item.publicTagsText}}</text>
           </view>
-          <view class="upload-buttons">
-            <view wx:if="{{item.type === 'image' && !item.isCover}}" class="upload-secondary" data-url="{{item.url}}" bindtap="handleSetCover">设为封面</view>
-            <view wx:if="{{item.isCover}}" class="upload-primary">当前封面</view>
-            <view class="upload-action" data-url="{{item.url}}" bindtap="handleRemoveUpload">移除</view>
+          <view class="property-tag-row" wx:if="{{item.privateTagsText}}">
+            <text class="property-tag private">仅自己看：{{item.privateTagsText}}</text>
           </view>
         </view>
-      </block>
-    </view>
-  </view>
-
-  <view class="panel">
-    <view class="section-title">资源信息</view>
-    <view class="field-label">输入标题 *</view>
-    <input class="field-input" data-field="title" value="{{form.title}}" placeholder="请输入资源标题（2-60字）" maxlength="60" bindinput="handleFieldChange" />
-
-    <view class="field-label">资源描述</view>
-    <textarea class="field-input textarea" data-field="detailText" value="{{form.detailText}}" placeholder="请简要描述资源内容、亮点或使用场景（选填）" maxlength="500" bindinput="handleFieldChange"></textarea>
-
-    <view class="field-label">选择分类 *</view>
-    <view class="chip-row type-row">
-      <block wx:for="{{typeOptions}}" wx:key="*this">
-        <view class="chip {{type === item ? 'active' : ''}}" data-type="{{item}}" bindtap="handleTypeChange">{{item}}</view>
-      </block>
-    </view>
-  </view>
-
-  <view class="panel">
-    <view class="section-head">
-      <view class="section-title">添加标签</view>
-      <view class="section-link" bindtap="handleGoTagManage">添加 / 管理标签</view>
-    </view>
-    <view class="tag-pick-row" wx:if="{{categories.length}}">
-      <block wx:for="{{categories}}" wx:key="id">
-        <view class="tag {{item.selected ? 'active' : ''}}" data-id="{{item.id}}" bindtap="handleCategoryToggle">{{item.name}}</view>
-      </block>
-    </view>
-    <view class="empty-state compact" wx:else>暂无自定义标签，可先去标签管理添加。</view>
-  </view>
-
-  <view class="panel">
-    <view class="section-title">联系与展示</view>
-    <view class="field-label">项目名称 / 分类说明</view>
-    <input class="field-input" data-field="projectName" value="{{form.projectName}}" placeholder="例如：滨江花园 / 社区团购 / 资料包" bindinput="handleFieldChange" />
-
-    <view class="field-label">位置 / 地址</view>
-    <input class="field-input" data-field="locationText" value="{{form.locationText}}" placeholder="例如：上海浦东新区" bindinput="handleFieldChange" />
-
-    <view class="field-label">联系电话</view>
-    <input class="field-input" data-field="phone" value="{{form.phone}}" type="number" placeholder="用于资源页一键拨号" bindinput="handleFieldChange" />
-
-    <view class="switch-row">
-      <view>
-        <view class="switch-title">生成资源页</view>
-        <view class="muted">为该资源自动生成独立资源页面</view>
       </view>
-      <switch checked="{{form.generatePage}}" data-field="generatePage" bindchange="handleSwitchChange" />
+    </view>
+
+    <view class="property-batch-actions">
+      <button class="property-batch-secondary" bindtap="handlePropertyBatchSaveRaw">按普通资料保存</button>
+      <button
+        class="property-batch-primary"
+        loading="{{propertyBatchCreating}}"
+        disabled="{{propertyBatchCreating || !propertyBatchSelectedCount}}"
+        bindtap="handlePropertyBatchCreate"
+      >生成房源卡</button>
     </view>
   </view>
 
-  <view class="submit-bar">
-    <button class="primary-btn action-btn" loading="{{submitting}}" bindtap="handleSubmit">保存到资源库</button>
-    <button class="ghost-btn action-btn" loading="{{previewSubmitting}}" bindtap="handlePreview">发布并预览</button>
+  <view class="business-card" wx:if="{{businessPromptVisible}}">
+    <view class="business-close" bindtap="handleBusinessCancel">×</view>
+    <view class="business-icon">{{businessPromptIcon}}</view>
+    <view class="business-body">
+      <view class="business-badge">已自动整理</view>
+      <view class="business-title">{{businessPromptTitle}}</view>
+      <view class="business-content">{{businessPromptContent}}</view>
+    </view>
+    <view class="workspace-suggestion">
+      <view class="workspace-suggestion-title">是否切换到{{businessPromptWorkspaceName}}？</view>
+      <view class="workspace-suggestion-desc">只切换首页和工作台展示，不改变资料归属，也不会删除资料。</view>
+      <view class="workspace-actions">
+        <button class="workspace-secondary" bindtap="handleWorkspaceStay">继续当前工作台</button>
+        <button class="workspace-primary" bindtap="handleWorkspaceSwitch">切换到对应工作台</button>
+      </view>
+    </view>
+    <view class="business-actions">
+      <button class="business-secondary" bindtap="handleBusinessCancel">先放笔记库</button>
+      <button class="business-primary" bindtap="handleBusinessConfirm">{{businessPromptConfirmText}}</button>
+    </view>
   </view>
 </view>

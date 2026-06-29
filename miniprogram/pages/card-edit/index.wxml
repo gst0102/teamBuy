@@ -64,7 +64,7 @@
     <button class="upload-empty-card" loading="{{uploading}}" bindtap="handleChooseUpload">
       <text class="upload-plus">+</text>
       <text>添加图片/视频</text>
-      <text class="upload-help">第一张图片会作为资源封面，后续图片/视频会展示在详情内容里</text>
+      <text class="upload-help">第一张图片会作为资源封面，更多图片/视频会展示在详情内容里</text>
     </button>
   </view>
 

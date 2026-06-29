@@ -51,5 +51,35 @@ Page({
   },
   handleOpen(event) {
     wx.navigateTo({ url: `/pages/notes/index?topicId=${event.currentTarget.dataset.id}` });
+  },
+  handleCreateCollection(event) {
+    const { id, name } = event.currentTarget.dataset;
+    if (!id) return;
+    wx.navigateTo({
+      url: `/pages/showcase-edit/index?mode=notes&topicId=${encodeURIComponent(id)}&topicName=${encodeURIComponent(name || "专题")}`
+    });
+  },
+  handleDelete(event) {
+    const { id, name, count } = event.currentTarget.dataset;
+    const { user } = this.data;
+    if (!id || !user) return;
+    wx.showModal({
+      title: "删除专题",
+      content: Number(count || 0) > 0
+        ? `会从 ${count} 条资料中移除“${name || "这个专题"}”，资料本身不会删除。`
+        : `确认删除“${name || "这个专题"}”？`,
+      confirmText: "删除",
+      confirmColor: "#e5484d",
+      success: async ({ confirm }) => {
+        if (!confirm) return;
+        try {
+          await api.deleteTopic(id, user.id);
+          wx.showToast({ title: "已删除", icon: "success" });
+          this.loadTopics();
+        } catch (error) {
+          wx.showToast({ title: error.detail || "删除失败", icon: "none" });
+        }
+      }
+    });
   }
 });

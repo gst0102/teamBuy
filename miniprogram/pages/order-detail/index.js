@@ -33,6 +33,7 @@ Page({
       const res = await api.fetchOrder(this.data.orderId, userId);
       const order = res.data || {};
       const rows = [
+        ["类型", order.actionKindText],
         ["规格", order.skuName],
         ["单价", order.skuPrice],
         ["数量", order.quantity],
@@ -72,6 +73,14 @@ Page({
     const address = this.data.order && this.data.order.address;
     if (!address) return;
     wx.setClipboardData({ data: address, success: () => wx.showToast({ title: "地址已复制", icon: "success" }) });
+  },
+  handleCopyWechat() {
+    const wechat = this.data.order && this.data.order.wechat;
+    if (!wechat) {
+      wx.showToast({ title: "暂无微信号", icon: "none" });
+      return;
+    }
+    wx.setClipboardData({ data: wechat, success: () => wx.showToast({ title: "微信已复制", icon: "success" }) });
   },
   async handleOpenMessage() {
     const order = this.data.order || {};

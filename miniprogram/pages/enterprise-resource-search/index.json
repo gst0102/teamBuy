@@ -1,0 +1,7 @@
+{
+  "navigationBarTitleText": "企业资源搜索",
+  "navigationStyle": "custom",
+  "usingComponents": {
+    "custom-nav": "/components/custom-nav/index"
+  }
+}
