@@ -245,26 +245,41 @@ function businessCardPalette(templateId) {
 }
 
 function drawCircleAvatar(ctx, imagePath, card, x, y, size, palette) {
+  const cx = x + size / 2;
+  const cy = y + size / 2;
+  const imageInset = 9;
+  const imageSize = size - imageInset * 2;
+
+  ctx.setFillStyle("rgba(255,255,255,0.96)");
+  ctx.beginPath();
+  ctx.arc(cx, cy, size / 2 + 8, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.setStrokeStyle(palette.accent || "#1677ff");
+  ctx.setLineWidth(3);
+  ctx.beginPath();
+  ctx.arc(cx, cy, size / 2 + 5, 0, Math.PI * 2);
+  ctx.stroke();
+
   ctx.save();
   ctx.beginPath();
-  ctx.arc(x + size / 2, y + size / 2, size / 2, 0, Math.PI * 2);
+  ctx.arc(cx, cy, imageSize / 2, 0, Math.PI * 2);
   ctx.clip();
   if (imagePath) {
-    ctx.drawImage(imagePath, x, y, size, size);
+    ctx.drawImage(imagePath, x + imageInset, y + imageInset, imageSize, imageSize);
   } else {
     ctx.setFillStyle("#f8fafc");
-    ctx.fillRect(x, y, size, size);
+    ctx.fillRect(x + imageInset, y + imageInset, imageSize, imageSize);
     ctx.setFillStyle(palette.accent);
     ctx.setTextAlign("center");
-    ctx.setFontSize(Math.round(size * 0.42));
-    ctx.fillText(card.initial || "名", x + size / 2, y + size * 0.66);
+    ctx.setFontSize(Math.round(imageSize * 0.42));
+    ctx.fillText(card.initial || "名", cx, y + imageInset + imageSize * 0.66);
     ctx.setTextAlign("left");
   }
   ctx.restore();
-  ctx.setStrokeStyle("rgba(255,255,255,0.9)");
-  ctx.setLineWidth(5);
+  ctx.setStrokeStyle("rgba(255,255,255,0.95)");
+  ctx.setLineWidth(2);
   ctx.beginPath();
-  ctx.arc(x + size / 2, y + size / 2, size / 2 - 2, 0, Math.PI * 2);
+  ctx.arc(cx, cy, imageSize / 2, 0, Math.PI * 2);
   ctx.stroke();
 }
 

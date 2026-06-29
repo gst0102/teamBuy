@@ -8084,3 +8084,18 @@
 - 小程序 JSON 解析：通过。
 - `python3 -m compileall backend`：通过。
 - `./.venv312/bin/python -m pytest backend/tests/test_app.py -q`：134 passed。
+
+## 2026-06-29 电子名片分享头像可见性修正
+
+本轮修正：
+
+- 头像绘制增加白色圆形底座、主题色描边和内层白边。
+- 头像图片缩进绘制，避免深色头像和深色模板重合、浅色头像和浅色背景重合。
+- 无头像时仍使用浅色首字占位。
+
+验证：
+
+- 小程序全部 JS `node --check`：通过。
+- 小程序 JSON 解析：通过。
+- `python3 -m compileall backend`：通过。
+- `./.venv312/bin/python -m pytest backend/tests/test_app.py -q`：134 passed。
