@@ -78,7 +78,7 @@
           </view>
         </view>
         <view class="row-actions">
-          <button wx:if="{{item.status === 'published'}}" class="primary-btn small" open-type="share" bindtap="prepareShare" data-id="{{item.id}}" data-title="{{item.shareTitle}}" data-banner="{{item.bannerUrl}}">发客户</button>
+          <button wx:if="{{item.status === 'published'}}" class="primary-btn small" open-type="share" bindtap="prepareShare" data-id="{{item.id}}" data-title="{{item.shareTitle}}" data-banner="{{item.shareCoverUrl}}">发客户</button>
           <button wx:else class="ghost-btn small" bindtap="handleEdit" data-id="{{item.id}}">编辑</button>
           <button class="more-btn" bindtap="handleMore" data-id="{{item.id}}" data-status="{{item.status}}">更多</button>
         </view>

@@ -140,6 +140,7 @@ function showcasePurpose(item = {}, summary = {}) {
 function decorateShowcase(item) {
   const analytics = item.analytics || {};
   const summary = analytics.summary || {};
+  const firstItemCover = ((item.items || []).find((row) => row && row.coverUrl) || {}).coverUrl || "";
   const pv = summary.pv || 0;
   const uv = summary.uv || 0;
   const consult = summary.consultClickCount || 0;
@@ -159,6 +160,7 @@ function decorateShowcase(item) {
     ...item,
     initial: String(item.name || "展").slice(0, 1),
     titleCover: buildTitleCoverData(item.name || item.shareTitle || "合集", "合集"),
+    shareCoverUrl: firstItemCover || item.bannerUrl,
     statusText: statusText(item.status),
     descText: item.description || "还没有填写简介",
     itemCountText: `${item.itemCount || (item.items || []).length || 0} 条资料`,
@@ -346,13 +348,14 @@ Page({
       id: dataset.id || "",
       title: dataset.title || "合集",
       banner: dataset.banner || "",
-      imageUrl: dataset.banner || ""
+      imageUrl: ""
     };
     this.setData({ pendingShare });
     try {
       const imagePath = await generateTitleShareImage(this, SHOWCASE_SHARE_CANVAS_ID, {
         title: pendingShare.title,
         badge: "合集",
+        coverUrl: pendingShare.banner,
         hint: "打开小程序查看完整合集",
         growthHint: "我也想做同款",
         shareTargetLabel: "合集"
@@ -474,12 +477,19 @@ Page({
     const pending = this.data.pendingShare || {};
     const id = dataset.id || pending.id || "";
     const title = dataset.title || pending.title || "合集";
-    const imageUrl = pending.imageUrl || dataset.banner || pending.banner || "";
+    const imageUrl = pending.imageUrl || "";
     const user = this.data.user || getCurrentUser();
     if (!id) {
       wx.showToast({ title: "请重新点击发给客户", icon: "none" });
       return {
         title: "合集",
+        path: "/pages/showcases/index"
+      };
+    }
+    if (!imageUrl) {
+      wx.showToast({ title: "封面还在生成，请稍后再发", icon: "none" });
+      return {
+        title: buildCustomerShareTitle(title),
         path: "/pages/showcases/index"
       };
     }

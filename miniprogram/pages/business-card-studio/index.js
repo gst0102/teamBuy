@@ -617,7 +617,7 @@ Page({
     return {
       title: buildBusinessCardShareTitle(preview),
       path: id ? `/pages/note-preview/index?id=${id}` : "/pages/business-card-studio/index",
-      imageUrl: this.data.shareImage || preview.avatarUrl || preview.qrCodeUrl || ""
+      imageUrl: this.data.shareImage || ""
     };
   }
 });

@@ -7,69 +7,6 @@ const { buildBusinessCardShareTitle, buildServiceOfferShareTitle, generateProper
 const LAST_LEAD_PHONE_KEY = "teambuy:lastLeadPhone";
 const LAST_PROPERTY_CITY_KEY = "teambuy:lastPropertyCity";
 const SHARE_CARD_CANVAS_ID = "businessCardShareCanvas";
-const SHARE_CARD_WIDTH = 750;
-const SHARE_CARD_HEIGHT = 600;
-
-function drawRoundRect(ctx, x, y, width, height, radius) {
-  ctx.beginPath();
-  ctx.moveTo(x + radius, y);
-  ctx.lineTo(x + width - radius, y);
-  ctx.arc(x + width - radius, y + radius, radius, 1.5 * Math.PI, 0);
-  ctx.lineTo(x + width, y + height - radius);
-  ctx.arc(x + width - radius, y + height - radius, radius, 0, 0.5 * Math.PI);
-  ctx.lineTo(x + radius, y + height);
-  ctx.arc(x + radius, y + height - radius, radius, 0.5 * Math.PI, Math.PI);
-  ctx.lineTo(x, y + radius);
-  ctx.arc(x + radius, y + radius, radius, Math.PI, 1.5 * Math.PI);
-  ctx.closePath();
-}
-
-function fillRoundRect(ctx, x, y, width, height, radius, color) {
-  drawRoundRect(ctx, x, y, width, height, radius);
-  ctx.setFillStyle(color);
-  ctx.fill();
-}
-
-function drawOneLine(ctx, text, x, y, maxWidth) {
-  const value = String(text || "");
-  if (!value) return;
-  if (!ctx.measureText || ctx.measureText(value).width <= maxWidth) {
-    ctx.fillText(value, x, y);
-    return;
-  }
-  let next = "";
-  for (const char of value) {
-    if (ctx.measureText(`${next}${char}...`).width > maxWidth) break;
-    next += char;
-  }
-  ctx.fillText(`${next}...`, x, y);
-}
-
-function downloadCanvasImage(url) {
-  return new Promise((resolve) => {
-    if (!url) {
-      resolve("");
-      return;
-    }
-    if (/^(wxfile|file):/i.test(url)) {
-      resolve(url);
-      return;
-    }
-    if (url.startsWith("/")) {
-      wx.getImageInfo({
-        src: url,
-        success: (res) => resolve(res.path || url),
-        fail: () => resolve(url)
-      });
-      return;
-    }
-    wx.downloadFile({
-      url,
-      success: (res) => resolve(res.tempFilePath || ""),
-      fail: () => resolve("")
-    });
-  });
-}
 
 function buildCustomerShareTitle(title) {
   const cleanTitle = String(title || "这份资料").replace(/\s+/g, " ").trim();
@@ -1612,7 +1549,7 @@ Page({
     return {
       title: buildCustomerShareTitle(rawTitle),
       path: `/pages/note-preview/index?id=${this.data.noteId}&sid=${shareId}&from=${shareFromUserId}&src=${scene}&ref=${this.data.shareId || ""}`,
-      imageUrl: this.data.businessCardShareImage || this.data.serviceOfferShareImage || this.data.propertyShareImage || this.data.genericShareImage || (view.businessCardHero && view.businessCardHero.avatarUrl) || (view.serviceOfferDetail && view.serviceOfferDetail.coverUrl) || view.coverUrl || ""
+      imageUrl: this.data.businessCardShareImage || this.data.serviceOfferShareImage || this.data.propertyShareImage || this.data.genericShareImage || ""
     };
   },
   onShareTimeline() {
@@ -1635,7 +1572,7 @@ Page({
     return {
       title: buildCustomerShareTitle(rawTitle),
       query: `id=${this.data.noteId}&sid=${shareId}&from=${shareFromUserId}&src=${scene}&ref=${this.data.shareId || ""}`,
-      imageUrl: this.data.businessCardShareImage || this.data.serviceOfferShareImage || this.data.propertyShareImage || this.data.genericShareImage || (view.businessCardHero && view.businessCardHero.avatarUrl) || (view.serviceOfferDetail && view.serviceOfferDetail.coverUrl) || view.coverUrl || ""
+      imageUrl: this.data.businessCardShareImage || this.data.serviceOfferShareImage || this.data.propertyShareImage || this.data.genericShareImage || ""
     };
   }
 });

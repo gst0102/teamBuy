@@ -73,25 +73,37 @@ function isServiceCard(card = {}) {
   const config = card.visibilityConfig || {};
   const cardType = card.cardType || config.cardType || "";
   const categoryName = card.categoryName || "";
-  return cardType === "business_card" || cardType === "service_offer" || categoryName === "名片" || categoryName === "服务";
+  const labels = [categoryName, ...(card.tagNames || [])].join(" ");
+  return cardType === "business_card" || cardType === "service_offer" || /名片|服务|顾问|方案/.test(labels);
 }
 
 function isBusinessCardResource(card = {}) {
   const config = card.visibilityConfig || {};
   const cardType = card.cardType || config.cardType || "";
   const categoryName = card.categoryName || "";
-  return cardType === "business_card" || categoryName === "名片";
+  const labels = [categoryName, ...(card.tagNames || [])].join(" ");
+  return cardType === "business_card" || /名片|顾问/.test(labels);
 }
 
 function isServiceOfferResource(card = {}) {
   const config = card.visibilityConfig || {};
   const cardType = card.cardType || config.cardType || "";
   const categoryName = card.categoryName || "";
-  return cardType === "service_offer" || categoryName === "服务";
+  const labels = [categoryName, ...(card.tagNames || [])].join(" ");
+  return cardType === "service_offer" || /服务|方案/.test(labels);
 }
 
 function isDailyCard(card = {}) {
   return !isPropertyCard(card) && !isGroupbuyCard(card) && !isServiceCard(card);
+}
+
+function decorateLibraryCard(card = {}) {
+  return {
+    ...card,
+    isServiceResource: isServiceCard(card),
+    isBusinessCardResource: isBusinessCardResource(card),
+    isServiceOfferResource: isServiceOfferResource(card)
+  };
 }
 
 function propertyText(card = {}) {
@@ -239,6 +251,7 @@ Page({
     topicFilters: [],
     cards: [],
     pendingShare: null,
+    shareImages: {},
     categories: [],
     displayCards: [],
     toolsOpen: false,
@@ -349,7 +362,7 @@ Page({
         result[item.id] = item.name;
         return result;
       }, {});
-      const cards = (cardsData || []).map((card) => enrichCard(card, categoriesById));
+      const cards = (cardsData || []).map((card) => decorateLibraryCard(enrichCard(card, categoriesById)));
       const scopedCards = this.scopeCardsByEntryFilter(cards);
       const categoryFilters = this.buildCountFilters(scopedCards, (card) => card.categoryName);
       const tagItems = scopedCards.flatMap((card) => (card.tagNames || []).map((tag) => ({ tag })));
@@ -454,6 +467,7 @@ Page({
       this.data.activeCategory === "商品" ||
       this.data.activeCategory === "团购" ||
       hasActiveGroupbuyFilters;
+    const shareImages = this.data.shareImages || {};
     const displayCards = this.data.cards.filter((card) => {
       if (this.data.entryFilter && this.data.entryFilter.cardType === "property_listing" && !isPropertyCard(card)) {
         return false;
@@ -504,8 +518,14 @@ Page({
       const activityDiff = (b.customerActivity || 0) - (a.customerActivity || 0);
       if (activityDiff) return activityDiff;
       return (b.stats.pv || 0) - (a.stats.pv || 0);
-    });
+    }).map((card) => ({
+      ...card,
+      shareImageReady: Boolean(shareImages[card.id]),
+      shareDisabled: !shareImages[card.id],
+      shareStatusText: shareImages[card.id] ? "发客户" : "生成中"
+    }));
     this.setData({ displayCards, showPropertyFilters: isPropertyMode, showGroupbuyFilters: isGroupbuyMode });
+    this.prepareLibraryShareImages(displayCards);
   },
   matchDeliveryFilter(card = {}) {
     const filter = this.data.activeDeliveryFilter || "all";
@@ -1013,38 +1033,60 @@ Page({
       }
     });
   },
+  async prepareLibraryShareImages(cards = []) {
+    const pending = (cards || []).filter((card) => card && card.id && card.sourceNoteId && !(this.data.shareImages || {})[card.id]);
+    if (!pending.length) return;
+    if (!this.libraryShareGenerating) this.libraryShareGenerating = {};
+    for (const card of pending) {
+      if (this.libraryShareGenerating[card.id]) continue;
+      this.libraryShareGenerating[card.id] = true;
+      try {
+        const imagePath = await generateTitleShareImage(this, LIBRARY_SHARE_CANVAS_ID, {
+          title: card.title || "资料详情",
+          summary: card.summary || card.subtitle || "",
+          badge: card.categoryName || (card.cardType === "groupbuy_product" ? "商品" : "资料"),
+          coverUrl: card.coverDisplayUrl || card.coverUrl || "",
+          shareTargetLabel: "资料"
+        });
+        if (imagePath) {
+          const shareImages = { ...(this.data.shareImages || {}), [card.id]: imagePath };
+          const markReady = (item) => item && item.id === card.id
+            ? { ...item, shareImageReady: true, shareDisabled: false, shareStatusText: "发客户" }
+            : item;
+          this.setData({
+            shareImages,
+            cards: (this.data.cards || []).map(markReady),
+            displayCards: (this.data.displayCards || []).map(markReady)
+          });
+        }
+      } catch (error) {
+        const markFailed = (item) => item && item.id === card.id
+          ? { ...item, shareImageReady: false, shareDisabled: false, shareStatusText: "重试发客户" }
+          : item;
+        this.setData({
+          cards: (this.data.cards || []).map(markFailed),
+          displayCards: (this.data.displayCards || []).map(markFailed)
+        });
+      } finally {
+        this.libraryShareGenerating[card.id] = false;
+      }
+    }
+  },
   async prepareShare(event) {
     const dataset = (event && event.currentTarget && event.currentTarget.dataset) || {};
     const cardId = dataset.id || "";
     const card = (this.data.cards || []).find((item) => item.id === cardId) || {};
     const cover = dataset.cover || card.coverDisplayUrl || card.coverUrl || "";
+    const imageUrl = (this.data.shareImages || {})[cardId] || "";
     const pendingShare = {
       id: cardId,
       noteId: dataset.noteId || card.sourceNoteId || "",
       title: dataset.title || card.title || "资料详情",
       cover,
-      imageUrl: cover
+      imageUrl
     };
     this.setData({ pendingShare });
-    if (!pendingShare.noteId) return;
-    try {
-      const imagePath = await generateTitleShareImage(this, LIBRARY_SHARE_CANVAS_ID, {
-        title: pendingShare.title,
-        summary: card.summary || card.subtitle || "",
-        badge: card.categoryName || (card.cardType === "groupbuy_product" ? "商品" : "资料"),
-        coverUrl: cover,
-        hint: "打开小程序查看完整资料",
-        growthHint: "我也想做同款"
-      });
-      if (imagePath && this.data.pendingShare && this.data.pendingShare.id === pendingShare.id) {
-        this.setData({
-          pendingShare: {
-            ...this.data.pendingShare,
-            imageUrl: imagePath
-          }
-        });
-      }
-    } catch (error) {}
+    if (!imageUrl && pendingShare.noteId) this.prepareLibraryShareImages([card]);
   },
   onShareAppMessage(options) {
     const dataset = options && options.target && options.target.dataset ? options.target.dataset : {};
@@ -1053,7 +1095,7 @@ Page({
     const pendingShare = this.data.pendingShare || {};
     const noteId = dataset.noteId || pendingShare.noteId || card.sourceNoteId || "";
     const title = dataset.title || pendingShare.title || card.title || "资料详情";
-    const imageUrl = pendingShare.imageUrl || dataset.cover || pendingShare.cover || card.coverDisplayUrl || card.coverUrl || "";
+    const imageUrl = pendingShare.imageUrl || "";
     const user = getCurrentUser();
     if (!noteId) {
       wx.showToast({ title: "这条资料暂不能直接发客户", icon: "none" });
@@ -1061,6 +1103,13 @@ Page({
         title,
         path: "/pages/library/index",
         imageUrl
+      };
+    }
+    if (!imageUrl) {
+      wx.showToast({ title: "封面还在生成，请稍后再发", icon: "none" });
+      return {
+        title,
+        path: "/pages/library/index"
       };
     }
     const shareId = createNoteShareId(noteId);

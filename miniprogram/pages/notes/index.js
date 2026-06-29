@@ -44,16 +44,6 @@ function withInitialShareState(note) {
   };
 }
 
-function fallbackNoteShareImage(note = {}) {
-  return (
-    (note.serviceOfferPreview && note.serviceOfferPreview.coverUrl) ||
-    (note.businessCardPreview && note.businessCardPreview.avatarUrl) ||
-    note.coverDisplayUrl ||
-    note.coverUrl ||
-    ""
-  );
-}
-
 Page({
   data: {
     user: null,
@@ -493,6 +483,13 @@ Page({
     const noteId = event && event.target && event.target.dataset && event.target.dataset.id;
     const note = (this.data.notes || []).find((item) => item.id === noteId) || {};
     const shareImage = this.data.noteShareImages && this.data.noteShareImages[noteId];
+    if (!shareImage) {
+      wx.showToast({ title: "封面还在生成，请稍后再发", icon: "none" });
+      return {
+        title: "资料详情",
+        path: `/pages/note-preview/index?id=${noteId || ""}`
+      };
+    }
     return {
       title: note.isBusinessCard && note.businessCardPreview
         ? buildBusinessCardShareTitle(note.businessCardPreview)
@@ -500,7 +497,7 @@ Page({
           ? buildServiceOfferShareTitle(note.serviceOfferPreview)
           : note.structuredData && (note.structuredData.community || note.structuredData.productName) || note.title || "资料详情",
       path: `/pages/note-preview/index?id=${noteId || ""}`,
-      imageUrl: shareImage || fallbackNoteShareImage(note)
+      imageUrl: shareImage
     };
   }
 });

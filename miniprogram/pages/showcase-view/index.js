@@ -428,6 +428,7 @@ Page({
         title: page.shareTitle || page.name || "资料展示页",
         summary: page.description || "",
         badge: "合集",
+        coverUrl: heroItem.coverUrl || page.bannerUrl || "",
         hint: "打开小程序查看完整合集",
         growthHint: "我也想做同款",
         shareTargetLabel: "合集"
@@ -464,7 +465,7 @@ Page({
     return {
       title: buildCustomerShareTitle(page.shareTitle || page.name || "资料展示页"),
       path: `/pages/showcases/index?shareTarget=showcase&showcaseId=${this.data.id}&sid=${shareId}&from=${shareFromUserId}&src=${scene}&ref=${this.data.shareId || ""}`,
-      imageUrl: this.data.showcaseShareImage || page.bannerUrl || heroItem.coverUrl || ""
+      imageUrl: this.data.showcaseShareImage || ""
     };
   }
 });

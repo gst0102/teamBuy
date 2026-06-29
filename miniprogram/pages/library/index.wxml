@@ -267,16 +267,20 @@
           </view>
           <view class="property-card-actions {{item.hasCustomerSignal || item.customerActivity || item.propertyCustomerChips.length ? 'has-customer' : 'no-customer'}}" wx:if="{{item.isProperty}}">
             <button wx:if="{{item.hasCustomerSignal || item.customerActivity || item.propertyCustomerChips.length}}" class="property-main-action hot" data-id="{{item.id}}" bindtap="handleManage">去雷达</button>
-            <button class="property-share-action" open-type="share" bindtap="prepareShare" data-id="{{item.id}}" data-note-id="{{item.sourceNoteId}}" data-title="{{item.title}}" data-cover="{{item.coverDisplayUrl || item.coverUrl}}">发客户</button>
+            <button class="property-share-action" open-type="share" bindtap="prepareShare" data-id="{{item.id}}" data-note-id="{{item.sourceNoteId}}" data-title="{{item.title}}" data-cover="{{item.coverDisplayUrl || item.coverUrl}}" disabled="{{item.shareDisabled}}">{{item.shareStatusText || '发客户'}}</button>
             <button class="property-more-action" data-id="{{item.id}}" bindtap="handleMoreCardActions">更多</button>
           </view>
           <view class="property-card-actions product-card-actions {{item.productHasOrders ? 'has-customer' : 'no-customer'}}" wx:if="{{item.isGroupbuy}}">
             <button wx:if="{{item.productHasOrders}}" class="property-main-action product" data-id="{{item.id}}" bindtap="handleManage">{{item.productPrimaryAction}}</button>
-            <button class="property-share-action product" open-type="share" bindtap="prepareShare" data-id="{{item.id}}" data-note-id="{{item.sourceNoteId}}" data-title="{{item.title}}" data-cover="{{item.coverDisplayUrl || item.coverUrl}}">发客户</button>
+            <button class="property-share-action product" open-type="share" bindtap="prepareShare" data-id="{{item.id}}" data-note-id="{{item.sourceNoteId}}" data-title="{{item.title}}" data-cover="{{item.coverDisplayUrl || item.coverUrl}}" disabled="{{item.shareDisabled}}">{{item.shareStatusText || '发客户'}}</button>
             <button class="property-more-action product" data-id="{{item.id}}" bindtap="handleMoreCardActions">更多</button>
           </view>
-          <view class="card-actions" wx:if="{{!item.isProperty && !item.isGroupbuy}}">
-            <button class="primary-text-action" open-type="share" bindtap="prepareShare" data-id="{{item.id}}" data-note-id="{{item.sourceNoteId}}" data-title="{{item.title}}" data-cover="{{item.coverDisplayUrl || item.coverUrl}}">发客户</button>
+          <view class="card-actions service-card-actions" wx:if="{{item.isServiceResource}}">
+            <button class="primary-text-action" open-type="share" bindtap="prepareShare" data-id="{{item.id}}" data-note-id="{{item.sourceNoteId}}" data-title="{{item.title}}" data-cover="{{item.coverDisplayUrl || item.coverUrl}}" disabled="{{item.shareDisabled}}">{{item.shareStatusText || '发客户'}}</button>
+            <button class="secondary-more-button" data-id="{{item.id}}" bindtap="handleMoreCardActions">更多</button>
+          </view>
+          <view class="card-actions" wx:elif="{{!item.isProperty && !item.isGroupbuy}}">
+            <button class="primary-text-action" open-type="share" bindtap="prepareShare" data-id="{{item.id}}" data-note-id="{{item.sourceNoteId}}" data-title="{{item.title}}" data-cover="{{item.coverDisplayUrl || item.coverUrl}}" disabled="{{item.shareDisabled}}">{{item.shareStatusText || '发客户'}}</button>
             <text class="secondary-text-action" data-id="{{item.id}}" bindtap="handleOpen">编辑</text>
             <text class="secondary-text-action" data-id="{{item.id}}" bindtap="handleMoreCardActions">更多</text>
           </view>

@@ -237,13 +237,9 @@
             </block>
           </view>
         </view>
-        <view class="typed-actions">
-          <text data-id="{{item.id}}" bindtap="handleEdit">编辑名片</text>
-          <text class="scrm-shortcut {{item.scrmHasUnread ? 'hot' : ''}}" data-id="{{item.id}}" catchtap="handleOpenScrm">{{item.scrmLabel || '客户信息'}}</text>
-          <message-entry mode="center" variant="text" title="消息" desc="" />
-          <text class="upload-time">上传时间 {{item.uploadDateText}}</text>
-          <button class="inline-share" open-type="share" data-id="{{item.id}}" disabled="{{item.shareDisabled}}">{{item.shareStatusText || item.cardAction}}</button>
-          <text class="danger" data-id="{{item.id}}" bindtap="handleDelete">删除</text>
+        <view class="typed-actions service-actions">
+          <button class="inline-share service-primary-share" open-type="share" data-id="{{item.id}}" disabled="{{item.shareDisabled}}">{{item.shareDisabled ? '封面准备中' : '发客户'}}</button>
+          <button class="service-more-btn" data-id="{{item.id}}" bindtap="handleEdit">更多</button>
         </view>
       </view>
 
@@ -279,13 +275,9 @@
             </block>
           </view>
         </view>
-        <view class="typed-actions">
-          <text data-id="{{item.id}}" bindtap="handleEdit">编辑服务</text>
-          <text class="scrm-shortcut {{item.scrmHasUnread ? 'hot' : ''}}" data-id="{{item.id}}" catchtap="handleOpenScrm">{{item.scrmLabel || '客户信息'}}</text>
-          <message-entry mode="center" variant="text" title="消息" desc="" />
-          <text class="upload-time">上传时间 {{item.uploadDateText}}</text>
-          <button class="inline-share" open-type="share" data-id="{{item.id}}" disabled="{{item.shareDisabled}}">{{item.shareStatusText || item.cardAction}}</button>
-          <text class="danger" data-id="{{item.id}}" bindtap="handleDelete">删除</text>
+        <view class="typed-actions service-actions">
+          <button class="inline-share service-primary-share" open-type="share" data-id="{{item.id}}" disabled="{{item.shareDisabled}}">{{item.shareDisabled ? '封面准备中' : '发客户'}}</button>
+          <button class="service-more-btn" data-id="{{item.id}}" bindtap="handleEdit">更多</button>
         </view>
       </view>
 

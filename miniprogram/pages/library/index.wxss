@@ -873,7 +873,7 @@
   left: -9999rpx;
   top: -9999rpx;
   width: 750rpx;
-  height: 600rpx;
+  height: 420rpx;
   pointer-events: none;
 }
 
@@ -1368,6 +1368,12 @@
   color: #ffffff;
 }
 
+.property-share-action[disabled],
+.card-actions .primary-text-action[disabled] {
+  background: #edf2f7;
+  color: #8a95a6;
+}
+
 .property-more-action {
   background: #eef6ff;
   color: #1677ff;
@@ -1418,6 +1424,11 @@
   box-sizing: border-box;
 }
 
+.service-card-actions {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12rpx;
+}
+
 .card-actions text,
 .card-actions button {
   min-height: 50rpx;
@@ -1436,6 +1447,15 @@
   box-sizing: border-box;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.card-actions .secondary-more-button {
+  width: 100%;
+  justify-content: center;
+  background: #eef5ff;
+  color: #1677ff;
+  font-weight: 900;
+  white-space: nowrap;
 }
 
 .card-actions button::after {
