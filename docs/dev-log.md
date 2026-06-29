@@ -8126,3 +8126,20 @@
 - `https://teambuy.lifelove.top/health`：200，数据库 postgres 已配置。
 - `https://teambuy.lifelove.top/ops`：200，返回 PC 运营后台 HTML。
 - `https://teambuy.lifelove.top/api/ops-admin/overview` 不带管理口令返回 403，说明公网 API 路由已到后端且鉴权生效。
+
+## 2026-06-29 小程序地图接口权限修正
+
+本轮修正：
+
+- 移除 `app.json` 中未获权限的 `requiredPrivateInfos: ["chooseLocation"]`。
+- 移除房源编辑页 `wx.chooseLocation` 调用和“手动选择地图”入口。
+- 保留 `map` 组件和 `markers` 展示已有经纬度的小房子标记；该展示方式不需要腾讯地图 Key，也不需要 `chooseLocation` 权限。
+- 未匹配到默认地址时提示用户补充完整地址。
+
+验证：
+
+- 全项目已无 `chooseLocation` / `requiredPrivateInfos` / `scope.userLocation` 引用。
+- 小程序全部 JS `node --check`：通过。
+- 小程序 JSON 解析：通过。
+- `python3 -m compileall backend`：通过。
+- `./.venv312/bin/python -m pytest backend/tests/test_app.py -q`：134 passed。

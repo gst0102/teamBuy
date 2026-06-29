@@ -278,8 +278,7 @@
               </view>
               <view class="quick-options" wx:if="{{item.key === 'address'}}">
                 <text wx:if="{{!mapPreview.hasPoint}}" bindtap="handleResolveDefaultMap">用默认地址生成地图</text>
-                <text bindtap="handleChooseLocation">{{mapPreview.hasPoint ? '重新选择地图' : '手动选择地图'}}</text>
-                <text wx:if="{{structuredData.mapLocation.latitude}}">已选定位</text>
+                <text wx:if="{{mapPreview.hasPoint}}">已显示地图标记</text>
               </view>
               <view class="map-preview" wx:if="{{item.key === 'address' && (mapPreview.address || geocodingAddress)}}">
                 <map

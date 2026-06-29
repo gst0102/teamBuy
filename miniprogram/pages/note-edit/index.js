@@ -1991,61 +1991,6 @@ Page({
     skuConfig.skus[index].soldOut = Boolean(event.detail.value);
     this.applySkuConfig(skuConfig);
   },
-  handleChooseLocation() {
-    const defaultAddress = buildMapAddress(this.data.structuredData || {});
-    wx.chooseLocation({
-      success: (res) => {
-        const fallbackAddress = defaultAddress || this.data.structuredData.address || this.data.structuredData.community || this.data.structuredData.businessArea || "";
-        const structuredData = {
-          ...(this.data.structuredData || {}),
-          address: res.address || res.name || fallbackAddress,
-          mapLocation: {
-            name: res.name || this.data.structuredData.community || "房源位置",
-            address: res.address || fallbackAddress,
-            latitude: res.latitude,
-            longitude: res.longitude
-          }
-        };
-        rememberPropertyCity(`${structuredData.address} ${structuredData.community || ""} ${structuredData.businessArea || ""}`);
-        const config = { ...(this.data.form.visibilityConfig || {}), structuredData, cardState: "editing" };
-        const cardType = config.cardType || "text_note";
-        this.setData({
-          saving: true,
-          structuredData,
-          propertyFields: hydrateFields(PROPERTY_FIELDS, structuredData),
-          displaySubtitle: buildDisplaySubtitle(cardType, this.data.form, structuredData),
-          propertyCustomerPreview: cardType === "property_listing" ? buildPropertyCustomerPreview(this.data.form, structuredData, this.data.conversionConfig || {}) : this.data.propertyCustomerPreview,
-          propertyPublishChecks: cardType === "property_listing" ? buildPropertyPublishChecks(this.data.form, structuredData, this.data.conversionConfig || {}) : this.data.propertyPublishChecks,
-          suggestedTagOptions: buildSuggestedTagOptions(cardType, structuredData, this.data.form, config),
-          suggestedTopicOptions: buildSuggestedTopicOptions(cardType, structuredData, this.data.form, this.data.topics, config),
-          mapPreview: buildMapPreview(structuredData),
-          "form.visibilityConfig": config
-        }, async () => {
-          try {
-            await this.handleSaveOnly();
-            wx.showToast({ title: "定位已保存", icon: "success" });
-          } catch (error) {
-            wx.showToast({ title: error.detail || error.message || "定位保存失败", icon: "none" });
-          } finally {
-            this.setData({ saving: false });
-          }
-        });
-      },
-      fail: (error) => {
-        const message = (error && error.errMsg) || "";
-        if (message.includes("cancel")) {
-          wx.showToast({ title: "未选择位置", icon: "none" });
-          return;
-        }
-        wx.showModal({
-          title: "地图选点未打开",
-          content: "请确认小程序已开启位置权限。选点时搜小区名称即可，不需要精确到门牌号。",
-          showCancel: false,
-          confirmColor: "#11924d"
-        });
-      }
-    });
-  },
   async handleResolveDefaultMap() {
     if (this.data.geocodingAddress) return;
     const address = buildMapAddress(this.data.structuredData || {});
@@ -2055,7 +2000,7 @@ Page({
     }
     const resolved = await this.autoResolveMapLocation({ silent: false });
     if (!resolved && !(this.data.mapPreview || {}).hasPoint) {
-      wx.showToast({ title: "未匹配到位置，可手动选择", icon: "none" });
+      wx.showToast({ title: "未匹配到位置，请补完整地址", icon: "none" });
     }
   },
   async autoResolveMapLocation({ silent = false } = {}) {
