@@ -349,7 +349,6 @@ Page({
       imageUrl: dataset.banner || ""
     };
     this.setData({ pendingShare });
-    if (pendingShare.banner) return;
     try {
       const imagePath = await generateTitleShareImage(this, SHOWCASE_SHARE_CANVAS_ID, {
         title: pendingShare.title,
@@ -475,7 +474,7 @@ Page({
     const pending = this.data.pendingShare || {};
     const id = dataset.id || pending.id || "";
     const title = dataset.title || pending.title || "合集";
-    const imageUrl = dataset.banner || pending.banner || pending.imageUrl || "";
+    const imageUrl = pending.imageUrl || dataset.banner || pending.banner || "";
     const user = this.data.user || getCurrentUser();
     if (!id) {
       wx.showToast({ title: "请重新点击发给客户", icon: "none" });

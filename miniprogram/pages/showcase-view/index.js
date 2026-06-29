@@ -419,7 +419,7 @@ Page({
   async prepareShowcaseShareImage() {
     const page = this.data.page || {};
     const heroItem = this.data.heroItem || {};
-    if (!page || page.bannerUrl || heroItem.coverUrl) {
+    if (!page) {
       this.setData({ showcaseShareImage: "" });
       return;
     }
@@ -464,7 +464,7 @@ Page({
     return {
       title: buildCustomerShareTitle(page.shareTitle || page.name || "资料展示页"),
       path: `/pages/showcases/index?shareTarget=showcase&showcaseId=${this.data.id}&sid=${shareId}&from=${shareFromUserId}&src=${scene}&ref=${this.data.shareId || ""}`,
-      imageUrl: page.bannerUrl || this.data.showcaseShareImage || ""
+      imageUrl: this.data.showcaseShareImage || page.bannerUrl || heroItem.coverUrl || ""
     };
   }
 });

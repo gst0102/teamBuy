@@ -1092,7 +1092,7 @@ Page({
   },
   async prepareGenericShareImage() {
     const view = this.data.view || {};
-    if (!view || view.coverUrl || view.isBusinessCard || view.isServiceOffer || view.cardType === "property_listing") {
+    if (!view || view.isBusinessCard || view.isServiceOffer || view.cardType === "property_listing") {
       this.setData({ genericShareImage: "" });
       return;
     }

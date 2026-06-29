@@ -1026,7 +1026,7 @@ Page({
       imageUrl: cover
     };
     this.setData({ pendingShare });
-    if (cover || !pendingShare.noteId) return;
+    if (!pendingShare.noteId) return;
     try {
       const imagePath = await generateTitleShareImage(this, LIBRARY_SHARE_CANVAS_ID, {
         title: pendingShare.title,
@@ -1052,7 +1052,7 @@ Page({
     const pendingShare = this.data.pendingShare || {};
     const noteId = dataset.noteId || pendingShare.noteId || card.sourceNoteId || "";
     const title = dataset.title || pendingShare.title || card.title || "资料详情";
-    const imageUrl = dataset.cover || pendingShare.cover || pendingShare.imageUrl || card.coverDisplayUrl || card.coverUrl || "";
+    const imageUrl = pendingShare.imageUrl || dataset.cover || pendingShare.cover || card.coverDisplayUrl || card.coverUrl || "";
     const user = getCurrentUser();
     if (!noteId) {
       wx.showToast({ title: "这条资料暂不能直接发客户", icon: "none" });
