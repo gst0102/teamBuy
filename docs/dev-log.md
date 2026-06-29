@@ -8143,3 +8143,41 @@
 - 小程序 JSON 解析：通过。
 - `python3 -m compileall backend`：通过。
 - `./.venv312/bin/python -m pytest backend/tests/test_app.py -q`：134 passed。
+
+## 2026-06-30 生产 / 测试环境隔离完成
+
+本轮完成：
+
+- 新增 `docker-compose.test.yml`，用于在同一台腾讯云服务器上启动隔离测试环境。
+- 服务器 `/home/ubuntu/teamBuy/backend/.env.test` 已由生产 `.env` 派生生成，但强制覆盖：
+  - `APP_ENV=test`
+  - `APP_PORT=8003`
+  - `WECOM_USE_MOCK=true`
+  - `WECOM_ARCHIVE_WORKER_ENABLED=false`
+  - `WECOM_GROUP_BOT_WEBHOOKS={}`
+  - 测试媒体目录和媒体路径。
+- 启动测试容器：
+  - `teambuy-test-postgres-test-1`
+  - `teambuy-test-backend-test-1`
+- Nginx 新增测试入口：
+  - `https://teambuy.lifelove.top/test-api/`
+  - `https://teambuy.lifelove.top/test-ops`
+  - `https://teambuy.lifelove.top/test-health`
+  - `https://teambuy.lifelove.top/test-media/`
+- Nginx 改动前已备份：
+  - `/etc/nginx/conf.d/teambuy.conf.bak-20260630-004042-before-test-env`
+- `/test-ops` 页面通过 Nginx `sub_filter` 把后台请求从 `/api/` 改到 `/test-api/`，避免测试后台误操作生产 API。
+- 新增环境隔离文档：
+  - `docs/deploy-env-isolation.md`
+
+验证：
+
+- `https://teambuy.lifelove.top/health`：正常，生产未受影响。
+- `https://teambuy.lifelove.top/test-health`：正常，测试后端和测试数据库已配置。
+- `https://teambuy.lifelove.top/test-api/ops-admin/overview` 不带口令返回 403，说明测试 API 路由和鉴权生效。
+- `https://teambuy.lifelove.top/test-ops` 页面里的后台请求已替换为 `/test-api/...`。
+
+后续使用：
+
+- 生产环境只用于小程序审核、正式用户、正式数据和正式运营入口。
+- 测试环境用于群机器人运营卡片生成器、每日运营内容、测试群 webhook、资源上架实验、爬取实验、支付分销实验。

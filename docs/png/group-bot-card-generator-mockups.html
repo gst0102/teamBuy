@@ -1,0 +1,565 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>企业群机器人运营卡片生成器效果图</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #eef2f6;
+      color: #111827;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+    }
+    .board {
+      width: 1440px;
+      min-height: 1600px;
+      padding: 48px;
+      background:
+        radial-gradient(circle at 18% 10%, rgba(47, 128, 237, .12), transparent 28%),
+        radial-gradient(circle at 86% 18%, rgba(20, 184, 166, .12), transparent 28%),
+        #eef2f6;
+    }
+    .headline {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      margin-bottom: 28px;
+    }
+    h1 {
+      margin: 0;
+      font-size: 38px;
+      line-height: 1.15;
+      letter-spacing: 0;
+    }
+    .sub {
+      margin-top: 10px;
+      color: #64748b;
+      font-size: 18px;
+    }
+    .badge {
+      padding: 12px 18px;
+      border-radius: 999px;
+      background: #0f172a;
+      color: #fff;
+      font-size: 16px;
+      font-weight: 700;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 26px;
+    }
+    .scenario {
+      background: rgba(255,255,255,.82);
+      border: 1px solid rgba(148, 163, 184, .35);
+      border-radius: 24px;
+      padding: 18px;
+      box-shadow: 0 20px 50px rgba(15, 23, 42, .08);
+    }
+    .scenario-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+      font-weight: 800;
+      font-size: 20px;
+    }
+    .scenario-title span {
+      color: #2563eb;
+      font-size: 14px;
+      font-weight: 800;
+      background: #eff6ff;
+      border-radius: 999px;
+      padding: 7px 10px;
+    }
+    .chat {
+      border-radius: 22px;
+      background: #f6f7f9;
+      padding: 18px 14px 22px;
+      min-height: 560px;
+      border: 1px solid #e5e7eb;
+    }
+    .time {
+      text-align: center;
+      color: #9ca3af;
+      font-size: 13px;
+      margin-bottom: 16px;
+    }
+    .message {
+      display: grid;
+      grid-template-columns: 42px 1fr;
+      gap: 10px;
+      align-items: start;
+    }
+    .avatar {
+      width: 42px;
+      height: 42px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #38bdf8, #2563eb);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-weight: 900;
+      font-size: 18px;
+      box-shadow: inset 0 0 0 3px rgba(255,255,255,.45);
+    }
+    .bubble {
+      background: #fff;
+      border-radius: 6px;
+      padding: 14px;
+      box-shadow: 0 1px 0 rgba(15, 23, 42, .06);
+    }
+    .bot-name {
+      color: #94a3b8;
+      font-size: 14px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .text {
+      font-size: 20px;
+      line-height: 1.45;
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+    .poster {
+      width: 100%;
+      aspect-ratio: 5 / 4;
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid #e5e7eb;
+      background: #fff;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+    }
+    .poster > :not(.poster-footer) {
+      flex: 1 1 auto;
+      min-height: 0;
+    }
+    .poster-footer {
+      height: 54px;
+      flex: 0 0 54px;
+      background: #fff;
+      border-top: 1px solid rgba(148, 163, 184, .28);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      font-size: 22px;
+      color: #475569;
+      font-weight: 800;
+    }
+    .poster-footer b { color: #2563eb; }
+    .mini-mark {
+      margin-top: 12px;
+      padding-top: 10px;
+      border-top: 1px solid #e5e7eb;
+      color: #9ca3af;
+      font-size: 15px;
+      font-weight: 700;
+    }
+    .daily-card {
+      padding: 20px;
+      background: linear-gradient(180deg, #eff6ff 0%, #fff 58%);
+      height: 100%;
+    }
+    .top-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 72px;
+      height: 30px;
+      border-radius: 999px;
+      padding: 0 12px;
+      background: #dbeafe;
+      color: #1d4ed8;
+      font-size: 14px;
+      font-weight: 900;
+    }
+    .date {
+      color: #64748b;
+      font-size: 13px;
+      font-weight: 800;
+    }
+    .big-title {
+      font-size: 52px;
+      line-height: 1.12;
+      font-weight: 900;
+      margin: 12px 0 14px;
+    }
+    .metric-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin: 18px 0;
+    }
+    .metric {
+      border-radius: 14px;
+      background: #fff;
+      padding: 12px 8px;
+      text-align: center;
+      border: 1px solid #dbeafe;
+    }
+    .metric strong {
+      display: block;
+      font-size: 46px;
+      color: #2563eb;
+      line-height: 1;
+    }
+    .metric span {
+      display: block;
+      color: #64748b;
+      font-size: 13px;
+      margin-top: 7px;
+      font-weight: 700;
+    }
+    .focus-box {
+      background: #0f172a;
+      color: #fff;
+      border-radius: 16px;
+      padding: 12px 16px;
+      font-weight: 800;
+      font-size: 21px;
+      line-height: 1.35;
+    }
+    .cover-card {
+      height: 100%;
+      background: #fff;
+    }
+    .photo {
+      height: 68%;
+      background:
+        linear-gradient(135deg, rgba(15,23,42,.15), transparent 45%),
+        linear-gradient(165deg, #dbeafe 0 25%, #f8fafc 25% 45%, #bfdbfe 45% 62%, #fef3c7 62% 100%);
+      position: relative;
+    }
+    .photo.house:before {
+      content: "";
+      position: absolute;
+      left: 28px;
+      right: 28px;
+      bottom: 28px;
+      height: 128px;
+      border-radius: 14px;
+      background: #ffffff;
+      box-shadow: 0 -110px 0 #e2e8f0, 0 -180px 0 #cbd5e1;
+    }
+    .photo.coop {
+      background:
+        linear-gradient(135deg, rgba(34,197,94,.18), transparent 50%),
+        linear-gradient(150deg, #ecfdf5 0 32%, #fefce8 32% 62%, #d1fae5 62% 100%);
+    }
+    .photo.coop:before {
+      content: "";
+      position: absolute;
+      left: 34px;
+      top: 40px;
+      width: 90px;
+      height: 90px;
+      border-radius: 26px;
+      background: #22c55e;
+      box-shadow: 110px 0 0 #f59e0b, 55px 86px 0 #2563eb;
+      opacity: .9;
+    }
+    .card-body {
+      padding: 14px 18px 16px;
+    }
+    .card-body h2 {
+      margin: 0;
+      font-size: 36px;
+      line-height: 1.15;
+    }
+    .card-body p {
+      margin: 8px 0 0;
+      color: #64748b;
+      font-size: 22px;
+      line-height: 1.35;
+      font-weight: 700;
+    }
+    .collection-card {
+      height: 100%;
+      padding: 16px;
+      background: linear-gradient(180deg, #fff7ed, #fff);
+    }
+    .stack {
+      height: 220px;
+      position: relative;
+      margin-bottom: 16px;
+    }
+    .stack-card {
+      position: absolute;
+      border-radius: 18px;
+      background: #fff;
+      border: 1px solid #fed7aa;
+      box-shadow: 0 12px 24px rgba(249,115,22,.12);
+    }
+    .stack-card.one { left: 58px; right: 8px; top: 0; height: 170px; transform: rotate(3deg); }
+    .stack-card.two { left: 30px; right: 34px; top: 20px; height: 170px; transform: rotate(-3deg); }
+    .stack-card.three {
+      left: 0;
+      right: 58px;
+      top: 40px;
+      height: 170px;
+      overflow: hidden;
+    }
+    .stack-image {
+      height: 108px;
+      background: linear-gradient(145deg, #fb923c, #fef3c7 52%, #60a5fa);
+    }
+    .stack-title {
+      padding: 10px 12px;
+      font-size: 22px;
+      font-weight: 900;
+    }
+    .collection-title {
+      font-size: 42px;
+      line-height: 1.1;
+      font-weight: 900;
+      margin-bottom: 10px;
+    }
+    .tag-line {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 16px;
+    }
+    .tag {
+      border-radius: 999px;
+      background: #ffedd5;
+      color: #c2410c;
+      padding: 7px 10px;
+      font-size: 18px;
+      font-weight: 900;
+    }
+    .recruit-card {
+      height: 100%;
+      padding: 22px;
+      background: linear-gradient(180deg, #f0fdfa, #fff);
+    }
+    .recruit-title {
+      font-size: 44px;
+      line-height: 1.16;
+      font-weight: 900;
+      margin-bottom: 14px;
+    }
+    .steps {
+      display: grid;
+      gap: 10px;
+      margin-top: 18px;
+    }
+    .step {
+      min-height: 64px;
+      border-radius: 14px;
+      background: #fff;
+      border: 1px solid #ccfbf1;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 12px;
+      font-weight: 850;
+      color: #0f766e;
+    }
+    .num {
+      width: 26px;
+      height: 26px;
+      border-radius: 8px;
+      background: #14b8a6;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      font-weight: 900;
+      flex: 0 0 auto;
+    }
+    .bottom-note {
+      margin-top: 22px;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+    }
+    .note {
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 18px;
+      padding: 18px;
+    }
+    .note h3 {
+      margin: 0 0 8px;
+      font-size: 20px;
+    }
+    .note p {
+      margin: 0;
+      color: #64748b;
+      font-size: 15px;
+      line-height: 1.45;
+      font-weight: 700;
+    }
+  </style>
+</head>
+<body>
+  <main class="board">
+    <section class="headline">
+      <div>
+        <h1>企业群机器人运营卡片生成器效果图</h1>
+        <div class="sub">按群类型生成 5:4 图片卡片，机器人负责稳定播报，小程序承接点击和生成同款。</div>
+      </div>
+      <div class="badge">第一版候选：4 类卡片</div>
+    </section>
+
+    <section class="grid">
+      <article class="scenario">
+        <div class="scenario-title">中午更新 <span>自动发</span></div>
+        <div class="chat">
+          <div class="time">11:48</div>
+          <div class="message">
+            <div class="avatar">资</div>
+            <div class="bubble">
+              <div class="bot-name">资料整理助手</div>
+              <div class="text">今日更新已整理好，点开看完整合集</div>
+              <div class="poster">
+                <div class="daily-card">
+                  <div class="top-row">
+                    <div class="pill">房源日报</div>
+                    <div class="date">06.29 中午更新</div>
+                  </div>
+                  <div class="big-title">岳麓区新增 12 套房源</div>
+                  <div class="metric-row">
+                    <div class="metric"><strong>12</strong><span>新增房源</span></div>
+                    <div class="metric"><strong>3</strong><span>地铁口</span></div>
+                    <div class="metric"><strong>2</strong><span>低价急租</span></div>
+                  </div>
+                  <div class="focus-box">今天重点：两房、地铁口、可短租。已整理成可直接发客户的合集。</div>
+                </div>
+                <div class="poster-footer">由资料整理助手生成 · <b>点击生成同款</b></div>
+              </div>
+              <div class="mini-mark">小程序 · 打开查看完整合集</div>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <article class="scenario">
+        <div class="scenario-title">重点资料 <span>人工确认</span></div>
+        <div class="chat">
+          <div class="time">15:26</div>
+          <div class="message">
+            <div class="avatar">资</div>
+            <div class="bubble">
+              <div class="bot-name">资料整理助手</div>
+              <div class="text">今天这套房源可以重点看一下</div>
+              <div class="poster">
+                <div class="cover-card">
+                  <div class="photo house"></div>
+                  <div class="card-body">
+                    <h2>建发养云 S1 栋两房</h2>
+                    <p>三台空调 · 包物业 · 适合近期看房客户</p>
+                  </div>
+                </div>
+                <div class="poster-footer">由资料整理助手生成 · <b>点击生成同款</b></div>
+              </div>
+              <div class="mini-mark">小程序 · 查看完整资料</div>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <article class="scenario">
+        <div class="scenario-title">合集入口 <span>自动/人工</span></div>
+        <div class="chat">
+          <div class="time">20:18</div>
+          <div class="message">
+            <div class="avatar">资</div>
+            <div class="bubble">
+              <div class="bot-name">资料整理助手</div>
+              <div class="text">晚间整理：今日精选合集已更新</div>
+              <div class="poster">
+                <div class="collection-card">
+                  <div class="top-row">
+                    <div class="pill" style="background:#ffedd5;color:#c2410c;">合集</div>
+                    <div class="date">8 条资料</div>
+                  </div>
+                  <div class="stack">
+                    <div class="stack-card one"></div>
+                    <div class="stack-card two"></div>
+                    <div class="stack-card three">
+                      <div class="stack-image"></div>
+                      <div class="stack-title">我的房源精选</div>
+                    </div>
+                  </div>
+                  <div class="collection-title">我的房源精选合集</div>
+                  <div class="tag-line">
+                    <span class="tag">可发客户</span>
+                    <span class="tag">可对比</span>
+                    <span class="tag">一页查看</span>
+                  </div>
+                </div>
+                <div class="poster-footer">由资料整理助手生成 · <b>点击生成同款</b></div>
+              </div>
+              <div class="mini-mark">小程序 · 打开完整合集</div>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <article class="scenario">
+        <div class="scenario-title">资源征集 <span>下午入口</span></div>
+        <div class="chat">
+          <div class="time">16:10</div>
+          <div class="message">
+            <div class="avatar">资</div>
+            <div class="bubble">
+              <div class="bot-name">资料整理助手</div>
+              <div class="text">你手里有资源，也可以直接提交整理</div>
+              <div class="poster">
+                <div class="recruit-card">
+                  <div class="top-row">
+                    <div class="pill" style="background:#ccfbf1;color:#0f766e;">资源征集</div>
+                    <div class="date">合作资源群</div>
+                  </div>
+                  <div class="recruit-title">提交资源，自动整理成可转发卡片</div>
+                  <div class="steps">
+                    <div class="step"><span class="num">1</span>发资料或填表</div>
+                    <div class="step"><span class="num">2</span>系统整理成卡片</div>
+                    <div class="step"><span class="num">3</span>一键生成同款合集</div>
+                  </div>
+                </div>
+                <div class="poster-footer">由资料整理助手生成 · <b>点击提交资源</b></div>
+              </div>
+              <div class="mini-mark">小程序 · 提交资源 / 生成同款</div>
+            </div>
+          </div>
+        </div>
+      </article>
+    </section>
+
+    <section class="bottom-note">
+      <div class="note">
+        <h3>生成器输入</h3>
+        <p>群类型、发送时段、标题、首图、统计数字、重点方向、小程序路径。</p>
+      </div>
+      <div class="note">
+        <h3>生成器输出</h3>
+        <p>一张 5:4 运营卡片图，加一段机器人文本，适配企业微信群消息流。</p>
+      </div>
+      <div class="note">
+        <h3>第一版优先</h3>
+        <p>先做日报、重点资料、合集入口三类；资源征集可作为第四类补上。</p>
+      </div>
+      <div class="note">
+        <h3>发送方式</h3>
+        <p>机器人发图片卡片或模板卡片；真正的小程序承接在点击入口里完成。</p>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

@@ -1,0 +1,45 @@
+services:
+  postgres-test:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${TEST_POSTGRES_DB:-teambuy_test}
+      POSTGRES_USER: ${TEST_POSTGRES_USER:-teambuy_test}
+      POSTGRES_PASSWORD: ${TEST_POSTGRES_PASSWORD:-teambuy_test_password}
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${TEST_POSTGRES_USER:-teambuy_test} -d ${TEST_POSTGRES_DB:-teambuy_test}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend-test:
+    build:
+      context: ./backend
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}
+    env_file:
+      - ./backend/.env.test
+    environment:
+      APP_ENV: test
+      APP_HOST: 0.0.0.0
+      DATABASE_BACKEND: postgres
+      DATABASE_URL: postgresql+psycopg://${TEST_POSTGRES_USER:-teambuy_test}:${TEST_POSTGRES_PASSWORD:-teambuy_test_password}@postgres-test:5432/${TEST_POSTGRES_DB:-teambuy_test}
+      MEDIA_STORAGE_DIR: /app/mock/media-test
+      MEDIA_PUBLIC_URL_PREFIX: /media-test
+      WECOM_USE_MOCK: "true"
+      WECOM_ARCHIVE_WORKER_ENABLED: "false"
+      WECOM_GROUP_BOT_WEBHOOKS: "{}"
+    ports:
+      - "${TEST_APP_PORT:-8003}:8000"
+    volumes:
+      - backend_test_media:/app/mock/media-test
+      - ./backend/secrets:/app/secrets:ro
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_test_data:
+  backend_test_media:

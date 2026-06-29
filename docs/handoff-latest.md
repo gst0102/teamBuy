@@ -5623,3 +5623,58 @@ rm -rf
 
 - 用户可在微信开发者工具重新编译、上传体验版，并提交审核。
 - 小程序端需要使用线上域名 `https://teambuy.lifelove.top`。
+
+## 2026-06-30 最新交接：测试环境已搭建
+
+本轮完成生产 / 测试环境隔离。
+
+生产环境保持不变：
+
+- 域名：`https://teambuy.lifelove.top`
+- API：`/api/`
+- PC 后台：`/ops`
+- 健康检查：`/health`
+- Docker 容器：
+  - `teambuy-backend-1`
+  - `teambuy-postgres-1`
+
+新增测试环境：
+
+- 与生产共用服务器，但容器、数据库、媒体卷、端口隔离。
+- Compose 文件：`docker-compose.test.yml`
+- 测试环境配置：服务器 `/home/ubuntu/teamBuy/backend/.env.test`，不提交 Git。
+- Docker project：`teambuy-test`
+- 容器：
+  - `teambuy-test-backend-test-1`
+  - `teambuy-test-postgres-test-1`
+- 测试入口：
+  - API：`https://teambuy.lifelove.top/test-api/`
+  - PC 后台：`https://teambuy.lifelove.top/test-ops`
+  - 健康检查：`https://teambuy.lifelove.top/test-health`
+  - 媒体：`https://teambuy.lifelove.top/test-media/`
+
+重要安全点：
+
+- `/test-ops` 页面通过 Nginx `sub_filter` 把页面里的 `/api/...` 替换为 `/test-api/...`，避免测试后台误操作生产 API。
+- 测试环境默认：
+  - `WECOM_USE_MOCK=true`
+  - `WECOM_ARCHIVE_WORKER_ENABLED=false`
+  - `WECOM_GROUP_BOT_WEBHOOKS={}`
+- 测试群机器人 webhook 只在测试后台单独配置，不能复用正式群 webhook。
+
+验证结果：
+
+- `https://teambuy.lifelove.top/health`：正常。
+- `https://teambuy.lifelove.top/test-health`：正常。
+- `https://teambuy.lifelove.top/test-api/ops-admin/overview` 不带口令返回 403，说明测试 API 路由和鉴权生效。
+- `curl https://teambuy.lifelove.top/test-ops | rg '/test-api|/api/'` 已确认测试后台请求走 `/test-api/...`。
+
+相关文档：
+
+- `docs/deploy-env-isolation.md`
+
+后续规则：
+
+- 小程序审核和真实用户只走生产环境。
+- 企业群机器人运营卡片生成器、每日运营内容、测试群 webhook、群二维码挂载、资源上架实验、外部群二维码/黄页爬取、支付分销和推广内容，先走测试环境。
+- 分享封面生成器和机器人运营卡片生成器只复用底层绘图能力，上层模板必须隔离，避免再次破坏正式小程序分享卡片。
