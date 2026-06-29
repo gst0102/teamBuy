@@ -1,4 +1,5 @@
 const { buildTitleCoverData } = require("./title-cover");
+const { getSalesPageTemplate } = require("./sales-page-templates");
 const api = require("../services/api");
 
 const SHARE_CARD_WIDTH = 750;
@@ -251,12 +252,12 @@ function drawCircleAvatar(ctx, imagePath, card, x, y, size, palette) {
   if (imagePath) {
     ctx.drawImage(imagePath, x, y, size, size);
   } else {
-    ctx.setFillStyle(palette.avatarBg);
+    ctx.setFillStyle("#f8fafc");
     ctx.fillRect(x, y, size, size);
     ctx.setFillStyle(palette.accent);
     ctx.setTextAlign("center");
-    ctx.setFontSize(54);
-    ctx.fillText(card.initial || "名", x + size / 2, y + 70);
+    ctx.setFontSize(Math.round(size * 0.42));
+    ctx.fillText(card.initial || "名", x + size / 2, y + size * 0.66);
     ctx.setTextAlign("left");
   }
   ctx.restore();
@@ -321,21 +322,9 @@ function drawBusinessCardPreview(ctx, card, avatarPath) {
   drawOneLine(ctx, card.templateName || "电子名片", innerX + 170, innerY + 152, 96);
 
   ctx.setFillStyle(palette.subText);
-  ctx.setFontSize(22);
-  drawOneLine(ctx, card.company || "个人服务", innerX + 30, innerY + 188, 290);
-  drawOneLine(ctx, card.contactLine || "电话 / 微信", innerX + 30, innerY + 218, 326);
-
-  const chips = String(card.serviceScope || "专业服务")
-    .split(/[\/,，、\s]+/)
-    .filter(Boolean)
-    .slice(0, 3);
-  chips.forEach((chip, index) => {
-    const x = innerX + 30 + index * 118;
-    fillRoundRect(ctx, x, innerY + innerH - 38, 96, 28, 14, "rgba(255,255,255,0.9)");
-    ctx.setFillStyle("#5b6676");
-    ctx.setFontSize(18);
-    drawOneLine(ctx, chip, x + 16, innerY + innerH - 18, 64);
-  });
+  ctx.setFontSize(23);
+  drawOneLine(ctx, card.company || "个人服务", innerX + 30, innerY + 196, 300);
+  drawOneLine(ctx, card.contactLine || "电话 / 微信", innerX + 30, innerY + 232, 332);
 
   fillRoundRect(ctx, innerX + innerW - 72, innerY + 154, 52, 64, 10, palette.qrBg);
   ctx.setFillStyle(palette.qrText);
@@ -420,16 +409,19 @@ function normalizeBusinessCardShareSource(source = {}) {
   const phone = source.phone || data.phone || source.contactPhone || "";
   const wechat = source.wechat || data.wechat || data.contactWechat || source.contactWechat || "";
   const serviceScope = source.serviceScope || preview.serviceScope || data.serviceScope || data.headline || source.summary || "微信资料整理 / 私域效率工具";
+  const templateId = source.templateId || source.displayTemplate || data.displayTemplate || "";
+  const template = getSalesPageTemplate(templateId);
+  const templatePreview = (template && template.preview) || {};
   return {
     name,
     role,
     company,
     serviceScope,
     contactLine: source.contactLine || preview.contactLine || [phone, wechat].filter(Boolean).join(" · ") || "电话 / 微信",
-    avatarUrl: source.avatarUrl || preview.avatarUrl || data.avatarUrl || source.coverUrl || "",
+    avatarUrl: source.avatarUrl || preview.avatarUrl || data.avatarUrl || source.coverUrl || templatePreview.avatarUrl || "",
     initial: String(source.initial || preview.initial || name || "名").slice(0, 1),
     templateName: source.templateName || source.displayTemplateName || data.displayTemplateName || "电子名片",
-    templateId: source.templateId || source.displayTemplate || data.displayTemplate || "",
+    templateId,
     tone: source.tone || data.tone || ""
   };
 }

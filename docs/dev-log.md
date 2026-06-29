@@ -8066,3 +8066,21 @@
 - 小程序 JSON 解析：通过。
 - `python3 -m compileall backend`：通过。
 - `./.venv312/bin/python -m pytest backend/tests/test_app.py -q`：134 passed。
+
+## 2026-06-29 电子名片分享图内容精简与头像兜底
+
+本轮修正：
+
+- 删除名片内部 3 个服务胶囊，避免遮挡手机号。
+- 公司和联系方式下移，名片内部只保留头像、姓名、身份、模板标签、公司、联系方式和二维码占位。
+- 头像兜底改为：
+  - 优先使用名片数据里的头像。
+  - 没有头像时使用所选名片模板自带头像。
+  - 仍不可绘制时显示浅色首字占位，避免黑色空头像。
+
+验证：
+
+- 小程序全部 JS `node --check`：通过。
+- 小程序 JSON 解析：通过。
+- `python3 -m compileall backend`：通过。
+- `./.venv312/bin/python -m pytest backend/tests/test_app.py -q`：134 passed。
