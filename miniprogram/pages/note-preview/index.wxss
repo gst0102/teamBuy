@@ -391,6 +391,40 @@
   font-weight: 900;
 }
 
+.business-card-detail-page.consultant_classic {
+  background: linear-gradient(180deg, #eef6ff 0%, #ffffff 42%, #f4f8ff 100%);
+}
+
+.business-card-detail-page.consultant_classic .business-card-hero {
+  border-color: rgba(48, 91, 152, 0.24);
+  background: linear-gradient(135deg, #0f3365 0%, #193f77 58%, #305b98 100%);
+}
+
+.business-card-detail-page.consultant_classic .bc-card-bg {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.business-card-detail-page.consultant_classic .bc-name,
+.business-card-detail-page.consultant_classic .bc-company,
+.business-card-detail-page.consultant_classic .bc-service,
+.business-card-detail-page.consultant_classic .bc-contact {
+  color: #ffffff;
+}
+
+.business-card-detail-page.consultant_classic .bc-role {
+  background: #f1cc6b;
+  color: #172033;
+}
+
+.business-card-detail-page.consultant_classic .bc-action-icon,
+.business-card-detail-page.consultant_classic .bc-save-btn {
+  background: #193f77;
+}
+
+.business-card-detail-page.consultant_classic .bc-section {
+  border-left: 7rpx solid #193f77;
+}
+
 .business-card-detail-page.store_sales_card {
   background: linear-gradient(180deg, #f1fbf5 0%, #ffffff 48%, #f5fbf7 100%);
 }
@@ -411,28 +445,38 @@
 }
 
 .business-card-detail-page.expert_personal_brand {
-  background: linear-gradient(180deg, #f8f5ff 0%, #ffffff 42%, #fbf9ff 100%);
+  background: linear-gradient(180deg, #fbf8ef 0%, #ffffff 42%, #fcfaf4 100%);
 }
 
 .business-card-detail-page.expert_personal_brand .business-card-hero {
-  border-color: rgba(105, 69, 214, 0.22);
-  background: linear-gradient(135deg, #f5efff 0%, #ffffff 56%, #e9ddff 100%);
+  border-color: rgba(213, 173, 89, 0.34);
+  background: linear-gradient(135deg, #101216 0%, #2a2318 62%, #121318 100%);
 }
 
 .business-card-detail-page.expert_personal_brand .bc-name,
-.business-card-detail-page.expert_personal_brand .bc-contact-row text,
-.business-card-detail-page.expert_personal_brand .bc-scope-icon {
-  color: #4c2aa4;
+.business-card-detail-page.expert_personal_brand .bc-company,
+.business-card-detail-page.expert_personal_brand .bc-service,
+.business-card-detail-page.expert_personal_brand .bc-contact {
+  color: #ffffff;
 }
 
-.business-card-detail-page.expert_personal_brand .bc-role,
+.business-card-detail-page.expert_personal_brand .bc-contact-row text,
+.business-card-detail-page.expert_personal_brand .bc-scope-icon {
+  color: #9b6a13;
+}
+
+.business-card-detail-page.expert_personal_brand .bc-role {
+  background: #d5ad59;
+  color: #111827;
+}
+
 .business-card-detail-page.expert_personal_brand .bc-action-icon,
 .business-card-detail-page.expert_personal_brand .bc-save-btn {
-  background: #6545d6;
+  background: #111827;
 }
 
 .business-card-detail-page.expert_personal_brand .bc-section {
-  box-shadow: 0 12rpx 30rpx rgba(101, 69, 214, 0.08);
+  box-shadow: 0 12rpx 30rpx rgba(213, 173, 89, 0.12);
 }
 
 .business-card-detail-page.wechat_simple_card {

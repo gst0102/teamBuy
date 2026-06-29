@@ -172,6 +172,170 @@ function drawCoverFooterHook(ctx) {
   drawOneLine(ctx, SHARE_CARD_FOOTER, 34, 399, 690);
 }
 
+function businessCardPalette(templateId) {
+  if (templateId === "store_sales_card") {
+    return {
+      bg0: "#f3fbf6",
+      bg1: "#ffffff",
+      card0: "#eef9f1",
+      card1: "#ffffff",
+      text: "#123528",
+      subText: "#4b6659",
+      accent: "#128f4b",
+      chipBg: "#dff6e8",
+      chipText: "#0d7a3e",
+      qrBg: "#2f7d48",
+      qrText: "#ffffff",
+      border: "#bce8ce",
+      avatarBg: "#dff6e8"
+    };
+  }
+  if (templateId === "expert_personal_brand") {
+    return {
+      bg0: "#fbf8ef",
+      bg1: "#ffffff",
+      card0: "#101216",
+      card1: "#2a2318",
+      text: "#ffffff",
+      subText: "#ead9ad",
+      accent: "#d5ad59",
+      chipBg: "rgba(213,173,89,0.18)",
+      chipText: "#f1d890",
+      qrBg: "#d5ad59",
+      qrText: "#111827",
+      border: "#ead9ad",
+      avatarBg: "#2f3440"
+    };
+  }
+  if (templateId === "wechat_simple_card") {
+    return {
+      bg0: "#f7f8fa",
+      bg1: "#ffffff",
+      card0: "#ffffff",
+      card1: "#ffffff",
+      text: "#172033",
+      subText: "#687281",
+      accent: "#1aad19",
+      chipBg: "#edf8ee",
+      chipText: "#168f2f",
+      qrBg: "#172033",
+      qrText: "#ffffff",
+      border: "#e5eaf0",
+      avatarBg: "#eef2f7"
+    };
+  }
+  return {
+    bg0: "#eef6ff",
+    bg1: "#ffffff",
+    card0: "#0f3365",
+    card1: "#193f77",
+    text: "#ffffff",
+    subText: "#d8e7ff",
+    accent: "#f1cc6b",
+    chipBg: "rgba(241,204,107,0.2)",
+    chipText: "#ffe29a",
+    qrBg: "#f1cc6b",
+    qrText: "#152542",
+    border: "#d7e7ff",
+    avatarBg: "#dbeafe"
+  };
+}
+
+function drawCircleAvatar(ctx, imagePath, card, x, y, size, palette) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(x + size / 2, y + size / 2, size / 2, 0, Math.PI * 2);
+  ctx.clip();
+  if (imagePath) {
+    ctx.drawImage(imagePath, x, y, size, size);
+  } else {
+    ctx.setFillStyle(palette.avatarBg);
+    ctx.fillRect(x, y, size, size);
+    ctx.setFillStyle(palette.accent);
+    ctx.setTextAlign("center");
+    ctx.setFontSize(54);
+    ctx.fillText(card.initial || "名", x + size / 2, y + 70);
+    ctx.setTextAlign("left");
+  }
+  ctx.restore();
+  ctx.setStrokeStyle("rgba(255,255,255,0.9)");
+  ctx.setLineWidth(5);
+  ctx.beginPath();
+  ctx.arc(x + size / 2, y + size / 2, size / 2 - 2, 0, Math.PI * 2);
+  ctx.stroke();
+}
+
+function drawBusinessCardPreview(ctx, card, avatarPath) {
+  const palette = businessCardPalette(card.templateId);
+  const bg = ctx.createLinearGradient(0, 0, SHARE_CARD_WIDTH, SHARE_CARD_HEIGHT);
+  bg.addColorStop(0, palette.bg0);
+  bg.addColorStop(1, palette.bg1);
+  ctx.setFillStyle(bg);
+  ctx.fillRect(0, 0, SHARE_CARD_WIDTH, SHARE_CARD_HEIGHT);
+
+  fillRoundRect(ctx, 44, 34, 662, 326, 32, "#ffffff");
+  ctx.setStrokeStyle(palette.border);
+  ctx.setLineWidth(3);
+  drawRoundRect(ctx, 44, 34, 662, 326, 32);
+  ctx.stroke();
+
+  const cardBg = ctx.createLinearGradient(74, 62, 676, 306);
+  cardBg.addColorStop(0, palette.card0);
+  cardBg.addColorStop(1, palette.card1);
+  fillRoundRect(ctx, 74, 62, 602, 244, 28, palette.card0);
+  drawRoundRect(ctx, 74, 62, 602, 244, 28);
+  ctx.setFillStyle(cardBg);
+  ctx.fill();
+
+  ctx.setFillStyle("rgba(255,255,255,0.14)");
+  ctx.beginPath();
+  ctx.arc(612, 102, 74, 0, Math.PI * 2);
+  ctx.fill();
+
+  drawCircleAvatar(ctx, avatarPath, card, 112, 92, 112, palette);
+
+  ctx.setFillStyle(palette.text);
+  ctx.setFontSize(52);
+  drawOneLine(ctx, card.name || "电子名片", 254, 126, 300);
+
+  ctx.setFillStyle(palette.subText);
+  ctx.setFontSize(28);
+  drawOneLine(ctx, card.role || "个人顾问", 256, 166, 286);
+
+  fillRoundRect(ctx, 256, 184, 176, 42, 21, palette.chipBg);
+  ctx.setFillStyle(palette.chipText);
+  ctx.setFontSize(24);
+  drawOneLine(ctx, card.templateName || "电子名片", 282, 213, 128);
+
+  ctx.setFillStyle(palette.subText);
+  ctx.setFontSize(26);
+  drawOneLine(ctx, card.company || "个人服务", 112, 258, 292);
+  drawOneLine(ctx, card.contactLine || "电话 / 微信", 112, 292, 360);
+
+  const chips = String(card.serviceScope || "专业服务")
+    .split(/[\/,，、\s]+/)
+    .filter(Boolean)
+    .slice(0, 3);
+  chips.forEach((chip, index) => {
+    const x = 112 + index * 130;
+    fillRoundRect(ctx, x, 318, 110, 34, 17, "#f6f8fb");
+    ctx.setFillStyle("#5b6676");
+    ctx.setFontSize(20);
+    drawOneLine(ctx, chip, x + 18, 341, 74);
+  });
+
+  fillRoundRect(ctx, 584, 222, 62, 76, 12, palette.qrBg);
+  ctx.setFillStyle(palette.qrText);
+  ctx.setTextAlign("center");
+  ctx.setFontSize(26);
+  ctx.fillText("码", 615, 269);
+  ctx.setTextAlign("left");
+
+  ctx.setFillStyle("#667085");
+  ctx.setFontSize(26);
+  drawOneLine(ctx, SHARE_CARD_FOOTER, 112, 392, 526);
+}
+
 async function generateNativeShareImage(page, canvasId, source = {}) {
   const exportSize = getCanvasExportSize();
   const ctx = wx.createCanvasContext(canvasId, page);
@@ -284,12 +448,14 @@ async function generatePropertyShareImage(page, canvasId, source) {
 
 async function generateBusinessCardShareImage(page, canvasId, source) {
   const card = normalizeBusinessCardShareSource(source);
-  return generateNativeShareImage(page, canvasId, {
-    title: buildBusinessCardShareTitle(card),
-    coverUrl: card.avatarUrl,
-    badge: "名片",
-    palette: { soft0: "#effaf5", soft1: "#e1f0eb", title: "#145c4a" }
-  });
+  const exportSize = getCanvasExportSize();
+  const ctx = wx.createCanvasContext(canvasId, page);
+  const avatarPath = await downloadCanvasImage(card.avatarUrl || "");
+  ctx.save();
+  ctx.scale(exportSize.scale, exportSize.scale);
+  drawBusinessCardPreview(ctx, card, avatarPath);
+  ctx.restore();
+  return exportShareCanvas(page, canvasId, ctx, exportSize);
 }
 
 function normalizeServiceOfferShareSource(source = {}) {
