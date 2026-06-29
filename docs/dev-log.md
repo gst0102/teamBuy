@@ -18,6 +18,27 @@
   - 生产环境配置真实 `WECOM_GROUP_BOT_WEBHOOKS` 后，可先用 `dryRun=true` 预览，再用 `dryRun=false` 给一个测试企业群发送。
   - 后续如果效果稳定，再接定时任务和运营后台按钮。
 
+## 2026-06-29：PC 运营后台新增小程序加群配置生成入口
+
+- 背景：
+  - 手动创建企业微信外部客户群二维码适合扫码测试，但小程序按钮式入群需要企业微信返回的 `config_id/plugid`。
+  - 如果后台手动创建入口不展示 `config_id`，更稳妥的方式是由后端调用企业微信服务端 API 创建“加入群聊”配置。
+- 已完成：
+  - `backend/app/services/wecom_client.py` 新增 `create_group_join_way()`，调用企业微信 `externalcontact/groupchat/add_join_way`。
+  - `backend/app/api/routes_ops_admin.py` 新增：
+    - `GET /api/ops-admin/wecom-group-join-ways`
+    - `POST /api/ops-admin/wecom-group-join-ways`
+  - `backend/app/services/ops_console_store.py` 新增 `wecomGroupJoinWays` 本地后台记录，保存生成过的 `configId/chatIdList/roomBaseName`。
+  - `backend/app/static/ops-admin/index.html` 新增 `小程序加群配置` Tab，可填写客户群 `chat_id`、群名规则、渠道 state，预览后生成 `config_id`。
+  - `backend/tests/test_app.py` 新增后台鉴权、dryRun、生成并保存 `config_id` 测试。
+- 已验证：
+  - `.venv312/bin/python -m pytest backend/tests/test_app.py -q -k "join_way or group_join"`：3 passed。
+  - `.venv312/bin/python -m compileall -q backend/app backend/tests`：通过。
+  - PC 后台内嵌脚本 `node --check`：通过。
+- 说明：
+  - 手动建群仍然可用；PC 端生成的是“小程序点击加入群聊”需要的 `config_id`。
+  - 后续还需要确认客户群 `chat_id` 获取方式，可以先人工填入，后续再补客户群列表查询。
+
 ## 2026-06-28：企业资源搜索 V1（天眼查接入）策划沉淀
 
 - 背景：

@@ -1,5 +1,40 @@
 # teamBuy 阶段性交接归档
 
+## 2026-06-29 本轮交接：PC 后台可生成小程序加群 config_id
+
+- 用户确认：企业微信后台手动创建外部群二维码后，可能找不到小程序插件需要的 `config_id/plugid`，因此需要系统通过 API 生成。
+- 本轮已改：
+  - `backend/app/services/wecom_client.py`
+  - `backend/app/schemas/ops_admin.py`
+  - `backend/app/services/ops_console_store.py`
+  - `backend/app/api/routes_ops_admin.py`
+  - `backend/app/static/ops-admin/index.html`
+  - `backend/tests/test_app.py`
+  - `docs/dev-log.md`
+  - `docs/decisions.md`
+  - `docs/pitfalls.md`
+- 新增后端能力：
+  - `WecomClient.create_group_join_way()`
+  - 调用企业微信 `externalcontact/groupchat/add_join_way`
+  - 企业微信成功时返回 `config_id`
+- 新增 PC 运营后台接口：
+  - `GET /api/ops-admin/wecom-group-join-ways`
+  - `POST /api/ops-admin/wecom-group-join-ways`
+  - 都要求 `X-Admin-Token: <WECOM_ADMIN_TOKEN>`
+- 新增 PC 页面：
+  - `/ops` 左侧新增 `小程序加群配置`
+  - 可填写客户群 `chat_id`、备注、群名规则、群序号、是否群满自动建群、渠道 state。
+  - 支持预览配置和生成 `config_id`。
+  - 生成历史保存在 `ops-console-state.json` 的 `wecomGroupJoinWays`。
+- 重要边界：
+  - 以后不是只能系统建群。手动建群、手动二维码仍然可用。
+  - 只有“小程序按钮式加入群聊”这条链路，建议走 PC 后台 API 生成 `config_id`。
+  - 第一版需要人工填客户群 `chat_id`；后续可补客户群列表查询。
+- 已验证：
+  - `.venv312/bin/python -m pytest backend/tests/test_app.py -q -k "join_way or group_join"`：3 passed。
+  - `.venv312/bin/python -m compileall -q backend/app backend/tests`：通过。
+  - PC 后台内嵌脚本 `node --check`：通过。
+
 ## 2026-06-29 本轮交接：企业群机器人群发消息 API 已打通
 
 - 用户要求先把群发消息 API 打通，后续试企业群日常运营效果。

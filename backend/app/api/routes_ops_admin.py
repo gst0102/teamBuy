@@ -7,7 +7,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, Response
 
-from app.api.dependencies import get_app_service, get_ops_console_store, get_sync_task_queue
+from app.api.dependencies import get_app_service, get_ops_console_store, get_sync_task_queue, get_wecom_client
 from app.core.config import settings
 from app.schemas.common import ApiResponse
 from app.schemas.ops_admin import (
@@ -16,11 +16,13 @@ from app.schemas.ops_admin import (
     GroupUploadCreateRequest,
     GroupUploadPreviewRequest,
     SingleGroupResourceCreateRequest,
+    WecomGroupJoinWayCreateRequest,
 )
 from app.services.app_service import AppService
 from app.services.ops_console_store import OpsConsoleStore
 from app.services.sync_task_queue import SyncTaskQueue
 from app.services.time_utils import SHANGHAI, parse_iso
+from app.services.wecom_client import WecomClient, WecomClientError
 
 
 router = APIRouter(tags=["ops-admin"])
@@ -396,6 +398,78 @@ def create_single_group_resource(
             operator_name=payload.operatorName,
         )
     )
+
+
+@router.get("/api/ops-admin/wecom-group-join-ways", response_model=ApiResponse[list[dict]])
+def list_wecom_group_join_ways(
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    store: OpsConsoleStore = Depends(get_ops_console_store),
+):
+    _verify_admin_token(x_admin_token)
+    return ApiResponse(data=store.list_wecom_group_join_ways())
+
+
+@router.post("/api/ops-admin/wecom-group-join-ways", response_model=ApiResponse[dict])
+async def create_wecom_group_join_way(
+    payload: WecomGroupJoinWayCreateRequest,
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    store: OpsConsoleStore = Depends(get_ops_console_store),
+    client: WecomClient = Depends(get_wecom_client),
+):
+    _verify_admin_token(x_admin_token)
+    chat_id_list = [item.strip() for item in payload.chatIdList if item and item.strip()]
+    if not chat_id_list:
+        raise HTTPException(status_code=400, detail="至少填写一个客户群 chat_id")
+    if not payload.remark.strip():
+        raise HTTPException(status_code=400, detail="配置备注不能为空")
+    if not payload.roomBaseName.strip():
+        raise HTTPException(status_code=400, detail="群名规则不能为空")
+
+    request_payload = {
+        "scene": 2,
+        "remark": payload.remark.strip(),
+        "chatIdList": chat_id_list,
+        "autoCreateRoom": 1 if payload.autoCreateRoom else 0,
+        "roomBaseName": payload.roomBaseName.strip(),
+        "roomBaseId": max(1, int(payload.roomBaseId or 1)),
+        "state": payload.state.strip() if payload.state else "",
+    }
+    if payload.dryRun:
+        return ApiResponse(
+            message="wecom group join way dry run",
+            data={
+                "dryRun": True,
+                "request": request_payload,
+                "note": "dryRun 不会调用企业微信；确认 chat_id 后把 dryRun 改为 false 生成 config_id。",
+            },
+        )
+    try:
+        response = await client.create_group_join_way(
+            scene=request_payload["scene"],
+            remark=request_payload["remark"],
+            chat_id_list=chat_id_list,
+            auto_create_room=request_payload["autoCreateRoom"],
+            room_base_name=request_payload["roomBaseName"],
+            room_base_id=request_payload["roomBaseId"],
+            state=request_payload["state"],
+        )
+    except WecomClientError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    config_id = response.get("config_id") or response.get("configId")
+    if not config_id:
+        raise HTTPException(status_code=502, detail=f"企业微信未返回 config_id: {response}")
+    record = store.save_wecom_group_join_way(
+        config_id=config_id,
+        remark=request_payload["remark"],
+        chat_id_list=chat_id_list,
+        room_base_name=request_payload["roomBaseName"],
+        room_base_id=request_payload["roomBaseId"],
+        auto_create_room=request_payload["autoCreateRoom"],
+        state_value=request_payload["state"],
+        operator_name=payload.operatorName,
+        raw_response=response,
+    )
+    return ApiResponse(message="wecom group join way created", data=record)
 
 
 @router.post("/api/ops-admin/group-upload/batches", response_model=ApiResponse[dict])

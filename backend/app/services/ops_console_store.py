@@ -77,10 +77,26 @@ class FeedbackTicket(BaseModel):
     updatedAt: str
 
 
+class WecomGroupJoinWayConfig(BaseModel):
+    id: str
+    configId: str
+    remark: str
+    chatIdList: list[str] = Field(default_factory=list)
+    roomBaseName: str
+    roomBaseId: int = 1
+    autoCreateRoom: int = 1
+    state: str | None = None
+    operatorName: str | None = None
+    rawResponse: dict = Field(default_factory=dict)
+    createdAt: str
+    updatedAt: str
+
+
 class OpsConsoleState(BaseModel):
     singleGroupResources: list[SingleGroupResource] = Field(default_factory=list)
     groupUploadBatches: list[GroupUploadBatch] = Field(default_factory=list)
     feedbackTickets: list[FeedbackTicket] = Field(default_factory=list)
+    wecomGroupJoinWays: list[WecomGroupJoinWayConfig] = Field(default_factory=list)
 
 
 class OpsConsoleStore:
@@ -175,6 +191,42 @@ class OpsConsoleStore:
 
     def list_single_group_resources(self) -> list[dict]:
         return [item.model_dump() for item in self.load().singleGroupResources]
+
+    def list_wecom_group_join_ways(self) -> list[dict]:
+        return [item.model_dump() for item in self.load().wecomGroupJoinWays]
+
+    def save_wecom_group_join_way(
+        self,
+        *,
+        config_id: str,
+        remark: str,
+        chat_id_list: list[str],
+        room_base_name: str,
+        room_base_id: int,
+        auto_create_room: int,
+        state_value: str | None,
+        operator_name: str | None,
+        raw_response: dict,
+    ) -> dict:
+        now = now_iso()
+        record = WecomGroupJoinWayConfig(
+            id=new_id("wecom_join_way"),
+            configId=config_id,
+            remark=remark,
+            chatIdList=chat_id_list,
+            roomBaseName=room_base_name,
+            roomBaseId=room_base_id,
+            autoCreateRoom=auto_create_room,
+            state=state_value,
+            operatorName=(operator_name or "").strip() or None,
+            rawResponse=raw_response,
+            createdAt=now,
+            updatedAt=now,
+        )
+        state = self.load()
+        state.wecomGroupJoinWays.insert(0, record)
+        self.save(state)
+        return record.model_dump()
 
     def create_single_group_resource(
         self,

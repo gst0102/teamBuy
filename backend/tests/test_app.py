@@ -405,6 +405,78 @@ def test_ops_admin_single_group_resource_flow(client, monkeypatch):
     assert listing.json()["data"][0]["name"] == "长沙租房群"
 
 
+def test_ops_admin_wecom_group_join_way_requires_admin_token(client, monkeypatch):
+    monkeypatch.setattr(settings, "admin_token", "ops-secret")
+
+    response = client.get("/api/ops-admin/wecom-group-join-ways")
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "admin token verification failed"
+
+
+def test_ops_admin_wecom_group_join_way_dry_run(client, monkeypatch):
+    monkeypatch.setattr(settings, "admin_token", "ops-secret")
+
+    response = client.post(
+        "/api/ops-admin/wecom-group-join-ways",
+        headers={"X-Admin-Token": "ops-secret"},
+        json={
+            "remark": "资料助手资源测试群",
+            "chatIdList": ["wr_chat_001"],
+            "roomBaseName": "资料助手资源测试群",
+            "roomBaseId": 1,
+            "state": "teambuy_resource_test",
+            "dryRun": True,
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["dryRun"] is True
+    assert data["request"]["scene"] == 2
+    assert data["request"]["chatIdList"] == ["wr_chat_001"]
+
+
+def test_ops_admin_wecom_group_join_way_create_saves_config(client, monkeypatch):
+    class FakeWecomClient:
+        def __init__(self):
+            self.calls = []
+
+        async def create_group_join_way(self, **kwargs):
+            self.calls.append(kwargs)
+            return {"errcode": 0, "errmsg": "ok", "config_id": "config_join_way_001"}
+
+    fake_client = FakeWecomClient()
+    monkeypatch.setattr(settings, "admin_token", "ops-secret")
+    client.app.dependency_overrides[get_wecom_client] = lambda: fake_client
+
+    response = client.post(
+        "/api/ops-admin/wecom-group-join-ways",
+        headers={"X-Admin-Token": "ops-secret"},
+        json={
+            "remark": "资料助手资源测试群",
+            "chatIdList": ["wr_chat_001", "wr_chat_002"],
+            "roomBaseName": "资料助手资源测试群",
+            "roomBaseId": 3,
+            "autoCreateRoom": 1,
+            "state": "teambuy_resource_test",
+            "operatorName": "依依",
+            "dryRun": False,
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["configId"] == "config_join_way_001"
+    assert data["chatIdList"] == ["wr_chat_001", "wr_chat_002"]
+    assert fake_client.calls[0]["scene"] == 2
+    assert fake_client.calls[0]["room_base_id"] == 3
+
+    listing = client.get("/api/ops-admin/wecom-group-join-ways", headers={"X-Admin-Token": "ops-secret"})
+    assert listing.status_code == 200
+    assert listing.json()["data"][0]["configId"] == "config_join_way_001"
+
+
 def test_ops_admin_feedback_ticket_flow(client, monkeypatch):
     monkeypatch.setattr(settings, "admin_token", "ops-secret")
     headers = {"X-Admin-Token": "ops-secret"}

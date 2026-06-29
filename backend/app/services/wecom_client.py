@@ -107,6 +107,38 @@ class WecomClient:
             raise WecomClientError(f"send customer service text failed: {data}")
         return data
 
+    async def create_group_join_way(
+        self,
+        *,
+        scene: int,
+        remark: str,
+        chat_id_list: list[str],
+        auto_create_room: int = 1,
+        room_base_name: str = "",
+        room_base_id: int = 1,
+        state: str = "",
+    ) -> dict:
+        access_token = await self.get_access_token()
+        payload = {
+            "scene": scene,
+            "remark": remark[:30],
+            "auto_create_room": auto_create_room,
+            "room_base_name": room_base_name[:40],
+            "room_base_id": room_base_id,
+            "chat_id_list": chat_id_list[:5],
+            "state": state[:30],
+        }
+        async with httpx.AsyncClient(base_url=self.settings.wecom_api_base_url, timeout=15) as client:
+            response = await client.post(
+                "/cgi-bin/externalcontact/groupchat/add_join_way",
+                params={"access_token": access_token},
+                json=payload,
+            )
+            data = response.json()
+        if data.get("errcode") != 0:
+            raise WecomClientError(f"create group join way failed: {data}")
+        return data
+
     def _filename_from_disposition(self, disposition: str) -> str | None:
         marker = "filename="
         if marker not in disposition:

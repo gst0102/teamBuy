@@ -294,6 +294,7 @@
           <button data-tab="users">用户排行</button>
           <button data-tab="content">内容排行</button>
           <button data-tab="upload">群二维码批量上传</button>
+          <button data-tab="joinway">小程序加群配置</button>
           <button data-tab="feedback">反馈工单</button>
           <button data-tab="queue">系统待处理</button>
         </div>
@@ -562,6 +563,67 @@
           </div>
         </section>
 
+        <section id="tab-joinway" class="tab-panel hidden">
+          <div class="grid forms">
+            <div class="form-card">
+              <div class="section-head">
+                <h2>生成小程序加群配置</h2>
+                <span class="subtle">通过企业微信 API 获取 config_id</span>
+              </div>
+              <div class="tip">先在企业微信里建好外部客户群，拿到客户群 chat_id。这里生成的 config_id 后续给小程序加入群聊插件使用。</div>
+              <div style="height: 12px;"></div>
+              <div class="form-grid">
+                <input id="joinWayRemark" placeholder="配置备注，例如 资料助手资源测试群" value="资料助手资源测试群" />
+                <textarea id="joinWayChatIds" placeholder="客户群 chat_id，一行一个"></textarea>
+                <div class="row">
+                  <input id="joinWayRoomBaseName" placeholder="群名规则，例如 资料助手资源测试群" value="资料助手资源测试群" />
+                  <input id="joinWayRoomBaseId" type="number" min="1" value="1" placeholder="群序号起始值" />
+                </div>
+                <div class="row">
+                  <select id="joinWayAutoCreateRoom">
+                    <option value="1" selected>群满后自动建新群</option>
+                    <option value="0">只使用当前群</option>
+                  </select>
+                  <input id="joinWayState" placeholder="渠道标记 state" value="teambuy_resource_test" />
+                </div>
+                <input id="joinWayOperatorName" placeholder="操作人（可不填）" />
+                <div class="row">
+                  <button class="secondary" id="previewJoinWayBtn">预览配置</button>
+                  <button class="primary" id="createJoinWayBtn">生成 config_id</button>
+                </div>
+              </div>
+            </div>
+            <div class="form-card">
+              <div class="section-head">
+                <h2>生成结果</h2>
+                <span class="subtle">复制 config_id 给小程序插件</span>
+              </div>
+              <div class="tip" id="joinWayResult">还没有生成配置。</div>
+            </div>
+          </div>
+          <div class="panel" style="margin-top: 16px;">
+            <div class="section-head">
+              <h2>历史加群配置</h2>
+              <span class="subtle">最近生成的 config_id</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>备注</th>
+                    <th>config_id</th>
+                    <th>群名规则</th>
+                    <th>chat_id</th>
+                    <th>操作人</th>
+                    <th>时间</th>
+                  </tr>
+                </thead>
+                <tbody id="joinWayTable"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
         <section id="tab-feedback" class="tab-panel hidden">
           <div class="grid forms">
             <div class="form-card">
@@ -681,6 +743,7 @@
       const state = {
         uploadPreview: null,
         feedbackItems: [],
+        joinWayItems: [],
         singleQrImageData: "",
         selectedPurposes: ["找同行"],
         batchFile: null
@@ -861,6 +924,20 @@
         `).join("") || `<tr><td colspan="4" class="subtle">暂无单条录入</td></tr>`;
       }
 
+      function renderJoinWays(items = []) {
+        state.joinWayItems = items;
+        document.getElementById("joinWayTable").innerHTML = items.map((item) => `
+          <tr>
+            <td>${item.remark || "-"}</td>
+            <td>${item.configId || "-"}</td>
+            <td>${item.roomBaseName || "-"} ${item.roomBaseId || ""}</td>
+            <td>${(item.chatIdList || []).join("<br>") || "-"}</td>
+            <td>${item.operatorName || "-"}</td>
+            <td>${formatDate(item.updatedAt)}</td>
+          </tr>
+        `).join("") || `<tr><td colspan="6" class="subtle">暂无加群配置</td></tr>`;
+      }
+
       function renderFeedback(items = []) {
         state.feedbackItems = items;
         document.getElementById("feedbackTable").innerHTML = items.map((item) => `
@@ -936,6 +1013,11 @@
         renderSingleGroups(data || []);
       }
 
+      async function loadJoinWays() {
+        const data = await request("/api/ops-admin/wecom-group-join-ways");
+        renderJoinWays(data || []);
+      }
+
       async function loadFeedback() {
         const data = await request("/api/ops-admin/feedback");
         renderFeedback(data || []);
@@ -954,6 +1036,7 @@
           loadContent(),
           loadUploadBatches(),
           loadSingleGroups(),
+          loadJoinWays(),
           loadFeedback(),
           loadQueue()
         ]);
@@ -1025,6 +1108,36 @@
         await loadSingleGroups();
       }
 
+      function buildJoinWayPayload(dryRun) {
+        return {
+          remark: document.getElementById("joinWayRemark").value,
+          chatIdList: document.getElementById("joinWayChatIds").value.split(/\n|,/).map((item) => item.trim()).filter(Boolean),
+          roomBaseName: document.getElementById("joinWayRoomBaseName").value,
+          roomBaseId: Number(document.getElementById("joinWayRoomBaseId").value || 1),
+          autoCreateRoom: Number(document.getElementById("joinWayAutoCreateRoom").value || 1),
+          state: document.getElementById("joinWayState").value,
+          operatorName: document.getElementById("joinWayOperatorName").value,
+          dryRun
+        };
+      }
+
+      async function previewJoinWay() {
+        const data = await request("/api/ops-admin/wecom-group-join-ways", {
+          method: "POST",
+          body: JSON.stringify(buildJoinWayPayload(true))
+        });
+        document.getElementById("joinWayResult").textContent = JSON.stringify(data.request || data, null, 2);
+      }
+
+      async function createJoinWay() {
+        const data = await request("/api/ops-admin/wecom-group-join-ways", {
+          method: "POST",
+          body: JSON.stringify(buildJoinWayPayload(false))
+        });
+        document.getElementById("joinWayResult").textContent = `config_id：${data.configId}\n\n小程序插件 plugid 可使用这个 config_id。`;
+        await loadJoinWays();
+      }
+
       async function createFeedback() {
         await request("/api/ops-admin/feedback", {
           method: "POST",
@@ -1075,6 +1188,8 @@
           window.open(`/api/ops-admin/group-upload/template.xlsx`, "_blank");
         });
         document.getElementById("saveSingleGroupBtn").addEventListener("click", () => saveSingleGroup().catch((error) => alert(error.message)));
+        document.getElementById("previewJoinWayBtn").addEventListener("click", () => previewJoinWay().catch((error) => alert(error.message)));
+        document.getElementById("createJoinWayBtn").addEventListener("click", () => createJoinWay().catch((error) => alert(error.message)));
         document.getElementById("createFeedbackBtn").addEventListener("click", () => createFeedback().catch((error) => alert(error.message)));
         document.getElementById("updateFeedbackBtn").addEventListener("click", () => updateFeedback().catch((error) => alert(error.message)));
         document.getElementById("purposeChips").addEventListener("click", (event) => {

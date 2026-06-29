@@ -29,6 +29,17 @@ class SingleGroupResourceCreateRequest(BaseModel):
     operatorName: str | None = None
 
 
+class WecomGroupJoinWayCreateRequest(BaseModel):
+    remark: str = Field(default="资料助手资源群")
+    chatIdList: list[str] = Field(default_factory=list)
+    roomBaseName: str = Field(default="资料助手资源群")
+    roomBaseId: int = 1
+    autoCreateRoom: int = 1
+    state: str = Field(default="teambuy_resource_group")
+    operatorName: str | None = None
+    dryRun: bool = True
+
+
 class FeedbackTicketCreateRequest(BaseModel):
     type: str = Field(default="bug")
     userId: str | None = None
