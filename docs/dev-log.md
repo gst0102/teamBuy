@@ -108,6 +108,21 @@
   - 小程序 JSON 解析：通过。
   - `git diff --check`：通过。
 
+## 2026-06-29：分享封面改为 HTTPS 素材并清理原图兜底
+
+- 背景：
+  - 用户真机连续反馈：房源版、有图普通版仍显示原始房源图/草莓图，而不是房源、无图、合集等营销封面。
+  - 系统性复查发现：生成器返回的是本地临时图路径，微信分享在当前真机环境仍可能回退；同时多个入口保留了 `coverUrl/bannerUrl/avatarUrl` 兜底，失败时必然显示原图。
+- 已完成：
+  - `business-card-share.js` 统一导出分享 canvas 后，调用现有 `/api/uploads/asset` 上传成 HTTPS 素材 URL，再返回给 `imageUrl`。
+  - 房源版、无图标题版、合集版、电子名片、服务方案共用同一套“生成 -> 上传 -> HTTPS 分享图”链路。
+  - 清理分享入口里的原图兜底：`notes`、`note-edit`、`note-preview`、`library`、`showcases`、`showcase-view`、`showcase-edit`、`card-view`、`business-card-studio`、`service-offer-studio` 不再把原始封面图直接传给微信分享。
+  - 删除本轮讨论时临时生成但未提交的机器人卡片 SVG 草稿，避免混入版本。
+- 已验证：
+  - 分享相关小程序 JS `node --check`：通过。
+  - 小程序 JSON 解析：通过。
+  - `git diff --check`：通过。
+
 ## 2026-06-29：PC 运营后台新增小程序加群配置生成入口
 
 - 背景：

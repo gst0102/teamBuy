@@ -489,7 +489,7 @@ Page({
           ? buildServiceOfferShareTitle(note.serviceOfferPreview)
           : note.structuredData && (note.structuredData.community || note.structuredData.productName) || note.title || "资料详情",
       path: `/pages/note-preview/index?id=${noteId || ""}`,
-      imageUrl: shareImage || (note.serviceOfferPreview && note.serviceOfferPreview.coverUrl) || (note.businessCardPreview && note.businessCardPreview.avatarUrl) || note.coverUrl || ""
+      imageUrl: shareImage || ""
     };
   }
 });

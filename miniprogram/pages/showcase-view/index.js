@@ -464,7 +464,7 @@ Page({
     return {
       title: buildCustomerShareTitle(page.shareTitle || page.name || "资料展示页"),
       path: `/pages/showcases/index?shareTarget=showcase&showcaseId=${this.data.id}&sid=${shareId}&from=${shareFromUserId}&src=${scene}&ref=${this.data.shareId || ""}`,
-      imageUrl: this.data.showcaseShareImage || page.bannerUrl || heroItem.coverUrl || ""
+      imageUrl: this.data.showcaseShareImage || ""
     };
   }
 });

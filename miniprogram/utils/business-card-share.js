@@ -1,4 +1,5 @@
 const { buildTitleCoverData } = require("./title-cover");
+const api = require("../services/api");
 
 const SHARE_CARD_WIDTH = 750;
 const SHARE_CARD_HEIGHT = 600;
@@ -20,6 +21,52 @@ function getCanvasExportSize() {
     destWidth: SHARE_CARD_WIDTH,
     destHeight: SHARE_CARD_HEIGHT
   };
+}
+
+function getShareOwnerUserId() {
+  try {
+    const app = getApp ? getApp() : null;
+    const user = (app && app.globalData && app.globalData.currentUser) || wx.getStorageSync("currentUser") || {};
+    return user.id || "";
+  } catch (error) {
+    return "";
+  }
+}
+
+async function uploadShareImage(filePath) {
+  if (!filePath || /^https:\/\//i.test(filePath)) return filePath || "";
+  try {
+    const uploaded = await api.uploadAsset({
+      filePath,
+      mediaType: "image",
+      ownerUserId: getShareOwnerUserId()
+    });
+    return uploaded && uploaded.url ? uploaded.url : filePath;
+  } catch (error) {
+    return filePath;
+  }
+}
+
+function exportShareCanvas(page, canvasId, ctx, exportSize) {
+  return new Promise((resolve, reject) => {
+    ctx.draw(false, () => {
+      wx.canvasToTempFilePath({
+        canvasId,
+        width: exportSize.width,
+        height: exportSize.height,
+        destWidth: exportSize.destWidth,
+        destHeight: exportSize.destHeight,
+        success: async (res) => {
+          try {
+            resolve(await uploadShareImage(res.tempFilePath || ""));
+          } catch (error) {
+            resolve(res.tempFilePath || "");
+          }
+        },
+        fail: reject
+      }, page);
+    });
+  });
 }
 
 function drawRoundRect(ctx, x, y, width, height, radius) {
@@ -257,19 +304,7 @@ async function generatePropertyShareImage(page, canvasId, source) {
   ctx.setTextAlign("left");
   ctx.restore();
 
-  return new Promise((resolve, reject) => {
-    ctx.draw(false, () => {
-      wx.canvasToTempFilePath({
-        canvasId,
-        width: exportSize.width,
-        height: exportSize.height,
-        destWidth: exportSize.destWidth,
-        destHeight: exportSize.destHeight,
-        success: (res) => resolve(res.tempFilePath || ""),
-        fail: reject
-      }, page);
-    });
-  });
+  return exportShareCanvas(page, canvasId, ctx, exportSize);
 }
 
 async function generateBusinessCardShareImage(page, canvasId, source) {
@@ -382,19 +417,7 @@ async function generateBusinessCardShareImage(page, canvasId, source) {
   ctx.setTextAlign("left");
   ctx.restore();
 
-  return new Promise((resolve, reject) => {
-    ctx.draw(false, () => {
-      wx.canvasToTempFilePath({
-        canvasId,
-        width: exportSize.width,
-        height: exportSize.height,
-        destWidth: exportSize.destWidth,
-        destHeight: exportSize.destHeight,
-        success: (res) => resolve(res.tempFilePath || ""),
-        fail: reject
-      }, page);
-    });
-  });
+  return exportShareCanvas(page, canvasId, ctx, exportSize);
 }
 
 function normalizeServiceOfferShareSource(source = {}) {
@@ -509,19 +532,7 @@ async function generateServiceOfferShareImage(page, canvasId, source) {
   ctx.setTextAlign("left");
   ctx.restore();
 
-  return new Promise((resolve, reject) => {
-    ctx.draw(false, () => {
-      wx.canvasToTempFilePath({
-        canvasId,
-        width: exportSize.width,
-        height: exportSize.height,
-        destWidth: exportSize.destWidth,
-        destHeight: exportSize.destHeight,
-        success: (res) => resolve(res.tempFilePath || ""),
-        fail: reject
-      }, page);
-    });
-  });
+  return exportShareCanvas(page, canvasId, ctx, exportSize);
 }
 
 async function generateTitleShareImage(page, canvasId, source = {}) {
@@ -596,19 +607,7 @@ async function generateTitleShareImage(page, canvasId, source = {}) {
   ctx.setTextAlign("left");
   ctx.restore();
 
-  return new Promise((resolve, reject) => {
-    ctx.draw(false, () => {
-      wx.canvasToTempFilePath({
-        canvasId,
-        width: exportSize.width,
-        height: exportSize.height,
-        destWidth: exportSize.destWidth,
-        destHeight: exportSize.destHeight,
-        success: (res) => resolve(res.tempFilePath || ""),
-        fail: reject
-      }, page);
-    });
-  });
+  return exportShareCanvas(page, canvasId, ctx, exportSize);
 }
 
 module.exports = {

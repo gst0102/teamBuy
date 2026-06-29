@@ -1023,7 +1023,7 @@ Page({
       noteId: dataset.noteId || card.sourceNoteId || "",
       title: dataset.title || card.title || "资料详情",
       cover,
-      imageUrl: cover
+      imageUrl: ""
     };
     this.setData({ pendingShare });
     if (!pendingShare.noteId) return;
@@ -1052,7 +1052,7 @@ Page({
     const pendingShare = this.data.pendingShare || {};
     const noteId = dataset.noteId || pendingShare.noteId || card.sourceNoteId || "";
     const title = dataset.title || pendingShare.title || card.title || "资料详情";
-    const imageUrl = pendingShare.imageUrl || dataset.cover || pendingShare.cover || card.coverDisplayUrl || card.coverUrl || "";
+    const imageUrl = pendingShare.imageUrl || "";
     const user = getCurrentUser();
     if (!noteId) {
       wx.showToast({ title: "这条资料暂不能直接发客户", icon: "none" });

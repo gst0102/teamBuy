@@ -2783,7 +2783,7 @@ Page({
     return {
       title,
       path: `/pages/note-preview/index?id=${this.data.noteId}`,
-      imageUrl: this.data.businessCardShareImage || this.data.propertyShareImage || this.data.genericShareImage || (hero && hero.avatarUrl) || this.data.form.coverUrl || ""
+      imageUrl: this.data.businessCardShareImage || this.data.propertyShareImage || this.data.genericShareImage || ""
     };
   }
 });

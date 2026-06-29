@@ -1611,7 +1611,7 @@ Page({
     return {
       title: buildCustomerShareTitle(rawTitle),
       path: `/pages/note-preview/index?id=${this.data.noteId}&sid=${shareId}&from=${shareFromUserId}&src=${scene}&ref=${this.data.shareId || ""}`,
-      imageUrl: this.data.businessCardShareImage || this.data.serviceOfferShareImage || this.data.propertyShareImage || this.data.genericShareImage || (view.businessCardHero && view.businessCardHero.avatarUrl) || (view.serviceOfferDetail && view.serviceOfferDetail.coverUrl) || view.coverUrl || ""
+      imageUrl: this.data.businessCardShareImage || this.data.serviceOfferShareImage || this.data.propertyShareImage || this.data.genericShareImage || ""
     };
   },
   onShareTimeline() {
@@ -1634,7 +1634,7 @@ Page({
     return {
       title: buildCustomerShareTitle(rawTitle),
       query: `id=${this.data.noteId}&sid=${shareId}&from=${shareFromUserId}&src=${scene}&ref=${this.data.shareId || ""}`,
-      imageUrl: this.data.businessCardShareImage || this.data.serviceOfferShareImage || this.data.propertyShareImage || this.data.genericShareImage || (view.businessCardHero && view.businessCardHero.avatarUrl) || (view.serviceOfferDetail && view.serviceOfferDetail.coverUrl) || view.coverUrl || ""
+      imageUrl: this.data.businessCardShareImage || this.data.serviceOfferShareImage || this.data.propertyShareImage || this.data.genericShareImage || ""
     };
   }
 });
