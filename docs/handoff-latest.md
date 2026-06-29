@@ -5592,3 +5592,34 @@ rm -rf
 
 - 重新编译小程序后再测。
 - 如果当前页面已经打开过，建议返回后重新进入资料库，避免页面内旧的 `shareImages` 仍留着上一版封面。
+
+## 2026-06-29 最新交接：生产后端与 PC 运营后台已部署
+
+本轮生产部署完成：
+
+- 服务器：`81.70.84.35`
+- 项目目录：`/home/ubuntu/teamBuy`
+- 容器：
+  - `teambuy-backend-1`
+  - `teambuy-postgres-1`
+- 备份：
+  - 代码备份：`/home/ubuntu/teamBuy-backups/teamBuy-code-20260629-215329.tar.gz`
+  - Nginx 备份：`/etc/nginx/conf.d/teambuy.conf.bak-20260629-220842`
+
+本轮部署方式：
+
+- 本地同步 `backend/` 和 `docker-compose.yml` 到服务器。
+- 未覆盖生产 `backend/.env`、`backend/secrets/`、媒体目录和数据库卷。
+- 服务器执行 `docker compose build backend` 和 `docker compose up -d backend`。
+- Nginx 已增加 `/ops` 和 `/ops/` 代理到后端 `127.0.0.1:8002`。
+
+线上验证：
+
+- `https://teambuy.lifelove.top/health`：正常。
+- `https://teambuy.lifelove.top/ops`：PC 运营后台可打开。
+- `https://teambuy.lifelove.top/api/ops-admin/overview` 不带口令返回 403，说明 API 到达后端且鉴权生效。
+
+小程序下一步：
+
+- 用户可在微信开发者工具重新编译、上传体验版，并提交审核。
+- 小程序端需要使用线上域名 `https://teambuy.lifelove.top`。

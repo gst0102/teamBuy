@@ -8099,3 +8099,30 @@
 - 小程序 JSON 解析：通过。
 - `python3 -m compileall backend`：通过。
 - `./.venv312/bin/python -m pytest backend/tests/test_app.py -q`：134 passed。
+
+## 2026-06-29 生产后端与 PC 运营后台部署
+
+本轮完成：
+
+- 本地重新跑上线前检查：
+  - 小程序全部 JS `node --check`：通过。
+  - 小程序 JSON 解析：通过。
+  - `python3 -m compileall backend`：通过。
+  - `./.venv312/bin/python -m pytest backend/tests/test_app.py -q`：134 passed。
+- 生产服务器检查：
+  - 根分区 `/dev/vda2` 使用率约 68%，本轮无需清理 Docker。
+  - `teambuy-postgres-1` 健康，`teambuy-backend-1` 已重建启动。
+- 部署方式：
+  - 先备份线上代码到 `/home/ubuntu/teamBuy-backups/teamBuy-code-20260629-215329.tar.gz`。
+  - 使用 rsync 同步本地 `backend/` 和 `docker-compose.yml`。
+  - 排除 `backend/.env`、`backend/secrets/`、`backend/mock/media/` 等生产配置和运行态数据。
+  - 执行 `docker compose build backend` 和 `docker compose up -d backend`。
+- PC 运营后台公网入口：
+  - Nginx 新增 `/ops` 和 `/ops/` 代理到 `127.0.0.1:8002`。
+  - Nginx 配置已备份到 `/etc/nginx/conf.d/teambuy.conf.bak-20260629-220842`。
+
+线上验证：
+
+- `https://teambuy.lifelove.top/health`：200，数据库 postgres 已配置。
+- `https://teambuy.lifelove.top/ops`：200，返回 PC 运营后台 HTML。
+- `https://teambuy.lifelove.top/api/ops-admin/overview` 不带管理口令返回 403，说明公网 API 路由已到后端且鉴权生效。
