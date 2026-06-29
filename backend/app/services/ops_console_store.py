@@ -92,11 +92,29 @@ class WecomGroupJoinWayConfig(BaseModel):
     updatedAt: str
 
 
+class GroupBotChannel(BaseModel):
+    id: str
+    groupId: str
+    groupName: str
+    webhook: str
+    groupType: str = "资源群"
+    audience: str | None = None
+    cityLabel: str | None = None
+    dailyTemplate: str = "midday"
+    sendWindow: str | None = None
+    ownerName: str | None = None
+    remark: str | None = None
+    enabled: bool = True
+    createdAt: str
+    updatedAt: str
+
+
 class OpsConsoleState(BaseModel):
     singleGroupResources: list[SingleGroupResource] = Field(default_factory=list)
     groupUploadBatches: list[GroupUploadBatch] = Field(default_factory=list)
     feedbackTickets: list[FeedbackTicket] = Field(default_factory=list)
     wecomGroupJoinWays: list[WecomGroupJoinWayConfig] = Field(default_factory=list)
+    groupBotChannels: list[GroupBotChannel] = Field(default_factory=list)
 
 
 class OpsConsoleStore:
@@ -195,6 +213,85 @@ class OpsConsoleStore:
     def list_wecom_group_join_ways(self) -> list[dict]:
         return [item.model_dump() for item in self.load().wecomGroupJoinWays]
 
+    def list_group_bot_channels(self, *, include_webhook: bool = False) -> list[dict]:
+        channels = [item.model_dump() for item in self.load().groupBotChannels]
+        if include_webhook:
+            return channels
+        for item in channels:
+            item["webhook"] = self._mask_webhook(item.get("webhook") or "")
+        return channels
+
+    def group_bot_webhook_map(self) -> dict[str, str]:
+        return {
+            item.groupId: item.webhook
+            for item in self.load().groupBotChannels
+            if item.enabled and item.groupId and item.webhook.startswith(("http://", "https://"))
+        }
+
+    def upsert_group_bot_channel(
+        self,
+        *,
+        group_id: str,
+        group_name: str,
+        webhook: str,
+        group_type: str,
+        audience: str,
+        city_label: str,
+        daily_template: str,
+        send_window: str,
+        owner_name: str | None,
+        remark: str | None,
+        enabled: bool,
+    ) -> dict:
+        group_id = (group_id or "").strip()
+        group_name = (group_name or "").strip()
+        webhook = (webhook or "").strip()
+        if not group_id:
+            raise ValueError("群标识不能为空")
+        if not group_name:
+            raise ValueError("群名称不能为空")
+        if not webhook.startswith(("http://", "https://")):
+            raise ValueError("webhook 必须是 http 或 https 地址")
+
+        now = now_iso()
+        state = self.load()
+        existing = next((item for item in state.groupBotChannels if item.groupId == group_id), None)
+        if existing:
+            existing.groupName = group_name
+            existing.webhook = webhook
+            existing.groupType = (group_type or "资源群").strip() or "资源群"
+            existing.audience = (audience or "").strip() or None
+            existing.cityLabel = (city_label or "").strip() or None
+            existing.dailyTemplate = (daily_template or "midday").strip() or "midday"
+            existing.sendWindow = (send_window or "").strip() or None
+            existing.ownerName = (owner_name or "").strip() or None
+            existing.remark = (remark or "").strip() or None
+            existing.enabled = bool(enabled)
+            existing.updatedAt = now
+            record = existing
+        else:
+            record = GroupBotChannel(
+                id=new_id("group_bot_channel"),
+                groupId=group_id,
+                groupName=group_name,
+                webhook=webhook,
+                groupType=(group_type or "资源群").strip() or "资源群",
+                audience=(audience or "").strip() or None,
+                cityLabel=(city_label or "").strip() or None,
+                dailyTemplate=(daily_template or "midday").strip() or "midday",
+                sendWindow=(send_window or "").strip() or None,
+                ownerName=(owner_name or "").strip() or None,
+                remark=(remark or "").strip() or None,
+                enabled=bool(enabled),
+                createdAt=now,
+                updatedAt=now,
+            )
+            state.groupBotChannels.insert(0, record)
+        self.save(state)
+        result = record.model_dump()
+        result["webhook"] = self._mask_webhook(result["webhook"])
+        return result
+
     def save_wecom_group_join_way(
         self,
         *,
@@ -227,6 +324,14 @@ class OpsConsoleStore:
         state.wecomGroupJoinWays.insert(0, record)
         self.save(state)
         return record.model_dump()
+
+    def _mask_webhook(self, url: str) -> str:
+        if not url:
+            return ""
+        if "key=" not in url:
+            return url[:36] + "***" if len(url) > 40 else "***"
+        prefix, key = url.split("key=", 1)
+        return f"{prefix}key={key[:4]}***{key[-4:]}" if len(key) > 8 else f"{prefix}key=***"
 
     def create_single_group_resource(
         self,

@@ -5,11 +5,19 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 
-from app.api.dependencies import get_app_service, get_sync_task_queue, get_wecom_archive_client, get_wecom_client, get_wecom_mock_service
+from app.api.dependencies import (
+    get_app_service,
+    get_ops_console_store,
+    get_sync_task_queue,
+    get_wecom_archive_client,
+    get_wecom_client,
+    get_wecom_mock_service,
+)
 from app.core.config import settings
 from app.schemas.common import ApiResponse
 from app.schemas.imports import MockImportRequest
 from app.services.app_service import AppService
+from app.services.ops_console_store import OpsConsoleStore
 from app.services.sync_task_queue import SyncTaskQueue
 from app.services.wecom_archive_client import WecomArchiveClient
 from app.services.wecom_client import WecomClient, WecomClientError
@@ -134,8 +142,11 @@ def _verify_admin_token(provided_token: str | None) -> None:
         raise HTTPException(status_code=403, detail="admin token verification failed")
 
 
-def _configured_group_webhooks() -> dict[str, str]:
-    return settings.group_bot_webhook_map()
+def _configured_group_webhooks(store: OpsConsoleStore | None = None) -> dict[str, str]:
+    webhooks = settings.group_bot_webhook_map()
+    if store:
+        webhooks.update(store.group_bot_webhook_map())
+    return webhooks
 
 
 def _mask_webhook(url: str) -> str:
@@ -450,9 +461,10 @@ def config_check(client: WecomClient = Depends(get_wecom_client)):
 def group_bot_config(
     admin_token: str | None = Query(default=None, alias="adminToken"),
     x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    store: OpsConsoleStore = Depends(get_ops_console_store),
 ):
     _verify_admin_token(x_admin_token or admin_token)
-    webhooks = _configured_group_webhooks()
+    webhooks = _configured_group_webhooks(store)
     return ApiResponse(
         success=bool(webhooks),
         message="group bot configured" if webhooks else "group bot webhooks are not configured",
@@ -472,9 +484,10 @@ async def group_bot_broadcast(
     payload: GroupBotBroadcastRequest,
     admin_token: str | None = Query(default=None, alias="adminToken"),
     x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    store: OpsConsoleStore = Depends(get_ops_console_store),
 ):
     _verify_admin_token(x_admin_token or admin_token)
-    webhooks = _configured_group_webhooks()
+    webhooks = _configured_group_webhooks(store)
     if not webhooks:
         raise HTTPException(status_code=400, detail="WECOM_GROUP_BOT_WEBHOOKS 未配置")
 

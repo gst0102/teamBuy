@@ -294,6 +294,7 @@
           <button data-tab="users">用户排行</button>
           <button data-tab="content">内容排行</button>
           <button data-tab="upload">群二维码批量上传</button>
+          <button data-tab="botchannels">群发渠道映射</button>
           <button data-tab="joinway">小程序加群配置</button>
           <button data-tab="feedback">反馈工单</button>
           <button data-tab="queue">系统待处理</button>
@@ -564,13 +565,20 @@
         </section>
 
         <section id="tab-joinway" class="tab-panel hidden">
+          <div class="panel" style="margin-bottom: 16px;">
+            <div class="section-head">
+              <h2>先说明</h2>
+              <span class="subtle">这块可以先不测</span>
+            </div>
+            <div class="tip">这里只用于“小程序按钮加入客户群”。如果当前只是测试外部群日报群发，请使用左侧“群发渠道映射”。手动建群和机器人 webhook 群发不需要 config_id。</div>
+          </div>
           <div class="grid forms">
             <div class="form-card">
               <div class="section-head">
                 <h2>生成小程序加群配置</h2>
                 <span class="subtle">通过企业微信 API 获取 config_id</span>
               </div>
-              <div class="tip">先在企业微信里建好外部客户群，拿到客户群 chat_id。这里生成的 config_id 后续给小程序加入群聊插件使用。</div>
+              <div class="tip">如果以后要做“小程序里点按钮进群”，再回来生成 config_id。推荐先点下方“拉取客户群”，再点选群，系统会自动填 chat_id。</div>
               <div style="height: 12px;"></div>
               <div class="form-grid">
                 <input id="joinWayRemark" placeholder="配置备注，例如 资料助手资源测试群" value="资料助手资源测试群" />
@@ -642,6 +650,88 @@
                   </tr>
                 </thead>
                 <tbody id="joinWayTable"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section id="tab-botchannels" class="tab-panel hidden">
+          <div class="grid forms">
+            <div class="form-card">
+              <div class="section-head">
+                <h2>新增 / 更新群发渠道</h2>
+                <span class="subtle">外部群机器人 webhook 映射</span>
+              </div>
+              <div class="tip">这里维护“群标识 -> 群机器人 webhook”。以后 AI 生成日报时，可以按群标识给不同群发不同运营内容。</div>
+              <div style="height: 12px;"></div>
+              <div class="form-grid">
+                <div class="row">
+                  <input id="botChannelGroupId" placeholder="群标识，例如 resource_test" />
+                  <input id="botChannelGroupName" placeholder="群名称，例如 资料助手资源测试群" />
+                </div>
+                <textarea id="botChannelWebhook" placeholder="群机器人 webhook 地址，只保存在后端"></textarea>
+                <div class="row">
+                  <select id="botChannelGroupType">
+                    <option value="资源群" selected>资源群</option>
+                    <option value="房产群">房产群</option>
+                    <option value="团购群">团购群</option>
+                    <option value="本地生活群">本地生活群</option>
+                    <option value="行业群">行业群</option>
+                    <option value="测试群">测试群</option>
+                  </select>
+                  <input id="botChannelAudience" placeholder="人群说明，例如 本地商家 / 中介 / 用户测试" />
+                </div>
+                <div class="row">
+                  <input id="botChannelCityLabel" placeholder="城市 / 区域，可不填" />
+                  <select id="botChannelDailyTemplate">
+                    <option value="midday" selected>中午更新</option>
+                    <option value="afternoon">下午入口</option>
+                    <option value="evening">晚间总结</option>
+                    <option value="custom">自定义</option>
+                  </select>
+                </div>
+                <div class="row">
+                  <input id="botChannelSendWindow" placeholder="建议发送时间，例如 12:00 / 18:30" />
+                  <input id="botChannelOwnerName" placeholder="负责人，可不填" />
+                </div>
+                <textarea id="botChannelRemark" placeholder="备注：这个群适合发什么，不适合发什么"></textarea>
+                <div class="row">
+                  <select id="botChannelEnabled">
+                    <option value="true" selected>启用发送</option>
+                    <option value="false">暂停发送</option>
+                  </select>
+                  <button class="primary" id="saveBotChannelBtn">保存群发渠道</button>
+                </div>
+              </div>
+            </div>
+            <div class="form-card">
+              <div class="section-head">
+                <h2>使用方式</h2>
+                <span class="subtle">先用它替代 chat_id</span>
+              </div>
+              <div class="tip">例如保存群标识 `resource_test` 后，群发接口就可以指定 `groupId=resource_test`。这样系统不需要知道企业微信真实群 ID，也能区分不同群。</div>
+            </div>
+          </div>
+          <div class="panel" style="margin-top: 16px;">
+            <div class="section-head">
+              <h2>已保存群发渠道</h2>
+              <span class="subtle">webhook 已脱敏展示</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>群标识</th>
+                    <th>群名称</th>
+                    <th>类型 / 人群</th>
+                    <th>日报模板</th>
+                    <th>发送时间</th>
+                    <th>状态</th>
+                    <th>webhook</th>
+                    <th>更新时间</th>
+                  </tr>
+                </thead>
+                <tbody id="botChannelTable"></tbody>
               </table>
             </div>
           </div>
@@ -768,6 +858,7 @@
         feedbackItems: [],
         joinWayItems: [],
         customerGroups: [],
+        botChannels: [],
         singleQrImageData: "",
         selectedPurposes: ["找同行"],
         batchFile: null
@@ -975,6 +1066,22 @@
         `).join("") || `<tr><td colspan="5" class="subtle">暂无客户群，点击右上角拉取</td></tr>`;
       }
 
+      function renderBotChannels(items = []) {
+        state.botChannels = items;
+        document.getElementById("botChannelTable").innerHTML = items.map((item) => `
+          <tr data-group-id="${item.groupId}">
+            <td>${item.groupId}</td>
+            <td>${item.groupName || "-"}</td>
+            <td>${item.groupType || "-"}<div class="subtle">${item.audience || item.cityLabel || ""}</div></td>
+            <td>${item.dailyTemplate || "-"}</td>
+            <td>${item.sendWindow || "-"}</td>
+            <td><span class="badge ${item.enabled ? "" : "warn"}">${item.enabled ? "启用" : "暂停"}</span></td>
+            <td>${item.webhook || "-"}</td>
+            <td>${formatDate(item.updatedAt)}</td>
+          </tr>
+        `).join("") || `<tr><td colspan="8" class="subtle">暂无群发渠道，先保存一个测试群</td></tr>`;
+      }
+
       function renderFeedback(items = []) {
         state.feedbackItems = items;
         document.getElementById("feedbackTable").innerHTML = items.map((item) => `
@@ -1060,6 +1167,11 @@
         renderCustomerGroups(data.items || []);
       }
 
+      async function loadBotChannels() {
+        const data = await request("/api/ops-admin/group-bot-channels");
+        renderBotChannels(data || []);
+      }
+
       async function loadFeedback() {
         const data = await request("/api/ops-admin/feedback");
         renderFeedback(data || []);
@@ -1079,6 +1191,7 @@
           loadUploadBatches(),
           loadSingleGroups(),
           loadJoinWays(),
+          loadBotChannels(),
           loadFeedback(),
           loadQueue()
         ]);
@@ -1180,6 +1293,27 @@
         await loadJoinWays();
       }
 
+      async function saveBotChannel() {
+        await request("/api/ops-admin/group-bot-channels", {
+          method: "POST",
+          body: JSON.stringify({
+            groupId: document.getElementById("botChannelGroupId").value,
+            groupName: document.getElementById("botChannelGroupName").value,
+            webhook: document.getElementById("botChannelWebhook").value,
+            groupType: document.getElementById("botChannelGroupType").value,
+            audience: document.getElementById("botChannelAudience").value,
+            cityLabel: document.getElementById("botChannelCityLabel").value,
+            dailyTemplate: document.getElementById("botChannelDailyTemplate").value,
+            sendWindow: document.getElementById("botChannelSendWindow").value,
+            ownerName: document.getElementById("botChannelOwnerName").value,
+            remark: document.getElementById("botChannelRemark").value,
+            enabled: document.getElementById("botChannelEnabled").value === "true"
+          })
+        });
+        document.getElementById("botChannelWebhook").value = "";
+        await loadBotChannels();
+      }
+
       async function createFeedback() {
         await request("/api/ops-admin/feedback", {
           method: "POST",
@@ -1233,6 +1367,7 @@
         document.getElementById("previewJoinWayBtn").addEventListener("click", () => previewJoinWay().catch((error) => alert(error.message)));
         document.getElementById("createJoinWayBtn").addEventListener("click", () => createJoinWay().catch((error) => alert(error.message)));
         document.getElementById("loadCustomerGroupsBtn").addEventListener("click", () => loadCustomerGroups().catch((error) => alert(error.message)));
+        document.getElementById("saveBotChannelBtn").addEventListener("click", () => saveBotChannel().catch((error) => alert(error.message)));
         document.getElementById("createFeedbackBtn").addEventListener("click", () => createFeedback().catch((error) => alert(error.message)));
         document.getElementById("updateFeedbackBtn").addEventListener("click", () => updateFeedback().catch((error) => alert(error.message)));
         document.getElementById("purposeChips").addEventListener("click", (event) => {
@@ -1265,6 +1400,22 @@
             document.getElementById("joinWayRemark").value = group.name;
             document.getElementById("joinWayRoomBaseName").value = group.name;
           }
+        });
+        document.getElementById("botChannelTable").addEventListener("click", (event) => {
+          const row = event.target.closest("tr[data-group-id]");
+          if (!row) return;
+          const item = state.botChannels.find((channel) => channel.groupId === row.dataset.groupId);
+          if (!item) return;
+          document.getElementById("botChannelGroupId").value = item.groupId || "";
+          document.getElementById("botChannelGroupName").value = item.groupName || "";
+          document.getElementById("botChannelGroupType").value = item.groupType || "资源群";
+          document.getElementById("botChannelAudience").value = item.audience || "";
+          document.getElementById("botChannelCityLabel").value = item.cityLabel || "";
+          document.getElementById("botChannelDailyTemplate").value = item.dailyTemplate || "midday";
+          document.getElementById("botChannelSendWindow").value = item.sendWindow || "";
+          document.getElementById("botChannelOwnerName").value = item.ownerName || "";
+          document.getElementById("botChannelRemark").value = item.remark || "";
+          document.getElementById("botChannelEnabled").value = item.enabled ? "true" : "false";
         });
         document.getElementById("feedbackTable").addEventListener("click", (event) => {
           const row = event.target.closest("tr[data-feedback-id]");

@@ -13,6 +13,7 @@ from app.schemas.common import ApiResponse
 from app.schemas.ops_admin import (
     FeedbackTicketCreateRequest,
     FeedbackTicketUpdateRequest,
+    GroupBotChannelUpsertRequest,
     GroupUploadCreateRequest,
     GroupUploadPreviewRequest,
     SingleGroupResourceCreateRequest,
@@ -407,6 +408,41 @@ def list_wecom_group_join_ways(
 ):
     _verify_admin_token(x_admin_token)
     return ApiResponse(data=store.list_wecom_group_join_ways())
+
+
+@router.get("/api/ops-admin/group-bot-channels", response_model=ApiResponse[list[dict]])
+def list_group_bot_channels(
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    store: OpsConsoleStore = Depends(get_ops_console_store),
+):
+    _verify_admin_token(x_admin_token)
+    return ApiResponse(data=store.list_group_bot_channels())
+
+
+@router.post("/api/ops-admin/group-bot-channels", response_model=ApiResponse[dict])
+def upsert_group_bot_channel(
+    payload: GroupBotChannelUpsertRequest,
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    store: OpsConsoleStore = Depends(get_ops_console_store),
+):
+    _verify_admin_token(x_admin_token)
+    try:
+        channel = store.upsert_group_bot_channel(
+            group_id=payload.groupId,
+            group_name=payload.groupName,
+            webhook=payload.webhook,
+            group_type=payload.groupType,
+            audience=payload.audience,
+            city_label=payload.cityLabel,
+            daily_template=payload.dailyTemplate,
+            send_window=payload.sendWindow,
+            owner_name=payload.ownerName,
+            remark=payload.remark,
+            enabled=payload.enabled,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return ApiResponse(message="group bot channel saved", data=channel)
 
 
 @router.get("/api/ops-admin/wecom-customer-groups", response_model=ApiResponse[dict])

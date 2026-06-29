@@ -40,6 +40,20 @@ class WecomGroupJoinWayCreateRequest(BaseModel):
     dryRun: bool = True
 
 
+class GroupBotChannelUpsertRequest(BaseModel):
+    groupId: str = Field(default="")
+    groupName: str = Field(default="")
+    webhook: str = Field(default="")
+    groupType: str = Field(default="资源群")
+    audience: str = Field(default="")
+    cityLabel: str = Field(default="")
+    dailyTemplate: str = Field(default="midday")
+    sendWindow: str = Field(default="")
+    ownerName: str | None = None
+    remark: str | None = None
+    enabled: bool = True
+
+
 class FeedbackTicketCreateRequest(BaseModel):
     type: str = Field(default="bug")
     userId: str | None = None

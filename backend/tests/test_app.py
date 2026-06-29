@@ -5392,3 +5392,60 @@ def test_wecom_group_bot_broadcast_sends_to_configured_groups(client, monkeypatc
         "webhook": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=property-secret",
         "content": "今天新增 3 条房源",
     }]
+
+
+def test_ops_admin_group_bot_channel_mapping_can_be_used_for_broadcast(client, monkeypatch):
+    from app.api import routes_wecom
+
+    sent = []
+
+    async def fake_post_group_bot_webhook(webhook_url, content):
+        sent.append({"webhook": webhook_url, "content": content})
+        return {"errcode": 0, "errmsg": "ok"}
+
+    monkeypatch.setattr(settings, "admin_token", "group-admin")
+    monkeypatch.setattr(settings, "wecom_group_bot_webhooks", "")
+    monkeypatch.setattr(routes_wecom, "_post_group_bot_webhook", fake_post_group_bot_webhook)
+
+    saved = client.post(
+        "/api/ops-admin/group-bot-channels",
+        headers={"X-Admin-Token": "group-admin"},
+        json={
+            "groupId": "resource_test",
+            "groupName": "资料助手资源测试群",
+            "webhook": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=resource-secret",
+            "groupType": "测试群",
+            "audience": "运营内测",
+            "dailyTemplate": "midday",
+            "sendWindow": "12:00",
+            "enabled": True,
+        },
+    )
+
+    assert saved.status_code == 200
+    assert saved.json()["data"]["webhook"] == "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=reso***cret"
+
+    listing = client.get("/api/ops-admin/group-bot-channels", headers={"X-Admin-Token": "group-admin"})
+    assert listing.status_code == 200
+    assert listing.json()["data"][0]["groupId"] == "resource_test"
+    assert listing.json()["data"][0]["webhook"].endswith("***cret")
+
+    config = client.get("/api/wecom/group-bot/config", headers={"X-Admin-Token": "group-admin"})
+    assert config.status_code == 200
+    assert config.json()["data"]["groups"] == [{
+        "groupId": "resource_test",
+        "webhook": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=reso***cret",
+    }]
+
+    response = client.post(
+        "/api/wecom/group-bot/broadcast",
+        headers={"X-Admin-Token": "group-admin"},
+        json={"groupId": "resource_test", "content": "资料助手日报测试", "dryRun": False},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["data"]["sentCount"] == 1
+    assert sent == [{
+        "webhook": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=resource-secret",
+        "content": "资料助手日报测试",
+    }]

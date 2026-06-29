@@ -16,6 +16,24 @@
   - `.venv312/bin/python -m compileall -q backend/app backend/tests`：通过。
 - 待下一步：
   - 生产环境配置真实 `WECOM_GROUP_BOT_WEBHOOKS` 后，可先用 `dryRun=true` 预览，再用 `dryRun=false` 给一个测试企业群发送。
+
+## 2026-06-29：PC 后台新增群发渠道映射
+
+- 背景：
+  - 用户确认暂时不测试小程序 `config_id` 入群，优先用已打通的外部群机器人 webhook 做日报运营测试。
+  - 需要在 PC 后台维护“群标识 -> 外部群 webhook -> 群类型/模板/发送时间”的映射，方便人工和 AI 查阅。
+- 已完成：
+  - `backend/app/services/ops_console_store.py` 新增 `GroupBotChannel`，保存群标识、群名称、webhook、群类型、人群、城市、日报模板、发送时间、负责人、备注、启停状态。
+  - `backend/app/api/routes_ops_admin.py` 新增：
+    - `GET /api/ops-admin/group-bot-channels`
+    - `POST /api/ops-admin/group-bot-channels`
+  - `backend/app/api/routes_wecom.py` 的群机器人配置和群发接口同时读取环境变量白名单与 PC 后台映射；PC 后台保存的 `groupId` 可直接用于群发。
+  - `/ops` 新增 `群发渠道映射` Tab，可新增/更新群发渠道，列表展示时 webhook 自动脱敏。
+  - `小程序加群配置` Tab 增加说明：当前只是“小程序按钮入群”用途，日报群发优先走群发渠道映射。
+- 已验证：
+  - `.venv312/bin/python -m pytest backend/tests/test_app.py -q -k "group_bot or bot_channel"`：4 passed。
+  - `.venv312/bin/python -m compileall -q backend/app backend/tests`：通过。
+  - PC 后台内嵌脚本 `node --check`：通过。
   - 后续如果效果稳定，再接定时任务和运营后台按钮。
 
 ## 2026-06-29：PC 运营后台新增小程序加群配置生成入口

@@ -1,5 +1,36 @@
 # teamBuy 阶段性交接归档
 
+## 2026-06-29 本轮交接：PC 后台新增群发渠道映射
+
+- 用户决定：暂时不继续测试小程序入群 `config_id`，优先把外部群机器人日报运营链路跑通，尽快上线。
+- 本轮已改：
+  - `backend/app/schemas/ops_admin.py`
+  - `backend/app/services/ops_console_store.py`
+  - `backend/app/api/routes_ops_admin.py`
+  - `backend/app/api/routes_wecom.py`
+  - `backend/app/static/ops-admin/index.html`
+  - `backend/tests/test_app.py`
+  - `docs/dev-log.md`
+  - `docs/decisions.md`
+  - `docs/pitfalls.md`
+- 新增 PC 后台能力：
+  - `/ops` 左侧新增 `群发渠道映射`
+  - 可保存自定义 `groupId`、群名称、群机器人 webhook、群类型、人群说明、城市、日报模板、发送时间、负责人、备注、启停状态。
+  - 列表展示 webhook 已脱敏；点列表行可回填编辑基础信息，但不会回显真实 webhook。
+- 新增/调整接口：
+  - `GET /api/ops-admin/group-bot-channels`
+  - `POST /api/ops-admin/group-bot-channels`
+  - `GET /api/wecom/group-bot/config` 现在同时读取环境变量白名单和 PC 后台映射。
+  - `POST /api/wecom/group-bot/broadcast` 现在可直接使用 PC 后台保存的 `groupId` 作为目标群。
+- 重要边界：
+  - 这里的 `groupId` 是平台自定义群标识，不是企业微信真实客户群 `chat_id`。
+  - 第一版日报运营不依赖 `config_id/chat_id`；用 `groupId -> webhook` 即可分别给不同群发不同运营数据。
+  - 真实 webhook 只保存在后端状态文件/生产环境，不写入前端代码或 Git。
+- 已验证：
+  - `.venv312/bin/python -m pytest backend/tests/test_app.py -q -k "group_bot or bot_channel"`：4 passed。
+  - `.venv312/bin/python -m compileall -q backend/app backend/tests`：通过。
+  - PC 后台内嵌脚本 `node --check`：通过。
+
 ## 2026-06-29 本轮交接：PC 后台可生成小程序加群 config_id
 
 - 用户确认：企业微信后台手动创建外部群二维码后，可能找不到小程序插件需要的 `config_id/plugid`，因此需要系统通过 API 生成。

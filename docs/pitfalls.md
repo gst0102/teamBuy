@@ -6,12 +6,14 @@
 - 企业微信群机器人 webhook 本质上就是发送凭证，如果允许前端或请求体直接传 webhook，会变成任意群触达能力。
 - 群发接口一旦默认真实发送，测试时很容易误发到正式群。
 - 外部客户群机器人能力此前已确认不稳定，如果把这次群发 API 包装成外部群自动运营，会再次误导主链路。
+- 不要把外部群日报群发和小程序 `config_id` 入群混在一起；`config_id` 只服务于小程序按钮入群，不是日报群发前置条件。
 
 规避方式：
-- webhook 只放后端 `WECOM_GROUP_BOT_WEBHOOKS`，按 `groupId` 白名单查找，接口不接受任意 webhook URL。
+- webhook 只放后端 `WECOM_GROUP_BOT_WEBHOOKS` 或 PC 后台群发渠道映射，按 `groupId` 白名单查找，接口不接受任意 webhook URL。
+- PC 后台展示 webhook 必须脱敏；真实 webhook 不写入前端代码、不提交 Git。
 - 所有群发接口必须校验 `WECOM_ADMIN_TOKEN`。
 - 默认 `dryRun=true`，只有显式 `dryRun=false` 才真实发送。
-- 当前只用于平台自有企业群播报；外部群仍走运营人工确认和发送。
+- 当前优先用于已加入群机器人的外部测试群/运营群播报；后续再接企业微信真实 `chat_id` 精细管理。
 
 ## 2026-06-29：小程序入群不是点击二维码图片，config_id 也不一定能从后台手动配置里拿到
 
