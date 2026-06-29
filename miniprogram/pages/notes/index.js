@@ -44,6 +44,16 @@ function withInitialShareState(note) {
   };
 }
 
+function fallbackNoteShareImage(note = {}) {
+  return (
+    (note.serviceOfferPreview && note.serviceOfferPreview.coverUrl) ||
+    (note.businessCardPreview && note.businessCardPreview.avatarUrl) ||
+    note.coverDisplayUrl ||
+    note.coverUrl ||
+    ""
+  );
+}
+
 Page({
   data: {
     user: null,
@@ -177,6 +187,7 @@ Page({
             title: note.title || "资料详情",
             summary: note.summary || note.gridSummary || note.secondaryValue || "",
             badge: note.cardBadge || note.systemCategory || (note.isGroupbuy ? "商品" : "资料"),
+            coverUrl: note.coverDisplayUrl || note.coverUrl || "",
             hint: note.isGroupbuy ? "打开小程序查看商品详情" : "打开小程序查看完整资料",
             growthHint: "我也想做同款"
           });
@@ -489,7 +500,7 @@ Page({
           ? buildServiceOfferShareTitle(note.serviceOfferPreview)
           : note.structuredData && (note.structuredData.community || note.structuredData.productName) || note.title || "资料详情",
       path: `/pages/note-preview/index?id=${noteId || ""}`,
-      imageUrl: shareImage || ""
+      imageUrl: shareImage || fallbackNoteShareImage(note)
     };
   }
 });

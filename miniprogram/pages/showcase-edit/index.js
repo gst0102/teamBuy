@@ -1208,7 +1208,7 @@ Page({
     return {
       title: this.data.shareTitle || this.data.name || "资料展示页",
       path: `/pages/showcases/index?shareTarget=showcase&showcaseId=${id}&sid=${shareId}&from=${user ? user.id : ""}&src=showcase_edit_share`,
-      imageUrl: ""
+      imageUrl: this.data.bannerUrl || ""
     };
   }
 });

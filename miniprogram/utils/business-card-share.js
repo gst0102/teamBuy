@@ -537,6 +537,7 @@ async function generateServiceOfferShareImage(page, canvasId, source) {
 
 async function generateTitleShareImage(page, canvasId, source = {}) {
   const cover = buildTitleCoverData(source.title || source.summary || "资料", source.badge || "资料");
+  const coverPath = await downloadCanvasImage(source.coverUrl || "");
   const exportSize = getCanvasExportSize();
   const ctx = wx.createCanvasContext(canvasId, page);
   const shareTargetLabel = String(source.shareTargetLabel || source.badge || "").includes("合集") ? "合集" : "资料";
@@ -579,13 +580,29 @@ async function generateTitleShareImage(page, canvasId, source = {}) {
   ctx.setFontSize(24);
   ctx.fillText(cover.badge, 112, 126);
 
-  ctx.setFillStyle(palette.title);
-  ctx.setFontSize(78);
-  drawWrappedLines(ctx, cover.focusText || "资料", 84, 240, 470, 94, 2);
+  if (coverPath) {
+    ctx.save();
+    drawRoundRect(ctx, 84, 160, 244, 244, 30);
+    ctx.clip();
+    ctx.drawImage(coverPath, 84, 160, 244, 244);
+    ctx.restore();
 
-  ctx.setFillStyle(palette.sub);
-  ctx.setFontSize(30);
-  drawWrappedLines(ctx, source.title || source.summary || "打开查看完整资料", 84, 404, 500, 42, 2);
+    ctx.setFillStyle(palette.title);
+    ctx.setFontSize(54);
+    drawWrappedLines(ctx, source.title || cover.focusText || "资料", 360, 214, 270, 64, 2);
+
+    ctx.setFillStyle(palette.sub);
+    ctx.setFontSize(28);
+    drawWrappedLines(ctx, source.summary || "打开查看完整资料", 360, 350, 270, 38, 2);
+  } else {
+    ctx.setFillStyle(palette.title);
+    ctx.setFontSize(78);
+    drawWrappedLines(ctx, cover.focusText || "资料", 84, 240, 470, 94, 2);
+
+    ctx.setFillStyle(palette.sub);
+    ctx.setFontSize(30);
+    drawWrappedLines(ctx, source.title || source.summary || "打开查看完整资料", 84, 404, 500, 42, 2);
+  }
 
   fillRoundRect(ctx, 84, 446, 502, 64, 32, palette.accent);
   ctx.setFillStyle("#ffffff");

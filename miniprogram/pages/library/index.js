@@ -1023,7 +1023,7 @@ Page({
       noteId: dataset.noteId || card.sourceNoteId || "",
       title: dataset.title || card.title || "资料详情",
       cover,
-      imageUrl: ""
+      imageUrl: cover
     };
     this.setData({ pendingShare });
     if (!pendingShare.noteId) return;
@@ -1032,6 +1032,7 @@ Page({
         title: pendingShare.title,
         summary: card.summary || card.subtitle || "",
         badge: card.categoryName || (card.cardType === "groupbuy_product" ? "商品" : "资料"),
+        coverUrl: cover,
         hint: "打开小程序查看完整资料",
         growthHint: "我也想做同款"
       });
@@ -1052,7 +1053,7 @@ Page({
     const pendingShare = this.data.pendingShare || {};
     const noteId = dataset.noteId || pendingShare.noteId || card.sourceNoteId || "";
     const title = dataset.title || pendingShare.title || card.title || "资料详情";
-    const imageUrl = pendingShare.imageUrl || "";
+    const imageUrl = pendingShare.imageUrl || dataset.cover || pendingShare.cover || card.coverDisplayUrl || card.coverUrl || "";
     const user = getCurrentUser();
     if (!noteId) {
       wx.showToast({ title: "这条资料暂不能直接发客户", icon: "none" });

@@ -1690,6 +1690,7 @@ Page({
         title: this.data.displayTitle || form.title || "资料详情",
         summary: this.data.displaySubtitle || form.summary || form.body || "",
         badge: this.data.displayCategory || "资料",
+        coverUrl: form.coverUrl || "",
         hint: "打开小程序查看完整资料",
         growthHint: "我也想做同款"
       });
@@ -2783,7 +2784,7 @@ Page({
     return {
       title,
       path: `/pages/note-preview/index?id=${this.data.noteId}`,
-      imageUrl: this.data.businessCardShareImage || this.data.propertyShareImage || this.data.genericShareImage || ""
+      imageUrl: this.data.businessCardShareImage || this.data.propertyShareImage || this.data.genericShareImage || (hero && hero.avatarUrl) || this.data.form.coverUrl || ""
     };
   }
 });

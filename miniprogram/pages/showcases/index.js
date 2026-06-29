@@ -346,7 +346,7 @@ Page({
       id: dataset.id || "",
       title: dataset.title || "合集",
       banner: dataset.banner || "",
-      imageUrl: ""
+      imageUrl: dataset.banner || ""
     };
     this.setData({ pendingShare });
     try {
@@ -474,7 +474,7 @@ Page({
     const pending = this.data.pendingShare || {};
     const id = dataset.id || pending.id || "";
     const title = dataset.title || pending.title || "合集";
-    const imageUrl = pending.imageUrl || "";
+    const imageUrl = pending.imageUrl || dataset.banner || pending.banner || "";
     const user = this.data.user || getCurrentUser();
     if (!id) {
       wx.showToast({ title: "请重新点击发给客户", icon: "none" });

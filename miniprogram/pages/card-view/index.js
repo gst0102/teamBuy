@@ -207,9 +207,13 @@ Page({
     wx.previewImage({ current, urls });
   },
   onShareAppMessage() {
-    return {
+    const shareData = {
       title: this.data.card ? this.data.card.title : "资料整理助手资源",
       path: `/pages/card-view/index?id=${this.data.cardId}`
     };
+    if (this.data.card && this.data.card.coverUrl) {
+      shareData.imageUrl = this.data.card.coverUrl;
+    }
+    return shareData;
   }
 });

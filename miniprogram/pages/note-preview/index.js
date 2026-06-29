@@ -1101,6 +1101,7 @@ Page({
         title: view.shareTitle || view.title || "资料详情",
         summary: view.summary || view.subtitle || "",
         badge: view.categoryName || (view.cardType === "groupbuy_product" ? "商品" : "资料"),
+        coverUrl: view.coverUrl || "",
         hint: "打开小程序查看完整资料",
         growthHint: "我也想做同款"
       });
@@ -1611,7 +1612,7 @@ Page({
     return {
       title: buildCustomerShareTitle(rawTitle),
       path: `/pages/note-preview/index?id=${this.data.noteId}&sid=${shareId}&from=${shareFromUserId}&src=${scene}&ref=${this.data.shareId || ""}`,
-      imageUrl: this.data.businessCardShareImage || this.data.serviceOfferShareImage || this.data.propertyShareImage || this.data.genericShareImage || ""
+      imageUrl: this.data.businessCardShareImage || this.data.serviceOfferShareImage || this.data.propertyShareImage || this.data.genericShareImage || (view.businessCardHero && view.businessCardHero.avatarUrl) || (view.serviceOfferDetail && view.serviceOfferDetail.coverUrl) || view.coverUrl || ""
     };
   },
   onShareTimeline() {
@@ -1634,7 +1635,7 @@ Page({
     return {
       title: buildCustomerShareTitle(rawTitle),
       query: `id=${this.data.noteId}&sid=${shareId}&from=${shareFromUserId}&src=${scene}&ref=${this.data.shareId || ""}`,
-      imageUrl: this.data.businessCardShareImage || this.data.serviceOfferShareImage || this.data.propertyShareImage || this.data.genericShareImage || ""
+      imageUrl: this.data.businessCardShareImage || this.data.serviceOfferShareImage || this.data.propertyShareImage || this.data.genericShareImage || (view.businessCardHero && view.businessCardHero.avatarUrl) || (view.serviceOfferDetail && view.serviceOfferDetail.coverUrl) || view.coverUrl || ""
     };
   }
 });

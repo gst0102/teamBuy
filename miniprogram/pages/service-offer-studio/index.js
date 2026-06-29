@@ -823,7 +823,7 @@ Page({
     return {
       title: buildServiceOfferShareTitle(preview),
       path: id ? `/pages/note-preview/index?id=${id}` : "/pages/service-offer-studio/index",
-      imageUrl: this.data.shareImage || ""
+      imageUrl: this.data.shareImage || preview.coverUrl || preview.heroAvatarUrl || ""
     };
   }
 });
