@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="750" height="1180" viewBox="0 0 750 1180">
+  <rect width="750" height="1180" fill="#f7f7f7"/>
+  <text x="40" y="62" font-size="30" font-family="Arial" fill="#111">D. 服务方案客户页</text>
+  <rect x="40" y="96" width="670" height="250" rx="8" fill="#fff" stroke="#222"/>
+  <rect x="40" y="96" width="670" height="104" fill="#eee" stroke="#222"/>
+  <line x1="70" y1="238" x2="640" y2="238" stroke="#222"/>
+  <line x1="70" y1="282" x2="570" y2="282" stroke="#222"/>
+  <text x="70" y="324" font-size="20" font-family="Arial" fill="#444">封面 / 标题 / 卖点摘要</text>
+  <rect x="40" y="374" width="670" height="110" rx="8" fill="#fff" stroke="#222"/>
+  <text x="70" y="418" font-size="24" font-family="Arial" fill="#111">适合人群</text>
+  <line x1="70" y1="456" x2="610" y2="456" stroke="#222"/>
+  <rect x="40" y="512" width="670" height="178" rx="8" fill="#fff" stroke="#222"/>
+  <text x="70" y="556" font-size="24" font-family="Arial" fill="#111">服务内容</text>
+  <line x1="70" y1="596" x2="660" y2="596" stroke="#222"/>
+  <line x1="70" y1="636" x2="610" y2="636" stroke="#222"/>
+  <rect x="40" y="718" width="670" height="150" rx="8" fill="#fff" stroke="#222"/>
+  <text x="70" y="762" font-size="24" font-family="Arial" fill="#111">流程 / 报价 / 保障</text>
+  <line x1="70" y1="802" x2="660" y2="802" stroke="#222"/>
+  <line x1="70" y1="840" x2="610" y2="840" stroke="#222"/>
+  <rect x="40" y="896" width="670" height="104" rx="8" fill="#fff" stroke="#222"/>
+  <rect x="70" y="926" width="295" height="46" rx="6" fill="#fff" stroke="#222"/>
+  <rect x="385" y="926" width="295" height="46" rx="6" fill="#fff" stroke="#222"/>
+  <text x="114" y="956" font-size="20" font-family="Arial" fill="#111">电话咨询</text>
+  <text x="430" y="956" font-size="20" font-family="Arial" fill="#111">微信咨询</text>
+  <rect x="40" y="1028" width="670" height="70" rx="8" fill="#fff" stroke="#222"/>
+  <text x="88" y="1072" font-size="20" font-family="Arial" fill="#111">留下电话/微信</text>
+  <text x="430" y="1072" font-size="20" font-family="Arial" fill="#111">预约沟通</text>
+  <circle cx="652" cy="1110" r="42" fill="#fff" stroke="#222"/>
+  <text x="630" y="1118" font-size="18" font-family="Arial" fill="#111">分享</text>
+</svg>

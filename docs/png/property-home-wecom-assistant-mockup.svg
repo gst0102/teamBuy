@@ -1,0 +1,174 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="750" height="1624" viewBox="0 0 750 1624">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#eef7ff"/>
+      <stop offset="0.55" stop-color="#f6fbff"/>
+      <stop offset="1" stop-color="#ffffff"/>
+    </linearGradient>
+    <linearGradient id="hero" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f4fff9"/>
+      <stop offset="1" stop-color="#ffffff"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="14" flood-color="#1f3b52" flood-opacity="0.08"/>
+    </filter>
+    <style>
+      .font { font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif; }
+      .title { font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif; font-weight: 850; fill: #111827; }
+      .text { font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif; fill: #718096; }
+      .blue { fill: #1683ff; }
+      .green { fill: #20c978; }
+      .darkGreen { fill: #087a55; }
+      .white { fill: #ffffff; }
+    </style>
+  </defs>
+
+  <rect width="750" height="1624" rx="42" fill="url(#bg)"/>
+  <text x="26" y="52" class="title" font-size="24">6:07</text>
+  <rect x="291" y="17" width="168" height="58" rx="29" fill="#000000"/>
+  <rect x="582" y="96" width="144" height="54" rx="27" fill="#ffffff" stroke="#d9e3eb" stroke-width="2"/>
+  <circle cx="620" cy="123" r="6" fill="#111827"/>
+  <circle cx="644" cy="123" r="6" fill="#111827"/>
+  <circle cx="668" cy="123" r="6" fill="#111827"/>
+  <circle cx="704" cy="123" r="18" fill="none" stroke="#111827" stroke-width="6"/>
+  <text x="375" y="161" text-anchor="middle" class="title" font-size="34">首页</text>
+
+  <g transform="translate(36 206)">
+    <rect x="0" y="0" width="678" height="372" rx="24" fill="url(#hero)" filter="url(#shadow)"/>
+    <text x="24" y="52" class="blue font" font-size="24" font-weight="800">资料整理助手 · 房源版</text>
+    <text x="24" y="118" class="title" font-size="58">房源工作台</text>
+    <text x="24" y="174" class="text" font-size="30">群里房源，发给助手。</text>
+    <text x="24" y="214" class="text" font-size="30">自动变成你的房源卡和合集。</text>
+
+    <g transform="translate(436 24)">
+      <rect x="0" y="0" width="222" height="232" rx="34" fill="#f4fbf8"/>
+      <rect x="28" y="34" width="88" height="72" rx="18" fill="#19be6b"/>
+      <circle cx="58" cy="67" r="12" fill="#ffffff"/>
+      <circle cx="86" cy="67" r="12" fill="#ffffff"/>
+      <path d="M64 104 L50 126 L88 108" fill="#19be6b"/>
+      <path d="M124 64 H160" stroke="#50d49a" stroke-width="8" stroke-linecap="round"/>
+      <path d="M148 48 L172 64 L148 80" fill="none" stroke="#50d49a" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+      <rect x="96" y="116" width="98" height="82" rx="12" fill="#ffffff" stroke="#dfeee8" stroke-width="4"/>
+      <path d="M122 154 L145 132 L170 154 V180 H122 Z" fill="#d8f7e8"/>
+      <path d="M122 154 L145 132 L170 154" fill="none" stroke="#3ad487" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+      <rect x="126" y="188" width="48" height="7" rx="3" fill="#71e0aa"/>
+    </g>
+
+    <g transform="translate(24 246)">
+      <rect x="0" y="0" width="178" height="42" rx="21" fill="#ffffff"/>
+      <circle cx="24" cy="21" r="14" fill="#19be6b"/>
+      <circle cx="19" cy="19" r="3" fill="#ffffff"/>
+      <circle cx="29" cy="19" r="3" fill="#ffffff"/>
+      <text x="99" y="28" text-anchor="middle" class="blue font" font-size="22" font-weight="800">添加房源助手</text>
+      <rect x="194" y="0" width="178" height="42" rx="21" fill="#ffffff"/>
+      <circle cx="218" cy="21" r="14" fill="#19be6b"/>
+      <circle cx="213" cy="19" r="3" fill="#ffffff"/>
+      <circle cx="223" cy="19" r="3" fill="#ffffff"/>
+      <text x="293" y="28" text-anchor="middle" class="blue font" font-size="22" font-weight="800">发房源给助手</text>
+      <rect x="0" y="54" width="164" height="42" rx="21" fill="#ffffff"/>
+      <text x="82" y="82" text-anchor="middle" class="blue font" font-size="22" font-weight="800">整理房源合集</text>
+      <rect x="184" y="54" width="198" height="42" rx="21" fill="#ffffff"/>
+      <text x="283" y="82" text-anchor="middle" class="blue font" font-size="22" font-weight="800">看同行/客户反馈</text>
+    </g>
+  </g>
+
+  <g transform="translate(36 600)">
+    <rect x="0" y="0" width="678" height="306" rx="24" fill="#ffffff" filter="url(#shadow)"/>
+    <text x="30" y="62" class="title" font-size="34">今日概览</text>
+    <text x="30" y="104" class="text" font-size="25">今天谁来看房、点了哪些、谁要跟进。</text>
+    <g transform="translate(504 30)">
+      <rect x="0" y="0" width="138" height="48" rx="24" fill="#eff5ff"/>
+      <rect x="5" y="5" width="68" height="38" rx="19" fill="#ffffff"/>
+      <text x="39" y="33" text-anchor="middle" class="blue font" font-size="21" font-weight="800">今日</text>
+      <text x="104" y="33" text-anchor="middle" class="text font" font-size="21" font-weight="800">累计</text>
+    </g>
+    <g transform="translate(48 128)">
+      <rect x="0" y="0" width="110" height="64" rx="20" fill="#2385ff"/>
+      <text x="55" y="40" text-anchor="middle" class="white font" font-size="24" font-weight="850">新房源</text>
+      <text x="55" y="116" text-anchor="middle" class="title" font-size="36">0</text>
+      <text x="55" y="156" text-anchor="middle" class="text font" font-size="23">新房源</text>
+    </g>
+    <g transform="translate(210 128)">
+      <rect x="0" y="0" width="110" height="64" rx="20" fill="#2fc978"/>
+      <text x="55" y="40" text-anchor="middle" class="white font" font-size="24" font-weight="850">打开</text>
+      <text x="55" y="116" text-anchor="middle" class="title" font-size="36">0</text>
+      <text x="55" y="156" text-anchor="middle" class="text font" font-size="23">打开</text>
+    </g>
+    <g transform="translate(372 128)">
+      <rect x="0" y="0" width="110" height="64" rx="20" fill="#ff982d"/>
+      <text x="55" y="40" text-anchor="middle" class="white font" font-size="24" font-weight="850">访客</text>
+      <text x="55" y="116" text-anchor="middle" class="title" font-size="36">0</text>
+      <text x="55" y="156" text-anchor="middle" class="text font" font-size="23">访客</text>
+    </g>
+    <g transform="translate(534 128)">
+      <rect x="0" y="0" width="110" height="64" rx="20" fill="#7558f0"/>
+      <text x="55" y="40" text-anchor="middle" class="white font" font-size="24" font-weight="850">待跟进</text>
+      <text x="55" y="116" text-anchor="middle" class="title" font-size="36">0</text>
+      <text x="55" y="156" text-anchor="middle" class="text font" font-size="23">待跟进</text>
+    </g>
+  </g>
+
+  <g transform="translate(36 928)">
+    <rect x="0" y="0" width="678" height="502" rx="24" fill="#ffffff" filter="url(#shadow)"/>
+    <text x="30" y="62" class="title" font-size="34">常用入口</text>
+    <text x="30" y="104" class="text" font-size="25">先把群里的房源变成自己的房源卡和合集</text>
+
+    <g transform="translate(30 130)">
+      <rect x="0" y="0" width="302" height="164" rx="16" fill="#ffffff" stroke="#e5edf4" stroke-width="2"/>
+      <rect x="116" y="24" width="70" height="70" rx="21" fill="#19be6b"/>
+      <circle cx="142" cy="56" r="8" fill="#ffffff"/>
+      <circle cx="164" cy="56" r="8" fill="#ffffff"/>
+      <path d="M140 88 L128 104 L160 90" fill="#19be6b"/>
+      <text x="151" y="124" text-anchor="middle" class="title" font-size="28">添加房源助手</text>
+      <text x="151" y="156" text-anchor="middle" class="text font" font-size="22" font-weight="750">转发群消息生成房源</text>
+    </g>
+    <g transform="translate(346 130)">
+      <rect x="0" y="0" width="302" height="164" rx="16" fill="#ffffff" stroke="#e5edf4" stroke-width="2"/>
+      <rect x="116" y="24" width="70" height="70" rx="21" fill="#2fc978"/>
+      <text x="151" y="68" text-anchor="middle" class="white font" font-size="25" font-weight="850">同款</text>
+      <text x="151" y="124" text-anchor="middle" class="title" font-size="28">生成同款</text>
+      <text x="151" y="156" text-anchor="middle" class="text font" font-size="22" font-weight="750">换成我的微信</text>
+    </g>
+    <g transform="translate(30 310)">
+      <rect x="0" y="0" width="302" height="164" rx="16" fill="#ffffff" stroke="#e5edf4" stroke-width="2"/>
+      <rect x="116" y="24" width="70" height="70" rx="21" fill="#2fc978"/>
+      <text x="151" y="68" text-anchor="middle" class="white font" font-size="25" font-weight="850">合集</text>
+      <text x="151" y="124" text-anchor="middle" class="title" font-size="28">房源合集</text>
+      <text x="151" y="156" text-anchor="middle" class="text font" font-size="22" font-weight="750">对盘群清单</text>
+    </g>
+    <g transform="translate(346 310)">
+      <rect x="0" y="0" width="302" height="164" rx="16" fill="#ffffff" stroke="#e5edf4" stroke-width="2"/>
+      <rect x="116" y="24" width="70" height="70" rx="21" fill="#2fc978"/>
+      <text x="151" y="68" text-anchor="middle" class="white font" font-size="25" font-weight="850">反馈</text>
+      <text x="151" y="124" text-anchor="middle" class="title" font-size="28">客户反馈</text>
+      <text x="151" y="156" text-anchor="middle" class="text font" font-size="22" font-weight="750">看谁要跟进</text>
+    </g>
+  </g>
+
+  <g transform="translate(36 1448)">
+    <rect x="0" y="0" width="678" height="104" rx="28" fill="#ffffff"/>
+    <g transform="translate(38 16)">
+      <path d="M20 34 L50 8 L80 34 V70 H58 V48 H42 V70 H20 Z" fill="#1695e8"/>
+      <text x="50" y="86" text-anchor="middle" class="blue font" font-size="20" font-weight="800">首页</text>
+    </g>
+    <g transform="translate(182 16)">
+      <path d="M24 28 L50 16 L76 28 L50 40 Z M24 48 L50 60 L76 48 M24 66 L50 78 L76 66" fill="#bbbbbb"/>
+      <text x="50" y="86" text-anchor="middle" class="text font" font-size="20">资料</text>
+    </g>
+    <g transform="translate(319 10)">
+      <circle cx="50" cy="44" r="22" fill="#1695e8"/>
+      <path d="M50 30 V58 M36 44 H64" stroke="#ffffff" stroke-width="5" stroke-linecap="round"/>
+      <text x="50" y="92" text-anchor="middle" class="text font" font-size="20">合集</text>
+    </g>
+    <g transform="translate(456 16)">
+      <circle cx="50" cy="42" r="22" fill="none" stroke="#c8c8c8" stroke-width="4"/>
+      <path d="M50 28 V42 L62 50" fill="none" stroke="#c8c8c8" stroke-width="4" stroke-linecap="round"/>
+      <text x="50" y="86" text-anchor="middle" class="text font" font-size="20">反馈</text>
+    </g>
+    <g transform="translate(592 16)">
+      <circle cx="50" cy="30" r="18" fill="#bdbdbd"/>
+      <path d="M18 74 C24 50 76 50 82 74 Z" fill="#bdbdbd"/>
+      <text x="50" y="86" text-anchor="middle" class="text font" font-size="20">我的</text>
+    </g>
+  </g>
+</svg>

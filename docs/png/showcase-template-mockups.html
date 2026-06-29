@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>展示页四套标准模板参考稿</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #f3f4f6;
+      color: #17202a;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+    .board {
+      display: grid;
+      grid-template-columns: repeat(4, 390px);
+      gap: 32px;
+      padding: 32px;
+      width: max-content;
+    }
+    .phone {
+      width: 390px;
+      height: 844px;
+      overflow: hidden;
+      background: #fff;
+      border-radius: 34px;
+      box-shadow: 0 18px 60px rgba(15, 23, 42, .18);
+      position: relative;
+    }
+    .status {
+      height: 34px;
+      padding: 10px 22px 0;
+      display: flex;
+      justify-content: space-between;
+      color: rgba(15, 23, 42, .72);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .scroll { height: 810px; overflow: hidden; }
+    .hero { position: relative; }
+    .photo {
+      background:
+        linear-gradient(145deg, rgba(255,255,255,.2), rgba(255,255,255,0) 42%),
+        linear-gradient(135deg, #d9e9df, #78977d 48%, #f4efe6);
+    }
+    .photo.warm { background: linear-gradient(140deg, #f5d7bd, #b66f51 52%, #f7f0df); }
+    .photo.blue { background: linear-gradient(145deg, #d6e9f8, #50799f 52%, #eef5fa); }
+    .photo.teal { background: linear-gradient(140deg, #d8f1eb, #397f74 52%, #f2f7f3); }
+    .card { background: #fff; border: 1px solid rgba(17, 24, 39, .08); border-radius: 18px; }
+    .chip { display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+    .title { font-size: 30px; line-height: 1.15; font-weight: 900; letter-spacing: 0; }
+    .sub { font-size: 14px; line-height: 1.55; color: rgba(23, 32, 42, .66); }
+    .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .cta { height: 44px; border-radius: 14px; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 14px; }
+    .mini { font-size: 12px; color: rgba(23, 32, 42, .55); }
+
+    .featured { background: #f8fbf7; }
+    .featured .hero { height: 292px; padding: 18px; color: #fff; }
+    .featured .hero .photo { position: absolute; inset: 0; height: 292px; }
+    .featured .hero::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(19,54,38,.16), rgba(19,54,38,.76)); }
+    .featured .hero-content { position: relative; z-index: 1; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; gap: 10px; }
+    .featured .chip { background: rgba(255,255,255,.22); color: #fff; width: max-content; }
+    .featured .sub { color: rgba(255,255,255,.84); }
+    .featured .section { padding: 18px; }
+    .featured .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .featured .item { padding: 12px; border-radius: 18px; background: #fff; border: 1px solid #e1eadf; }
+    .featured .thumb { height: 104px; border-radius: 14px; margin-bottom: 10px; }
+    .featured .price { color: #1f7a4f; font-weight: 900; }
+    .featured .cta { background: #226f4a; color: #fff; margin-top: 14px; }
+
+    .story { background: #fffaf1; color: #3b2d24; }
+    .story .hero { height: 312px; padding: 22px; }
+    .story .photo { height: 180px; border-radius: 28px; margin-bottom: 16px; }
+    .story .chip { background: #fff0da; color: #9a5838; }
+    .story .title { color: #3d2a1f; }
+    .story .section { padding: 0 22px 14px; }
+    .story .story-card { padding: 14px 18px; margin-bottom: 12px; border: 1px solid #ead8bf; background: #fff; border-radius: 20px; }
+    .story .story-title { font-size: 18px; font-weight: 900; margin: 6px 0; }
+    .story .timeline { width: 30px; height: 30px; background: #b66f51; color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 900; }
+    .story .cta { background: #9d5a3d; color: #fff; margin: 4px 22px 0; }
+
+    .catalog { background: #f5f9fc; }
+    .catalog .head { padding: 20px 18px 12px; background: #e8f3fb; border-bottom: 1px solid #d7e7f3; }
+    .catalog .title { font-size: 25px; color: #174265; }
+    .catalog .search { margin-top: 14px; height: 42px; border-radius: 12px; background: #fff; border: 1px solid #d8e5ef; padding: 12px; color: #7590a5; font-size: 13px; }
+    .catalog .tabs { display: flex; gap: 8px; padding: 12px 18px; }
+    .catalog .chip { background: #e4eef6; color: #315f83; }
+    .catalog .chip.active { background: #24618e; color: #fff; }
+    .catalog .list { padding: 0 14px; }
+    .catalog .list-row { display: grid; grid-template-columns: 84px 1fr; gap: 12px; padding: 12px; margin-bottom: 10px; border-radius: 16px; background: #fff; border: 1px solid #dfeaf2; }
+    .catalog .thumb { height: 76px; border-radius: 12px; }
+    .catalog .row-title { font-weight: 900; color: #173b55; }
+    .catalog .meta { margin: 6px 0; color: #5b7488; font-size: 12px; line-height: 1.4; }
+    .catalog .price { color: #1f6ea3; font-weight: 900; }
+    .catalog .cta { position: absolute; left: 18px; right: 18px; bottom: 18px; background: #24618e; color: #fff; }
+
+    .brand { background: #f4faf8; }
+    .brand .profile { padding: 22px 20px; background: #134e45; color: #fff; }
+    .brand .avatar { width: 58px; height: 58px; border-radius: 20px; background: #d8f1eb; color: #134e45; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: 900; }
+    .brand .name { font-size: 22px; font-weight: 900; }
+    .brand .role { color: rgba(255,255,255,.74); font-size: 13px; margin-top: 4px; }
+    .brand .hero { padding: 18px; }
+    .brand .photo { height: 174px; border-radius: 24px; }
+    .brand .trust { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
+    .brand .trust div { background: #fff; border: 1px solid #d8ebe5; border-radius: 16px; padding: 10px 6px; text-align: center; }
+    .brand .trust strong { display: block; color: #146052; font-size: 18px; }
+    .brand .section { padding: 0 18px; }
+    .brand .item { display: grid; grid-template-columns: 76px 1fr; gap: 12px; padding: 12px; margin-bottom: 10px; border-radius: 18px; background: #fff; border: 1px solid #d8ebe5; }
+    .brand .thumb { height: 70px; border-radius: 14px; }
+    .brand .cta { position: absolute; left: 18px; right: 18px; bottom: 18px; background: #146052; color: #fff; }
+  </style>
+</head>
+<body>
+  <main class="board">
+    <section class="phone featured" id="featured_window">
+      <div class="status"><span>9:41</span><span>精选橱窗</span></div>
+      <div class="scroll">
+        <div class="hero">
+          <div class="photo"></div>
+          <div class="hero-content">
+            <span class="chip">本周精选</span>
+            <div class="title">我的房源精选</div>
+            <div class="sub">精选 8 套可约看房源，先看主推，再快速联系。</div>
+          </div>
+        </div>
+        <div class="section">
+          <div class="row" style="margin-bottom:12px"><strong>主推房源</strong><span class="mini">已整理 8 条</span></div>
+          <div class="grid">
+            <div class="item"><div class="thumb photo"></div><strong>滨江三房</strong><div class="mini">三室两厅 · 近地铁</div><div class="price">6800/月</div></div>
+            <div class="item"><div class="thumb photo blue"></div><strong>阳光公寓</strong><div class="mini">一室一厅 · 拎包住</div><div class="price">3200/月</div></div>
+            <div class="item"><div class="thumb photo warm"></div><strong>学区小两房</strong><div class="mini">南北通透 · 可谈</div><div class="price">5200/月</div></div>
+            <div class="item"><div class="thumb photo teal"></div><strong>花园洋房</strong><div class="mini">低密社区 · 电梯</div><div class="price">8600/月</div></div>
+          </div>
+          <div class="cta">联系我看详情</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="phone story" id="moments_story">
+      <div class="status"><span>9:41</span><span>朋友圈长页</span></div>
+      <div class="scroll">
+        <div class="hero">
+          <div class="photo warm"></div>
+          <span class="chip">客户群分享</span>
+          <div class="title" style="margin-top:10px">这周适合带看的 6 套</div>
+          <div class="sub" style="margin-top:8px">按故事线展示：为什么推荐、适合谁、下一步怎么约。</div>
+        </div>
+        <div class="section">
+          <div class="story-card"><div class="timeline">1</div><div class="story-title">预算友好，适合刚到上海</div><div class="sub">两套都离地铁近，通勤稳定，入住成本低。</div></div>
+          <div class="story-card"><div class="timeline">2</div><div class="story-title">家庭型优先看这组</div><div class="sub">小区环境、采光、厨房和收纳都更完整。</div></div>
+          <div class="story-card"><div class="timeline">3</div><div class="story-title">想要品质感，最后看这套</div><div class="sub">装修更新、楼层舒服，适合长期住。</div></div>
+        </div>
+        <div class="cta">发起咨询</div>
+      </div>
+    </section>
+
+    <section class="phone catalog" id="catalog_list">
+      <div class="status"><span>9:41</span><span>清单目录</span></div>
+      <div class="scroll">
+        <div class="head">
+          <div class="title">房源资料目录</div>
+          <div class="sub">适合资料多、客户要快速筛选对比。</div>
+          <div class="search">搜索区域 / 价格 / 户型</div>
+        </div>
+        <div class="tabs">
+          <span class="chip active">全部 18</span><span class="chip">一居</span><span class="chip">两居</span><span class="chip">三居</span>
+        </div>
+        <div class="list">
+          <div class="list-row"><div class="thumb photo blue"></div><div><div class="row-title">静安电梯两房</div><div class="meta">2室1厅 · 72m² · 靠近 7 号线</div><div class="price">7800/月</div></div></div>
+          <div class="list-row"><div class="thumb photo"></div><div><div class="row-title">徐汇阳光一居</div><div class="meta">1室1厅 · 可短租 · 民用水电</div><div class="price">4300/月</div></div></div>
+          <div class="list-row"><div class="thumb photo warm"></div><div><div class="row-title">浦东整租三房</div><div class="meta">3室2厅 · 近学校 · 带车位</div><div class="price">9200/月</div></div></div>
+          <div class="list-row"><div class="thumb photo teal"></div><div><div class="row-title">滨江景观公寓</div><div class="meta">2室2厅 · 江景 · 新装修</div><div class="price">12800/月</div></div></div>
+          <div class="list-row"><div class="thumb photo blue"></div><div><div class="row-title">古北精装一房</div><div class="meta">1室1厅 · 商圈成熟 · 带阳台</div><div class="price">5600/月</div></div></div>
+        </div>
+        <div class="cta">复制联系方式</div>
+      </div>
+    </section>
+
+    <section class="phone brand" id="brand_card">
+      <div class="status"><span>9:41</span><span>品牌名片</span></div>
+      <div class="scroll">
+        <div class="profile">
+          <div class="row">
+            <div class="avatar">陈</div>
+            <div style="flex:1">
+              <div class="name">陈顾问</div>
+              <div class="role">上海租售顾问 · 已服务 218 位客户</div>
+            </div>
+          </div>
+        </div>
+        <div class="hero">
+          <div class="photo teal"></div>
+          <div class="trust">
+            <div><strong>8年</strong><span class="mini">经验</span></div>
+            <div><strong>24h</strong><span class="mini">响应</span></div>
+            <div><strong>36套</strong><span class="mini">在推</span></div>
+          </div>
+        </div>
+        <div class="section">
+          <div class="row" style="margin-bottom:12px"><strong>顾问精选</strong><span class="mini">按资料类型分组</span></div>
+          <div class="item"><div class="thumb photo"></div><div><strong>今日主推房源</strong><div class="sub">预算、通勤、居住感都均衡。</div></div></div>
+          <div class="item"><div class="thumb photo blue"></div><div><strong>客户常问清单</strong><div class="sub">看房前先确认楼层、付款和入住时间。</div></div></div>
+          <div class="item"><div class="thumb photo warm"></div><div><strong>预约看房流程</strong><div class="sub">发需求后，我帮你安排路线。</div></div></div>
+        </div>
+        <div class="cta">微信联系顾问</div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

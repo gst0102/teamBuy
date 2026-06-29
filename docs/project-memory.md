@@ -50,6 +50,7 @@ teamBuy 是一个面向微信群私域场景的小程序工具，核心能力是
 - 对象存储：后续接腾讯云 COS 或 S3-compatible 存储。
 - 素材处理：图片/视频上传后先在后端压缩，再写入本地媒体目录或对象存储；图片通过 Pillow 转 WebP，视频通过 ffmpeg 转 H.264/AAC MP4，资料库保存压缩后的 URL。
 - 前端资源状态：当前是原生微信小程序，不直接使用 Pinia；采用 `miniprogram/stores/resource-store.js` 承担 Pinia 类似的资源集中管理职责。
+- 小程序 UI 硬规则：输入框 + 按钮、搜索框 + 按钮、卡片右侧操作区这类横向组合必须给父容器 `box-sizing: border-box`，给可伸缩列 `minmax(0, 1fr)` 或 `flex: 1; min-width: 0`，给按钮明确 `width/min-width/max-width`，并重置原生 `button` 的 `margin/padding/line-height/::after`，使用 flex 居中和 `white-space: nowrap`。不能只写 `grid-template-columns: 1fr 140rpx` 或只靠 `line-height`，真机会把按钮默认尺寸撑出屏幕。
 - 线索状态：高意向访客的待联系 / 已联系 / 无效 / 暂不跟进 / 已完成 / 备注 / 跟进记录 / 下次跟进日期 / 归档原因 / 客户手机号 / 微信号 / 预算 / 意向等级 / 私有客户标签已升为后端持久化，不再存小程序本地 storage；待联系页按逾期、今日、未来、未设置、已完成组织待办，并有今日 / 逾期 / 未处理页内提醒；单条线索完整编辑在 `pages/lead-detail/index`，客户资料区置顶并支持复制完整档案；客户资料汇总在 `pages/customers/index`，支持意向筛选、搜索、手机号/微信号复制、排序、资料完整度快捷筛选、来源资料筛选、客户标签筛选、活跃/沉睡筛选、卡片快捷跟进、复制当前筛选客户摘要、复制当前筛选跟进清单、清空筛选和本地保存常用视图；客户卡片已按客户资料、跟进状态、来源资料和操作分区展示。
 - 大模型：规则优先，大模型兜底；企业微信入口采用快捷指令 / 菜单优先、规则其次、AI 意图识别兜底的混合驱动模式。AI 不能直接执行业务动作，低置信度必须让用户点选确认。
 - Skill 架构：文字类来源统一进入 `ContentObject -> content-to-note -> UserNote`。微信笔记、聊天记录、链接文章、手动文字和后续 OCR 都是不同 Input Adapter，不拆成多个重复 Skill；`note-to-comic-image` 独立负责漫画图/宣传图/长图；`showcase-builder` 是小程序可视化展示页构建器。

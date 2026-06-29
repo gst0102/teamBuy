@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="750" height="1180" viewBox="0 0 750 1180">
+  <rect width="750" height="1180" fill="#f7f7f7"/>
+  <text x="40" y="62" font-size="30" font-family="Arial" fill="#111">B. 电子名片客户页</text>
+  <rect x="40" y="96" width="670" height="300" rx="8" fill="#fff" stroke="#222"/>
+  <circle cx="375" cy="174" r="54" fill="#eee" stroke="#222"/>
+  <line x1="230" y1="255" x2="520" y2="255" stroke="#222"/>
+  <line x1="270" y1="296" x2="480" y2="296" stroke="#222"/>
+  <line x1="190" y1="338" x2="560" y2="338" stroke="#222"/>
+  <text x="288" y="374" font-size="20" font-family="Arial" fill="#444">姓名 / 职位 / 公司 / 一句话介绍</text>
+  <rect x="40" y="424" width="670" height="116" rx="8" fill="#fff" stroke="#222"/>
+  <rect x="70" y="454" width="132" height="42" rx="21" fill="#eee" stroke="#222"/>
+  <rect x="222" y="454" width="132" height="42" rx="21" fill="#eee" stroke="#222"/>
+  <rect x="374" y="454" width="132" height="42" rx="21" fill="#eee" stroke="#222"/>
+  <text x="70" y="526" font-size="20" font-family="Arial" fill="#444">服务标签</text>
+  <rect x="40" y="568" width="670" height="140" rx="8" fill="#fff" stroke="#222"/>
+  <rect x="70" y="602" width="295" height="46" rx="6" fill="#fff" stroke="#222"/>
+  <rect x="385" y="602" width="295" height="46" rx="6" fill="#fff" stroke="#222"/>
+  <rect x="70" y="658" width="295" height="46" rx="6" fill="#fff" stroke="#222"/>
+  <rect x="385" y="658" width="295" height="46" rx="6" fill="#fff" stroke="#222"/>
+  <text x="114" y="632" font-size="20" font-family="Arial" fill="#111">电话咨询</text>
+  <text x="430" y="632" font-size="20" font-family="Arial" fill="#111">微信咨询</text>
+  <text x="108" y="688" font-size="20" font-family="Arial" fill="#111">留下电话/微信</text>
+  <text x="430" y="688" font-size="20" font-family="Arial" fill="#111">预约沟通</text>
+  <rect x="40" y="736" width="670" height="170" rx="8" fill="#fff" stroke="#222"/>
+  <text x="70" y="780" font-size="24" font-family="Arial" fill="#111">服务介绍</text>
+  <line x1="70" y1="820" x2="660" y2="820" stroke="#222"/>
+  <line x1="70" y1="860" x2="610" y2="860" stroke="#222"/>
+  <rect x="40" y="934" width="670" height="150" rx="8" fill="#fff" stroke="#222"/>
+  <text x="70" y="978" font-size="24" font-family="Arial" fill="#111">二维码 / 图片</text>
+  <rect x="70" y="1004" width="96" height="60" fill="#eee" stroke="#222"/>
+  <rect x="190" y="1004" width="96" height="60" fill="#eee" stroke="#222"/>
+  <circle cx="652" cy="1090" r="46" fill="#fff" stroke="#222"/>
+  <text x="630" y="1098" font-size="18" font-family="Arial" fill="#111">分享</text>
+</svg>

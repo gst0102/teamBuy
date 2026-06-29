@@ -1,0 +1,220 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="2600" viewBox="0 0 1800 2600">
+  <defs>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="16" stdDeviation="18" flood-color="#0f172a" flood-opacity="0.14"/>
+    </filter>
+    <filter id="cardShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#0f172a" flood-opacity="0.10"/>
+    </filter>
+    <linearGradient id="classicBg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#eef9f4"/>
+      <stop offset="0.55" stop-color="#f9fffb"/>
+      <stop offset="1" stop-color="#dcefe7"/>
+    </linearGradient>
+    <linearGradient id="storeBg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#f2fbef"/>
+      <stop offset="0.62" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#d9f2dc"/>
+    </linearGradient>
+    <linearGradient id="expertBg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#261447"/>
+      <stop offset="0.52" stop-color="#4d2fb1"/>
+      <stop offset="1" stop-color="#a98cf5"/>
+    </linearGradient>
+    <linearGradient id="wechatBg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#f1f5f9"/>
+    </linearGradient>
+    <linearGradient id="avatarMan" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#dbeafe"/>
+      <stop offset="1" stop-color="#bad7c9"/>
+    </linearGradient>
+    <linearGradient id="avatarWoman" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#ffe4e6"/>
+      <stop offset="1" stop-color="#dcfce7"/>
+    </linearGradient>
+    <style>
+      text{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",Arial,sans-serif}
+      .pageTitle{font-size:54px;font-weight:900;fill:#101828}
+      .pageSub{font-size:26px;fill:#64748b}
+      .rowTitle{font-size:34px;font-weight:900;fill:#172033}
+      .rowNote{font-size:22px;fill:#64748b}
+      .label{font-size:22px;font-weight:900;fill:#fff}
+      .name{font-size:48px;font-weight:900;fill:#0f442b}
+      .nameDark{font-size:46px;font-weight:900;fill:#172033}
+      .nameWhite{font-size:48px;font-weight:900;fill:#fff}
+      .text{font-size:25px;fill:#263445}
+      .text2{font-size:22px;fill:#64748b}
+      .small{font-size:20px;fill:#64748b}
+      .sectionTitle{font-size:28px;font-weight:900;fill:#172033}
+      .sectionBody{font-size:22px;fill:#344255}
+      .whiteText{fill:#fff}
+      .mutedWhite{fill:rgba(255,255,255,.78)}
+    </style>
+  </defs>
+
+  <rect width="1800" height="2600" fill="#f6f8fb"/>
+  <text x="80" y="88" class="pageTitle">电子名片 4 款风格预览 + 对应详情页</text>
+  <text x="80" y="132" class="pageSub">左侧是名片预览卡；右侧是客户点进去看到的详情页。四款应在排版、色彩、内容重点和动作区上明显不同。</text>
+
+  <!-- shared phone shell -->
+  <g id="phoneChrome">
+    <rect x="0" y="0" width="430" height="500" rx="34" fill="#ffffff" filter="url(#softShadow)"/>
+    <rect x="34" y="22" width="362" height="456" rx="22" fill="#f8fafc"/>
+    <text x="54" y="56" font-size="20" fill="#0f172a" font-weight="800">9:41</text>
+    <text x="204" y="58" font-size="24" fill="#0f172a" font-weight="900">电子名片</text>
+  </g>
+
+  <!-- Avatar drawing helper repeated manually -->
+  <!-- Row 1 Classic -->
+  <g transform="translate(80 220)">
+    <text x="0" y="-34" class="rowTitle">A. 专业顾问风：稳重、可信、适合房产/保险/咨询</text>
+    <text x="0" y="0" class="rowNote">重点：第一眼建立“专业顾问”信任，信息密度适中，电话微信清楚。</text>
+
+    <rect x="0" y="38" width="650" height="230" rx="34" fill="url(#classicBg)" stroke="#bddbcf" stroke-width="3" filter="url(#cardShadow)"/>
+    <circle cx="145" cy="153" r="82" fill="#fff" stroke="#f0c36a" stroke-width="7"/>
+    <circle cx="145" cy="153" r="69" fill="url(#avatarMan)"/>
+    <path d="M96 221c10-41 88-41 98 0" fill="#123047" opacity=".9"/>
+    <circle cx="145" cy="141" r="34" fill="#ffe6c8"/>
+    <path d="M111 130c10-37 70-38 80 1c-18-13-58-13-80-1z" fill="#1f2937"/>
+    <rect x="110" y="170" width="70" height="58" rx="18" fill="#1d4ed8"/>
+    <text x="275" y="112" class="name">高先生</text>
+    <rect x="276" y="132" width="150" height="45" rx="22" fill="#145c4a"/>
+    <text x="305" y="162" class="label">企业增长顾问</text>
+    <text x="275" y="203" class="text">景和增长实验室</text>
+    <text x="275" y="238" class="text2">品牌定位 · 增长陪跑 · 团队培训</text>
+    <circle cx="580" cy="85" r="64" fill="#fff" opacity=".42"/>
+    <text x="536" y="192" font-size="22" fill="#145c4a" font-weight="900">139 6718 2305</text>
+
+    <g transform="translate(800 20)">
+      <rect width="430" height="520" rx="34" fill="#ffffff" filter="url(#softShadow)"/>
+      <rect x="28" y="24" width="374" height="472" rx="22" fill="#f6fbf8"/>
+      <text x="48" y="58" font-size="20" fill="#0f172a" font-weight="800">9:41</text>
+      <text x="184" y="60" font-size="25" fill="#0f172a" font-weight="900">电子名片</text>
+      <rect x="48" y="92" width="334" height="160" rx="22" fill="url(#classicBg)" stroke="#bddbcf" stroke-width="2"/>
+      <circle cx="118" cy="172" r="54" fill="#fff" stroke="#f0c36a" stroke-width="4"/>
+      <circle cx="118" cy="172" r="45" fill="url(#avatarMan)"/>
+      <text x="196" y="150" font-size="34" fill="#0f442b" font-weight="900">高先生</text>
+      <rect x="198" y="164" width="112" height="30" rx="15" fill="#145c4a"/>
+      <text x="216" y="185" font-size="16" fill="#fff" font-weight="900">企业增长顾问</text>
+      <text x="198" y="218" font-size="19" fill="#172033">景和增长实验室</text>
+      <rect x="62" y="236" width="306" height="58" rx="15" fill="#fff" filter="url(#cardShadow)"/>
+      <circle cx="106" cy="265" r="19" fill="#145c4a"/><text x="99" y="273" font-size="18" fill="#fff">电</text>
+      <circle cx="181" cy="265" r="19" fill="#145c4a"/><text x="174" y="273" font-size="18" fill="#fff">微</text>
+      <circle cx="256" cy="265" r="19" fill="#145c4a"/><text x="249" y="273" font-size="18" fill="#fff">邮</text>
+      <circle cx="331" cy="265" r="19" fill="#145c4a"/><text x="324" y="273" font-size="18" fill="#fff">留</text>
+      <rect x="62" y="318" width="306" height="74" rx="14" fill="#fff"/>
+      <text x="82" y="348" class="sectionTitle">服务介绍</text>
+      <text x="82" y="376" class="sectionBody">专注企业增长策略与落地执行。</text>
+      <rect x="62" y="408" width="306" height="60" rx="14" fill="#fff"/>
+      <text x="82" y="441" class="sectionTitle">联系方式 + 二维码</text>
+    </g>
+  </g>
+
+  <!-- Row 2 Store -->
+  <g transform="translate(80 820)">
+    <text x="0" y="-34" class="rowTitle">B. 门店名片风：本地门店、到店预约、服务项目明显</text>
+    <text x="0" y="0" class="rowNote">重点：让客户知道“去哪家店、做什么服务、怎么联系到店”。</text>
+
+    <rect x="0" y="38" width="650" height="230" rx="34" fill="url(#storeBg)" stroke="#9ad7ad" stroke-width="3" filter="url(#cardShadow)"/>
+    <rect x="24" y="66" width="138" height="138" rx="26" fill="#fff"/>
+    <circle cx="93" cy="135" r="54" fill="url(#avatarWoman)"/>
+    <path d="M56 128c8-50 72-58 84-5c-22-16-55-14-84 5z" fill="#321b12"/>
+    <circle cx="93" cy="136" r="29" fill="#ffe6d5"/>
+    <text x="198" y="112" class="name">林店长</text>
+    <rect x="200" y="132" width="118" height="45" rx="22" fill="#11924d"/>
+    <text x="226" y="162" class="label">门店店长</text>
+    <text x="198" y="203" class="text">若晴美学工作室 · 湘江店</text>
+    <text x="198" y="238" class="text2">同城服务 · 预约到店 · 售后跟进</text>
+    <rect x="500" y="66" width="112" height="52" rx="12" fill="#11924d"/>
+    <text x="528" y="99" class="label">到店</text>
+
+    <g transform="translate(800 20)">
+      <rect width="430" height="520" rx="34" fill="#ffffff" filter="url(#softShadow)"/>
+      <rect x="28" y="24" width="374" height="472" rx="22" fill="#f3fbf5"/>
+      <text x="184" y="60" font-size="25" fill="#0f172a" font-weight="900">门店名片</text>
+      <rect x="48" y="92" width="334" height="150" rx="22" fill="url(#storeBg)" stroke="#9ad7ad" stroke-width="2"/>
+      <rect x="68" y="116" width="96" height="96" rx="20" fill="#fff"/>
+      <circle cx="116" cy="164" r="38" fill="url(#avatarWoman)"/>
+      <text x="190" y="144" font-size="32" fill="#0f442b" font-weight="900">林店长</text>
+      <rect x="192" y="158" width="92" height="28" rx="14" fill="#11924d"/>
+      <text x="210" y="178" font-size="15" fill="#fff" font-weight="900">门店店长</text>
+      <text x="190" y="208" font-size="18" fill="#172033">若晴美学工作室</text>
+      <rect x="62" y="262" width="92" height="58" rx="14" fill="#11924d"/><text x="83" y="297" font-size="18" fill="#fff">电话</text>
+      <rect x="169" y="262" width="92" height="58" rx="14" fill="#11924d"/><text x="190" y="297" font-size="18" fill="#fff">微信</text>
+      <rect x="276" y="262" width="92" height="58" rx="14" fill="#11924d"/><text x="297" y="297" font-size="18" fill="#fff">留资</text>
+      <rect x="62" y="344" width="306" height="60" rx="14" fill="#fff"/>
+      <text x="82" y="378" class="sectionTitle">门店服务项目</text>
+      <rect x="62" y="420" width="306" height="48" rx="14" fill="#fff"/>
+      <text x="82" y="451" class="sectionBody">同城服务 · 到店前先沟通</text>
+    </g>
+  </g>
+
+  <!-- Row 3 Expert -->
+  <g transform="translate(80 1420)">
+    <text x="0" y="-34" class="rowTitle">C. 专家个人品牌风：深色高级、强调专业背书和成果</text>
+    <text x="0" y="0" class="rowNote">重点：像个人品牌主页，适合课程、陪跑、专业咨询。</text>
+
+    <rect x="0" y="38" width="650" height="230" rx="34" fill="url(#expertBg)" filter="url(#cardShadow)"/>
+    <circle cx="150" cy="153" r="82" fill="#fff" opacity=".96"/>
+    <circle cx="150" cy="153" r="68" fill="#d8ccff"/>
+    <path d="M100 222c12-42 88-42 100 0" fill="#1f1148"/>
+    <circle cx="150" cy="141" r="34" fill="#ffe1c8"/>
+    <text x="280" y="112" class="nameWhite">陈老师</text>
+    <rect x="282" y="132" width="130" height="45" rx="22" fill="#f4d06f"/>
+    <text x="306" y="162" font-size="20" fill="#32156d" font-weight="900">增长专家</text>
+    <text x="280" y="203" class="whiteText text">个人品牌 / 工作室</text>
+    <text x="280" y="238" class="mutedWhite text2">方法论 · 案例成果 · 一对一陪跑</text>
+    <text x="530" y="102" font-size="48" fill="#fff" opacity=".18" font-weight="900">PRO</text>
+
+    <g transform="translate(800 20)">
+      <rect width="430" height="520" rx="34" fill="#ffffff" filter="url(#softShadow)"/>
+      <rect x="28" y="24" width="374" height="472" rx="22" fill="#f8f5ff"/>
+      <text x="174" y="60" font-size="25" fill="#0f172a" font-weight="900">专家介绍</text>
+      <rect x="48" y="92" width="334" height="168" rx="22" fill="url(#expertBg)"/>
+      <circle cx="118" cy="176" r="50" fill="#fff"/>
+      <circle cx="118" cy="176" r="40" fill="#d8ccff"/>
+      <text x="190" y="150" font-size="32" fill="#fff" font-weight="900">陈老师</text>
+      <rect x="192" y="164" width="92" height="28" rx="14" fill="#f4d06f"/>
+      <text x="210" y="184" font-size="15" fill="#32156d" font-weight="900">增长专家</text>
+      <text x="190" y="215" font-size="18" fill="#fff">案例成果 · 陪跑服务</text>
+      <rect x="62" y="286" width="94" height="74" rx="14" fill="#fff"/><text x="82" y="330" font-size="18" fill="#6545d6" font-weight="900">成果</text>
+      <rect x="168" y="286" width="94" height="74" rx="14" fill="#fff"/><text x="188" y="330" font-size="18" fill="#6545d6" font-weight="900">领域</text>
+      <rect x="274" y="286" width="94" height="74" rx="14" fill="#fff"/><text x="294" y="330" font-size="18" fill="#6545d6" font-weight="900">咨询</text>
+      <rect x="62" y="386" width="306" height="82" rx="14" fill="#fff"/>
+      <text x="82" y="420" class="sectionTitle">擅长领域 / 服务成果</text>
+      <text x="82" y="450" class="sectionBody">用案例和方法论建立信任。</text>
+    </g>
+  </g>
+
+  <!-- Row 4 WeChat Simple -->
+  <g transform="translate(80 2020)">
+    <text x="0" y="-34" class="rowTitle">D. 简洁微信风：轻量、干净、方便转发给朋友</text>
+    <text x="0" y="0" class="rowNote">重点：少字段，像个人微信名片，适合快速转介绍。</text>
+
+    <rect x="0" y="38" width="650" height="210" rx="34" fill="url(#wechatBg)" stroke="#e2e8f0" stroke-width="3" filter="url(#cardShadow)"/>
+    <circle cx="125" cy="143" r="66" fill="#e2e8f0"/>
+    <circle cx="125" cy="143" r="52" fill="#dbeafe"/>
+    <text x="230" y="114" class="nameDark">周顾问</text>
+    <text x="230" y="154" class="text">有需要可以直接联系我</text>
+    <rect x="230" y="176" width="120" height="40" rx="20" fill="#172033"/>
+    <text x="260" y="202" class="label">保障顾问</text>
+    <rect x="495" y="76" width="86" height="86" rx="20" fill="#f1f5f9"/>
+    <text x="515" y="128" font-size="20" fill="#64748b">微信</text>
+
+    <g transform="translate(800 20)">
+      <rect width="430" height="520" rx="34" fill="#ffffff" filter="url(#softShadow)"/>
+      <rect x="28" y="24" width="374" height="472" rx="22" fill="#f6f8fb"/>
+      <text x="174" y="60" font-size="25" fill="#0f172a" font-weight="900">微信名片</text>
+      <rect x="62" y="92" width="306" height="178" rx="22" fill="#ffffff" stroke="#e5eaf0" stroke-width="2"/>
+      <circle cx="215" cy="148" r="46" fill="#dbeafe"/>
+      <text x="176" y="224" font-size="32" fill="#172033" font-weight="900">周顾问</text>
+      <text x="145" y="254" font-size="18" fill="#64748b">轻量转发 · 复制微信</text>
+      <rect x="80" y="296" width="128" height="58" rx="29" fill="#172033"/><text x="116" y="332" font-size="18" fill="#fff">微信</text>
+      <rect x="222" y="296" width="128" height="58" rx="29" fill="#172033"/><text x="258" y="332" font-size="18" fill="#fff">邮箱</text>
+      <rect x="62" y="382" width="306" height="86" rx="14" fill="#fff"/>
+      <text x="82" y="416" class="sectionTitle">一句话介绍</text>
+      <text x="82" y="448" class="sectionBody">把我推荐给朋友时，直接转发这张名片。</text>
+    </g>
+  </g>
+</svg>
