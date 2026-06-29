@@ -277,14 +277,14 @@ function drawBusinessCardPreview(ctx, card, avatarPath) {
   ctx.setFillStyle(bg);
   ctx.fillRect(0, 0, width, height);
 
-  const outerX = 58;
-  const outerY = 82;
-  const outerW = 484;
-  const outerH = 266;
-  const innerX = 82;
-  const innerY = 106;
-  const innerW = 436;
-  const innerH = 194;
+  const outerX = 42;
+  const outerY = 42;
+  const outerW = 516;
+  const outerH = 370;
+  const innerX = 68;
+  const innerY = 68;
+  const innerW = 464;
+  const innerH = 252;
 
   fillRoundRect(ctx, outerX, outerY, outerW, outerH, 26, "#ffffff");
   ctx.setStrokeStyle(palette.border);
@@ -302,51 +302,62 @@ function drawBusinessCardPreview(ctx, card, avatarPath) {
 
   ctx.setFillStyle("rgba(255,255,255,0.14)");
   ctx.beginPath();
-  ctx.arc(innerX + innerW - 48, innerY + 38, 52, 0, Math.PI * 2);
+  ctx.arc(innerX + innerW - 46, innerY + 42, 64, 0, Math.PI * 2);
   ctx.fill();
 
-  drawCircleAvatar(ctx, avatarPath, card, innerX + 28, innerY + 38, 82, palette);
+  drawCircleAvatar(ctx, avatarPath, card, innerX + 28, innerY + 46, 92, palette);
 
   ctx.setFillStyle(palette.text);
-  ctx.setFontSize(42);
-  drawOneLine(ctx, card.name || "电子名片", innerX + 138, innerY + 68, 250);
+  ctx.setFontSize(46);
+  drawOneLine(ctx, card.name || "电子名片", innerX + 146, innerY + 74, 244);
 
   ctx.setFillStyle(palette.subText);
   ctx.setFontSize(24);
-  drawOneLine(ctx, card.role || "个人顾问", innerX + 140, innerY + 104, 220);
+  drawOneLine(ctx, card.role || "个人顾问", innerX + 148, innerY + 112, 220);
 
-  fillRoundRect(ctx, innerX + 140, innerY + 118, 138, 32, 16, palette.chipBg);
+  fillRoundRect(ctx, innerX + 148, innerY + 128, 140, 34, 17, palette.chipBg);
   ctx.setFillStyle(palette.chipText);
   ctx.setFontSize(20);
-  drawOneLine(ctx, card.templateName || "电子名片", innerX + 162, innerY + 141, 94);
+  drawOneLine(ctx, card.templateName || "电子名片", innerX + 170, innerY + 152, 96);
 
   ctx.setFillStyle(palette.subText);
-  ctx.setFontSize(21);
-  drawOneLine(ctx, card.company || "个人服务", innerX + 30, innerY + 146, 240);
-  drawOneLine(ctx, card.contactLine || "电话 / 微信", innerX + 30, innerY + 174, 300);
+  ctx.setFontSize(22);
+  drawOneLine(ctx, card.company || "个人服务", innerX + 30, innerY + 188, 290);
+  drawOneLine(ctx, card.contactLine || "电话 / 微信", innerX + 30, innerY + 218, 326);
 
   const chips = String(card.serviceScope || "专业服务")
     .split(/[\/,，、\s]+/)
     .filter(Boolean)
     .slice(0, 3);
   chips.forEach((chip, index) => {
-    const x = innerX + 30 + index * 116;
-    fillRoundRect(ctx, x, outerY + outerH - 44, 94, 28, 14, "#f6f8fb");
+    const x = innerX + 30 + index * 118;
+    fillRoundRect(ctx, x, innerY + innerH - 38, 96, 28, 14, "rgba(255,255,255,0.9)");
     ctx.setFillStyle("#5b6676");
     ctx.setFontSize(18);
-    drawOneLine(ctx, chip, x + 16, outerY + outerH - 24, 62);
+    drawOneLine(ctx, chip, x + 16, innerY + innerH - 18, 64);
   });
 
-  fillRoundRect(ctx, innerX + innerW - 68, innerY + 120, 48, 58, 10, palette.qrBg);
+  fillRoundRect(ctx, innerX + innerW - 72, innerY + 154, 52, 64, 10, palette.qrBg);
   ctx.setFillStyle(palette.qrText);
   ctx.setTextAlign("center");
   ctx.setFontSize(22);
-  ctx.fillText("码", innerX + innerW - 44, innerY + 158);
+  ctx.fillText("码", innerX + innerW - 46, innerY + 196);
   ctx.setTextAlign("left");
+
+  ctx.setFillStyle("#111827");
+  ctx.setFontSize(34);
+  drawOneLine(ctx, card.templateName || "电子名片", outerX + 28, innerY + innerH + 52, 190);
+  ctx.setFillStyle("#667085");
+  ctx.setFontSize(23);
+  drawOneLine(ctx, card.serviceScope || card.role || "适合快速转发和客户沟通", outerX + 28, innerY + innerH + 88, 360);
+  fillRoundRect(ctx, outerX + outerW - 96, innerY + innerH + 42, 66, 40, 20, "#eef6ff");
+  ctx.setFillStyle("#1677ff");
+  ctx.setFontSize(22);
+  drawOneLine(ctx, "查看", outerX + outerW - 78, innerY + innerH + 69, 40);
 
   ctx.setFillStyle("#667085");
   ctx.setFontSize(24);
-  drawOneLine(ctx, SHARE_CARD_FOOTER, 118, 388, 364);
+  drawOneLine(ctx, SHARE_CARD_FOOTER, 62, 450, 476);
 }
 
 async function generateNativeShareImage(page, canvasId, source = {}) {

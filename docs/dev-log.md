@@ -8051,3 +8051,18 @@
 - 小程序 JSON 解析：通过。
 - `python3 -m compileall backend`：通过。
 - `./.venv312/bin/python -m pytest backend/tests/test_app.py -q`：134 passed。
+
+## 2026-06-29 电子名片分享图改为 5:4 模板卡
+
+本轮修正：
+
+- 电子名片分享图不再把横向名片缩成小条，改为 5:4 卡片内的模板卡结构。
+- 白色外卡占主要区域，上半部分展示完整名片视觉，下半部分展示模板名称、适用说明和查看入口。
+- 名片内部头像、姓名、职位、模板标签、公司/联系方式、服务标签和二维码占位重新排布，避免内容挤压变形。
+
+验证：
+
+- 小程序全部 JS `node --check`：通过。
+- 小程序 JSON 解析：通过。
+- `python3 -m compileall backend`：通过。
+- `./.venv312/bin/python -m pytest backend/tests/test_app.py -q`：134 passed。
