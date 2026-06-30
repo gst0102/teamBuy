@@ -956,6 +956,41 @@ def test_property_batch_parse_and_create_keeps_upstream_private(client):
     assert note["phone"] is None
 
 
+def test_property_batch_parse_numbered_rental_list_with_contacts(client):
+    owner = client.post("/api/auth/mock-login", json={"nickname": "挂牌清单用户", "openid": "openid_property_batch_numbered"}).json()["data"]
+    raw_text = "\n".join(
+        [
+            "挂牌",
+            "1）松涛路200弄朝南次卧3000",
+            "2）松涛路200弄50号301次卧3100",
+            "3）汤臣四期次卧一室户3100",
+            "4)玉兰4期122号1401次卧2500",
+            "5)万科500号410一室户3500",
+            "6）申源苑4号701主卧3380",
+            "汤臣四期大厅一室户3700",
+            "电话15201882219。",
+        ]
+    )
+
+    parsed_res = client.post(
+        "/api/notes/property-batch/parse",
+        json={"ownerUserId": owner["id"], "rawText": raw_text},
+    )
+
+    assert parsed_res.status_code == 200
+    parsed = parsed_res.json()["data"]
+    assert parsed["detectedCount"] == 7
+    titles = [item["title"] for item in parsed["candidates"]]
+    assert "松涛路200弄 · 朝南次卧" in titles
+    assert "松涛路200弄50号301 · 次卧" in titles
+    assert "汤臣四期 · 次卧" in titles
+    assert "玉兰4期122号1401 · 次卧" in titles
+    assert "万科500号410 · 一室户" in titles
+    assert "申源苑4号701 · 主卧" in titles
+    assert "汤臣四期 · 大厅一室户" in titles
+    assert parsed["privacySummary"]["upstreamPhones"] == ["15201882219"]
+
+
 def test_note_preview_view_updates_note_list_stats(client):
     owner = client.post("/api/auth/mock-login", json={"nickname": "资料发布者", "openid": "openid_note_view_owner"}).json()["data"]
     viewer = client.post("/api/auth/mock-login", json={"nickname": "客户访客", "openid": "openid_note_view_customer"}).json()["data"]
@@ -2774,6 +2809,74 @@ def test_wecom_archive_bind_code_binds_external_user_before_note(client, monkeyp
     assert binding.bindSource == "bind_code"
     assert any("松涛路200弄" in item["body"] for item in notes)
     assert not any(item["externalUserId"] == "wm_archive_bind_code" for item in pending)
+
+
+def test_wecom_archive_import_auto_splits_property_batch_for_bound_user(client, monkeypatch):
+    monkeypatch.setattr(settings, "admin_token", "archive-admin")
+    user = client.post(
+        "/api/auth/mock-login",
+        json={"nickname": "归档批量房源用户", "openid": "openid_archive_property_batch"},
+    ).json()["data"]
+    service = client.app.dependency_overrides[get_app_service]()
+    service.repo.save_wecom_identity_binding(
+        WecomIdentityBinding(
+            id="binding_archive_property_batch",
+            sourceType="wecom_external_user",
+            externalUserId="wm_archive_property_batch",
+            ownerUserId=user["id"],
+            ownerOpenid=user["openid"],
+            bindSource="test",
+            createdAt=now_iso(),
+            updatedAt=now_iso(),
+        )
+    )
+    raw_text = "\n".join(
+        [
+            "挂牌",
+            "1）松涛路200弄朝南次卧3000",
+            "2）松涛路200弄50号301次卧3100",
+            "3）汤臣四期次卧一室户3100",
+            "4)玉兰4期122号1401次卧2500",
+            "5)万科500号410一室户3500",
+            "6）申源苑4号701主卧3380",
+            "汤臣四期大厅一室户3700",
+            "电话15201882219。",
+        ]
+    )
+    payload = {
+        "corpId": "ww_archive_property_batch",
+        "messages": [
+            {
+                "seq": 361,
+                "msgid": "archive_property_batch_001",
+                "action": "send",
+                "from": "wm_archive_property_batch",
+                "tolist": ["user_sales"],
+                "msgtime": 1781725170000,
+                "msgtype": "text",
+                "decryptedPayload": {
+                    "msgtype": "text",
+                    "text": {"content": raw_text},
+                },
+            }
+        ],
+    }
+
+    saved = client.post("/api/wecom/archive/mock-messages", json=payload, headers={"X-Admin-Token": "archive-admin"})
+    processed = client.post("/api/wecom/archive/process", headers={"X-Admin-Token": "archive-admin"})
+    notes = client.get("/api/notes", params={"ownerUserId": user["id"]}).json()["data"]
+    property_notes = [
+        item for item in notes
+        if (item.get("visibilityConfig") or {}).get("sourceType") == "property_batch_text"
+    ]
+
+    assert saved.status_code == 200
+    assert processed.status_code == 200
+    assert processed.json()["data"]["processed"][0]["propertyBatchCount"] == 7
+    assert len(property_notes) == 7
+    assert any(item["title"] == "松涛路200弄 · 朝南次卧" for item in property_notes)
+    assert any(item["title"] == "汤臣四期 · 大厅一室户" for item in property_notes)
+    assert all(item["visibilityConfig"]["recognitionConfidence"]["level"] == "high" for item in property_notes)
 
 
 def test_wecom_archive_process_parses_note_items(client, monkeypatch):

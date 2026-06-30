@@ -604,7 +604,12 @@ Page({
     wx.setClipboardData({
       data: bindMessage,
       success: () => {
-        wx.showToast({ title: "绑定话术已复制", icon: "none" });
+        wx.showModal({
+          title: "绑定资料助手",
+          content: "绑定话术已复制。请先添加企业微信里的「资料整理助手」，打开聊天后粘贴发送。绑定成功后，再把房源、资料、图片转发给它。",
+          confirmText: "知道了",
+          showCancel: false
+        });
       }
     });
   },

@@ -483,6 +483,42 @@ class AppService:
             content_object = self.content_object_adapter.from_wecom_batch(batch, batch_messages)
             content_object = self._enrich_internal_miniapp_content(content_object)
             owner_user_id = self._resolve_owner_user_id_for_external(batch.externalUserId)
+            property_batch_result = self._try_create_import_property_batch(owner_user_id, content_object, batch.id, batch.rawMessageIds)
+            if property_batch_result:
+                count = property_batch_result["createdCount"]
+                notes = property_batch_result["notes"]
+                batch.titleCandidate = f"批量房源 {count}套"
+                batch.generatedNoteId = notes[0].id if notes else None
+                batch.status = "claimed"
+                batch.claimedByUserId = owner_user_id
+                batch.errorMessage = None
+                batch.updatedAt = now_iso()
+                skill_run = SkillRun(
+                    id=new_id("skill_run"),
+                    skillId="property-batch-import",
+                    status="success",
+                    inputSnapshot={
+                        **content_object.model_dump(),
+                        "importBatchId": batch.id,
+                        "rawMessageIds": batch.rawMessageIds,
+                        "detectedCount": count,
+                        "mediaWarningCount": media_warning_count,
+                    },
+                    outputRef=batch.generatedNoteId or batch.id,
+                    modelProvider="rule",
+                    startedAt=batch.createdAt,
+                    endedAt=now_iso(),
+                )
+                notification = self.notification_service.build_notification(
+                    batch,
+                    channel=notification_channel,
+                    media_warning_count=media_warning_count,
+                )
+                self.repo.save_raw_messages(batch_messages)
+                self.repo.save_import_batch(batch)
+                self.repo.save_import_notification(notification)
+                self.repo.save_skill_run(skill_run)
+                return notification
             note_result = self._run_import_skill(owner_user_id, content_object)
             card = self._build_card_from_note_draft(batch, note_result.noteDraft, content_object)
             note = self._build_user_note_from_draft(batch, note_result.noteDraft, card.id)
@@ -654,12 +690,8 @@ class AppService:
         current_base = ""
         current_features: list[str] = []
         for line in lines:
-            clean = re.sub(r"^[0-9一二三四五六七八九十]+[，,、.．]\s*", "", line).strip()
+            clean = re.sub(r"^[0-9一二三四五六七八九十]+[）)、，,、.．]\s*", "", line).strip()
             if not clean or re.search(r"1[3-9]\d{9}", clean) and len(clean) < 40:
-                continue
-            if re.search(r"(苑|园|府|里|城|公寓|小区|花园).{0,12}(号|栋|幢|座|室|户|房)", clean) and not re.search(r"1[3-9]\d{9}", clean):
-                current_base = clean
-                current_features = self._property_features_from_text(clean)
                 continue
             if current_base:
                 unit = self._property_candidate_from_unit_line(current_base, clean, public_tags, private_tags, common_private, current_features, len(candidates))
@@ -671,6 +703,10 @@ class AppService:
                 candidates.append(direct)
                 current_base = ""
                 current_features = []
+                continue
+            if re.search(r"(苑|园|府|里|城|公寓|小区|花园).{0,12}(号|栋|幢|座|室|户|房)", clean) and not re.search(r"1[3-9]\d{9}", clean):
+                current_base = clean
+                current_features = self._property_features_from_text(clean)
         unique: list[dict] = []
         seen: set[str] = set()
         for item in candidates:
@@ -769,7 +805,7 @@ class AppService:
     def _property_candidate_from_direct_line(self, line: str, public_tags: list[str], private_tags: list[str], private_data: dict, index: int) -> dict | None:
         if re.search(r"1[3-9]\d{9}", line):
             return None
-        match = re.search(r"(.{2,36}?)(北次阁楼|主卧独卫|[A-Z]?[东西南北]?一房|阁楼|两房|一室户|[A-Z]室)(?:[^\d]{0,8})(\d{3,5})(?:元|/月|已空|，|,|$)", line)
+        match = re.search(r"(.{2,40}?)(朝南次卧|北次阁楼|主卧独卫|大厅一室户|[东西南北]?次卧|主卧|[A-Z]?[东西南北]?一房|阁楼|两房|一室户|[A-Z]室)(?:[^\d]{0,8})(\d{3,5})(?:元|/月|已空|，|,|$)", line)
         if not match:
             return None
         base_title = match.group(1).strip(" 🎉，,")
@@ -819,6 +855,11 @@ class AppService:
                 "structuredData": structured_data,
                 "conversionConfig": self._default_conversion_config("property_listing"),
                 "tags": self._unique_strings(["房产", "房源", *(candidate.get("publicTags") or [])]),
+                "recognitionConfidence": {
+                    "level": "high",
+                    "source": "property_batch_parser",
+                    "matchedFields": ["community", "layout", "price"],
+                },
                 "privateData": candidate.get("privateData") or {},
                 "privateTags": candidate.get("privateTags") or [],
                 "batchImport": {"candidateId": candidate.get("candidateId"), "rawTextLength": len(raw_text)},
@@ -1203,6 +1244,71 @@ class AppService:
                 media_result = self._download_and_attach_archive_media(content_object, archive_client)
                 content_object = self._enrich_internal_miniapp_content(content_object)
                 owner_user_id = self._resolve_owner_user_id_for_external(primary.fromUser)
+                property_batch_result = self._try_create_import_property_batch(
+                    owner_user_id,
+                    content_object,
+                    None,
+                    [item.id for item in group_messages],
+                )
+                if property_batch_result:
+                    count = property_batch_result["createdCount"]
+                    notes = property_batch_result["notes"]
+                    batch = self._build_archive_import_batch(primary, f"批量房源 {count}套", group_messages)
+                    batch.generatedNoteId = notes[0].id if notes else None
+                    batch.status = "claimed"
+                    batch.claimedByUserId = owner_user_id
+                    batch.updatedAt = now_iso()
+                    for note in notes:
+                        note.importBatchId = batch.id
+                        note.sourceRefs = [item.id for item in group_messages]
+                        note.updatedAt = now_iso()
+                        self.repo.save_user_note(note)
+                    skill_run = SkillRun(
+                        id=new_id("skill_run"),
+                        skillId="property-batch-import",
+                        status="success",
+                        inputSnapshot={
+                            **content_object.model_dump(),
+                            "wecomArchiveMessageIds": [item.id for item in group_messages],
+                            "archiveSeqs": [item.seq for item in group_messages],
+                            "archiveMsgIds": [item.msgId for item in group_messages],
+                            "archiveMedia": media_result,
+                            "detectedCount": count,
+                        },
+                        outputRef=batch.generatedNoteId or batch.id,
+                        modelProvider="rule",
+                        startedAt=batch.createdAt,
+                        endedAt=now_iso(),
+                    )
+                    processed_at = now_iso()
+                    for message in group_messages:
+                        message.generatedNoteId = batch.generatedNoteId
+                        message.generatedCardId = None
+                        message.processedAt = processed_at
+                        message.processError = None
+                    self.repo.save_import_batch(batch)
+                    self.repo.save_skill_run(skill_run)
+                    self.repo.save_wecom_archive_messages(group_messages)
+                    notification = self.notification_service.build_notification(batch, channel="wecom")
+                    notification.resultPath = self.build_import_claim_link(batch.id)["pagePath"]
+                    notification.actions = [
+                        {"key": "open-result", "label": "查看批量房源", "path": notification.resultPath}
+                    ]
+                    self.repo.save_import_notification(notification)
+                    processed.append(
+                        {
+                            "archiveMessageId": primary.id,
+                            "archiveMessageIds": [item.id for item in group_messages],
+                            "seq": primary.seq,
+                            "seqs": [item.seq for item in group_messages],
+                            "noteId": batch.generatedNoteId,
+                            "cardId": None,
+                            "propertyBatchCount": count,
+                            "media": media_result,
+                            "notification": notification.model_dump(),
+                        }
+                    )
+                    continue
                 note_result = self._run_import_skill(owner_user_id, content_object)
                 batch = self._build_archive_import_batch(primary, note_result.noteDraft.title, group_messages)
                 card = self._build_card_from_note_draft(batch, note_result.noteDraft, content_object)
@@ -1537,6 +1643,48 @@ class AppService:
         if self._should_light_bookmark(content_object):
             return self.skill_router_service.run_link_bookmark(owner_user_id, content_object)
         return self.skill_router_service.run_content_to_note(owner_user_id, content_object)
+
+    def _try_create_import_property_batch(
+        self,
+        owner_user_id: str,
+        content_object: ContentObjectPayload,
+        import_batch_id: str | None,
+        source_refs: list[str],
+    ) -> dict | None:
+        if owner_user_id == "unclaimed" or not self.repo.get_user(owner_user_id):
+            return None
+        raw_text = "\n".join(block for block in content_object.textBlocks if str(block or "").strip()).strip()
+        if not raw_text or not self._looks_like_property_batch_text(raw_text):
+            return None
+        parsed = self._parse_property_batch_text(raw_text)
+        candidates = [item for item in parsed.get("candidates", []) if item.get("selected")]
+        if len(candidates) < 2:
+            return None
+        notes: list[UserNote] = []
+        for candidate in candidates:
+            note = self._create_property_note_from_batch_candidate(owner_user_id, raw_text, candidate)
+            note.importBatchId = import_batch_id
+            note.sourceRefs = source_refs
+            note.updatedAt = now_iso()
+            self.repo.save_user_note(note)
+            notes.append(note)
+        return {
+            "createdCount": len(notes),
+            "notes": notes,
+            "parseResult": parsed,
+        }
+
+    def _looks_like_property_batch_text(self, raw_text: str) -> bool:
+        lines = [line.strip() for line in re.split(r"[\r\n]+", raw_text) if line.strip()]
+        numbered_count = sum(1 for line in lines if re.match(r"^[0-9一二三四五六七八九十]+[）)、，,、.．]", line))
+        rent_line_count = sum(
+            1
+            for line in lines
+            if re.search(r"(次卧|主卧|一室户|一房|两房|三房|阁楼|独卫|大厅).{0,12}\d{3,5}(?:元|/月|已空|，|,|$)", line)
+        )
+        has_contact = bool(re.search(r"1[3-9]\d{9}", raw_text))
+        has_property_context = bool(re.search(r"(挂牌|房源|看房|中介费|小区|苑|园|府|里|城|公寓|号|栋|幢|室|户)", raw_text))
+        return has_property_context and (numbered_count >= 2 or rent_line_count >= 2) and (has_contact or rent_line_count >= 3)
 
     def _enrich_internal_miniapp_content(self, content_object: ContentObjectPayload) -> ContentObjectPayload:
         miniapp = content_object.metadata.get("miniapp") if isinstance(content_object.metadata, dict) else None
