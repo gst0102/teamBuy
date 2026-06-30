@@ -50,6 +50,7 @@ WECOM_EXTERNAL_BINDING_SOURCE = "wecom_external_user"
 WECOM_BIND_INTENT_SOURCE = "wecom_bind_intent"
 WECOM_BIND_INTENT_PENDING = "pending_assistant_bind"
 WECOM_BIND_INTENT_CONSUMED = "consumed_assistant_bind"
+WECOM_BIND_CODE_PATTERN = re.compile(r"\bTB-[A-Z0-9]{6}\b", re.IGNORECASE)
 IMPORT_CLAIM_TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60
 CONVERSION_CONFIG_KEYS = {
     "showContactPhone",
@@ -301,11 +302,12 @@ class AppService:
         if not user:
             raise HTTPException(status_code=404, detail="用户不存在")
         now = now_iso()
+        bind_code = self._new_wecom_bind_code()
         expires_at = datetime.now(tz=SHANGHAI) + timedelta(seconds=max(60, settings.wecom_bind_intent_ttl_seconds))
         intent = WecomIdentityBinding(
             id=f"wecom_bind_intent_{new_id('intent')}",
             sourceType=WECOM_BIND_INTENT_SOURCE,
-            externalUserId=f"pending:{user.id}:{uuid4().hex}",
+            externalUserId=f"pending:{user.id}:{bind_code}:{uuid4().hex}",
             ownerUserId=user.id,
             ownerOpenid=user.openid,
             bindSource=WECOM_BIND_INTENT_PENDING,
@@ -317,6 +319,8 @@ class AppService:
         self.repo.save_wecom_identity_binding(intent)
         return {
             "intentId": intent.id,
+            "bindCode": bind_code,
+            "bindMessage": f"绑定资料助手 {bind_code}",
             "ownerUserId": user.id,
             "ownerOpenid": user.openid,
             "expiresAt": expires_at.isoformat(),
@@ -432,11 +436,16 @@ class AppService:
                 createdAt=now_iso(),
             )
             raw_messages.append(raw_message)
+        bind_result = self._consume_wecom_bind_code_from_raw_messages(raw_messages)
+        raw_messages = bind_result["remainingMessages"]
+        if bind_result["consumedMessages"]:
+            self.repo.save_raw_messages(bind_result["consumedMessages"])
         if not raw_messages:
             return {
-                "message": "没有新的企业微信客服消息需要导入",
+                "message": bind_result["message"] or "没有新的企业微信客服消息需要导入",
                 "importBatchIds": [],
                 "deduplicatedCount": len(existing_wecom_msg_ids),
+                "bindResult": bind_result["result"],
             }
 
         new_batches = self.aggregator.aggregate(raw_messages)
@@ -455,6 +464,7 @@ class AppService:
             "message": notification.message,
             "importBatchIds": [item.id for item in new_batches],
             "deduplicatedCount": len(existing_wecom_msg_ids),
+            "bindResult": bind_result["result"],
             "notifications": [item.model_dump() for item in notifications],
         }
 
@@ -1171,6 +1181,24 @@ class AppService:
             group_messages = sorted(group, key=lambda item: item.seq)
             primary = group_messages[0]
             try:
+                bind_result = self._consume_wecom_bind_code_from_archive_messages(primary.fromUser, group_messages)
+                if bind_result["consumedMessages"]:
+                    processed_at = now_iso()
+                    for message in bind_result["consumedMessages"]:
+                        message.generatedNoteId = "wecom_bind_code"
+                        message.processedAt = processed_at
+                        message.processError = None
+                    self.repo.save_wecom_archive_messages(bind_result["consumedMessages"])
+                group_messages = bind_result["remainingMessages"]
+                if not group_messages:
+                    processed.append(
+                        {
+                            "archiveMessageIds": [message.id for message in bind_result["consumedMessages"]],
+                            "bindResult": bind_result["result"],
+                        }
+                    )
+                    continue
+                primary = group_messages[0]
                 content_object = self._build_archive_content_object(group_messages)
                 media_result = self._download_and_attach_archive_media(content_object, archive_client)
                 content_object = self._enrich_internal_miniapp_content(content_object)
@@ -1730,6 +1758,120 @@ class AppService:
         text = "\n".join(content_object.textBlocks)
         deep_keywords = ["整理链接", "链接总结", "文章总结", "整理文章", "总结文章", "提炼", "做笔记"]
         return not any(keyword in text for keyword in deep_keywords)
+
+    def _new_wecom_bind_code(self) -> str:
+        active_codes = {
+            self._wecom_bind_code_from_intent(item)
+            for item in self._active_wecom_bind_intents()
+        }
+        for _ in range(10):
+            code = f"TB-{uuid4().hex[:6].upper()}"
+            if code not in active_codes:
+                return code
+        return f"TB-{uuid4().hex[:6].upper()}"
+
+    def _find_wecom_bind_code(self, text: str | None) -> str | None:
+        match = WECOM_BIND_CODE_PATTERN.search(text or "")
+        return match.group(0).upper() if match else None
+
+    def _wecom_bind_code_from_intent(self, intent: WecomIdentityBinding) -> str | None:
+        parts = (intent.externalUserId or "").split(":")
+        if len(parts) >= 3 and parts[0] == "pending":
+            return parts[2].upper()
+        return None
+
+    def _consume_wecom_bind_code(
+        self,
+        bind_code: str | None,
+        external_user_id: str | None,
+    ) -> dict | None:
+        if not bind_code or not external_user_id or external_user_id == "archive_unknown":
+            return None
+        code = bind_code.upper()
+        existing = self.repo.get_wecom_identity_binding(WECOM_EXTERNAL_BINDING_SOURCE, external_user_id)
+        if existing:
+            return {
+                "status": "already_bound",
+                "bindCode": code,
+                "ownerUserId": existing.ownerUserId,
+            }
+        matches = [
+            item
+            for item in self._active_wecom_bind_intents()
+            if self._wecom_bind_code_from_intent(item) == code
+        ]
+        if len(matches) != 1:
+            return {"status": "not_found_or_expired", "bindCode": code}
+        intent = matches[0]
+        owner = self.repo.get_user(intent.ownerUserId)
+        if not owner:
+            return {"status": "owner_missing", "bindCode": code}
+        now = now_iso()
+        self._save_wecom_identity_binding(
+            external_user_id=external_user_id,
+            owner_user_id=owner.id,
+            import_batch_id=None,
+            bind_source="bind_code",
+        )
+        consumed = intent.model_copy(
+            update={
+                "bindSource": WECOM_BIND_INTENT_CONSUMED,
+                "lastImportBatchId": external_user_id,
+                "updatedAt": now,
+            }
+        )
+        self.repo.save_wecom_identity_binding(consumed)
+        return {
+            "status": "bound",
+            "bindCode": code,
+            "ownerUserId": owner.id,
+            "ownerOpenid": owner.openid,
+        }
+
+    def _consume_wecom_bind_code_from_raw_messages(self, messages: list[RawMessage]) -> dict:
+        remaining: list[RawMessage] = []
+        consumed: list[RawMessage] = []
+        result: dict | None = None
+        for message in messages:
+            code = None
+            if message.msgType == "text":
+                code = self._find_wecom_bind_code(str(message.content.get("text") or ""))
+            if code:
+                consumed.append(message)
+                result = result or self._consume_wecom_bind_code(code, message.externalUserId)
+                continue
+            remaining.append(message)
+        return {
+            "remainingMessages": remaining,
+            "consumedMessages": consumed,
+            "result": result,
+            "message": "资料助手绑定成功，后续发送资料会自动入库" if result and result.get("status") in {"bound", "already_bound"} else None,
+        }
+
+    def _consume_wecom_bind_code_from_archive_messages(
+        self,
+        external_user_id: str | None,
+        messages: list[WecomArchiveMessage],
+    ) -> dict:
+        remaining: list[WecomArchiveMessage] = []
+        consumed: list[WecomArchiveMessage] = []
+        result: dict | None = None
+        for message in messages:
+            parsed = self.content_object_adapter.from_wecom_archive_message(message)
+            code = next(
+                (self._find_wecom_bind_code(block) for block in parsed.textBlocks if self._find_wecom_bind_code(block)),
+                None,
+            )
+            if code:
+                consumed.append(message)
+                result = result or self._consume_wecom_bind_code(code, external_user_id or message.fromUser)
+                continue
+            remaining.append(message)
+        return {
+            "remainingMessages": remaining,
+            "consumedMessages": consumed,
+            "result": result,
+        }
 
     def _resolve_owner_user_id_for_external(self, external_user_id: str | None) -> str:
         if not external_user_id or external_user_id == "archive_unknown":

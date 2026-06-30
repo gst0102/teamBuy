@@ -588,12 +588,28 @@ Page({
       return;
     }
     try {
-      await api.createWecomBindIntent(currentUser.id);
+      const response = await api.createWecomBindIntent(currentUser.id);
+      const bindMessage = response && response.data && response.data.bindMessage;
+      if (bindMessage) {
+        await this.copyWecomBindMessage(bindMessage);
+      }
       console.info("wecom assistant bind intent created");
     } catch (error) {
       console.warn("wecom assistant bind intent failed", error);
       wx.showToast({ title: "登录状态异常，请稍后再试", icon: "none" });
     }
+  },
+  copyWecomBindMessage(bindMessage) {
+    return new Promise((resolve, reject) => {
+      wx.setClipboardData({
+        data: bindMessage,
+        success: () => {
+          wx.showToast({ title: "绑定话术已复制", icon: "none" });
+          resolve();
+        },
+        fail: reject
+      });
+    });
   },
   handleContactComplete(event) {
     const detail = (event && event.detail) || {};
@@ -601,7 +617,7 @@ Page({
     if (code === 0 || code === -3006) return;
     const messages = {
       "-3002": "联系按钮配置读取失败",
-      "-3004": "需要允许微信身份后才能添加",
+      "-3004": "绑定话术已复制，发给助手即可",
       "-3005": "联系请求发送失败",
       "-3008": "当前按钮还没有配置接待成员"
     };

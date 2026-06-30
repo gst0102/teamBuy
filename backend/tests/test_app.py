@@ -2672,6 +2672,110 @@ def test_wecom_bind_intent_does_not_auto_claim_when_multiple_active(client, monk
     assert any(item["externalUserId"] == "external_bind_ambiguous" for item in pending)
 
 
+def test_wecom_bind_code_binds_external_user_before_import(client, monkeypatch):
+    monkeypatch.setattr(settings, "wecom_bind_intent_ttl_seconds", 3600)
+    user = client.post(
+        "/api/auth/mock-login",
+        json={"nickname": "绑定码用户", "openid": "openid_bind_code"},
+    ).json()["data"]
+    intent = client.post("/api/auth/wecom-bind-intent", json={"userId": user["id"]}).json()["data"]
+    service = client.app.dependency_overrides[get_app_service]()
+
+    bind_response = service.trigger_sync_response_import(
+        {
+            "msg_list": [
+                {
+                    "msgid": "bind_code_msg_001",
+                    "external_userid": "external_bind_code",
+                    "token": "conv_bind_code",
+                    "msgtype": "text",
+                    "text": {"content": intent["bindMessage"]},
+                }
+            ]
+        },
+        notification_channel="mock",
+    )
+    import_response = client.post(
+        "/api/wecom/mock-sync",
+        json={"externalUserId": "external_bind_code", "conversationId": "conv_bind_code_note", "fixture": "note"},
+    )
+    notes = client.get("/api/notes", params={"ownerUserId": user["id"]}).json()["data"]
+    pending = client.get("/api/imports/pending").json()["data"]
+    binding = service.repo.get_wecom_identity_binding("wecom_external_user", "external_bind_code")
+
+    assert bind_response["bindResult"]["status"] == "bound"
+    assert bind_response["importBatchIds"] == []
+    assert import_response.status_code == 200
+    assert binding is not None
+    assert binding.ownerUserId == user["id"]
+    assert binding.bindSource == "bind_code"
+    assert any(item["ownerUserId"] == user["id"] and "城南花园" in item["body"] for item in notes)
+    assert not any(item["externalUserId"] == "external_bind_code" for item in pending)
+
+
+def test_wecom_archive_bind_code_binds_external_user_before_note(client, monkeypatch):
+    monkeypatch.setattr(settings, "admin_token", "archive-admin")
+    monkeypatch.setattr(settings, "wecom_bind_intent_ttl_seconds", 3600)
+    user = client.post(
+        "/api/auth/mock-login",
+        json={"nickname": "归档绑定码用户", "openid": "openid_archive_bind_code"},
+    ).json()["data"]
+    intent = client.post("/api/auth/wecom-bind-intent", json={"userId": user["id"]}).json()["data"]
+    payload = {
+        "corpId": "ww_archive_bind_code",
+        "messages": [
+            {
+                "seq": 351,
+                "msgid": "archive_bind_code_text_001",
+                "action": "send",
+                "from": "wm_archive_bind_code",
+                "tolist": ["user_sales"],
+                "msgtime": 1781725160000,
+                "msgtype": "text",
+                "decryptedPayload": {
+                    "msgtype": "text",
+                    "text": {"content": intent["bindMessage"]},
+                },
+            },
+            {
+                "seq": 352,
+                "msgid": "archive_bind_code_note_001",
+                "action": "send",
+                "from": "wm_archive_bind_code",
+                "tolist": ["user_sales"],
+                "msgtime": 1781725168000,
+                "msgtype": "note",
+                "decryptedPayload": {
+                    "msgtype": "note",
+                    "info": {
+                        "items": [
+                            {
+                                "msg_type": "text",
+                                "content": "{\"content\":\"小区：松涛路200弄\\n户型：朝南次卧\\n价格：3000\"}",
+                            }
+                        ]
+                    },
+                },
+            },
+        ],
+    }
+
+    saved = client.post("/api/wecom/archive/mock-messages", json=payload, headers={"X-Admin-Token": "archive-admin"})
+    processed = client.post("/api/wecom/archive/process", headers={"X-Admin-Token": "archive-admin"})
+    notes = client.get("/api/notes", params={"ownerUserId": user["id"]}).json()["data"]
+    pending = client.get("/api/imports/pending").json()["data"]
+    service = client.app.dependency_overrides[get_app_service]()
+    binding = service.repo.get_wecom_identity_binding("wecom_external_user", "wm_archive_bind_code")
+
+    assert saved.status_code == 200
+    assert processed.status_code == 200
+    assert binding is not None
+    assert binding.ownerUserId == user["id"]
+    assert binding.bindSource == "bind_code"
+    assert any("松涛路200弄" in item["body"] for item in notes)
+    assert not any(item["externalUserId"] == "wm_archive_bind_code" for item in pending)
+
+
 def test_wecom_archive_process_parses_note_items(client, monkeypatch):
     monkeypatch.setattr(settings, "admin_token", "archive-admin")
     payload = {
