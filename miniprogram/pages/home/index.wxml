@@ -101,17 +101,7 @@
           <view class="assistant-action-title">{{homeUi.primaryAction.label}}</view>
           <view class="assistant-action-desc">{{homeUi.primaryAction.desc}}</view>
         </view>
-        <view class="contact-overlay" wx:if="{{homeUi.primaryAction.contact}}">
-          <cell
-            plugid="{{propertyContactPluginId}}"
-            styleType="{{2}}"
-            blockStyle="button"
-            buttonText="{{1}}"
-            buttonStyle="light"
-            bind:startmessage="handleContactStart"
-            bind:completemessage="handleContactComplete"
-          />
-        </view>
+        <view class="contact-overlay" wx:if="{{homeUi.primaryAction.contact}}" catchtap="handleAssistantBindTap"></view>
       </view>
       <view class="assistant-action" data-action="{{homeUi.secondaryAction.action}}" bindtap="handleQuickAction">
         <view class="assistant-action-mark">{{homeUi.secondaryAction.icon}}</view>
@@ -127,17 +117,7 @@
           <view class="assistant-action-desc">{{homeUi.wecomSub}}</view>
         </view>
         <view class="assistant-action-chip">添加</view>
-        <view class="contact-overlay">
-          <cell
-            plugid="{{propertyContactPluginId}}"
-            styleType="{{2}}"
-            blockStyle="button"
-            buttonText="{{1}}"
-            buttonStyle="light"
-            bind:startmessage="handleContactStart"
-            bind:completemessage="handleContactComplete"
-          />
-        </view>
+        <view class="contact-overlay" catchtap="handleAssistantBindTap"></view>
       </view>
     </view>
   </view>

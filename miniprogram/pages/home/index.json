@@ -2,7 +2,6 @@
   "navigationBarTitleText": "\u60a6\u4eab\u4e92\u52a8\u5b9d",
   "navigationStyle": "custom",
   "usingComponents": {
-    "custom-nav": "/components/custom-nav/index",
-    "cell": "plugin://contactPlugin/cell"
+    "custom-nav": "/components/custom-nav/index"
   }
 }

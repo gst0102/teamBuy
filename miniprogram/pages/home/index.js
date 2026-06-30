@@ -581,7 +581,7 @@ Page({
   focusPropertyAssistant() {
     wx.pageScrollTo({ scrollTop: 0, duration: 260 });
   },
-  handleContactStart() {
+  handleAssistantBindTap() {
     const currentUser = getCurrentUser();
     if (!currentUser || !currentUser.id) {
       wx.navigateTo({ url: "/pages/login/index" });
@@ -590,9 +590,10 @@ Page({
     api.createWecomBindIntent(currentUser.id).then((response) => {
       const bindMessage = response && response.data && response.data.bindMessage;
       if (bindMessage) {
-        this._lastWecomBindMessage = bindMessage;
+        this.copyWecomBindMessage(bindMessage);
+        return;
       }
-      console.info("wecom assistant bind intent created");
+      wx.showToast({ title: "绑定码生成失败", icon: "none" });
     }).catch((error) => {
       console.warn("wecom assistant bind intent failed", error);
       wx.showToast({ title: "登录状态异常，请稍后再试", icon: "none" });
@@ -607,28 +608,9 @@ Page({
       }
     });
   },
-  handleContactComplete(event) {
-    const detail = (event && event.detail) || {};
-    const code = Number(detail.errcode);
-    if (code === 0 || code === -3006) return;
-    if (code === -3004 && this._lastWecomBindMessage) {
-      this.copyWecomBindMessage(this._lastWecomBindMessage);
-      return;
-    }
-    const messages = {
-      "-3002": "联系按钮配置读取失败",
-      "-3004": "绑定话术已复制，发给助手即可",
-      "-3005": "联系请求发送失败",
-      "-3008": "当前按钮还没有配置接待成员"
-    };
-    wx.showToast({
-      title: messages[String(code)] || "暂时无法添加企微",
-      icon: "none"
-    });
-  },
   openPropertyAssistant() {
     this.focusPropertyAssistant();
-    wx.showToast({ title: "请点顶部按钮添加企业微信", icon: "none" });
+    this.handleAssistantBindTap();
   },
   openShowcasesForMode() {
     wx.switchTab({ url: "/pages/showcases/index" });
