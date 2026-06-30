@@ -301,6 +301,34 @@ class AppService:
         user = self.repo.get_user(user_id)
         if not user:
             raise HTTPException(status_code=404, detail="用户不存在")
+        existing_binding = self._find_wecom_external_binding_for_owner(user.id, user.openid)
+        if existing_binding:
+            return {
+                "status": "bound",
+                "bound": True,
+                "ownerUserId": user.id,
+                "ownerOpenid": user.openid,
+                "externalUserId": existing_binding.externalUserId,
+                "bindSource": existing_binding.bindSource,
+                "bindMessage": "",
+            }
+        existing_intent = self._find_active_wecom_bind_intent_for_owner(user.id)
+        if existing_intent:
+            bind_code = self._wecom_bind_code_from_intent(existing_intent)
+            if bind_code:
+                expires_at = self._wecom_bind_intent_expires_at(existing_intent)
+                return {
+                    "status": "pending",
+                    "bound": False,
+                    "intentId": existing_intent.id,
+                    "bindCode": bind_code,
+                    "bindMessage": f"绑定资料助手 {bind_code}",
+                    "ownerUserId": user.id,
+                    "ownerOpenid": user.openid,
+                    "expiresAt": expires_at.isoformat(),
+                    "ttlSeconds": max(60, settings.wecom_bind_intent_ttl_seconds),
+                    "reused": True,
+                }
         now = now_iso()
         bind_code = self._new_wecom_bind_code()
         expires_at = datetime.now(tz=SHANGHAI) + timedelta(seconds=max(60, settings.wecom_bind_intent_ttl_seconds))
@@ -318,6 +346,8 @@ class AppService:
         )
         self.repo.save_wecom_identity_binding(intent)
         return {
+            "status": "pending",
+            "bound": False,
             "intentId": intent.id,
             "bindCode": bind_code,
             "bindMessage": f"绑定资料助手 {bind_code}",
@@ -325,6 +355,7 @@ class AppService:
             "ownerOpenid": user.openid,
             "expiresAt": expires_at.isoformat(),
             "ttlSeconds": max(60, settings.wecom_bind_intent_ttl_seconds),
+            "reused": False,
         }
 
     def _upsert_user_by_openid(
@@ -2088,6 +2119,28 @@ class AppService:
                 continue
             active.append(item)
         return sorted(active, key=lambda item: item.updatedAt, reverse=True)
+
+    def _find_wecom_external_binding_for_owner(self, owner_user_id: str, owner_openid: str | None = None) -> WecomIdentityBinding | None:
+        for item in sorted(self.repo.load().wecom_identity_bindings, key=lambda row: row.updatedAt, reverse=True):
+            if item.sourceType != WECOM_EXTERNAL_BINDING_SOURCE:
+                continue
+            if item.ownerUserId == owner_user_id or (owner_openid and item.ownerOpenid == owner_openid):
+                return item
+        return None
+
+    def _find_active_wecom_bind_intent_for_owner(self, owner_user_id: str) -> WecomIdentityBinding | None:
+        for item in self._active_wecom_bind_intents():
+            if item.ownerUserId == owner_user_id and self._wecom_bind_code_from_intent(item):
+                return item
+        return None
+
+    def _wecom_bind_intent_expires_at(self, intent: WecomIdentityBinding) -> datetime:
+        ttl_seconds = max(60, settings.wecom_bind_intent_ttl_seconds)
+        try:
+            base = parse_iso(intent.updatedAt).astimezone(SHANGHAI)
+        except Exception:
+            base = datetime.now(tz=SHANGHAI)
+        return base + timedelta(seconds=ttl_seconds)
 
     def _apply_resolved_owner(self, batch: ImportBatch, card: Card, note: UserNote, owner_user_id: str) -> None:
         if owner_user_id == "unclaimed":

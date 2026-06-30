@@ -2748,6 +2748,55 @@ def test_wecom_bind_code_binds_external_user_before_import(client, monkeypatch):
     assert not any(item["externalUserId"] == "external_bind_code" for item in pending)
 
 
+def test_wecom_bind_intent_reuses_active_code_for_same_user(client, monkeypatch):
+    monkeypatch.setattr(settings, "wecom_bind_intent_ttl_seconds", 3600)
+    user = client.post(
+        "/api/auth/mock-login",
+        json={"nickname": "复用绑定码用户", "openid": "openid_bind_code_reuse"},
+    ).json()["data"]
+
+    first = client.post("/api/auth/wecom-bind-intent", json={"userId": user["id"]}).json()["data"]
+    second = client.post("/api/auth/wecom-bind-intent", json={"userId": user["id"]}).json()["data"]
+
+    assert first["status"] == "pending"
+    assert second["status"] == "pending"
+    assert second["reused"] is True
+    assert second["intentId"] == first["intentId"]
+    assert second["bindCode"] == first["bindCode"]
+    assert second["bindMessage"] == first["bindMessage"]
+
+
+def test_wecom_bind_intent_returns_bound_after_external_binding(client, monkeypatch):
+    monkeypatch.setattr(settings, "wecom_bind_intent_ttl_seconds", 3600)
+    user = client.post(
+        "/api/auth/mock-login",
+        json={"nickname": "已绑定用户", "openid": "openid_bind_code_done"},
+    ).json()["data"]
+    intent = client.post("/api/auth/wecom-bind-intent", json={"userId": user["id"]}).json()["data"]
+    service = client.app.dependency_overrides[get_app_service]()
+
+    service.trigger_sync_response_import(
+        {
+            "msg_list": [
+                {
+                    "msgid": "bind_code_done_msg_001",
+                    "external_userid": "external_bind_code_done",
+                    "token": "conv_bind_code_done",
+                    "msgtype": "text",
+                    "text": {"content": intent["bindMessage"]},
+                }
+            ]
+        },
+        notification_channel="mock",
+    )
+    after = client.post("/api/auth/wecom-bind-intent", json={"userId": user["id"]}).json()["data"]
+
+    assert after["status"] == "bound"
+    assert after["bound"] is True
+    assert after["bindMessage"] == ""
+    assert after["externalUserId"] == "external_bind_code_done"
+
+
 def test_wecom_archive_bind_code_binds_external_user_before_note(client, monkeypatch):
     monkeypatch.setattr(settings, "admin_token", "archive-admin")
     monkeypatch.setattr(settings, "wecom_bind_intent_ttl_seconds", 3600)

@@ -592,7 +592,17 @@ Page({
       return;
     }
     api.createWecomBindIntent(currentUser.id).then((response) => {
-      const bindMessage = response && response.data && response.data.bindMessage;
+      const data = (response && response.data) || {};
+      if (data.bound || data.status === "bound") {
+        wx.showModal({
+          title: "资料助手已绑定",
+          content: "你已经绑定过企业微信资料助手。现在可以直接把房源、资料、图片转发给它，系统会自动进入你的资料库。",
+          confirmText: "知道了",
+          showCancel: false
+        });
+        return;
+      }
+      const bindMessage = data.bindMessage;
       if (bindMessage) {
         this.copyWecomBindMessage(bindMessage);
         return;
