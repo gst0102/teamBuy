@@ -24,3 +24,7 @@ class UserProfileUpdateRequest(BaseModel):
     avatarUrl: str | None = None
     wechat: str | None = None
     phone: str | None = None
+
+
+class WecomBindIntentRequest(BaseModel):
+    userId: str

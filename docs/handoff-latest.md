@@ -5678,3 +5678,72 @@ rm -rf
 - 小程序审核和真实用户只走生产环境。
 - 企业群机器人运营卡片生成器、每日运营内容、测试群 webhook、群二维码挂载、资源上架实验、外部群二维码/黄页爬取、支付分销和推广内容，先走测试环境。
 - 分享封面生成器和机器人运营卡片生成器只复用底层绘图能力，上层模板必须隔离，避免再次破坏正式小程序分享卡片。
+
+## 2026-06-30 最新交接：企业微信助手首次导入自动绑定
+
+本轮修复用户 12:12 房源资料进入 `unclaimed` 的根因方向。
+
+关键结论：
+
+- 小程序 `openid` 和企业微信会话归档 `external_userid` 不是同一个 ID，不能直接相等匹配。
+- 新增“添加企业微信助手前创建绑定意图”的流程：
+  - 小程序首页企业微信助手入口触发 `handleContactStart`。
+  - 前端调用 `POST /api/auth/wecom-bind-intent`。
+  - 后端为当前小程序用户保存短期绑定意图。
+  - 下一条未绑定企业微信消息进入导入链路时，如果只有一个有效绑定意图，自动建立 `external_userid -> ownerUserId/openid` 绑定。
+  - 资料直接归属到该用户，不再进入待认领。
+- 如果多个用户同时有有效绑定意图，系统不自动绑定，继续进入待认领，防止串用户。
+- 保留待认领和认领链接作为兜底。
+
+改动文件：
+
+- `backend/app/core/config.py`
+- `backend/.env.example`
+- `backend/app/schemas/auth.py`
+- `backend/app/api/routes_auth.py`
+- `backend/app/services/app_service.py`
+- `backend/tests/test_app.py`
+- `miniprogram/services/api.js`
+- `miniprogram/pages/home/index.js`
+- `docs/dev-log.md`
+- `docs/decisions.md`
+- `docs/pitfalls.md`
+
+新增配置：
+
+- `WECOM_BIND_INTENT_TTL_SECONDS=3600`
+- `WECOM_UNCLAIMED_DEFAULT_OWNER_USER_ID=`
+
+验证：
+
+- 小程序全部 JS `node --check`：通过。
+- 小程序 JSON 解析：通过。
+- `python3 -m compileall backend/app`：通过。
+- `./.venv312/bin/python -m pytest backend/tests/test_app.py -q`：136 passed。
+
+注意：
+
+- 这次代码能解决“后续用户从小程序点击添加助手后，第一条资料自动入库”的问题。
+- 2026-06-30 12:12 已经进入 `unclaimed` 的历史资料不会因为这次代码自动迁移，仍需通过认领或生产数据修复归属。
+- 小程序端改了首页逻辑，用户需要重新上传体验版 / 审核版后，前端自动创建绑定意图才会生效。
+## 2026-06-30 资源工具与商机雷达方案已补
+
+已新增文档：
+
+- `docs/stage2-docs/33-resource-tools-opportunity-radar-v1.md`
+
+核心口径：
+
+- 资源工具是机会雷达入口，不是单纯工具集合。
+- 商机线索模块拆为：
+  - 需求广场
+  - 我的机会
+  - 订阅
+  - 已保存
+- 线索来源前台弱化，后台完整保留。
+- 与四个工作台打通的含义是“用户回应机会时生成自己的资料页/合集”，不是把第三方线索直接做成合集。
+
+后续建议：
+
+- 继续讨论商机线索页面效果图和交互。
+- 再进入开发前，需要补测试清单与数据结构细化。

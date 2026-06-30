@@ -47,6 +47,9 @@ from app.services.wecom_mock_service import WecomMockService
 LEAD_REMINDER_STATUSES = {"pending", "contacted", "invalid", "paused", "completed"}
 LEAD_CLOSED_STATUSES = {"invalid", "paused", "completed"}
 WECOM_EXTERNAL_BINDING_SOURCE = "wecom_external_user"
+WECOM_BIND_INTENT_SOURCE = "wecom_bind_intent"
+WECOM_BIND_INTENT_PENDING = "pending_assistant_bind"
+WECOM_BIND_INTENT_CONSUMED = "consumed_assistant_bind"
 IMPORT_CLAIM_TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60
 CONVERSION_CONFIG_KEYS = {
     "showContactPhone",
@@ -292,6 +295,33 @@ class AppService:
         user.updatedAt = now_iso()
         self.repo.save_user(user)
         return user
+
+    def create_wecom_bind_intent(self, user_id: str) -> dict:
+        user = self.repo.get_user(user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="用户不存在")
+        now = now_iso()
+        expires_at = datetime.now(tz=SHANGHAI) + timedelta(seconds=max(60, settings.wecom_bind_intent_ttl_seconds))
+        intent = WecomIdentityBinding(
+            id=f"wecom_bind_intent_{new_id('intent')}",
+            sourceType=WECOM_BIND_INTENT_SOURCE,
+            externalUserId=f"pending:{user.id}:{uuid4().hex}",
+            ownerUserId=user.id,
+            ownerOpenid=user.openid,
+            bindSource=WECOM_BIND_INTENT_PENDING,
+            firstImportBatchId=None,
+            lastImportBatchId=None,
+            createdAt=now,
+            updatedAt=now,
+        )
+        self.repo.save_wecom_identity_binding(intent)
+        return {
+            "intentId": intent.id,
+            "ownerUserId": user.id,
+            "ownerOpenid": user.openid,
+            "expiresAt": expires_at.isoformat(),
+            "ttlSeconds": max(60, settings.wecom_bind_intent_ttl_seconds),
+        }
 
     def _upsert_user_by_openid(
         self,
@@ -1706,6 +1736,18 @@ class AppService:
             return "unclaimed"
         binding = self.repo.get_wecom_identity_binding(WECOM_EXTERNAL_BINDING_SOURCE, external_user_id)
         if not binding:
+            intent_owner_user_id = self._consume_wecom_bind_intent(external_user_id)
+            if intent_owner_user_id != "unclaimed":
+                return intent_owner_user_id
+            default_owner_user_id = (settings.wecom_unclaimed_default_owner_user_id or "").strip()
+            if default_owner_user_id and self.repo.get_user(default_owner_user_id):
+                self._save_wecom_identity_binding(
+                    external_user_id=external_user_id,
+                    owner_user_id=default_owner_user_id,
+                    import_batch_id=None,
+                    bind_source="default_owner_for_test",
+                )
+                return default_owner_user_id
             return "unclaimed"
         if binding.ownerOpenid:
             user = self.repo.get_user_by_openid(binding.ownerOpenid)
@@ -1713,6 +1755,49 @@ class AppService:
         if not self.repo.get_user(binding.ownerUserId):
             return "unclaimed"
         return binding.ownerUserId
+
+    def _consume_wecom_bind_intent(self, external_user_id: str) -> str:
+        active_intents = self._active_wecom_bind_intents()
+        if len(active_intents) != 1:
+            return "unclaimed"
+        intent = active_intents[0]
+        owner = self.repo.get_user(intent.ownerUserId)
+        if not owner:
+            return "unclaimed"
+        now = now_iso()
+        self._save_wecom_identity_binding(
+            external_user_id=external_user_id,
+            owner_user_id=owner.id,
+            import_batch_id=None,
+            bind_source="auto_bind_intent",
+        )
+        consumed = intent.model_copy(
+            update={
+                "bindSource": WECOM_BIND_INTENT_CONSUMED,
+                "lastImportBatchId": external_user_id,
+                "updatedAt": now,
+            }
+        )
+        self.repo.save_wecom_identity_binding(consumed)
+        return owner.id
+
+    def _active_wecom_bind_intents(self) -> list[WecomIdentityBinding]:
+        now = datetime.now(tz=SHANGHAI)
+        ttl_seconds = max(60, settings.wecom_bind_intent_ttl_seconds)
+        active: list[WecomIdentityBinding] = []
+        for item in self.repo.load().wecom_identity_bindings:
+            if item.sourceType != WECOM_BIND_INTENT_SOURCE or item.bindSource != WECOM_BIND_INTENT_PENDING:
+                continue
+            try:
+                parsed = parse_iso(item.updatedAt).astimezone(SHANGHAI)
+            except Exception:
+                parsed = None
+            if not parsed or (now - parsed).total_seconds() > ttl_seconds:
+                continue
+            if not self.repo.get_user(item.ownerUserId):
+                continue
+            active.append(item)
+        return sorted(active, key=lambda item: item.updatedAt, reverse=True)
 
     def _apply_resolved_owner(self, batch: ImportBatch, card: Card, note: UserNote, owner_user_id: str) -> None:
         if owner_user_id == "unclaimed":

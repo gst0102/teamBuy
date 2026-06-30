@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from app.api.dependencies import get_app_service
-from app.schemas.auth import MockLoginRequest, UserProfileUpdateRequest, WechatLoginRequest
+from app.schemas.auth import MockLoginRequest, UserProfileUpdateRequest, WechatLoginRequest, WecomBindIntentRequest
 from app.schemas.common import ApiResponse
 from app.services.app_service import AppService
 
@@ -31,3 +31,11 @@ def update_user_profile(
 ):
     user = service.update_user_profile(user_id, payload)
     return ApiResponse(data=user.model_dump())
+
+
+@router.post("/wecom-bind-intent", response_model=ApiResponse[dict])
+def create_wecom_bind_intent(
+    payload: WecomBindIntentRequest,
+    service: AppService = Depends(get_app_service),
+):
+    return ApiResponse(data=service.create_wecom_bind_intent(payload.userId))

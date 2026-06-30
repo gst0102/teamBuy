@@ -65,6 +65,8 @@ class Settings:
     wecom_archive_proxy_password: str = env_value("WECOM_ARCHIVE_PROXY_PASSWORD", "")
     wecom_archive_worker_enabled: bool = env_value("WECOM_ARCHIVE_WORKER_ENABLED", "false").lower() in {"1", "true", "yes"}
     wecom_archive_worker_interval_seconds: int = env_int("WECOM_ARCHIVE_WORKER_INTERVAL_SECONDS", 60)
+    wecom_bind_intent_ttl_seconds: int = env_int("WECOM_BIND_INTENT_TTL_SECONDS", 3600)
+    wecom_unclaimed_default_owner_user_id: str = env_value("WECOM_UNCLAIMED_DEFAULT_OWNER_USER_ID", "")
     robot_gateway_token: str = env_value("ROBOT_GATEWAY_TOKEN", "")
     wecom_group_bot_webhooks: str = env_value("WECOM_GROUP_BOT_WEBHOOKS", "")
     storage_mode: str = env_value("STORAGE_MODE", "mock")

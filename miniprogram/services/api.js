@@ -133,6 +133,14 @@ function claimImportByToken(token, userId) {
   }));
 }
 
+function createWecomBindIntent(userId) {
+  return request({
+    url: "/api/auth/wecom-bind-intent",
+    method: "POST",
+    data: { userId }
+  });
+}
+
 function fetchNotes(params = {}) {
   const query = [];
   if (params.ownerUserId) query.push(`ownerUserId=${params.ownerUserId}`);
@@ -854,6 +862,7 @@ module.exports = {
   fetchPendingImports,
   claimImport,
   claimImportByToken,
+  createWecomBindIntent,
   fetchNotes,
   fetchTagSuggestions,
   createManualNoteDraft,

@@ -581,8 +581,19 @@ Page({
   focusPropertyAssistant() {
     wx.pageScrollTo({ scrollTop: 0, duration: 260 });
   },
-  handleContactStart() {
-    console.info("property contact plugin start");
+  async handleContactStart() {
+    const currentUser = getCurrentUser();
+    if (!currentUser || !currentUser.id) {
+      wx.navigateTo({ url: "/pages/login/index" });
+      return;
+    }
+    try {
+      await api.createWecomBindIntent(currentUser.id);
+      console.info("wecom assistant bind intent created");
+    } catch (error) {
+      console.warn("wecom assistant bind intent failed", error);
+      wx.showToast({ title: "登录状态异常，请稍后再试", icon: "none" });
+    }
   },
   handleContactComplete(event) {
     const detail = (event && event.detail) || {};

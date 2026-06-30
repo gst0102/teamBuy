@@ -2614,6 +2614,64 @@ def test_wecom_identity_mapping_resolves_owner_by_openid(client):
     assert not any(item["externalUserId"] == "external_openid_first" for item in pending)
 
 
+def test_wecom_bind_intent_auto_claims_first_unbound_message(client, monkeypatch):
+    monkeypatch.setattr(settings, "wecom_bind_intent_ttl_seconds", 3600)
+    user = client.post(
+        "/api/auth/mock-login",
+        json={"nickname": "准备绑定用户", "openid": "openid_wecom_bind_intent"},
+    ).json()["data"]
+
+    intent = client.post("/api/auth/wecom-bind-intent", json={"userId": user["id"]})
+    response = client.post(
+        "/api/wecom/mock-sync",
+        json={"externalUserId": "external_bind_intent", "conversationId": "conv_bind_intent", "fixture": "note"},
+    )
+    notes = client.get("/api/notes", params={"ownerUserId": user["id"]}).json()["data"]
+    pending = client.get("/api/imports/pending").json()["data"]
+    service = client.app.dependency_overrides[get_app_service]()
+    binding = service.repo.get_wecom_identity_binding("wecom_external_user", "external_bind_intent")
+    state = service.repo.load()
+    consumed = [
+        item for item in state.wecom_identity_bindings
+        if item.sourceType == "wecom_bind_intent" and item.bindSource == "consumed_assistant_bind"
+    ]
+
+    assert intent.status_code == 200
+    assert response.status_code == 200
+    assert binding is not None
+    assert binding.ownerUserId == user["id"]
+    assert binding.bindSource == "auto_bind_intent"
+    assert consumed
+    assert any(item["ownerUserId"] == user["id"] and "城南花园" in item["body"] for item in notes)
+    assert not any(item["externalUserId"] == "external_bind_intent" for item in pending)
+
+
+def test_wecom_bind_intent_does_not_auto_claim_when_multiple_active(client, monkeypatch):
+    monkeypatch.setattr(settings, "wecom_bind_intent_ttl_seconds", 3600)
+    user_a = client.post(
+        "/api/auth/mock-login",
+        json={"nickname": "绑定用户A", "openid": "openid_bind_a"},
+    ).json()["data"]
+    user_b = client.post(
+        "/api/auth/mock-login",
+        json={"nickname": "绑定用户B", "openid": "openid_bind_b"},
+    ).json()["data"]
+    client.post("/api/auth/wecom-bind-intent", json={"userId": user_a["id"]})
+    client.post("/api/auth/wecom-bind-intent", json={"userId": user_b["id"]})
+
+    response = client.post(
+        "/api/wecom/mock-sync",
+        json={"externalUserId": "external_bind_ambiguous", "conversationId": "conv_bind_ambiguous", "fixture": "note"},
+    )
+    pending = client.get("/api/imports/pending").json()["data"]
+    service = client.app.dependency_overrides[get_app_service]()
+    binding = service.repo.get_wecom_identity_binding("wecom_external_user", "external_bind_ambiguous")
+
+    assert response.status_code == 200
+    assert binding is None
+    assert any(item["externalUserId"] == "external_bind_ambiguous" for item in pending)
+
+
 def test_wecom_archive_process_parses_note_items(client, monkeypatch):
     monkeypatch.setattr(settings, "admin_token", "archive-admin")
     payload = {
