@@ -581,40 +581,40 @@ Page({
   focusPropertyAssistant() {
     wx.pageScrollTo({ scrollTop: 0, duration: 260 });
   },
-  async handleContactStart() {
+  handleContactStart() {
     const currentUser = getCurrentUser();
     if (!currentUser || !currentUser.id) {
       wx.navigateTo({ url: "/pages/login/index" });
       return;
     }
-    try {
-      const response = await api.createWecomBindIntent(currentUser.id);
+    api.createWecomBindIntent(currentUser.id).then((response) => {
       const bindMessage = response && response.data && response.data.bindMessage;
       if (bindMessage) {
-        await this.copyWecomBindMessage(bindMessage);
+        this._lastWecomBindMessage = bindMessage;
       }
       console.info("wecom assistant bind intent created");
-    } catch (error) {
+    }).catch((error) => {
       console.warn("wecom assistant bind intent failed", error);
       wx.showToast({ title: "登录状态异常，请稍后再试", icon: "none" });
-    }
+    });
   },
   copyWecomBindMessage(bindMessage) {
-    return new Promise((resolve, reject) => {
-      wx.setClipboardData({
-        data: bindMessage,
-        success: () => {
-          wx.showToast({ title: "绑定话术已复制", icon: "none" });
-          resolve();
-        },
-        fail: reject
-      });
+    if (!bindMessage) return;
+    wx.setClipboardData({
+      data: bindMessage,
+      success: () => {
+        wx.showToast({ title: "绑定话术已复制", icon: "none" });
+      }
     });
   },
   handleContactComplete(event) {
     const detail = (event && event.detail) || {};
     const code = Number(detail.errcode);
     if (code === 0 || code === -3006) return;
+    if (code === -3004 && this._lastWecomBindMessage) {
+      this.copyWecomBindMessage(this._lastWecomBindMessage);
+      return;
+    }
     const messages = {
       "-3002": "联系按钮配置读取失败",
       "-3004": "绑定话术已复制，发给助手即可",
