@@ -407,6 +407,7 @@ Page({
     assistantBindModalVisible: false,
     assistantBindMessage: "",
     assistantBindCopied: false,
+    assistantBindQrImage: "",
     viewers: [],
     hotResources: []
   },
