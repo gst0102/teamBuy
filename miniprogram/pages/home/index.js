@@ -407,7 +407,7 @@ Page({
     assistantBindModalVisible: false,
     assistantBindMessage: "",
     assistantBindCopied: false,
-    assistantBindQrImage: "",
+    assistantBindQrImage: "/static/wecom/assistant-qrcode.png",
     viewers: [],
     hotResources: []
   },
