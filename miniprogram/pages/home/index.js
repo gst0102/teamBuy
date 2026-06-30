@@ -404,6 +404,9 @@ Page({
     homeOpportunity: buildHomeOpportunity({}, HOME_UI_BY_MODE.property),
     homeRadarEntry: buildHomeRadarEntry(),
     homeStats: buildHomeStats({}, HOME_UI_BY_MODE.property),
+    assistantBindModalVisible: false,
+    assistantBindMessage: "",
+    assistantBindCopied: false,
     viewers: [],
     hotResources: []
   },
@@ -604,15 +607,29 @@ Page({
     wx.setClipboardData({
       data: bindMessage,
       success: () => {
-        wx.showModal({
-          title: "绑定资料助手",
-          content: "绑定话术已复制。请先添加企业微信里的「资料整理助手」，打开聊天后粘贴发送。绑定成功后，再把房源、资料、图片转发给它。",
-          confirmText: "知道了",
-          showCancel: false
+        this.setData({
+          assistantBindModalVisible: true,
+          assistantBindMessage: bindMessage,
+          assistantBindCopied: true
         });
       }
     });
   },
+  handleCopyAssistantBindMessage() {
+    const bindMessage = this.data.assistantBindMessage;
+    if (!bindMessage) return;
+    wx.setClipboardData({
+      data: bindMessage,
+      success: () => {
+        this.setData({ assistantBindCopied: true });
+        wx.showToast({ title: "已复制", icon: "success" });
+      }
+    });
+  },
+  handleCloseAssistantBindModal() {
+    this.setData({ assistantBindModalVisible: false });
+  },
+  noop() {},
   openPropertyAssistant() {
     this.focusPropertyAssistant();
     this.handleAssistantBindTap();

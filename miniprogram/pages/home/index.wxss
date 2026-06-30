@@ -541,6 +541,180 @@
   overflow: hidden;
 }
 
+.bind-guide-mask {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 28rpx;
+  background: rgba(15, 23, 42, 0.48);
+  box-sizing: border-box;
+}
+
+.bind-guide-sheet {
+  width: 100%;
+  max-height: 86vh;
+  overflow-y: auto;
+  padding: 30rpx 30rpx calc(30rpx + env(safe-area-inset-bottom));
+  border-radius: 30rpx 30rpx 24rpx 24rpx;
+  background: #ffffff;
+  box-sizing: border-box;
+  box-shadow: 0 24rpx 80rpx rgba(15, 23, 42, 0.22);
+}
+
+.bind-guide-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24rpx;
+}
+
+.bind-guide-kicker {
+  color: #1677ff;
+  font-size: 22rpx;
+  font-weight: 900;
+  line-height: 1.3;
+}
+
+.bind-guide-title {
+  margin-top: 8rpx;
+  color: #111827;
+  font-size: 34rpx;
+  font-weight: 900;
+  line-height: 1.25;
+}
+
+.bind-guide-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 58rpx;
+  width: 58rpx;
+  height: 58rpx;
+  border-radius: 999rpx;
+  background: #f3f6fb;
+  color: #6b7280;
+  font-size: 38rpx;
+  line-height: 1;
+}
+
+.bind-guide-code {
+  margin-top: 24rpx;
+  padding: 22rpx;
+  border: 1rpx solid #cfe2ff;
+  border-radius: 20rpx;
+  background: linear-gradient(135deg, #f5f9ff, #ffffff);
+}
+
+.bind-guide-code-label {
+  color: #667085;
+  font-size: 21rpx;
+  font-weight: 800;
+  line-height: 1.4;
+}
+
+.bind-guide-code-text {
+  margin-top: 10rpx;
+  color: #111827;
+  font-size: 28rpx;
+  font-weight: 900;
+  line-height: 1.45;
+  word-break: break-all;
+}
+
+.bind-guide-steps {
+  margin-top: 24rpx;
+}
+
+.bind-guide-step {
+  display: grid;
+  grid-template-columns: 46rpx minmax(0, 1fr);
+  gap: 16rpx;
+  padding: 18rpx 0;
+  border-bottom: 1rpx solid #edf1f7;
+}
+
+.bind-guide-step:last-child {
+  border-bottom: 0;
+}
+
+.bind-guide-step-index {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 46rpx;
+  height: 46rpx;
+  border-radius: 999rpx;
+  background: #1677ff;
+  color: #ffffff;
+  font-size: 22rpx;
+  font-weight: 900;
+}
+
+.bind-guide-step-title {
+  color: #111827;
+  font-size: 26rpx;
+  font-weight: 900;
+  line-height: 1.35;
+}
+
+.bind-guide-step-desc {
+  margin-top: 6rpx;
+  color: #667085;
+  font-size: 22rpx;
+  line-height: 1.45;
+}
+
+.bind-guide-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.18fr);
+  gap: 16rpx;
+  margin-top: 26rpx;
+}
+
+.bind-guide-primary,
+.bind-guide-secondary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 84rpx;
+  margin: 0;
+  padding: 0 20rpx;
+  border-radius: 18rpx;
+  font-size: 28rpx;
+  font-weight: 900;
+  line-height: 1;
+  box-sizing: border-box;
+}
+
+.bind-guide-primary::after,
+.bind-guide-secondary::after {
+  border: 0;
+}
+
+.bind-guide-primary {
+  background: #1677ff;
+  color: #ffffff;
+}
+
+.bind-guide-secondary {
+  background: #edf5ff;
+  color: #1677ff;
+}
+
+.bind-guide-foot {
+  margin-top: 18rpx;
+  color: #98a2b3;
+  font-size: 21rpx;
+  line-height: 1.45;
+  text-align: center;
+}
+
 .radar-entry-card {
   display: grid;
   grid-template-columns: 82rpx minmax(0, 1fr) auto;

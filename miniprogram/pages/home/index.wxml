@@ -122,6 +122,53 @@
     </view>
   </view>
 
+  <view wx:if="{{assistantBindModalVisible}}" class="bind-guide-mask" catchtouchmove="noop">
+    <view class="bind-guide-sheet">
+      <view class="bind-guide-head">
+        <view>
+          <view class="bind-guide-kicker">添加资料助手</view>
+          <view class="bind-guide-title">先绑定，再转发资料</view>
+        </view>
+        <view class="bind-guide-close" catchtap="handleCloseAssistantBindModal">×</view>
+      </view>
+
+      <view class="bind-guide-code">
+        <view class="bind-guide-code-label">已复制这句话</view>
+        <view class="bind-guide-code-text">{{assistantBindMessage}}</view>
+      </view>
+
+      <view class="bind-guide-steps">
+        <view class="bind-guide-step">
+          <view class="bind-guide-step-index">1</view>
+          <view>
+            <view class="bind-guide-step-title">添加企业微信里的资料整理助手</view>
+            <view class="bind-guide-step-desc">从企业微信名片、二维码或已保存的联系人里找到它。</view>
+          </view>
+        </view>
+        <view class="bind-guide-step">
+          <view class="bind-guide-step-index">2</view>
+          <view>
+            <view class="bind-guide-step-title">打开聊天框，粘贴并发送</view>
+            <view class="bind-guide-step-desc">发出上面这句话后，系统会把企业微信身份和当前账号绑定。</view>
+          </view>
+        </view>
+        <view class="bind-guide-step">
+          <view class="bind-guide-step-index">3</view>
+          <view>
+            <view class="bind-guide-step-title">以后直接转发房源、资料和图片</view>
+            <view class="bind-guide-step-desc">绑定成功后，再发给助手的内容会自动进入你的资料库。</view>
+          </view>
+        </view>
+      </view>
+
+      <view class="bind-guide-actions">
+        <button class="bind-guide-secondary" catchtap="handleCopyAssistantBindMessage">重新复制</button>
+        <button class="bind-guide-primary" catchtap="handleCloseAssistantBindModal">我去发送</button>
+      </view>
+      <view class="bind-guide-foot">小程序不能替你自动发送消息，需要你在企业微信聊天里手动发送一次。</view>
+    </view>
+  </view>
+
   <view class="panel recent-panel">
     <view class="section-head">
       <view>
