@@ -180,6 +180,13 @@ page {
   box-shadow: 0 16rpx 34rpx rgba(18, 107, 95, 0.22);
 }
 
+.sticky-share[disabled],
+.share-btn[disabled] {
+  background: #edf2f7;
+  color: #8a95a6;
+  box-shadow: none;
+}
+
 .hero {
   position: relative;
   overflow: hidden;
@@ -346,6 +353,76 @@ page {
   font-size: 22rpx;
 }
 
+.property-filter-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14rpx;
+  margin: 12rpx 0 22rpx;
+  padding: 16rpx 0 16rpx 16rpx;
+  border: 1rpx solid #e4e7ec;
+  border-radius: 8rpx;
+  background: #fff;
+  box-sizing: border-box;
+}
+
+.property-filter-row {
+  display: grid;
+  grid-template-columns: 72rpx minmax(0, 1fr);
+  align-items: center;
+  gap: 12rpx;
+  min-height: 54rpx;
+}
+
+.property-filter-label {
+  color: #667085;
+  font-size: 22rpx;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.property-filter-scroll {
+  width: 100%;
+  white-space: nowrap;
+}
+
+.property-filter-options {
+  display: inline-flex;
+  align-items: center;
+  gap: 10rpx;
+  padding-right: 16rpx;
+  box-sizing: border-box;
+}
+
+.property-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6rpx;
+  min-width: 76rpx;
+  height: 48rpx;
+  padding: 0 16rpx;
+  border-radius: 999rpx;
+  color: #42526b;
+  background: #f2f4f7;
+  font-size: 22rpx;
+  font-weight: 800;
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+
+.property-filter-chip.active {
+  color: #fff;
+  background: #1677ff;
+}
+
+.property-filter-count {
+  min-width: 24rpx;
+  color: inherit;
+  font-size: 18rpx;
+  opacity: 0.78;
+  text-align: center;
+}
+
 .featured-actions {
   margin-bottom: 26rpx;
 }
@@ -365,6 +442,20 @@ page {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 16rpx;
+}
+
+.filter-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 108rpx;
+  margin-bottom: 16rpx;
+  border: 1rpx dashed #d0d5dd;
+  border-radius: 8rpx;
+  color: #667085;
+  background: #f9fafb;
+  font-size: 24rpx;
+  text-align: center;
 }
 
 .showcase-grid.layout-grid {

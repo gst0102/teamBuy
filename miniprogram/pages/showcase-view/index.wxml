@@ -14,7 +14,7 @@
         <view class="share-title">客户可见展示页</view>
         <view class="share-sub">发给客户后，对方打开看到这个页面。</view>
       </view>
-      <button class="share-btn" open-type="share">发给客户</button>
+      <button class="share-btn" open-type="share" disabled="{{!shareImageReady}}">{{shareStatusText}}</button>
     </view>
 
     <view wx:if="{{template.id === 'featured_window'}}" class="tpl-page featured-page layout-{{displayLayout}}">
@@ -49,6 +49,29 @@
         <view><strong>{{stats.contact}}</strong><text>{{context.contactMetric}}</text></view>
       </view>
 
+      <view wx:if="{{propertyFilters.length}}" class="property-filter-panel">
+        <view wx:for="{{propertyFilters}}" wx:key="key" wx:for-item="filter" class="property-filter-row">
+          <view class="property-filter-label">{{filter.label}}</view>
+          <scroll-view scroll-x class="property-filter-scroll" show-scrollbar="{{false}}">
+            <view class="property-filter-options">
+              <view
+                wx:for="{{filter.options}}"
+                wx:key="value"
+                wx:for-item="option"
+                class="property-filter-chip {{option.active ? 'active' : ''}}"
+                data-key="{{filter.key}}"
+                data-value="{{option.value}}"
+                data-label="{{option.label}}"
+                bindtap="handlePropertyFilterTap"
+              >
+                <text>{{option.label}}</text>
+                <text wx:if="{{option.count}}" class="property-filter-count">{{option.count}}</text>
+              </view>
+            </view>
+          </scroll-view>
+        </view>
+      </view>
+
       <view class="contact-actions featured-actions">
         <button wx:if="{{page.contactConfig.showWechat && page.contactConfig.wechat}}" bindtap="copyWechat">微信联系</button>
         <button wx:if="{{page.contactConfig.showPhone && page.contactConfig.phone}}" bindtap="callPhone">电话咨询</button>
@@ -57,6 +80,9 @@
       <view class="section-headline">
         <text>{{context.featuredTitle}}</text>
         <text class="more">共{{flatItems.length}}条</text>
+      </view>
+      <view wx:if="{{!flatItems.length && activePropertyFilter.value}}" class="filter-empty">
+        当前筛选暂无房源，可切换其他条件查看。
       </view>
       <view class="showcase-grid layout-{{displayLayout}}">
         <view wx:for="{{flatItems}}" wx:key="noteId" class="showcase-card" bindtap="openNote" data-id="{{item.noteId}}">
@@ -80,7 +106,7 @@
           </view>
         </view>
       </view>
-      <button wx:if="{{canShare}}" class="sticky-share" open-type="share">{{context.shareText}}</button>
+      <button wx:if="{{canShare}}" class="sticky-share" open-type="share" disabled="{{!shareImageReady}}">{{shareImageReady ? context.shareText : shareStatusText}}</button>
     </view>
 
     <view wx:elif="{{template.id === 'moments_story'}}" class="tpl-page story-page layout-{{displayLayout}}">
@@ -139,7 +165,7 @@
           </view>
         </view>
       </view>
-      <button wx:if="{{canShare}}" class="sticky-share warm" open-type="share">{{context.storyShareText}}</button>
+      <button wx:if="{{canShare}}" class="sticky-share warm" open-type="share" disabled="{{!shareImageReady}}">{{shareImageReady ? context.storyShareText : shareStatusText}}</button>
     </view>
 
     <view wx:elif="{{template.id === 'catalog_list'}}" class="tpl-page catalog-page layout-{{displayLayout}}">
@@ -224,7 +250,7 @@
       <view class="trust-strip">
         <text wx:for="{{context.trustItems}}" wx:key="*this">{{item}}</text>
       </view>
-      <button wx:if="{{canShare}}" class="sticky-share teal" open-type="share">{{context.brandShareText}}</button>
+      <button wx:if="{{canShare}}" class="sticky-share teal" open-type="share" disabled="{{!shareImageReady}}">{{shareImageReady ? context.brandShareText : shareStatusText}}</button>
     </view>
 
     <view wx:if="{{context.isProperty}}" class="agent-same-card">

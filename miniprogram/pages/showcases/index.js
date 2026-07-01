@@ -201,6 +201,7 @@ Page({
     user: null,
     allShowcases: [],
     showcases: [],
+    showcaseShareImages: {},
     latestPublished: null,
     loading: false,
     refreshing: false,
@@ -250,11 +251,11 @@ Page({
       const showcases = filterShowcases(allShowcases, this.data.activeShowcaseFilter);
       this.setData({
         allShowcases,
-        showcases,
+        showcases: this.withShowcaseShareState(showcases),
         latestPublished: findLatestPublished(allShowcases),
         loading: false,
         refreshing: !hasFreshCache
-      });
+      }, () => this.prepareShowcaseShareImages(showcases));
     } else {
       this.setData({ loading: true, refreshing: false });
     }
@@ -267,9 +268,9 @@ Page({
       writeShowcaseCache(user.id, mode, rawItems);
       this.setData({
         allShowcases,
-        showcases,
+        showcases: this.withShowcaseShareState(showcases),
         latestPublished: findLatestPublished(allShowcases)
-      });
+      }, () => this.prepareShowcaseShareImages(showcases));
     } catch (error) {
       if (!cached || !cached.items.length) {
         wx.showToast({ title: error.detail || "合集加载失败", icon: "none" });
@@ -282,8 +283,8 @@ Page({
     const activeShowcaseFilter = event.currentTarget.dataset.key || "all";
     this.setData({
       activeShowcaseFilter,
-      showcases: filterShowcases(this.data.allShowcases || [], activeShowcaseFilter)
-    });
+      showcases: this.withShowcaseShareState(filterShowcases(this.data.allShowcases || [], activeShowcaseFilter))
+    }, () => this.prepareShowcaseShareImages(this.data.showcases));
   },
   openSharedShowcase(options = {}) {
     const showcaseId = options.showcaseId || options.id || "";
@@ -344,13 +345,15 @@ Page({
   },
   async prepareShare(event) {
     const dataset = (event && event.currentTarget && event.currentTarget.dataset) || {};
+    const existingImage = (this.data.showcaseShareImages || {})[dataset.id || ""] || "";
     const pendingShare = {
       id: dataset.id || "",
       title: dataset.title || "合集",
       banner: dataset.banner || "",
-      imageUrl: ""
+      imageUrl: existingImage
     };
     this.setData({ pendingShare });
+    if (existingImage) return;
     try {
       const imagePath = await generateTitleShareImage(this, SHOWCASE_SHARE_CANVAS_ID, {
         title: pendingShare.title,
@@ -369,6 +372,55 @@ Page({
         });
       }
     } catch (error) {}
+  },
+  withShowcaseShareState(items = []) {
+    const images = this.data.showcaseShareImages || {};
+    return (items || []).map((item) => {
+      const ready = Boolean(images[item.id]);
+      return {
+        ...item,
+        shareImageReady: ready,
+        shareDisabled: item.status === "published" && !ready,
+        shareStatusText: item.status === "published" ? (ready ? "发客户" : "封面准备中") : "编辑"
+      };
+    });
+  },
+  async prepareShowcaseShareImages(items = []) {
+    const pending = (items || []).filter((item) => item && item.status === "published" && item.id && !(this.data.showcaseShareImages || {})[item.id]);
+    if (!pending.length) return;
+    this.showcaseShareGenerating = this.showcaseShareGenerating || {};
+    for (const item of pending) {
+      if (this.showcaseShareGenerating[item.id]) continue;
+      this.showcaseShareGenerating[item.id] = true;
+      try {
+        const imagePath = await generateTitleShareImage(this, SHOWCASE_SHARE_CANVAS_ID, {
+          title: item.shareTitle || item.name || "合集",
+          badge: "合集",
+          coverUrl: item.shareCoverUrl || item.bannerUrl || "",
+          hint: "打开小程序查看完整合集",
+          growthHint: "我也想做同款",
+          shareTargetLabel: "合集"
+        });
+        if (imagePath) {
+          const showcaseShareImages = { ...(this.data.showcaseShareImages || {}), [item.id]: imagePath };
+          this.setData({
+            showcaseShareImages,
+            allShowcases: this.withShowcaseShareState(this.data.allShowcases || []),
+            showcases: this.withShowcaseShareState(this.data.showcases || [])
+          });
+        }
+      } catch (error) {
+        const markFailed = (row) => row && row.id === item.id
+          ? { ...row, shareImageReady: false, shareDisabled: false, shareStatusText: "重试发客户" }
+          : row;
+        this.setData({
+          allShowcases: (this.data.allShowcases || []).map(markFailed),
+          showcases: (this.data.showcases || []).map(markFailed)
+        });
+      } finally {
+        this.showcaseShareGenerating[item.id] = false;
+      }
+    }
   },
   markShowcaseShared(id) {
     if (!id) return;
@@ -395,7 +447,7 @@ Page({
     const allShowcases = (this.data.allShowcases || []).map(updateItem);
     this.setData({
       allShowcases,
-      showcases: filterShowcases(allShowcases, this.data.activeShowcaseFilter),
+      showcases: this.withShowcaseShareState(filterShowcases(allShowcases, this.data.activeShowcaseFilter)),
       latestPublished: findLatestPublished(allShowcases)
     });
   },
@@ -477,7 +529,7 @@ Page({
     const pending = this.data.pendingShare || {};
     const id = dataset.id || pending.id || "";
     const title = dataset.title || pending.title || "合集";
-    const imageUrl = pending.imageUrl || "";
+    const imageUrl = pending.imageUrl || (this.data.showcaseShareImages || {})[id] || "";
     const user = this.data.user || getCurrentUser();
     if (!id) {
       wx.showToast({ title: "请重新点击发给客户", icon: "none" });

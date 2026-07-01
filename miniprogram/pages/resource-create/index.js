@@ -322,8 +322,10 @@ Page({
         propertyBatchSelectedCount: 0,
         propertyBatchPrivacyText: ""
       });
-      wx.showToast({ title: `已生成${data.createdCount || notes.length}张房源卡`, icon: "success" });
-      this.showSavedBar(notes[0] || {}, `已生成${data.createdCount || notes.length}张房源卡`);
+      const createdCount = data.createdCount || notes.length;
+      const resultText = data.showcaseId ? `已生成${createdCount}张房源卡和合集` : `已生成${createdCount}张房源卡`;
+      wx.showToast({ title: resultText, icon: "success" });
+      this.showSavedBar(notes[0] || {}, resultText);
     } catch (error) {
       wx.hideLoading();
       wx.showToast({ title: error.detail || error.errMsg || "生成失败", icon: "none" });

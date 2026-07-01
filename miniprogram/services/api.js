@@ -1,4 +1,4 @@
-const { request } = require("../utils/request");
+const { buildApiUrl, request } = require("../utils/request");
 const { withCachedMedia, withCachedCards } = require("../utils/media-cache");
 
 function toAbsoluteUrl(url) {
@@ -6,7 +6,11 @@ function toAbsoluteUrl(url) {
   if (/^https?:\/\//i.test(url)) return url;
   const app = getApp();
   const baseUrl = (app && app.globalData && app.globalData.apiBaseUrl) || "";
+  const mediaRoutePrefix = (app && app.globalData && app.globalData.mediaRoutePrefix) || "";
   if (!baseUrl) return url;
+  if (mediaRoutePrefix && url.startsWith("/media")) {
+    return `${baseUrl}${mediaRoutePrefix}${url.slice("/media".length)}`;
+  }
   return `${baseUrl}${url.startsWith("/") ? "" : "/"}${url}`;
 }
 
@@ -530,7 +534,7 @@ function uploadAsset({ filePath, mediaType = "image", ownerUserId = "" }) {
   const app = getApp();
   return new Promise((resolve, reject) => {
     wx.uploadFile({
-      url: `${app.globalData.apiBaseUrl}/api/uploads/asset`,
+      url: buildApiUrl("/api/uploads/asset"),
       filePath,
       name: "file",
       formData: {
@@ -566,7 +570,7 @@ function uploadImageNote({ filePath, ownerUserId = "" }) {
   const app = getApp();
   return new Promise((resolve, reject) => {
     wx.uploadFile({
-      url: `${app.globalData.apiBaseUrl}/api/notes/image-capture`,
+      url: buildApiUrl("/api/notes/image-capture"),
       filePath,
       name: "file",
       formData: {

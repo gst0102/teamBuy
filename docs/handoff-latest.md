@@ -1,5 +1,58 @@
 # teamBuy 阶段性交接归档
 
+## 2026-07-01 本轮交接：批量房源自动生成草稿合集 P0
+
+- 用户提供 `/Users/yiyi/Desktop/房源样本.docx`，其中包含 7 个复杂房源样本：6 个文本批量房源样本、1 个图片房源样本。
+- 本轮先做 P0：批量房源解析生成多条房源资料后，同时自动生成一个合集，方便用户整体发客户。
+- 用户后续确认本次作为 Bug 修复直接在生产环境验证；生产后端已热更新并重启，公网健康检查正常。
+- 本轮已改：
+  - `backend/app/services/app_service.py`
+  - `backend/tests/test_app.py`
+  - `miniprogram/pages/resource-create/index.js`
+  - `docs/dev-log.md`
+  - `docs/decisions.md`
+  - `docs/pitfalls.md`
+  - `docs/handoff-latest.md`
+- 新增后端行为：
+  - 手动批量房源创建 `POST /api/notes/property-batch/create` 会同步生成 `ShowcasePage`。
+  - 企业微信客服同步批量房源导入会同步生成 `ShowcasePage`。
+  - 企业微信会话归档批量房源导入会同步生成 `ShowcasePage`。
+  - 自动合集 `templateId=property_batch_collection`，默认 `draft`，不自动发布。
+  - 自动合集条目引用本次生成的全部房源 `UserNote`。
+  - 自动合集默认不展示电话/微信，避免公开上游电话。
+- 前端变化：
+  - 资源创建页批量房源生成成功后，提示“已生成 N 张房源卡和合集”。
+- P1 已继续完成：
+  - 自动房源合集 `displayConfig.propertyFilters` 会生成区域、户型、价格三组筛选。
+  - 公开展示页房源摘要新增 `propertyMeta`。
+  - 小程序 `showcase-view` 客户页新增筛选胶囊，支持按区域/户型/价格即时过滤。
+  - 筛选只影响当前页面展示，不写回资料、不自动发布。
+- P2 已继续完成：
+  - 图片资料 OCR 识别结果命中批量房源时，会额外生成多套房源和一个草稿合集。
+  - 原图片资料继续保留为 `image_ocr`，只更新 OCR 状态和识别文本。
+  - OCR 生成的房源使用 `sourceType=ocr_property_batch`，并保存 `ocrSourceNoteId` 追溯原图。
+  - OCR 生成的房源继承原图片封面/媒体，合集继续带 P1 筛选能力。
+  - 小程序资料编辑页识别成功后提示“已生成 N 套房源和合集”。
+- 已验证：
+  - 生产容器内确认 `AppService._create_property_batch_showcase` 已加载，OCR 流程已包含 `ocr_property_batch`。
+  - 生产公网 `https://teambuy.lifelove.top/health` 返回正常。
+  - `.venv312/bin/python -m pytest backend/tests/test_app.py -q -k "property_batch"`：3 passed。
+  - `.venv312/bin/python -m pytest backend/tests/test_app.py -q -k "ocr"`：5 passed。
+  - `.venv312/bin/python -m pytest backend/tests -q`：180 passed。
+  - `.venv312/bin/python -m compileall -q backend/app backend/tests`：通过。
+  - `node --check miniprogram/pages/resource-create/index.js`：通过。
+  - `node --check miniprogram/pages/showcase-view/index.js`：通过。
+  - `node --check miniprogram/pages/note-edit/index.js`：通过。
+- 生产部署注意：
+  - 已备份生产文件到 `/home/ubuntu/teamBuy/backend/backups/codex-20260701-102308`。
+  - 本次 Docker 镜像构建卡在系统包更新阶段，最终采用容器内热更新；生产源码目录也已同步。
+  - 如果后续容器在镜像未重建前被删除并重新创建，需重新构建或再次同步本次 `app_service.py`。
+  - 小程序前端代码已本地配置生产域名，但仍需用户通过微信开发者工具预览/上传体验版后，真机才能看到前端筛选 UI 和成功提示。
+- 后续建议：
+  - 下一步用 `房源样本.docx` 中 001-006 建立复杂文本解析回归测试，补 `1️⃣/🏠/💕/宅/独厨独卫/字段块` 等规则。
+  - 样本 007 单独进入图片 OCR 房源解析回归，不和文本 P0 混在一起。
+  - 测试通过前不要部署生产；小程序测试环境需要先完成环境开关，避免开发者工具误打生产 API。
+
 ## 2026-06-29 本轮交接：真实小程序分享封面与底部类目边界复查
 
 - 用户真机反馈：微信小程序分享卡片底部显示“未发布的小程序 开发版”，不是预期的“营销推广”；同时指出企业群机器人测试卡片不是普通微信里的真实小程序分享卡片。

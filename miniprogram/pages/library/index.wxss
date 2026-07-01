@@ -1424,7 +1424,7 @@
 
 .card-actions {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8rpx;
   margin-top: 10rpx;
   color: #1677ff;
@@ -1446,8 +1446,11 @@
 
 .card-actions text,
 .card-actions button {
+  width: 100%;
+  min-width: 0;
+  height: 50rpx;
   min-height: 50rpx;
-  padding: 0 10rpx;
+  padding: 0 8rpx;
   display: inline-flex;
   align-items: center;
   justify-content: center;

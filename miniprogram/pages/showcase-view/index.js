@@ -99,12 +99,42 @@ function summarizePreviewItems(items, notes) {
           ? [data.deadline, data.remark].filter(Boolean).join(" | ")
           : ((note && note.body) || ""),
       priceText: data.price || "",
+      propertyMeta: cardType === "property_listing"
+        ? {
+            area: data.businessArea || data.address || data.community || "",
+            layout: propertyLayoutBucket(data.layout || data.unitName || item.displayTitle || (note && note.title) || ""),
+            price: propertyPriceBucket(data.price || "")
+          }
+        : {},
       productMeta: cardType === "groupbuy_product"
         ? [data.spec, data.pickupMethod, data.pickupLocation, data.deadline ? `截止 ${data.deadline}` : ""].filter(Boolean).slice(0, 4)
         : [],
       productActionText: cardType === "groupbuy_product" ? "查看详情/接龙" : ""
     };
   }).filter((item) => item.noteId);
+}
+
+function propertyLayoutBucket(text) {
+  const value = String(text || "");
+  if (/三房|三室|3房|3室/.test(value)) return "三房";
+  if (/两房|二房|两室|二室|2房|2室/.test(value)) return "两房";
+  if (/主卧/.test(value)) return "主卧";
+  if (/次卧/.test(value)) return "次卧";
+  if (/一室一厅/.test(value)) return "一室一厅";
+  if (/一房|一室|1房|1室|单间/.test(value)) return "一房/单间";
+  if (/loft|复式/i.test(value)) return "Loft/复式";
+  return "";
+}
+
+function propertyPriceBucket(text) {
+  const matches = String(text || "").match(/\d{3,5}/g) || [];
+  if (!matches.length) return "";
+  const price = Math.min(...matches.map((value) => Number(value)).filter((value) => Number.isFinite(value)));
+  if (price < 1000) return "1000以下";
+  if (price < 1500) return "1000-1500";
+  if (price < 2000) return "1500-2000";
+  if (price < 3000) return "2000-3000";
+  return "3000以上";
 }
 
 function flattenSections(sections) {
@@ -123,6 +153,36 @@ function filterItemsForDisplay(items = [], display = {}) {
     return (items || []).filter((item) => item.cardType === "business_card" || item.cardType === "service_offer");
   }
   return items || [];
+}
+
+function normalizePropertyFilters(display = {}) {
+  const groups = Array.isArray(display.propertyFilters) ? display.propertyFilters : [];
+  return groups.map((group) => ({
+    key: String(group.key || ""),
+    label: String(group.label || ""),
+    options: [{ label: "全部", value: "", count: 0 }].concat((group.options || []).map((option) => ({
+      label: option.label || option.value || "",
+      value: option.value || option.label || "",
+      count: option.count || 0
+    })).filter((option) => option.value))
+  })).filter((group) => group.key && group.label && group.options.length > 1);
+}
+
+function applyPropertyFilter(items = [], active = {}) {
+  if (!active || !active.key || !active.value) return items || [];
+  return (items || []).filter((item) => String((item.propertyMeta || {})[active.key] || "") === String(active.value));
+}
+
+function decoratePropertyFilters(groups = [], active = {}) {
+  return (groups || []).map((group) => ({
+    ...group,
+    options: (group.options || []).map((option) => ({
+      ...option,
+      active: active && active.key
+        ? active.key === group.key && active.value === option.value
+        : !option.value
+    }))
+  }));
 }
 
 function formatShowcaseDate(value) {
@@ -243,6 +303,9 @@ Page({
     profileName: "展示页",
     sections: [],
     flatItems: [],
+    allFlatItems: [],
+    propertyFilters: [],
+    activePropertyFilter: { key: "", value: "", label: "" },
     heroItem: null,
     stats: visibleStats([], null),
     context: inferShowcaseContext(null, []),
@@ -256,7 +319,10 @@ Page({
     shareFromUserId: "",
     shareScene: "",
     referrer: "",
-    canShare: true
+    canShare: true,
+    showcaseShareImage: "",
+    shareImageReady: false,
+    shareStatusText: "封面准备中"
   },
   onLoad(options) {
     const id = options.id || options.showcaseId || "";
@@ -300,7 +366,10 @@ Page({
       const display = page.displayConfig || {};
       const template = getShowcaseTemplate(page.templateId);
       const visibleItems = filterItemsForDisplay(page.items || [], display);
-      const sections = buildSections(visibleItems, display.groupBy || "none");
+      const rawPropertyFilters = normalizePropertyFilters(display);
+      const activePropertyFilter = { key: "", value: "", label: "" };
+      const filteredItems = applyPropertyFilter(visibleItems, activePropertyFilter);
+      const sections = buildSections(filteredItems, display.groupBy || "none");
       const flatItems = flattenSections(sections);
       this.setData({
         page,
@@ -311,6 +380,9 @@ Page({
         profileName: (page.contactConfig && page.contactConfig.ownerName) || page.name || "展示页",
         sections,
         flatItems,
+        allFlatItems: visibleItems,
+        propertyFilters: decoratePropertyFilters(rawPropertyFilters, activePropertyFilter),
+        activePropertyFilter,
         heroItem: flatItems.find((item) => item.coverUrl) || flatItems[0] || null,
         stats: visibleStats(flatItems, page),
         context: inferShowcaseContext(page, flatItems),
@@ -333,6 +405,26 @@ Page({
     } finally {
       this.setData({ loading: false });
     }
+  },
+  handlePropertyFilterTap(event) {
+    const key = event.currentTarget.dataset.key || "";
+    const value = event.currentTarget.dataset.value || "";
+    const label = event.currentTarget.dataset.label || "";
+    const activePropertyFilter = value ? { key, value, label } : { key: "", value: "", label: "" };
+    const page = this.data.page || {};
+    const display = page.displayConfig || {};
+    const filteredItems = applyPropertyFilter(this.data.allFlatItems || [], activePropertyFilter);
+    const sections = buildSections(filteredItems, display.groupBy || "none");
+    const flatItems = flattenSections(sections);
+    this.setData({
+      activePropertyFilter,
+      propertyFilters: decoratePropertyFilters(this.data.propertyFilters || [], activePropertyFilter),
+      sections,
+      flatItems,
+      heroItem: flatItems.find((item) => item.coverUrl) || flatItems[0] || null,
+      stats: visibleStats(flatItems, page),
+      context: inferShowcaseContext(page, flatItems)
+    });
   },
   updateShareMenu(canShare) {
     if (canShare) {
@@ -420,9 +512,10 @@ Page({
     const page = this.data.page || {};
     const heroItem = this.data.heroItem || {};
     if (!page) {
-      this.setData({ showcaseShareImage: "" });
+      this.setData({ showcaseShareImage: "", shareImageReady: false, shareStatusText: "封面准备中" });
       return;
     }
+    this.setData({ showcaseShareImage: "", shareImageReady: false, shareStatusText: "封面准备中" });
     try {
       const imagePath = await generateTitleShareImage(this, SHOWCASE_SHARE_CANVAS_ID, {
         title: page.shareTitle || page.name || "资料展示页",
@@ -433,9 +526,13 @@ Page({
         growthHint: "我也想做同款",
         shareTargetLabel: "合集"
       });
-      if (imagePath) this.setData({ showcaseShareImage: imagePath });
+      if (imagePath) {
+        this.setData({ showcaseShareImage: imagePath, shareImageReady: true, shareStatusText: "发给客户" });
+      } else {
+        this.setData({ showcaseShareImage: "", shareImageReady: false, shareStatusText: "封面生成失败" });
+      }
     } catch (error) {
-      this.setData({ showcaseShareImage: "" });
+      this.setData({ showcaseShareImage: "", shareImageReady: false, shareStatusText: "封面生成失败" });
     }
   },
   onShareAppMessage() {
@@ -448,6 +545,13 @@ Page({
       };
     }
     const user = this.data.user || getCurrentUser();
+    if (!this.data.showcaseShareImage) {
+      wx.showToast({ title: "封面还在生成，请稍后再发", icon: "none" });
+      return {
+        title: buildCustomerShareTitle(page.shareTitle || page.name || "资料展示页"),
+        path: `/pages/showcases/index`
+      };
+    }
     const shareId = createShareId(this.data.id);
     const scene = this.data.preview ? "showcase_preview_share" : "public_showcase_share";
     const shareFromUserId = user ? user.id : (this.data.shareFromUserId || "");
@@ -465,7 +569,7 @@ Page({
     return {
       title: buildCustomerShareTitle(page.shareTitle || page.name || "资料展示页"),
       path: `/pages/showcases/index?shareTarget=showcase&showcaseId=${this.data.id}&sid=${shareId}&from=${shareFromUserId}&src=${scene}&ref=${this.data.shareId || ""}`,
-      imageUrl: this.data.showcaseShareImage || ""
+      imageUrl: this.data.showcaseShareImage
     };
   }
 });

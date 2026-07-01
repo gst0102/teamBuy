@@ -470,7 +470,7 @@ class AppService:
         bind_result = self._consume_wecom_bind_code_from_raw_messages(raw_messages)
         raw_messages = bind_result["remainingMessages"]
         if bind_result["consumedMessages"]:
-            self.repo.save_raw_messages(bind_result["consumedMessages"])
+            self._persist_consumed_bind_raw_messages(bind_result["consumedMessages"])
         if not raw_messages:
             return {
                 "message": bind_result["message"] or "没有新的企业微信客服消息需要导入",
@@ -499,6 +499,14 @@ class AppService:
             "notifications": [item.model_dump() for item in notifications],
         }
 
+    def _persist_consumed_bind_raw_messages(self, messages: list[RawMessage]) -> None:
+        self.repo.save_raw_messages(messages)
+
+    def _persist_property_batch_import_artifacts(self, batch: ImportBatch, batch_messages: list[RawMessage], notification) -> None:
+        self.repo.save_raw_messages(batch_messages)
+        self.repo.save_import_batch(batch)
+        self.repo.save_import_notification(notification)
+
     def _process_import_batch(
         self,
         batch: ImportBatch,
@@ -524,6 +532,13 @@ class AppService:
                 batch.claimedByUserId = owner_user_id
                 batch.errorMessage = None
                 batch.updatedAt = now_iso()
+                showcase = self._create_property_batch_showcase(
+                    owner_user_id,
+                    notes,
+                    "\n".join(block for block in content_object.textBlocks if str(block or "").strip()),
+                    source="wecom_property_batch",
+                    import_batch_id=batch.id,
+                )
                 skill_run = SkillRun(
                     id=new_id("skill_run"),
                     skillId="property-batch-import",
@@ -533,9 +548,10 @@ class AppService:
                         "importBatchId": batch.id,
                         "rawMessageIds": batch.rawMessageIds,
                         "detectedCount": count,
+                        "showcaseId": showcase.id,
                         "mediaWarningCount": media_warning_count,
                     },
-                    outputRef=batch.generatedNoteId or batch.id,
+                    outputRef=showcase.id,
                     modelProvider="rule",
                     startedAt=batch.createdAt,
                     endedAt=now_iso(),
@@ -545,9 +561,11 @@ class AppService:
                     channel=notification_channel,
                     media_warning_count=media_warning_count,
                 )
-                self.repo.save_raw_messages(batch_messages)
-                self.repo.save_import_batch(batch)
-                self.repo.save_import_notification(notification)
+                notification.actions = [
+                    {"key": "open-showcase", "label": "查看房源合集", "path": f"/pages/showcase-edit/index?id={showcase.id}"},
+                    {"key": "open-result", "label": "查看首套房源", "path": f"/pages/note-edit/index?id={batch.generatedNoteId}" if batch.generatedNoteId else ""},
+                ]
+                self._persist_property_batch_import_artifacts(batch, batch_messages, notification)
                 self.repo.save_skill_run(skill_run)
                 return notification
             note_result = self._run_import_skill(owner_user_id, content_object)
@@ -706,10 +724,13 @@ class AppService:
         if not candidates:
             raise HTTPException(status_code=400, detail="请至少选择一套房源")
         notes = [self._create_property_note_from_batch_candidate(owner_user_id, raw_text, item.model_dump()) for item in candidates]
+        showcase = self._create_property_batch_showcase(owner_user_id, notes, raw_text, source="manual_property_batch")
         return {
             "noteIds": [item.id for item in notes],
             "notes": [item.model_dump() for item in notes],
             "createdCount": len(notes),
+            "showcaseId": showcase.id,
+            "showcase": self._showcase_owner_payload(showcase),
         }
 
     def _parse_property_batch_text(self, raw_text: str) -> dict:
@@ -724,17 +745,18 @@ class AppService:
             clean = re.sub(r"^[0-9一二三四五六七八九十]+[）)、，,、.．]\s*", "", line).strip()
             if not clean or re.search(r"1[3-9]\d{9}", clean) and len(clean) < 40:
                 continue
+            if not current_base or self._line_has_property_address_signal(clean):
+                direct = self._property_candidate_from_direct_line(clean, public_tags, private_tags, common_private, len(candidates))
+                if direct:
+                    candidates.append(direct)
+                    current_base = ""
+                    current_features = []
+                    continue
             if current_base:
                 unit = self._property_candidate_from_unit_line(current_base, clean, public_tags, private_tags, common_private, current_features, len(candidates))
                 if unit:
                     candidates.append(unit)
                     continue
-            direct = self._property_candidate_from_direct_line(clean, public_tags, private_tags, common_private, len(candidates))
-            if direct:
-                candidates.append(direct)
-                current_base = ""
-                current_features = []
-                continue
             if re.search(r"(苑|园|府|里|城|公寓|小区|花园).{0,12}(号|栋|幢|座|室|户|房)", clean) and not re.search(r"1[3-9]\d{9}", clean):
                 current_base = clean
                 current_features = self._property_features_from_text(clean)
@@ -759,6 +781,12 @@ class AppService:
                 "commission": common_private.get("commission", ""),
             },
         }
+
+    def _line_has_property_address_signal(self, line: str) -> bool:
+        return bool(
+            re.search(r"\d{1,5}(?:弄|号|栋|幢|座|室|户|房|楼)", line)
+            or re.search(r"(苑|园|府|里|城|公寓|小区|花园|大厦|国际|广场)", line)
+        )
 
     def _property_batch_common_private_data(self, raw_text: str) -> dict:
         phones = self._unique_strings(re.findall(r"1[3-9]\d{9}", raw_text))
@@ -825,7 +853,7 @@ class AppService:
     def _property_candidate_from_unit_line(self, base: str, line: str, public_tags: list[str], private_tags: list[str], private_data: dict, base_features: list[str], index: int) -> dict | None:
         if re.search(r"1[3-9]\d{9}", line):
             return None
-        match = re.search(r"(.{1,24}?)[\s，,]*(\d{3,5})(?:元|/月|，|,)?$", line)
+        match = re.search(r"(.{1,24}?)[\s，,]*(\d{3,5})(?:元|/月)?(?:[，,。]|已空|以空|空置|$)", line)
         if not match:
             return None
         unit_name = match.group(1).strip(" ，,")
@@ -836,7 +864,8 @@ class AppService:
     def _property_candidate_from_direct_line(self, line: str, public_tags: list[str], private_tags: list[str], private_data: dict, index: int) -> dict | None:
         if re.search(r"1[3-9]\d{9}", line):
             return None
-        match = re.search(r"(.{2,40}?)(朝南次卧|北次阁楼|主卧独卫|大厅一室户|[东西南北]?次卧|主卧|[A-Z]?[东西南北]?一房|阁楼|两房|一室户|[A-Z]室)(?:[^\d]{0,8})(\d{3,5})(?:元|/月|已空|，|,|$)", line)
+        layout_pattern = r"朝南次卧|北次阁楼|主卧独卫|大厅一室户|[东西南北]?次一室户|[东西南北]?一室一厅|[东西南北]?一室户|[东西南北]?次卧|主卧|[A-Z]?[东西南北]?一房|阁楼|两房|一室户|[A-Z]室"
+        match = re.search(rf"(.{{2,40}}?)({layout_pattern})(?:[^\d]{{0,12}})(\d{{3,5}})(?:元|/月)?(?:[（(][^）)]*[）)])?", line)
         if not match:
             return None
         base_title = match.group(1).strip(" 🎉，,")
@@ -917,6 +946,139 @@ class AppService:
         )
         self.repo.save_user_note(note)
         return note
+
+    def _create_property_batch_showcase(
+        self,
+        owner_user_id: str,
+        notes: list[UserNote],
+        raw_text: str,
+        source: str,
+        import_batch_id: str | None = None,
+    ) -> ShowcasePage:
+        now = now_iso()
+        valid_notes = [note for note in notes if note.ownerUserId == owner_user_id and note.status != "deleted"]
+        name = f"批量房源合集 {len(valid_notes)}套"
+        first_location = self._property_batch_showcase_location(valid_notes)
+        if first_location:
+            name = f"{first_location}房源合集 {len(valid_notes)}套"
+        showcase = ShowcasePage(
+            id=new_id("showcase"),
+            ownerUserId=owner_user_id,
+            status="draft",
+            name=name,
+            description=f"从本次批量房源导入自动生成，已整理 {len(valid_notes)} 套房源，可继续编辑后发客户。",
+            bannerUrl=next((note.coverUrl for note in valid_notes if note.coverUrl), None),
+            templateId="property_batch_collection",
+            shareTitle=name,
+            contactConfig=self._normalize_showcase_contact_config(
+                {
+                    "contactText": "想了解房源细节，欢迎直接联系我。",
+                    "showPhone": False,
+                    "showWechat": False,
+                }
+            ),
+            displayConfig=self._normalize_showcase_display_config(
+                {
+                    "activeCategory": "房源",
+                    "showSearch": True,
+                    "showTags": True,
+                    "layoutMode": "list",
+                    "primaryColor": "#1677ff",
+                    "propertyFilters": self._property_batch_showcase_filters(valid_notes),
+                    "source": source,
+                    "importBatchId": import_batch_id,
+                    "rawTextLength": len(raw_text or ""),
+                }
+            ),
+            items=[
+                ShowcaseItem(
+                    noteId=note.id,
+                    sortOrder=index,
+                    sectionTitle="本次导入",
+                    displayTitle=note.title,
+                    visible=True,
+                    fieldConfig={"source": source, "importBatchId": import_batch_id},
+                )
+                for index, note in enumerate(valid_notes)
+            ],
+            createdAt=now,
+            updatedAt=now,
+        )
+        showcase.displayConfig["source"] = source
+        showcase.displayConfig["importBatchId"] = import_batch_id
+        showcase.displayConfig["rawTextLength"] = len(raw_text or "")
+        self.repo.save_showcase_page(showcase)
+        return showcase
+
+    def _property_batch_showcase_location(self, notes: list[UserNote]) -> str:
+        for note in notes:
+            config = note.visibilityConfig if isinstance(note.visibilityConfig, dict) else {}
+            structured = config.get("structuredData") if isinstance(config.get("structuredData"), dict) else {}
+            for key in ("community", "businessArea", "address", "buildingRoom"):
+                value = self._clean_optional_text(structured.get(key))
+                if value:
+                    return value[:12]
+        return ""
+
+    def _property_batch_showcase_filters(self, notes: list[UserNote]) -> list[dict]:
+        rows: list[dict] = []
+        for key, label in [("area", "区域"), ("layout", "户型"), ("price", "价格")]:
+            counts: dict[str, int] = defaultdict(int)
+            for note in notes:
+                value = self._property_filter_value(note, key)
+                if value:
+                    counts[value] += 1
+            options = [
+                {"label": value, "value": value, "count": count}
+                for value, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))[:8]
+            ]
+            if options:
+                rows.append({"key": key, "label": label, "options": options})
+        return rows
+
+    def _property_filter_value(self, note: UserNote, key: str) -> str:
+        config = note.visibilityConfig if isinstance(note.visibilityConfig, dict) else {}
+        data = config.get("structuredData") if isinstance(config.get("structuredData"), dict) else {}
+        if key == "area":
+            return self._clean_optional_text(data.get("businessArea")) or self._clean_optional_text(data.get("address")) or self._clean_optional_text(data.get("community")) or ""
+        if key == "layout":
+            return self._property_layout_bucket(str(data.get("layout") or data.get("unitName") or note.title or ""))
+        if key == "price":
+            return self._property_price_bucket(str(data.get("price") or ""))
+        return ""
+
+    def _property_layout_bucket(self, text: str) -> str:
+        value = str(text or "")
+        if "三房" in value or "三室" in value or "3房" in value or "3室" in value:
+            return "三房"
+        if "两房" in value or "二房" in value or "两室" in value or "二室" in value or "2房" in value or "2室" in value:
+            return "两房"
+        if "主卧" in value:
+            return "主卧"
+        if "次卧" in value:
+            return "次卧"
+        if "一室一厅" in value:
+            return "一室一厅"
+        if "一房" in value or "一室" in value or "1房" in value or "1室" in value or "单间" in value:
+            return "一房/单间"
+        if "loft" in value.lower() or "复式" in value:
+            return "Loft/复式"
+        return ""
+
+    def _property_price_bucket(self, text: str) -> str:
+        prices = [int(value) for value in re.findall(r"\d{3,5}", str(text or ""))]
+        if not prices:
+            return ""
+        price = min(prices)
+        if price < 1000:
+            return "1000以下"
+        if price < 1500:
+            return "1000-1500"
+        if price < 2000:
+            return "1500-2000"
+        if price < 3000:
+            return "2000-3000"
+        return "3000以上"
 
     def create_quick_note_capture(self, payload: QuickNoteCaptureRequest) -> UserNote:
         owner_user_id = payload.ownerUserId.strip()
@@ -1294,6 +1456,13 @@ class AppService:
                         note.sourceRefs = [item.id for item in group_messages]
                         note.updatedAt = now_iso()
                         self.repo.save_user_note(note)
+                    showcase = self._create_property_batch_showcase(
+                        owner_user_id,
+                        notes,
+                        "\n".join(block for block in content_object.textBlocks if str(block or "").strip()),
+                        source="wecom_archive_property_batch",
+                        import_batch_id=batch.id,
+                    )
                     skill_run = SkillRun(
                         id=new_id("skill_run"),
                         skillId="property-batch-import",
@@ -1305,8 +1474,9 @@ class AppService:
                             "archiveMsgIds": [item.msgId for item in group_messages],
                             "archiveMedia": media_result,
                             "detectedCount": count,
+                            "showcaseId": showcase.id,
                         },
-                        outputRef=batch.generatedNoteId or batch.id,
+                        outputRef=showcase.id,
                         modelProvider="rule",
                         startedAt=batch.createdAt,
                         endedAt=now_iso(),
@@ -1323,7 +1493,8 @@ class AppService:
                     notification = self.notification_service.build_notification(batch, channel="wecom")
                     notification.resultPath = self.build_import_claim_link(batch.id)["pagePath"]
                     notification.actions = [
-                        {"key": "open-result", "label": "查看批量房源", "path": notification.resultPath}
+                        {"key": "open-showcase", "label": "查看房源合集", "path": f"/pages/showcase-edit/index?id={showcase.id}"},
+                        {"key": "open-result", "label": "查看首套房源", "path": f"/pages/note-edit/index?id={batch.generatedNoteId}" if batch.generatedNoteId else notification.resultPath},
                     ]
                     self.repo.save_import_notification(notification)
                     processed.append(
@@ -1334,6 +1505,7 @@ class AppService:
                             "seqs": [item.seq for item in group_messages],
                             "noteId": batch.generatedNoteId,
                             "cardId": None,
+                            "showcaseId": showcase.id,
                             "propertyBatchCount": count,
                             "media": media_result,
                             "notification": notification.model_dump(),
@@ -1711,11 +1883,26 @@ class AppService:
         rent_line_count = sum(
             1
             for line in lines
-            if re.search(r"(次卧|主卧|一室户|一房|两房|三房|阁楼|独卫|大厅).{0,12}\d{3,5}(?:元|/月|已空|，|,|$)", line)
+            if re.search(r"(次卧|主卧|次一室户|一室一厅|一室户|一房|两房|三房|阁楼|独卫|大厅).{0,16}\d{3,5}(?:元|/月|已空|以空|，|,|。|$)", line)
         )
         has_contact = bool(re.search(r"1[3-9]\d{9}", raw_text))
         has_property_context = bool(re.search(r"(挂牌|房源|看房|中介费|小区|苑|园|府|里|城|公寓|号|栋|幢|室|户)", raw_text))
-        return has_property_context and (numbered_count >= 2 or rent_line_count >= 2) and (has_contact or rent_line_count >= 3)
+        element_score = 0
+        if has_property_context:
+            element_score += 1
+        if numbered_count >= 2:
+            element_score += 1
+        if rent_line_count >= 2:
+            element_score += 2
+        elif rent_line_count == 1:
+            element_score += 1
+        if has_contact:
+            element_score += 1
+        if re.search(r"\d{2,5}(?:弄|号|栋|幢|室|户|房|楼)", raw_text):
+            element_score += 1
+        if re.search(r"(中介费|佣金|看房|搬空|已空|以空|空置|朋友圈.*视频|视频)", raw_text):
+            element_score += 1
+        return has_property_context and element_score >= 5
 
     def _enrich_internal_miniapp_content(self, content_object: ContentObjectPayload) -> ContentObjectPayload:
         miniapp = content_object.metadata.get("miniapp") if isinstance(content_object.metadata, dict) else None
@@ -2429,6 +2616,9 @@ class AppService:
                 "note": note.model_dump(),
                 "ocr": self._ocr_response_payload(ocr_result, recognized_text),
             }
+        property_batch_result = self._try_create_ocr_property_batch(note, owner_user_id, recognized_text, ocr_result)
+        if property_batch_result:
+            return property_batch_result
         content_object = ContentObjectPayload(
             sourceType="image_ocr",
             title="图片文字识别",
@@ -2483,6 +2673,81 @@ class AppService:
         return {
             "note": note.model_dump(),
             "ocr": self._ocr_response_payload(ocr_result, recognized_text),
+        }
+
+    def _try_create_ocr_property_batch(self, note: UserNote, owner_user_id: str, recognized_text: str, ocr_result) -> dict | None:
+        if not recognized_text or not self._looks_like_property_batch_text(recognized_text):
+            return None
+        parsed = self._parse_property_batch_text(recognized_text)
+        candidates = [item for item in parsed.get("candidates", []) if item.get("selected")]
+        if len(candidates) < 2:
+            return None
+        now = now_iso()
+        note.visibilityConfig = self._ocr_visibility_config(note.visibilityConfig, ocr_result, recognized_text)
+        note.summary = f"图片已识别，并拆出 {len(candidates)} 套房源。"
+        note.body = recognized_text
+        note.status = "active"
+        note.updatedAt = now
+        self.repo.save_user_note(note)
+        notes = [self._create_property_note_from_batch_candidate(owner_user_id, recognized_text, candidate) for candidate in candidates]
+        source_refs = [note.id, *note.sourceRefs]
+        image_url = note.coverUrl or self._first_note_image_url(note)
+        for item in notes:
+            item.sourceRefs = self._unique_strings([*source_refs, *item.sourceRefs])
+            config = dict(item.visibilityConfig or {})
+            config["sourceType"] = "ocr_property_batch"
+            config["ocrSourceNoteId"] = note.id
+            structured = dict(config.get("structuredData") or {})
+            if image_url:
+                structured["images"] = self._unique_strings([image_url, *(structured.get("images") or [])])
+            structured["ocrSourceNoteId"] = note.id
+            config["structuredData"] = structured
+            config["tags"] = self._unique_strings([*config.get("tags", []), "图片识别"])
+            item.visibilityConfig = self._normalize_note_visibility_config(config)
+            item.coverUrl = image_url or item.coverUrl
+            item.media = note.media or item.media
+            item.updatedAt = now_iso()
+            self.repo.save_user_note(item)
+        showcase = self._create_property_batch_showcase(
+            owner_user_id,
+            notes,
+            recognized_text,
+            source="ocr_property_batch",
+            import_batch_id=None,
+        )
+        skill_run = SkillRun(
+            id=new_id("skill_run"),
+            skillId="ocr-property-batch-import",
+            status="success",
+            inputSnapshot={
+                "sourceNoteId": note.id,
+                "recognizedTextLength": len(recognized_text),
+                "detectedCount": len(notes),
+                "showcaseId": showcase.id,
+                "ocr": {
+                    "provider": ocr_result.provider,
+                    "configured": ocr_result.configured,
+                    "confidence": ocr_result.confidence,
+                    "textLength": len(recognized_text),
+                },
+            },
+            outputRef=showcase.id,
+            modelProvider="rule",
+            startedAt=now,
+            endedAt=now_iso(),
+        )
+        self.repo.save_skill_run(skill_run)
+        return {
+            "note": note.model_dump(),
+            "ocr": self._ocr_response_payload(ocr_result, recognized_text),
+            "propertyBatch": {
+                "createdCount": len(notes),
+                "noteIds": [item.id for item in notes],
+                "notes": [item.model_dump() for item in notes],
+                "showcaseId": showcase.id,
+                "showcase": self._showcase_owner_payload(showcase),
+                "parseResult": parsed,
+            },
         }
 
     def _ocr_visibility_config(self, config: dict, ocr_result, recognized_text: str) -> dict:
@@ -4702,7 +4967,36 @@ class AppService:
             "showTags": bool(source.get("showTags", True)),
             "layoutMode": "grid" if str(source.get("layoutMode") or "list").strip() == "grid" else "list",
             "primaryColor": str(source.get("primaryColor") or "#1677ff").strip()[:24],
+            "propertyFilters": self._normalize_property_filter_groups(source.get("propertyFilters")),
         }
+
+    def _normalize_property_filter_groups(self, groups) -> list[dict]:
+        normalized: list[dict] = []
+        if not isinstance(groups, list):
+            return normalized
+        for group in groups[:4]:
+            if not isinstance(group, dict):
+                continue
+            key = self._clean_optional_text(group.get("key"))
+            label = self._clean_optional_text(group.get("label"))
+            options = []
+            for option in group.get("options") or []:
+                if not isinstance(option, dict):
+                    continue
+                value = self._clean_optional_text(option.get("value"))
+                option_label = self._clean_optional_text(option.get("label")) or value
+                if not value:
+                    continue
+                options.append(
+                    {
+                        "label": option_label,
+                        "value": value,
+                        "count": self._safe_int(option.get("count"), 0, 9999),
+                    }
+                )
+            if key and label and options:
+                normalized.append({"key": key, "label": label, "options": options[:12]})
+        return normalized
 
     def _normalize_showcase_items(self, owner_user_id: str, items: list) -> list[ShowcaseItem]:
         normalized: list[ShowcaseItem] = []
@@ -4763,9 +5057,27 @@ class AppService:
             "primaryText": self._showcase_note_primary_text(card_type, structured_data, note),
             "secondaryText": self._showcase_note_secondary_text(card_type, structured_data, note),
             "priceText": str(structured_data.get("price") or "").strip(),
+            "propertyMeta": self._showcase_property_meta(card_type, structured_data, note),
             "productMeta": self._showcase_product_meta(card_type, structured_data),
             "productActionText": "查看详情/接龙" if card_type == "groupbuy_product" else "",
             "updatedAt": note.updatedAt,
+        }
+
+    def _showcase_property_meta(self, card_type: str, data: dict, note: UserNote) -> dict:
+        if card_type != "property_listing":
+            return {}
+        temp_note = note.model_copy(
+            update={
+                "visibilityConfig": {
+                    **(note.visibilityConfig or {}),
+                    "structuredData": data,
+                }
+            }
+        )
+        return {
+            "area": self._property_filter_value(temp_note, "area"),
+            "layout": self._property_filter_value(temp_note, "layout"),
+            "price": self._property_filter_value(temp_note, "price"),
         }
 
     def _showcase_product_meta(self, card_type: str, data: dict) -> list[str]:

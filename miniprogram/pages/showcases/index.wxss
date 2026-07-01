@@ -240,6 +240,11 @@ page {
   font-size: 24rpx;
 }
 
+.primary-btn.small[disabled] {
+  background: #edf2f7;
+  color: #8a95a6;
+}
+
 .ghost-btn {
   height: 56rpx;
   color: #1677ff;

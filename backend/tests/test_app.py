@@ -943,6 +943,19 @@ def test_property_batch_parse_and_create_keeps_upstream_private(client):
     assert create_res.status_code == 200
     created = create_res.json()["data"]
     assert created["createdCount"] == 4
+    assert created["showcaseId"]
+    showcase = client.get(
+        f"/api/showcases/{created['showcaseId']}",
+        params={"ownerUserId": owner["id"]},
+    ).json()["data"]
+    assert showcase["templateId"] == "property_batch_collection"
+    assert showcase["name"].endswith("房源合集 4套")
+    assert len(showcase["items"]) == 4
+    assert {item["noteId"] for item in showcase["items"]} == set(created["noteIds"])
+    filters = showcase["displayConfig"]["propertyFilters"]
+    assert {item["key"] for item in filters} >= {"area", "layout", "price"}
+    price_filter = next(item for item in filters if item["key"] == "price")
+    assert any(option["value"] == "3000以上" for option in price_filter["options"])
     note = created["notes"][0]
     config = note["visibilityConfig"]
     structured = config["structuredData"]
@@ -989,6 +1002,55 @@ def test_property_batch_parse_numbered_rental_list_with_contacts(client):
     assert "申源苑4号701 · 主卧" in titles
     assert "汤臣四期 · 大厅一室户" in titles
     assert parsed["privacySummary"]["upstreamPhones"] == ["15201882219"]
+
+
+def test_property_batch_parse_short_listing_by_whole_text_elements(client):
+    owner = client.post("/api/auth/mock-login", json={"nickname": "短挂牌用户", "openid": "openid_property_batch_short_listing"}).json()["data"]
+    raw_text = "\n".join(
+        [
+            "挂牌：",
+            "",
+            "2，玉兰286弄10号601室南次一室户2500元，以空，",
+            "",
+            "3，玉兰四期73号202室北一室一厅3800元（实体墙）租客7月11号搬空，看房提前打电话，朋友圈有视频",
+            "",
+            "",
+            "欢迎各位中介朋友带看，中介费%50",
+            "电话☎️13611747285",
+            "13671648195。",
+        ]
+    )
+
+    parsed_res = client.post(
+        "/api/notes/property-batch/parse",
+        json={"ownerUserId": owner["id"], "rawText": raw_text},
+    )
+
+    assert parsed_res.status_code == 200
+    parsed = parsed_res.json()["data"]
+    assert parsed["detectedCount"] == 2
+    titles = [item["title"] for item in parsed["candidates"]]
+    assert "玉兰286弄10号601室 · 南次一室户" in titles
+    assert "玉兰四期73号202室 · 北一室一厅" in titles
+    assert parsed["privacySummary"]["upstreamPhones"] == ["13611747285", "13671648195"]
+    assert parsed["privacySummary"]["commission"] == "中介费%50"
+
+    create_res = client.post(
+        "/api/notes/property-batch/create",
+        json={"ownerUserId": owner["id"], "rawText": raw_text, "candidates": parsed["candidates"]},
+    )
+
+    assert create_res.status_code == 200
+    created = create_res.json()["data"]
+    assert created["createdCount"] == 2
+    showcase = client.get(
+        f"/api/showcases/{created['showcaseId']}",
+        params={"ownerUserId": owner["id"]},
+    ).json()["data"]
+    assert showcase["templateId"] == "property_batch_collection"
+    assert len(showcase["items"]) == 2
+    assert all(item["phone"] is None for item in created["notes"])
+    assert all(item["visibilityConfig"]["privateData"]["commission"] == "中介费%50" for item in created["notes"])
 
 
 def test_note_preview_view_updates_note_list_stats(client):
@@ -2186,6 +2248,58 @@ def test_ocr_image_save_then_recognize_via_content_to_note(client):
     assert "图片识别" in config["tags"]
 
 
+def test_ocr_recognized_property_batch_creates_notes_and_showcase(client):
+    service = client.app.dependency_overrides[get_app_service]()
+    login = client.post("/api/auth/mock-login", json={"nickname": "OCR 批量房源用户"}).json()["data"]
+    image = Image.new("RGB", (220, 140), color="white")
+    buffer = BytesIO()
+    image.save(buffer, format="PNG")
+    buffer.seek(0)
+    save_response = client.post(
+        "/api/ocr/images",
+        data={"ownerUserId": login["id"]},
+        files={"file": ("property-batch.png", buffer.getvalue(), "image/png")},
+    )
+    saved_note = save_response.json()["data"]["note"]
+    service.ocr_service = OcrService(
+        provider="mock",
+        mock_text="\n".join(
+            [
+                "挂牌",
+                "1）松涛路200弄朝南次卧3000",
+                "2）松涛路200弄50号301次卧3100",
+                "3）汤臣四期大厅一室户3700",
+                "电话15201882219。",
+            ]
+        ),
+    )
+
+    recognize_response = client.post(
+        f"/api/ocr/notes/{saved_note['id']}/recognize",
+        json={"ownerUserId": login["id"]},
+    )
+
+    assert recognize_response.status_code == 200
+    payload = recognize_response.json()["data"]
+    assert payload["note"]["id"] == saved_note["id"]
+    assert payload["note"]["visibilityConfig"]["cardType"] == "image_ocr"
+    assert payload["note"]["visibilityConfig"]["structuredData"]["ocr"]["status"] == "done"
+    assert payload["propertyBatch"]["createdCount"] == 3
+    showcase_id = payload["propertyBatch"]["showcaseId"]
+    showcase = client.get(
+        f"/api/showcases/{showcase_id}",
+        params={"ownerUserId": login["id"]},
+    ).json()["data"]
+    assert showcase["templateId"] == "property_batch_collection"
+    assert len(showcase["items"]) == 3
+    assert any(item["key"] == "price" for item in showcase["displayConfig"]["propertyFilters"])
+    created_note = payload["propertyBatch"]["notes"][0]
+    assert created_note["coverUrl"].startswith("/media/")
+    assert created_note["visibilityConfig"]["sourceType"] == "ocr_property_batch"
+    assert created_note["visibilityConfig"]["ocrSourceNoteId"] == saved_note["id"]
+    assert "图片识别" in created_note["visibilityConfig"]["tags"]
+
+
 def test_note_image_capture_saves_image_without_recognition(client):
     login = client.post("/api/auth/mock-login", json={"nickname": "图片保存用户"}).json()["data"]
     image = Image.new("RGB", (180, 100), color="white")
@@ -2922,6 +3036,16 @@ def test_wecom_archive_import_auto_splits_property_batch_for_bound_user(client, 
     assert saved.status_code == 200
     assert processed.status_code == 200
     assert processed.json()["data"]["processed"][0]["propertyBatchCount"] == 7
+    showcase_id = processed.json()["data"]["processed"][0]["showcaseId"]
+    showcase = client.get(
+        f"/api/showcases/{showcase_id}",
+        params={"ownerUserId": user["id"]},
+    ).json()["data"]
+    assert showcase["templateId"] == "property_batch_collection"
+    assert len(showcase["items"]) == 7
+    filters = showcase["displayConfig"]["propertyFilters"]
+    assert {item["key"] for item in filters} >= {"area", "layout", "price"}
+    assert any(option["value"] == "次卧" for item in filters if item["key"] == "layout" for option in item["options"])
     assert len(property_notes) == 7
     assert any(item["title"] == "松涛路200弄 · 朝南次卧" for item in property_notes)
     assert any(item["title"] == "汤臣四期 · 大厅一室户" for item in property_notes)

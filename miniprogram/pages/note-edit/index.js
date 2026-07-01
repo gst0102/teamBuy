@@ -1712,7 +1712,9 @@ Page({
       this.applyLoadedNote(note);
       this.loadNoteCustomerActions();
       wx.hideLoading();
-      if (ocr.text) {
+      if (payload.propertyBatch && payload.propertyBatch.createdCount) {
+        wx.showToast({ title: `已生成${payload.propertyBatch.createdCount}套房源和合集`, icon: "success" });
+      } else if (ocr.text) {
         wx.showToast({ title: "已识别", icon: "success" });
       } else if (ocr.configured) {
         wx.showToast({ title: "未识别到文字", icon: "none" });

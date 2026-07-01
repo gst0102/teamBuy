@@ -51,7 +51,9 @@ Page({
     const app = getApp();
     const userWithBase = {
       ...user,
-      apiBaseUrl: app.globalData.apiBaseUrl
+      apiBaseUrl: app.globalData.apiBaseUrl,
+      apiRoutePrefix: app.globalData.apiRoutePrefix || "",
+      environmentName: app.globalData.environmentName || ""
     };
     app.globalData.currentUser = userWithBase;
     wx.setStorageSync("currentUser", userWithBase);

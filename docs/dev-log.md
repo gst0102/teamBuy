@@ -1,5 +1,156 @@
 # 2026-06-21
 
+## 2026-07-01 批量房源自动生成合集 P0
+
+本轮实现：
+
+- 手动批量房源创建 `POST /api/notes/property-batch/create` 在生成多条 `property_listing` 后，会同步生成一个展示页合集。
+- 企业微信客服同步批量房源导入命中拆分后，会同步生成一个展示页合集。
+- 企业微信会话归档批量房源导入命中拆分后，会同步生成一个展示页合集。
+- 自动合集使用 `templateId=property_batch_collection`，默认 `draft` 状态，不自动发布。
+- 自动合集包含本次导入的全部房源资料，默认名称类似 `xx房源合集 N套` 或 `批量房源合集 N套`。
+- 自动合集联系方式默认不展示电话/微信，继续避免把上游电话公开给客户。
+- 手动批量创建返回值新增 `showcaseId/showcase`，小程序生成成功提示改为“房源卡和合集”。
+- 归档处理返回值新增 `showcaseId`，通知动作增加“查看房源合集”。
+
+已验证：
+
+- `.venv312/bin/python -m pytest backend/tests/test_app.py -q -k "property_batch"`：3 passed。
+- `.venv312/bin/python -m compileall -q backend/app backend/tests`：通过。
+- `node --check miniprogram/pages/resource-create/index.js`：通过。
+
+## 2026-07-01 批量房源合集筛选 P1
+
+本轮实现：
+
+- 自动生成的批量房源合集会按本次房源生成筛选配置：
+  - 区域：优先取 `businessArea/address/community`。
+  - 户型：归一为一房/单间、次卧、主卧、一室一厅、两房、三房、Loft/复式等。
+  - 价格：归一为 `1000以下 / 1000-1500 / 1500-2000 / 2000-3000 / 3000以上`。
+- 公开展示页房源摘要新增 `propertyMeta`，客户页可用它做筛选。
+- 小程序展示页在房源合集里展示区域/户型/价格筛选胶囊，点击后即时过滤当前房源列表。
+- 筛选后统计数量同步变化；筛选无结果时展示空态提示。
+- 本地预览态也按同样规则生成 `propertyMeta`，避免发布前预览筛选失效。
+
+已验证：
+
+- `.venv312/bin/python -m pytest backend/tests/test_app.py -q -k "property_batch"`：3 passed。
+- `.venv312/bin/python -m compileall -q backend/app backend/tests`：通过。
+- `node --check miniprogram/pages/showcase-view/index.js`：通过。
+- 小程序 JSON 校验：通过。
+
+## 2026-07-01 OCR 图片房源批量入库 P2
+
+本轮实现：
+
+- 图片资料点击“识别图片文字”后，如果 OCR 结果命中批量房源规则，会直接生成多套 `property_listing`。
+- OCR 批量房源会同步生成草稿合集，并继承 P1 的区域/户型/价格筛选能力。
+- 原图片资料仍保留为 `image_ocr`，并记录 OCR 状态和识别文本，不被改成第一套房源。
+- OCR 批量生成的房源标记 `sourceType=ocr_property_batch`，并保存 `ocrSourceNoteId`，方便追溯原图。
+- OCR 批量生成的房源会继承原图片封面/媒体，便于后续单套房源补图和客户展示。
+- 小程序资料编辑页识别成功后，如果生成了批量房源，会提示“已生成 N 套房源和合集”。
+
+已验证：
+
+- `.venv312/bin/python -m pytest backend/tests/test_app.py -q -k "ocr"`：5 passed。
+- `node --check miniprogram/pages/note-edit/index.js`：通过。
+
+## 2026-07-01 批量房源功能生产临时部署
+
+本轮部署：
+
+- 用户确认本次作为 Bug 修复直接在生产环境验证，不再先切测试环境。
+- 部署前本地全量后端测试通过：`.venv312/bin/python -m pytest backend/tests -q`：180 passed。
+- 已确认小程序当前 `apiBaseUrl` 指向生产域名 `https://teambuy.lifelove.top`。
+- 生产服务器部署前检查：磁盘 `/dev/vda2` 使用 65%，`teambuy-postgres-1` healthy，`teambuy-backend-1` running。
+- 已备份生产后端文件到 `/home/ubuntu/teamBuy/backend/backups/codex-20260701-102308`。
+- 已把 `backend/app/services/app_service.py` 同步到生产服务器源码目录，并热更新到正在运行的后端容器。
+- 生产容器内确认：
+  - `AppService._create_property_batch_showcase` 已存在。
+  - OCR 识别流程已包含 `ocr_property_batch` 批量房源逻辑。
+- 公网健康检查 `https://teambuy.lifelove.top/health` 返回正常。
+
+注意事项：
+
+- 本次 Docker 镜像重新构建卡在系统包更新阶段，未完成新镜像构建；为了让用户立即测试，采用容器内热更新并重启后端。
+- 生产源码目录已同步新代码，后续镜像构建成功后会包含该逻辑。
+- 如果生产后端容器在镜像未重建前被删除并重新创建，本次容器热更新可能丢失，需要重新构建或再次同步。
+- 小程序前端代码已在本地改好且配置为生产域名，但仍需用户用微信开发者工具预览/上传体验版后，真机才能看到前端提示和筛选 UI。
+
+## 2026-07-01 短挂牌房源整体要素识别修复
+
+本轮修复：
+
+- 用户反馈 10:48 会话归档文本整体包含门牌、户型、价格、联系方式、中介费和看房信息，但系统只生成普通文本资料。
+- 原因确认：规则过度依赖单行户型关键词，未覆盖 `南次一室户`、`北一室一厅`，且批量判断没有从整篇文本做要素评分。
+- 已调整批量房源入口判断：整篇文本出现房源上下文、编号、门牌/房号、价格、联系方式、中介费/看房/空置/视频等组合信号时，进入批量房源解析。
+- 已补充户型规则：支持 `次一室户`、`一室一厅`、`南次一室户`、`北一室一厅` 等短挂牌写法。
+- 已调整解析优先级：完整房源行优先独立识别；只有当前行缺少小区/门牌信号时，才沿用上一行小区作为子房间底座，避免误挂。
+- 已新增回归测试：`test_property_batch_parse_short_listing_by_whole_text_elements`。
+
+已验证：
+
+- `.venv312/bin/python -m pytest backend/tests/test_app.py -q -k "property_batch"`：5 passed。
+- `.venv312/bin/python -m pytest backend/tests -q`：181 passed。
+- `.venv312/bin/python -m compileall -q backend/app backend/tests`：通过。
+- `git diff --check`：通过。
+- 已部署生产后端热更新，备份路径 `/home/ubuntu/teamBuy/backend/backups/codex-20260701-105746-property-rule`。
+- 生产只解析接口验证同一段文本返回 2 套候选：
+  - `玉兰286弄10号601室 · 南次一室户 2500元/月`
+  - `玉兰四期73号202室 · 北一室一厅 3800元/月`
+  - 私密信息识别：上游电话 2 个、中介费 `%50`、朋友圈视频标签。
+
+## 2026-07-01 合集分享封面与资源操作胶囊修复
+
+本轮修复：
+
+- 用户反馈房源卡分享封面正常，但房源合集分享没有等待封面渲染完成，导致微信使用页面截图式封面，且没有底部“由资料整理助手生成 · 点击生成同款”引流钩子。
+- 合集详情页 `showcase-view` 增加分享封面状态：进入页面后生成分享图，未生成完成前分享按钮显示“封面准备中”并禁用。
+- 合集列表页 `showcases` 改为预生成已发布合集分享图，按钮未准备好时禁用，避免点“发客户”时异步生成还没完成。
+- 合集分享仍统一调用 `generateTitleShareImage`，底部引流钩子沿用单条资料/房源卡的分享图生成逻辑。
+- 资料库日常资料卡操作区收口为“发客户 + 更多”两枚等宽胶囊，移除列表卡片里的单独“编辑”按钮，编辑仍通过点击卡片主体进入。
+- 我的笔记里名片/服务方案操作区统一按钮宽度、高度和字号，避免“发客户/更多”比例偏小或不居中。
+
+覆盖场景：
+
+- 日常资料资源：资料库列表按钮已调整。
+- 房源资源：沿用已有房源卡“发客户 + 更多”胶囊。
+- 商品团购资源：沿用已有商品卡“发客户 + 更多”胶囊。
+- 服务/名片资源：资料库与我的笔记列表按钮已调整。
+- 日常/房源/商品/服务合集：合集详情页和合集列表页分享封面等待逻辑统一。
+
+已验证：
+
+- `node --check miniprogram/pages/showcase-view/index.js`：通过。
+- `node --check miniprogram/pages/showcases/index.js`：通过。
+- `node --check miniprogram/pages/notes/index.js`：通过。
+- `node --check miniprogram/pages/library/index.js`：通过。
+- 小程序相关 JSON 解析：通过。
+- `git diff --check`：通过。
+
+## 2026-07-01 第二期开发前前端切测试环境
+
+本轮处理：
+
+- 用户确认第一期当前测试没问题，准备进入第二期开发。
+- 小程序前端已从生产接口切到测试接口：
+  - `apiBaseUrl=https://teambuy.lifelove.top`
+  - `apiRoutePrefix=/test-api`
+  - `mediaRoutePrefix=/test-media`
+  - `environmentName=test`
+- 请求封装 `miniprogram/utils/request.js` 新增测试路由前缀处理：小程序里的 `/api/...` 会转换成 `/test-api/...`。
+- 上传接口改为走同一套 URL 构造，避免出现 `/test-api/api/...` 双前缀。
+- 媒体相对路径 `/media/...` 在测试环境下会显示为 `/test-media/...`，避免测试数据读取生产媒体入口。
+- 登录缓存增加 `apiRoutePrefix/environmentName` 标记，环境变化时会清掉旧登录态，避免生产登录缓存混入测试环境。
+
+已验证：
+
+- 测试后端容器 `teambuy-test` 正常运行，`https://teambuy.lifelove.top/test-health` 正常。
+- `POST https://teambuy.lifelove.top/test-api/auth/mock-login` 返回测试环境业务响应，证明 `/test-api/...` 路由命中测试后端。
+- `POST https://teambuy.lifelove.top/test-api/api/auth/mock-login` 返回 404，证明不能使用双 `/api` 前缀。
+- `node --check` 覆盖 `app.js/request.js/api.js/login/profile/showcase-view/showcases/library/notes`：通过。
+- 小程序相关 JSON 解析：通过。
+
 ## 2026-06-29：分享封面收回原生卡片比例
 
 - 背景：

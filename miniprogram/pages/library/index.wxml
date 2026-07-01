@@ -281,7 +281,6 @@
           </view>
           <view class="card-actions" wx:elif="{{!item.isProperty && !item.isGroupbuy}}">
             <button class="primary-text-action" open-type="share" bindtap="prepareShare" data-id="{{item.id}}" data-note-id="{{item.sourceNoteId}}" data-title="{{item.title}}" data-cover="{{item.coverDisplayUrl || item.coverUrl}}" disabled="{{item.shareDisabled}}">{{item.shareStatusText || '发客户'}}</button>
-            <text class="secondary-text-action" data-id="{{item.id}}" bindtap="handleOpen">编辑</text>
             <text class="secondary-text-action" data-id="{{item.id}}" bindtap="handleMoreCardActions">更多</text>
           </view>
         </view>
