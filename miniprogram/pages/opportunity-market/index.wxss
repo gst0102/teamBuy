@@ -1,0 +1,283 @@
+.market-page {
+  padding-bottom: 56rpx;
+}
+
+.market-hero,
+.filter-panel,
+.market-card {
+  width: 100%;
+  border: 1rpx solid #dbe6f7;
+  border-radius: 24rpx;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 16rpx 40rpx rgba(31, 88, 168, 0.08);
+  box-sizing: border-box;
+}
+
+.market-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18rpx;
+  margin-top: 14rpx;
+  padding: 28rpx 24rpx;
+  background: linear-gradient(135deg, #f0f7ff, #ffffff 58%, #eefcf5);
+}
+
+.hero-kicker {
+  color: #079455;
+  font-size: 22rpx;
+  font-weight: 900;
+}
+
+.hero-title {
+  margin-top: 8rpx;
+  color: #101828;
+  font-size: 46rpx;
+  font-weight: 900;
+  line-height: 1.12;
+}
+
+.hero-sub {
+  max-width: 430rpx;
+  margin-top: 12rpx;
+  color: #667085;
+  font-size: 23rpx;
+  line-height: 1.45;
+}
+
+.publish-btn,
+.primary,
+.secondary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0 22rpx;
+  border-radius: 999rpx;
+  font-weight: 900;
+  line-height: 1;
+  white-space: nowrap;
+  box-sizing: border-box;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.publish-btn {
+  flex: 0 0 180rpx;
+  height: 68rpx;
+  color: #ffffff;
+  background: #1677ff;
+  font-size: 22rpx;
+}
+
+.publish-btn::after,
+.primary::after,
+.secondary::after {
+  border: 0;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12rpx;
+  margin-top: 18rpx;
+}
+
+.stat-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 118rpx;
+  border-radius: 20rpx;
+  background: #ffffff;
+  border: 1rpx solid #e4eaf5;
+  box-shadow: 0 10rpx 24rpx rgba(31, 88, 168, 0.06);
+}
+
+.stat-card view {
+  color: #101828;
+  font-size: 34rpx;
+  font-weight: 900;
+}
+
+.stat-card text {
+  margin-top: 8rpx;
+  color: #667085;
+  font-size: 20rpx;
+  font-weight: 800;
+}
+
+.filter-panel {
+  margin-top: 18rpx;
+  padding: 22rpx;
+}
+
+.filter-title,
+.section-title {
+  color: #101828;
+  font-size: 28rpx;
+  font-weight: 900;
+}
+
+.filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  margin-top: 16rpx;
+}
+
+.filter-group {
+  margin-top: 18rpx;
+}
+
+.filter-label {
+  color: #667085;
+  font-size: 22rpx;
+  font-weight: 900;
+}
+
+.filter-input {
+  width: 100%;
+  min-height: 64rpx;
+  margin-top: 10rpx;
+  padding: 0 18rpx;
+  border-radius: 16rpx;
+  color: #172033;
+  background: #f8fbff;
+  font-size: 23rpx;
+  box-sizing: border-box;
+}
+
+.filter-chip,
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42rpx;
+  padding: 0 16rpx;
+  border-radius: 999rpx;
+  color: #1677ff;
+  background: #eaf2ff;
+  font-size: 21rpx;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.filter-chip {
+  color: #475467;
+  background: #eef2f7;
+}
+
+.filter-chip.active {
+  color: #1677ff;
+  background: #eaf2ff;
+}
+
+.market-list-head {
+  margin: 28rpx 4rpx 14rpx;
+}
+
+.section-sub {
+  margin-top: 6rpx;
+  color: #667085;
+  font-size: 22rpx;
+}
+
+.market-card {
+  margin-top: 16rpx;
+  padding: 24rpx;
+}
+
+.market-card.supply {
+  border-color: #bbf7d0;
+}
+
+.card-head,
+.card-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14rpx;
+}
+
+.time {
+  color: #98a2b3;
+  font-size: 20rpx;
+  font-weight: 800;
+}
+
+.card-title {
+  margin-top: 18rpx;
+  color: #101828;
+  font-size: 31rpx;
+  line-height: 1.28;
+  font-weight: 900;
+}
+
+.card-summary {
+  margin-top: 10rpx;
+  color: #475467;
+  font-size: 23rpx;
+  line-height: 1.48;
+}
+
+.field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12rpx;
+  margin-top: 18rpx;
+}
+
+.field-grid view {
+  min-width: 0;
+  padding: 14rpx;
+  border-radius: 14rpx;
+  background: #f8fbff;
+  box-sizing: border-box;
+}
+
+.field-grid text {
+  display: block;
+  color: #667085;
+  font-size: 20rpx;
+  font-weight: 800;
+}
+
+.field-grid strong {
+  display: block;
+  margin-top: 6rpx;
+  color: #172033;
+  font-size: 23rpx;
+  font-weight: 900;
+}
+
+.card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12rpx;
+  margin-top: 20rpx;
+  padding: 0 8rpx;
+  box-sizing: border-box;
+}
+
+.primary,
+.secondary {
+  height: 66rpx;
+  font-size: 23rpx;
+}
+
+.primary {
+  flex: 1 1 280rpx;
+  max-width: 420rpx;
+  min-width: 0;
+  color: #ffffff;
+  background: #1677ff;
+}
+
+.secondary {
+  flex: 0 0 150rpx;
+  color: #1677ff;
+  background: #eef5ff;
+}

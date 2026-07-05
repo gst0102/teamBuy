@@ -1,0 +1,7 @@
+{
+  "navigationBarTitleText": "订阅雷达",
+  "navigationStyle": "custom",
+  "usingComponents": {
+    "custom-nav": "/components/custom-nav/index"
+  }
+}

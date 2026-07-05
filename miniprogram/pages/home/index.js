@@ -2,7 +2,7 @@ const resourceStore = require("../../stores/resource-store");
 const api = require("../../services/api");
 const { buildDashboard, getCurrentUser } = require("../../utils/dashboard");
 const { navigateToResourceView } = require("../../utils/resource-navigation");
-const { PROPERTY_GROWTH_MODE_ENABLED, buildModeOptions, getModeConfig, readWorkspaceMode, saveWorkspaceMode } = require("../../utils/workspace-mode");
+const { getModeConfig } = require("../../utils/workspace-mode");
 
 const LIBRARY_ENTRY_FILTER_KEY = "teambuy:libraryEntryFilter";
 const RADAR_ENTRY_TAB_KEY = "teambuy:radarEntryTab";
@@ -207,6 +207,20 @@ const HOME_UI_BY_MODE = {
   }
 };
 
+const UNIFIED_HOME_UI = {
+  emptyOpportunity: "先添加或分享一份资料，系统会把反馈集中到这里。",
+  emptyAction: "添加资料"
+};
+
+const HOME_QUICK_TOOLS = [
+  { key: "assistant", label: "添加资料助手", desc: "微信内容转发进资料库", icon: "微", iconImage: "/static/icons/wechat.svg", action: "openAssistant", contact: true, chip: "推荐" },
+  { key: "property", label: "房源", desc: "新建房源或看房源筛选", icon: "房", action: "propertyLibrary" },
+  { key: "opportunity", label: "商机", desc: "服务合作、代理、推广", icon: "商", action: "serviceOpportunity" },
+  { key: "service", label: "服务", desc: "名片和服务方案", icon: "服", action: "serviceLibrary" },
+  { key: "groupbuy", label: "商品", desc: "团购商品和接龙", icon: "品", action: "groupbuyLibrary" },
+  { key: "showcases", label: "合集", desc: "把多条资料打包发", icon: "合", action: "showcases" }
+];
+
 function homeUiForMode(modeConfig = {}) {
   return HOME_UI_BY_MODE[modeConfig.key] || HOME_UI_BY_MODE.property;
 }
@@ -377,9 +391,10 @@ Page({
     modeChooserVisible: false,
     workspaceMode: "",
     modeConfig: getModeConfig("notes"),
-    homeUi: homeUiForMode(getModeConfig("property")),
-    modeSwitchLabel: getModeConfig("property").shortName,
-    modeOptions: buildModeOptions(""),
+    homeUi: UNIFIED_HOME_UI,
+    modeSwitchLabel: "",
+    modeOptions: [],
+    homeQuickTools: HOME_QUICK_TOOLS,
     propertyContactPluginId: "3bf7435f594f0d6ca83a9a185ea201e5",
     overviewRange: "today",
     overviewRangeOptions: [
@@ -401,9 +416,9 @@ Page({
     customerAlerts: [],
     opportunityAlerts: [],
     opportunitySummary: {},
-    homeOpportunity: buildHomeOpportunity({}, HOME_UI_BY_MODE.property),
+    homeOpportunity: buildHomeOpportunity({}, UNIFIED_HOME_UI),
     homeRadarEntry: buildHomeRadarEntry(),
-    homeStats: buildHomeStats({}, HOME_UI_BY_MODE.property),
+    homeStats: buildHomeStats({}, UNIFIED_HOME_UI),
     assistantBindModalVisible: false,
     assistantBindMessage: "",
     assistantBindCopied: false,
@@ -421,19 +436,17 @@ Page({
     this.loadDashboard();
   },
   refreshMode(currentUser) {
-    const workspaceMode = readWorkspaceMode(currentUser && currentUser.id);
-    const modeConfig = getModeConfig(workspaceMode || "notes");
-    const homeUi = homeUiForMode(modeConfig);
+    const modeConfig = getModeConfig("notes");
     const feedbackCopy = feedbackPanelCopy(modeConfig);
     this.setData({
-      workspaceMode,
+      workspaceMode: "notes",
       modeConfig,
-      homeUi,
-      modeSwitchLabel: modeConfig.shortName || "切换",
-      modeOptions: buildModeOptions(workspaceMode),
-      modeChooserVisible: PROPERTY_GROWTH_MODE_ENABLED ? false : !workspaceMode,
-      pendingItems: modeConfig.pending || [],
-      quickActions: modeConfig.quickActions || [],
+      homeUi: UNIFIED_HOME_UI,
+      modeSwitchLabel: "",
+      modeOptions: [],
+      modeChooserVisible: false,
+      pendingItems: [],
+      quickActions: HOME_QUICK_TOOLS,
       feedbackPanelTitle: feedbackCopy.title,
       feedbackPanelLinkText: feedbackCopy.linkText
     });
@@ -441,21 +454,17 @@ Page({
   async loadDashboard() {
     const currentUser = getCurrentUser();
     const modeConfig = this.data.modeConfig || getModeConfig("notes");
-    const homeUi = homeUiForMode(modeConfig);
+    const homeUi = UNIFIED_HOME_UI;
     this.setData({ loading: true });
     try {
       const [cards, businessDashboard, groupbuyOrders, pendingImports, showcases] = await Promise.all([
-        resourceStore.listCards({ ownerUserId: currentUser.id }, { force: true }),
-        modeConfig.key !== "notes"
-          ? api.fetchBusinessDashboard(currentUser.id, currentUser.id, modeConfig.key).catch(() => null)
-          : Promise.resolve(null),
-        modeConfig.key === "groupbuy"
-          ? api.fetchOrders({ userId: currentUser.id, role: "seller" }).catch(() => null)
-          : Promise.resolve(null),
-        modeConfig.key === "notes" ? api.fetchPendingImports().catch(() => ({ data: [] })) : Promise.resolve({ data: [] }),
-        modeConfig.key === "notes" ? api.fetchShowcases(currentUser.id).catch(() => ({ data: [] })) : Promise.resolve({ data: [] })
+        resourceStore.listCards({ ownerUserId: currentUser.id }),
+        api.fetchBusinessDashboard(currentUser.id, currentUser.id, "property").catch(() => null),
+        api.fetchOrders({ userId: currentUser.id, role: "seller" }).catch(() => null),
+        api.fetchPendingImports().catch(() => ({ data: [] })),
+        api.fetchShowcases(currentUser.id).catch(() => ({ data: [] }))
       ]);
-      const scopedCards = cardsForMode(cards || [], modeConfig.key);
+      const scopedCards = cards || [];
       const dashboard = buildDashboard(scopedCards);
       if (businessDashboard && businessDashboard.data && businessDashboard.data.summary) {
         dashboard.businessSummary = businessDashboard.data.summary;
@@ -473,13 +482,11 @@ Page({
         ...dashboard,
         homeDashboard: dashboard,
         statCards: statCardsForMode(modeConfig, dashboard, this.data.overviewRange),
-        taskCards: modeConfig.key === "notes"
-          ? buildNotesTaskCards({
-              cards: scopedCards,
-              imports: (pendingImports && pendingImports.data) || [],
-              showcases: (showcases && showcases.data) || []
-            })
-          : [],
+        taskCards: buildNotesTaskCards({
+          cards: scopedCards,
+          imports: (pendingImports && pendingImports.data) || [],
+          showcases: (showcases && showcases.data) || []
+        }),
         opportunitySummary: dashboard.opportunitySummary || {},
         opportunityAlerts: (dashboard.opportunityAlerts || []).slice(0, 3),
         homeOpportunity: buildHomeOpportunity(dashboard, homeUi),
@@ -501,34 +508,10 @@ Page({
     });
   },
   handleChooseMode(event) {
-    const mode = event.currentTarget.dataset.mode || "notes";
-    const currentUser = getCurrentUser();
-    const modeConfig = saveWorkspaceMode(mode, currentUser && currentUser.id);
-    const homeUi = homeUiForMode(modeConfig);
-    const feedbackCopy = feedbackPanelCopy(modeConfig);
-    this.setData({
-      workspaceMode: modeConfig.key,
-      modeConfig,
-      homeUi,
-      modeSwitchLabel: modeConfig.shortName || "切换",
-      modeOptions: buildModeOptions(modeConfig.key),
-      modeChooserVisible: false,
-      pendingItems: modeConfig.pending || [],
-      quickActions: modeConfig.quickActions || [],
-      feedbackPanelTitle: feedbackCopy.title,
-      feedbackPanelLinkText: feedbackCopy.linkText
-    });
-    this.loadDashboard();
+    this.setData({ modeChooserVisible: false });
   },
   handleOpenModeChooser() {
-    if (PROPERTY_GROWTH_MODE_ENABLED) {
-      wx.showToast({ title: "当前为房源中介版", icon: "none" });
-      return;
-    }
-    this.setData({
-      modeChooserVisible: true,
-      modeOptions: buildModeOptions(this.data.workspaceMode || "notes")
-    });
+    wx.showToast({ title: "资料库已统一入口", icon: "none" });
   },
   handleUseDailyMode() {
     this.handleChooseMode({ currentTarget: { dataset: { mode: "notes" } } });
@@ -570,6 +553,9 @@ Page({
       captureServiceNote: () => wx.navigateTo({ url: captureUrl("service", "service_material_note") }),
       imports: () => wx.navigateTo({ url: "/pages/imports/index" }),
       library: () => wx.switchTab({ url: "/pages/library/index" }),
+      propertyLibrary: () => this.openPropertyLibrary(),
+      groupbuyLibrary: () => this.openGroupbuyLibrary(),
+      serviceLibrary: () => this.openServiceLibrary(),
       showcases: () => this.openShowcasesForMode(),
       dashboard: () => this.openDashboardForMode(),
       leads: () => wx.navigateTo({ url: "/pages/leads/index" }),
@@ -772,10 +758,6 @@ Page({
     wx.navigateTo({ url: "/pages/imports/index" });
   },
   handleGoLibrary() {
-    if (this.data.modeConfig && this.data.modeConfig.key === "service") {
-      this.openServiceLibrary();
-      return;
-    }
     wx.switchTab({ url: "/pages/library/index" });
   },
   handleGoWorkbench() {

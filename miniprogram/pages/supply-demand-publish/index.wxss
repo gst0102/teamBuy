@@ -1,0 +1,249 @@
+.publish-page {
+  padding-bottom: 132rpx;
+}
+
+.publish-hero,
+.form-panel {
+  width: 100%;
+  border: 1rpx solid #dbe6f7;
+  border-radius: 24rpx;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 16rpx 40rpx rgba(31, 88, 168, 0.08);
+  box-sizing: border-box;
+}
+
+.publish-hero {
+  margin-top: 14rpx;
+  padding: 30rpx 26rpx;
+  background: linear-gradient(135deg, #f0f7ff, #ffffff 58%, #eefcf5);
+}
+
+.hero-kicker {
+  color: #079455;
+  font-size: 22rpx;
+  font-weight: 900;
+}
+
+.hero-title {
+  margin-top: 8rpx;
+  color: #101828;
+  font-size: 40rpx;
+  font-weight: 900;
+}
+
+.hero-sub {
+  margin-top: 12rpx;
+  color: #667085;
+  font-size: 23rpx;
+  line-height: 1.45;
+}
+
+.form-panel {
+  display: grid;
+  gap: 16rpx;
+  margin-top: 18rpx;
+  padding: 24rpx;
+}
+
+.type-row {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12rpx;
+}
+
+.type-chip,
+.bottom-actions button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  border-radius: 999rpx;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.type-chip {
+  min-width: 0;
+  height: 58rpx;
+  padding: 0 18rpx;
+  box-sizing: border-box;
+  color: #475467;
+  background: #f2f4f7;
+  font-size: 22rpx;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.type-chip.active {
+  color: #1677ff;
+  background: #eaf2ff;
+}
+
+.field-block,
+.resource-block {
+  display: grid;
+  gap: 12rpx;
+}
+
+.field-label {
+  color: #344054;
+  font-size: 22rpx;
+  font-weight: 900;
+}
+
+.field-hint {
+  margin-top: 6rpx;
+  color: #667085;
+  font-size: 20rpx;
+  line-height: 1.35;
+}
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10rpx;
+}
+
+.small-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42rpx;
+  padding: 0 16rpx;
+  border-radius: 999rpx;
+  color: #475467;
+  background: #eef2f7;
+  font-size: 21rpx;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.small-chip.active {
+  color: #1677ff;
+  background: #eaf2ff;
+}
+
+input,
+textarea {
+  width: 100%;
+  min-height: 72rpx;
+  padding: 0 18rpx;
+  border-radius: 16rpx;
+  color: #172033;
+  background: #f8fbff;
+  font-size: 24rpx;
+  box-sizing: border-box;
+}
+
+textarea {
+  min-height: 150rpx;
+  padding-top: 18rpx;
+}
+
+.resource-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16rpx;
+}
+
+.clear-link {
+  flex: 0 0 auto;
+  color: #1677ff;
+  font-size: 22rpx;
+  font-weight: 900;
+}
+
+.selected-resource,
+.resource-empty,
+.resource-item {
+  border-radius: 16rpx;
+  background: #f8fbff;
+  box-sizing: border-box;
+}
+
+.selected-resource {
+  padding: 16rpx;
+  color: #027a48;
+  font-size: 23rpx;
+  font-weight: 900;
+}
+
+.resource-empty {
+  padding: 16rpx;
+  color: #667085;
+  font-size: 22rpx;
+  line-height: 1.4;
+}
+
+.resource-list {
+  display: grid;
+  gap: 10rpx;
+  max-height: 360rpx;
+  overflow-y: auto;
+}
+
+.resource-item {
+  padding: 16rpx;
+  border: 1rpx solid transparent;
+}
+
+.resource-item.active {
+  border-color: #9bdbb7;
+  background: #f0fdf4;
+}
+
+.resource-item view {
+  color: #172033;
+  font-size: 23rpx;
+  font-weight: 900;
+  line-height: 1.35;
+}
+
+.resource-item text {
+  display: block;
+  margin-top: 6rpx;
+  color: #667085;
+  font-size: 20rpx;
+  line-height: 1.35;
+}
+
+.bottom-actions {
+  position: fixed;
+  left: 34rpx;
+  right: 34rpx;
+  bottom: 0;
+  display: flex;
+  gap: 12rpx;
+  justify-content: center;
+  padding: 14rpx 16rpx calc(14rpx + env(safe-area-inset-bottom));
+  border: 1rpx solid rgba(219, 230, 247, 0.9);
+  border-radius: 26rpx 26rpx 0 0;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 -10rpx 24rpx rgba(31, 88, 168, 0.07);
+  box-sizing: border-box;
+}
+
+.bottom-actions button {
+  height: 64rpx;
+  padding: 0 28rpx;
+  font-size: 24rpx;
+}
+
+.main-action {
+  flex: 1 1 300rpx;
+  max-width: 390rpx;
+  color: #ffffff;
+  background: #1677ff;
+}
+
+.light-action {
+  flex: 0 0 190rpx;
+  color: #1677ff;
+  background: #eaf2ff;
+}
+
+button::after {
+  border: 0;
+}

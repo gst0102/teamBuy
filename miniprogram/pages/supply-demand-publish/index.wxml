@@ -1,0 +1,70 @@
+<view class="page-shell publish-page">
+  <custom-nav title="{{isEdit ? '编辑供需' : '发布供需'}}" show-back="{{true}}" />
+
+  <view class="publish-hero">
+    <view class="hero-kicker">供需广场</view>
+    <view class="hero-title">{{isEdit ? '编辑需求 / 供给' : '发布需求 / 供给'}}</view>
+    <view class="hero-sub">提交后进入审核，审核通过才会展示到供需广场。</view>
+  </view>
+
+  <view class="form-panel">
+    <view class="type-row">
+      <view class="type-chip {{form.cardType === 'supply' ? 'active' : ''}}" data-value="supply" bindtap="setType">我能提供</view>
+      <view class="type-chip {{form.cardType === 'demand' ? 'active' : ''}}" data-value="demand" bindtap="setType">我在寻找</view>
+    </view>
+    <input value="{{form.title}}" data-key="title" placeholder="标题" bindinput="setField" />
+    <textarea value="{{form.summary}}" data-key="summary" placeholder="一句话说明" bindinput="setField" />
+
+    <view class="field-block">
+      <view class="field-label">城市</view>
+      <input value="{{form.city}}" data-key="city" placeholder="输入城市，例如：长沙 / 全国" bindinput="setField" />
+      <view class="chip-row">
+        <view wx:for="{{cityOptions}}" wx:key="*this" class="small-chip {{form.city === item ? 'active' : ''}}" data-key="city" data-value="{{item}}" bindtap="setChip">{{item}}</view>
+      </view>
+    </view>
+
+    <view class="field-block">
+      <view class="field-label">行业</view>
+      <input value="{{form.industry}}" data-key="industry" placeholder="输入行业，例如：本地生活 / 装修设计" bindinput="setField" />
+      <view class="chip-row">
+        <view wx:for="{{industryOptions}}" wx:key="*this" class="small-chip {{form.industry === item ? 'active' : ''}}" data-key="industry" data-value="{{item}}" bindtap="setChip">{{item}}</view>
+      </view>
+    </view>
+
+    <view class="field-block">
+      <view class="field-label">类型</view>
+      <input value="{{form.demandType}}" data-key="demandType" placeholder="输入类型，例如：找渠道 / 服务介绍页" bindinput="setField" />
+      <view class="chip-row">
+        <view wx:for="{{demandTypeOptions}}" wx:key="*this" class="small-chip {{form.demandType === item ? 'active' : ''}}" data-key="demandType" data-value="{{item}}" bindtap="setChip">{{item}}</view>
+      </view>
+    </view>
+
+    <input value="{{form.contactRequirement}}" data-key="contactRequirement" placeholder="联系方式要求" bindinput="setField" />
+
+    <view class="resource-block">
+      <view class="resource-head">
+        <view>
+          <view class="field-label">关联资料</view>
+          <view class="field-hint">从你的资料库或合集里选择，客户申请合作前可先了解你。</view>
+        </view>
+        <view wx:if="{{selectedResourceTitle}}" class="clear-link" bindtap="handleClearResource">清除</view>
+      </view>
+      <view wx:if="{{selectedResourceTitle}}" class="selected-resource">{{selectedResourceTitle}}</view>
+      <view wx:if="{{resourceOptions.length === 0}}" class="resource-empty">暂无可选资料或合集，可以先保存草稿，之后再补。</view>
+      <view class="resource-list">
+        <view wx:for="{{resourceOptions}}" wx:key="id" class="resource-item {{form.linkedResourceId === item.id && form.linkedResourceType === item.type ? 'active' : ''}}" data-id="{{item.id}}" data-type="{{item.type}}" bindtap="handleChooseResource">
+          <view>{{item.label}}</view>
+          <text>{{item.type === 'showcase' ? '合集' : '资料'}} · {{item.desc}}</text>
+        </view>
+      </view>
+    </view>
+
+    <input value="{{form.tagsText}}" data-key="tagsText" placeholder="标签，用空格或逗号分隔" bindinput="setField" />
+  </view>
+
+  <view class="bottom-actions">
+    <button class="light-action" loading="{{saving}}" bindtap="handleSaveDraft">保存草稿</button>
+    <button class="main-action" loading="{{saving}}" bindtap="handleSubmit">提交审核</button>
+  </view>
+  <canvas canvas-id="universalShareCanvas" class="universal-share-canvas"></canvas>
+</view>

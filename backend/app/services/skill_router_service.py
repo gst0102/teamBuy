@@ -19,8 +19,10 @@ URL_PATTERN = re.compile(r"https?://[^\s]+", re.IGNORECASE)
 PHONE_PATTERN = re.compile(r"1[3-9]\d{9}")
 PRICE_PATTERN = re.compile(r"(?:¥|￥)?\s*\d+(?:\.\d+)?\s*(?:元/月|/月|每月|万|元|块)?")
 PRICE_UNIT_PATTERN = re.compile(r"(?:¥|￥)?\s*\d+(?:\.\d+)?\s*(?:元/月|/月|每月|万|元|块)")
-PRICE_KEYWORD_PATTERN = re.compile(r"(?:价格|租金|房租|售价|总价|团购价)\D{0,8}((?:¥|￥)?\s*\d+(?:\.\d+)?\s*(?:元/月|/月|每月|万|元|块)?)")
+PRICE_KEYWORD_PATTERN = re.compile(r"(?:价格|租金|房租|售价|总价|团购价|底价|月租)\D{0,8}((?:¥|￥)?\s*\d+(?:\.\d+)?\s*(?:元/月|/月|每月|万|元|块)?)")
 FIELD_LINE_PATTERN = re.compile(r"^\s*([^:：\s]{1,8})\s*[:：]\s*(.+?)\s*$")
+FIELD_BRACKET_LINE_PATTERN = re.compile(r"^\s*[【\[]([^】\]\s]{1,8})[】\]]\s*(.+?)\s*$")
+RENTAL_LIFESTYLE_PATTERN = re.compile(r"(押一付[一二三四五六0-9]|押二付一|民水民电|商水商电|独门独户|不养宠|禁宠|🈲️?养宠物|租客|空置|已空|以空|搬空|看房|密码锁|房屋配置|底价|拎包入住)")
 
 
 PROPERTY_FIELD_ALIASES = {
@@ -32,6 +34,7 @@ PROPERTY_FIELD_ALIASES = {
     "businessArea": ["商圈", "区域", "板块"],
     "address": ["地址", "位置"],
     "serviceFee": ["服务费", "中介费"],
+    "paymentMethod": ["押付", "付款", "付款方式", "支付方式"],
     "remark": ["备注", "描述", "亮点"],
     "contact": ["电话", "联系电话", "联系方式", "联系人"],
 }
@@ -76,6 +79,7 @@ FIELD_LABELS = {
     "businessArea": "商圈/区域",
     "address": "地址/位置",
     "serviceFee": "服务费",
+    "paymentMethod": "押付方式",
     "remark": "描述/备注",
     "contact": "联系方式",
     "productName": "商品名",
@@ -328,6 +332,8 @@ class SkillRouterService:
             if product_name:
                 title = product_name
                 summary = self._truncate(product_name, 120)
+        is_property_note = typed_config.get("cardType") == "property_listing"
+        public_phone_match = None if is_property_note else phone_match
         return UserNoteDraftPayload(
             ownerUserId=owner_user_id,
             title=title,
@@ -335,12 +341,12 @@ class SkillRouterService:
             body=body,
             coverUrl=cover_url,
             media=content.media,
-            phone=phone_match.group(0) if phone_match else None,
+            phone=public_phone_match.group(0) if public_phone_match else None,
             locationText=location_text,
             sourceRefs=content.sourceRefs or content.rawMessageIds,
             visibilityConfig={
                 **typed_config,
-                "showPhone": bool(phone_match),
+                "showPhone": bool(public_phone_match),
                 "showSource": True,
             },
         )
@@ -438,6 +444,8 @@ class SkillRouterService:
             "sourceType": self._note_source_type(content),
             "systemCategory": "小程序" if content.sourceType == "miniapp_card" and detection["systemCategory"] == "待整理" else detection["systemCategory"],
             "tags": rule_tags,
+            "privateData": detection.get("privateData", {}),
+            "privateTags": detection.get("privateTags", []),
             "userTags": [],
             "tagLevels": {"rule": rule_tags, "light": [], "deep": []},
             "tagStatus": "rule_done",
@@ -460,7 +468,7 @@ class SkillRouterService:
             return dict(MINIAPP_PROPERTY_CONVERSION_DEFAULTS)
         return {
             "showContactPhone": False,
-            "enableLightScrm": False,
+            "enableLightScrm": True,
             "collectLeads": False,
             "enableAppointment": False,
             "enablePrivateConsultation": False,
@@ -474,6 +482,7 @@ class SkillRouterService:
         inferred_community = self._infer_title_community(title, body)
         if inferred_community and "community" not in property_fields:
             property_fields["community"] = inferred_community
+        property_fields = self._infer_rental_property_fields(title, body, property_fields)
         groupbuy_fields = self._extract_fields(body, GROUPBUY_FIELD_ALIASES)
         opportunity_fields = self._extract_fields(body, BUSINESS_OPPORTUNITY_FIELD_ALIASES)
         property_score = self._score_property(body, property_fields)
@@ -484,10 +493,14 @@ class SkillRouterService:
 
         if self._is_high_confidence_property(body, property_fields, property_score, groupbuy_score):
             data = self._build_property_data(title, body, property_fields, images)
+            private_data = self._build_property_private_data(body)
+            private_tags = self._build_property_private_tags(private_data)
             return {
                 "cardType": "property_listing",
                 "systemCategory": "房源",
                 "structuredData": data,
+                "privateData": private_data,
+                "privateTags": private_tags,
                 "typeSuggestions": [],
                 "recognitionConfidence": {"level": "high", "score": property_score, "matchedFields": sorted(property_fields.keys())},
                 "recognitionExplanation": self._recognition_explanation(
@@ -675,7 +688,7 @@ class SkillRouterService:
         alias_to_key = {alias: key for key, names in aliases.items() for alias in names}
         fields: dict[str, str] = {}
         for line in text.splitlines():
-            match = FIELD_LINE_PATTERN.match(line)
+            match = FIELD_LINE_PATTERN.match(line) or FIELD_BRACKET_LINE_PATTERN.match(line)
             if not match:
                 continue
             label, value = match.groups()
@@ -697,26 +710,129 @@ class SkillRouterService:
             return ""
         return value
 
+    def _infer_rental_property_fields(self, title: str, text: str, fields: dict) -> dict:
+        inferred = dict(fields)
+        if inferred.get("layout"):
+            inferred["layout"] = str(inferred["layout"]).replace("复试", "复式").strip()
+        if inferred.get("price"):
+            inferred["price"] = self._clean_property_number(self._clean_price(str(inferred["price"])) or str(inferred["price"]).strip())
+        if inferred.get("area"):
+            inferred["area"] = str(inferred["area"]).replace("平米", "").replace("平方", "").replace("㎡", "").replace("平", "").strip()
+        if "price" not in inferred:
+            price = self._first_price(text)
+            if price:
+                inferred["price"] = self._clean_property_number(price)
+        if "area" not in inferred:
+            area = self._infer_property_area(text)
+            if area:
+                inferred["area"] = area
+        if "layout" not in inferred:
+            layout = self._infer_property_layout(text)
+            if layout:
+                inferred["layout"] = layout
+        if "utilities" not in inferred:
+            utilities = self._infer_property_utilities(text)
+            if utilities:
+                inferred["utilities"] = utilities
+        if "paymentMethod" not in inferred:
+            payment = self._infer_property_payment_method(text)
+            if payment:
+                inferred["paymentMethod"] = payment
+        if "moveInTime" not in inferred:
+            move_in = self._infer_property_move_in_time(text)
+            if move_in:
+                inferred["moveInTime"] = move_in
+        if "remark" not in inferred and RENTAL_LIFESTYLE_PATTERN.search(text):
+            inferred["remark"] = self._truncate(text, 160)
+        if "community" not in inferred:
+            community = self._infer_property_community_from_title(title)
+            if community and RENTAL_LIFESTYLE_PATTERN.search(text):
+                inferred["community"] = community
+        return inferred
+
+    def _infer_property_community_from_title(self, title: str) -> str:
+        value = title.strip(" \n\r\t，。,.、")
+        if not value or len(value) < 2:
+            return ""
+        if re.search(r"(小区|楼盘|公寓|苑|园|府|里|城|花园|家园|公馆|一期|二期|三期|四期|栋|幢|号|室)", value):
+            return value[:40]
+        return ""
+
+    def _infer_property_area(self, text: str) -> str:
+        for line in text.splitlines():
+            if "面积" in line:
+                match = re.search(r"\d+(?:\.\d+)?\s*(?:平米|平方|㎡|平)?", line)
+                if match:
+                    return match.group(0).strip()
+        match = re.search(r"\d+(?:\.\d+)?\s*(?:平米|平方|㎡)", text)
+        return match.group(0).strip() if match else ""
+
+    def _infer_property_layout(self, text: str) -> str:
+        patterns = [
+            r"(精装)?(?:复式|复试|loft|LOFT).{0,4}(?:一房|一室一厅|一室户|两房|二房|三房)?",
+            r"(?:公寓)?(?:一房|一室一厅|一室户|两房|二房|三房|次卧|主卧|独卫|独门独户)",
+            r"[一二两三四五六七八九十0-9]+(?:室|居室|房)(?:[一二两三四五六七八九十0-9]+厅)?",
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, text)
+            if match:
+                value = match.group(0).strip(" ，。、")
+                if value:
+                    return value.replace("复试", "复式")[:24]
+        return ""
+
+    def _infer_property_utilities(self, text: str) -> str:
+        if "民水民电" in text:
+            return "民水民电"
+        if "商水商电" in text:
+            return "商水商电"
+        if "水电自缴" in text or "水电物业" in text:
+            return "水电自缴"
+        return ""
+
+    def _infer_property_payment_method(self, text: str) -> str:
+        match = re.search(r"押[一二三四五六0-9]付[一二三四五六0-9]", text)
+        if match:
+            return match.group(0)
+        if "押二付一" in text:
+            return "押二付一"
+        return ""
+
+    def _infer_property_move_in_time(self, text: str) -> str:
+        if re.search(r"随时入住|拎包入住|空置|已空|以空", text):
+            return "随时入住"
+        match = re.search(r"租客.{0,12}(?:搬空|到期|退租)", text)
+        return match.group(0) if match else ""
+
+    def _clean_property_number(self, value: str) -> str:
+        match = re.search(r"\d+(?:\.\d+)?", str(value or ""))
+        return match.group(0) if match else str(value or "").strip()
+
     def _is_high_confidence_property(self, text: str, fields: dict, score: int, groupbuy_score: int) -> bool:
-        required = {"community", "layout", "price", "businessArea", "address", "area"}
+        required = {"community", "layout", "price", "businessArea", "address", "area", "paymentMethod", "utilities", "moveInTime"}
         matched = required.intersection(fields.keys())
         has_location = bool({"community", "businessArea", "address"}.intersection(fields.keys())) or bool(re.search(r"(小区|楼盘|郡府|和府|花园|家园|公馆|府|苑|城|位置|地址|地铁|商圈|小学|中学|入学)", text))
-        has_shape = bool({"layout", "area"}.intersection(fields.keys())) or bool(re.search(r"(一房|两房|三房|[一二两三四五六七八九十0-9]+室|[一二两三四五六七八九十0-9]+居室|公寓|平米|平方|㎡|平|南北通透|独梯独户)", text))
-        has_price = "price" in fields or bool(re.search(r"(?:\d+|[一二两三四五六七八九十]+)\s*(?:元/月|/月|每月|万|元)", text))
+        has_shape = bool({"layout", "area"}.intersection(fields.keys())) or bool(re.search(r"(一房|两房|三房|[一二两三四五六七八九十0-9]+室|[一二两三四五六七八九十0-9]+居室|公寓|平米|平方|㎡|平|南北通透|独梯独户|独门独户)", text))
+        has_price = "price" in fields or bool(re.search(r"(?:底价|租金|房租|月租)?\D{0,4}(?:\d+|[一二两三四五六七八九十]+)\s*(?:元/月|/月|每月|万|元|块)?", text) and RENTAL_LIFESTYLE_PATTERN.search(text))
         informal_signals = sum(
             1
             for pattern in [
                 r"\d+(?:\.\d+)?\s*(?:平米|平方|㎡|平)",
                 r"\d+(?:\.\d+)?\s*万",
                 r"[一二两三四五六七八九十0-9]+(?:室|居室|房)",
-                r"(毛坯|精装|装修|阳台|阴台|南北通透|独梯独户|小高层|楼层|采光)",
+                r"(毛坯|精装|装修|阳台|阴台|南北通透|独梯独户|独门独户|小高层|楼层|采光)",
                 r"(小学|中学|入学|学区)",
+                r"(押一付[一二三四五六0-9]|押二付一)",
+                r"(民水民电|商水商电)",
+                r"(不养宠|禁宠|🈲️?养宠物|租客)",
+                r"(密码锁|看房|空置|已空|以空|搬空|房屋配置|拎包入住)",
                 r"1[3-9]\d{9}",
             ]
             if re.search(pattern, text)
         )
-        has_enough_fields = len(matched) >= 3 or (informal_signals >= 3 and has_location)
-        return score >= 5 and score >= groupbuy_score + 1 and (has_price or informal_signals >= 4) and has_location and has_shape and has_enough_fields
+        strong_rental = bool(re.search(r"(押一付[一二三四五六0-9]|押二付一|看房)", text)) and has_location and has_price
+        has_enough_fields = len(matched) >= 3 or (informal_signals >= 3 and has_location) or strong_rental
+        return score >= 5 and score >= groupbuy_score + 1 and (has_price or informal_signals >= 4) and has_location and (has_shape or strong_rental) and has_enough_fields
 
     def _is_high_confidence_groupbuy(self, text: str, fields: dict, score: int, property_score: int, parser_hints: list[str] | None = None) -> bool:
         required = {"productName", "price", "spec", "deadline", "pickupMethod", "pickupLocation"}
@@ -749,6 +865,8 @@ class SkillRouterService:
             "总价",
             "售价",
             "水电",
+            "民水民电",
+            "商水商电",
             "物业",
             "商圈",
             "房源",
@@ -770,14 +888,27 @@ class SkillRouterService:
             "阴台",
             "南北通透",
             "独梯独户",
+            "独门独户",
             "小高层",
+            "押一付一",
+            "押一付三",
+            "押二付一",
+            "不养宠物",
+            "禁宠",
+            "密码锁",
+            "底价",
+            "租客",
+            "空置",
+            "搬空",
+            "看房",
+            "房屋配置",
             "入学",
             "学区",
             "小学",
             "中学",
         ]
         score += sum(1 for keyword in keywords if keyword in text)
-        if "price" in fields or re.search(r"(?:\d+|[一二两三四五六七八九十]+)\s*(?:元/月|/月|每月|万|元)", text):
+        if "price" in fields or re.search(r"(?:底价|租金|房租|月租)?\D{0,4}(?:\d+|[一二两三四五六七八九十]+)\s*(?:元/月|/月|每月|万|元|块)?", text) and RENTAL_LIFESTYLE_PATTERN.search(text):
             score += 1
         if re.search(r"\d+(?:\.\d+)?\s*(?:平米|平方|㎡|平)", text):
             score += 1
@@ -838,16 +969,46 @@ class SkillRouterService:
             "community": fields.get("community") or title,
             "layout": fields.get("layout", ""),
             "area": fields.get("area", ""),
-            "price": self._clean_price(fields.get("price", "")) or self._first_price(body),
+            "price": self._clean_property_number(self._clean_price(fields.get("price", "")) or self._first_price(body)),
             "utilities": fields.get("utilities", ""),
+            "paymentMethod": fields.get("paymentMethod", ""),
+            "moveInTime": fields.get("moveInTime", ""),
             "businessArea": fields.get("businessArea", ""),
             "address": fields.get("address", ""),
             "serviceFee": fields.get("serviceFee", ""),
             "remark": fields.get("remark") or self._truncate(body, 160),
-            "contact": fields.get("contact") or (PHONE_PATTERN.search(body).group(0) if PHONE_PATTERN.search(body) else ""),
+            "contact": "",
             "images": images,
             "rawText": body,
         }
+
+    def _build_property_private_data(self, body: str) -> dict:
+        phones = list(dict.fromkeys(PHONE_PATTERN.findall(body or "")))
+        private_data: dict = {}
+        if phones:
+            private_data["upstreamPhones"] = phones
+        wechat = self._infer_wechat(body or "", "")
+        if wechat:
+            private_data["upstreamWechat"] = wechat
+        private_lines = [
+            line.strip()
+            for line in (body or "").splitlines()
+            if line.strip() and re.search(r"(上游|房东|渠道|中介费|佣金|密码|看房|带看|租客|不养宠物|禁宠)", line)
+        ]
+        if private_lines:
+            private_data["privateRemark"] = self._truncate("；".join(private_lines), 180)
+        return private_data
+
+    def _build_property_private_tags(self, private_data: dict) -> list[str]:
+        tags = []
+        phones = private_data.get("upstreamPhones") if isinstance(private_data, dict) else []
+        if phones:
+            tags.append(f"上游电话{len(phones)}个")
+        if private_data.get("upstreamWechat"):
+            tags.append("上游微信")
+        if private_data.get("privateRemark"):
+            tags.append("上游备注")
+        return tags
 
     def _build_groupbuy_data(self, title: str, body: str, fields: dict, images: list[str]) -> dict:
         return {

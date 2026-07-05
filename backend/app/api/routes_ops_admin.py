@@ -16,9 +16,13 @@ from app.schemas.ops_admin import (
     GroupBotChannelUpsertRequest,
     GroupUploadCreateRequest,
     GroupUploadPreviewRequest,
+    OpportunityLeadUpsertRequest,
+    RuleLearningSampleUpdateRequest,
     SingleGroupResourceCreateRequest,
+    SupplyDemandReviewRequest,
     WecomGroupJoinWayCreateRequest,
 )
+from app.schemas.resource_wallet import ResourceWalletAdjustRequest
 from app.services.app_service import AppService
 from app.services.ops_console_store import OpsConsoleStore
 from app.services.sync_task_queue import SyncTaskQueue
@@ -103,6 +107,10 @@ def _build_trend(days: int, state) -> list[dict]:
         }
         for date_key in keys
     ]
+
+
+def _user_label_map(state) -> dict[str, str]:
+    return {item.id: item.nickname or item.id for item in state.users}
 
 
 def _system_queue(service: AppService, sync_task_queue: SyncTaskQueue) -> dict:
@@ -190,8 +198,9 @@ def get_ops_admin_overview(
             "trend7d": _build_trend(7, state),
             "topShowcase": top_showcase,
             "resourceStatus": [
-                {"key": "group-resource-library", "label": "群资源库", "status": "pending_backend", "desc": "积分和使用记录暂未后端化"},
-                {"key": "enterprise-resource-search", "label": "企业资源搜索", "status": "pending_backend", "desc": "积分消耗和查询记录暂未全局统计"},
+                {"key": "group-resource-library", "label": "群资源库", "status": "partial", "desc": "积分账本已后端化，使用记录待接"},
+                {"key": "enterprise-resource-search", "label": "企业资源搜索", "status": "partial", "desc": "积分账本已后端化，查询记录待接"},
+                {"key": "opportunity-leads", "label": "商机线索", "status": "partial", "desc": "录入、下架、回应包和积分后台可用"},
                 {"key": "help-feedback", "label": "帮助与反馈", "status": "partial", "desc": "PC 工单可用，小程序前台提交通路待接"},
             ],
             "systemQueue": queue["summary"],
@@ -612,6 +621,217 @@ def list_feedback_tickets(
     return ApiResponse(data=store.list_feedback_tickets(status=status))
 
 
+@router.get("/api/ops/opportunity-leads", response_model=ApiResponse[list[dict]])
+def list_ops_opportunity_leads(
+    keyword: str | None = Query(default=None),
+    status: str | None = Query(default=None),
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+):
+    _verify_admin_token(x_admin_token)
+    return ApiResponse(data=service.list_opportunity_leads_ops(keyword=keyword, status=status))
+
+
+@router.get("/api/ops/opportunity-leads/{lead_id}", response_model=ApiResponse[dict])
+def get_ops_opportunity_lead(
+    lead_id: str,
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+):
+    _verify_admin_token(x_admin_token)
+    return ApiResponse(data=service.get_opportunity_lead_detail(lead_id, include_ops=True))
+
+
+@router.post("/api/ops/opportunity-leads", response_model=ApiResponse[dict])
+def upsert_ops_opportunity_lead(
+    payload: OpportunityLeadUpsertRequest,
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+):
+    _verify_admin_token(x_admin_token)
+    return ApiResponse(data=service.upsert_opportunity_lead(payload))
+
+
+@router.post("/api/ops/opportunity-leads/{lead_id}/offline", response_model=ApiResponse[dict])
+def offline_ops_opportunity_lead(
+    lead_id: str,
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+):
+    _verify_admin_token(x_admin_token)
+    lead = service.repo.get_opportunity_lead(lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="商机线索不存在")
+    lead.status = "archived"
+    lead.updatedAt = datetime.now(tz=SHANGHAI).isoformat()
+    service.repo.save_opportunity_lead(lead)
+    return ApiResponse(data=service.get_opportunity_lead_detail(lead_id, include_ops=True))
+
+
+@router.get("/api/ops/opportunity-dashboard", response_model=ApiResponse[dict])
+def get_ops_opportunity_dashboard(
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+):
+    _verify_admin_token(x_admin_token)
+    state = service.repo.load()
+    today_start = _today_start()
+    today_ledgers = [item for item in state.resource_point_ledgers if _is_since(item.createdAt, today_start)]
+    consumed_ledgers = [item for item in state.resource_point_ledgers if item.pointsDelta < 0]
+    today_consumed_ledgers = [item for item in today_ledgers if item.pointsDelta < 0]
+    today_resource_users = {item.ownerUserId for item in today_ledgers if item.actionType != "initial_grant"}
+    status_counter = Counter(item.status for item in state.opportunity_leads)
+    package_today_count = sum(1 for item in state.response_packages if _is_since(item.createdAt, today_start))
+    generated_lead_ids = {item.leadId for item in state.response_packages}
+    saved_lead_ids = {item.leadId for item in state.opportunity_lead_saves}
+    user_labels = _user_label_map(state)
+    consumed_by_user: dict[str, int] = defaultdict(int)
+    for item in consumed_ledgers:
+        consumed_by_user[item.ownerUserId] += abs(item.pointsDelta)
+    rank_rows = [
+        {
+            "userId": user_id,
+            "nickname": user_labels.get(user_id, user_id),
+            "pointsConsumed": points,
+        }
+        for user_id, points in sorted(consumed_by_user.items(), key=lambda row: row[1], reverse=True)[:20]
+    ]
+    return ApiResponse(
+        data={
+            "summary": {
+                "todayResourceUsers": len(today_resource_users),
+                "todayPointsConsumed": sum(abs(item.pointsDelta) for item in today_consumed_ledgers),
+                "todayResponsePackages": package_today_count,
+                "publishedLeads": status_counter["published"],
+                "draftLeads": status_counter["draft"],
+                "archivedLeads": status_counter["archived"],
+                "savedLeadCount": len(saved_lead_ids),
+                "responsePackageLeadCount": len(generated_lead_ids),
+            },
+            "pointsRank": rank_rows,
+            "leadStatus": dict(status_counter),
+        }
+    )
+
+
+@router.get("/api/ops/resource-wallet/users", response_model=ApiResponse[dict])
+def list_ops_resource_wallet_users(
+    keyword: str | None = Query(default=None),
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+):
+    _verify_admin_token(x_admin_token)
+    state = service.repo.load()
+    q = (keyword or "").strip().lower()
+    ledger_count = Counter(item.ownerUserId for item in state.resource_point_ledgers)
+    last_ledger_at: dict[str, str] = {}
+    for item in state.resource_point_ledgers:
+        if not last_ledger_at.get(item.ownerUserId) or item.createdAt > last_ledger_at[item.ownerUserId]:
+            last_ledger_at[item.ownerUserId] = item.createdAt
+    wallet_map = {item.ownerUserId: item for item in state.resource_wallets}
+    rows = []
+    for user in state.users:
+        searchable = f"{user.nickname} {user.id} {user.openid}".lower()
+        if q and q not in searchable:
+            continue
+        wallet = wallet_map.get(user.id)
+        rows.append(
+            {
+                "userId": user.id,
+                "nickname": user.nickname,
+                "openid": user.openid,
+                "balance": wallet.balance if wallet else None,
+                "totalGranted": wallet.totalGranted if wallet else 0,
+                "totalConsumed": wallet.totalConsumed if wallet else 0,
+                "ledgerCount": ledger_count[user.id],
+                "lastLedgerAt": last_ledger_at.get(user.id),
+                "createdAt": user.createdAt,
+            }
+        )
+    rows.sort(key=lambda item: (item["totalConsumed"], item["ledgerCount"], item["lastLedgerAt"] or ""), reverse=True)
+    return ApiResponse(data={"items": rows[:100], "total": len(rows)})
+
+
+@router.post("/api/ops/resource-wallet/users/{user_id}/adjust", response_model=ApiResponse[dict])
+def adjust_ops_resource_wallet_user(
+    user_id: str,
+    payload: ResourceWalletAdjustRequest,
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+):
+    _verify_admin_token(x_admin_token)
+    return ApiResponse(
+        data=service.adjust_resource_wallet(
+            owner_user_id=user_id,
+            points_delta=payload.pointsDelta,
+            reason=payload.reason,
+            operator_id=payload.operatorId,
+        )
+    )
+
+
+@router.get("/api/ops/response-packages", response_model=ApiResponse[dict])
+def list_ops_response_packages(
+    keyword: str | None = Query(default=None),
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+):
+    _verify_admin_token(x_admin_token)
+    state = service.repo.load()
+    user_labels = _user_label_map(state)
+    lead_map = {item.id: item for item in state.opportunity_leads}
+    q = (keyword or "").strip().lower()
+    rows = []
+    for item in state.response_packages:
+        lead = lead_map.get(item.leadId)
+        searchable = f"{item.title} {item.ownerUserId} {user_labels.get(item.ownerUserId, '')} {lead.title if lead else ''}".lower()
+        if q and q not in searchable:
+            continue
+        rows.append(
+            {
+                **item.model_dump(),
+                "ownerNickname": user_labels.get(item.ownerUserId, item.ownerUserId),
+                "leadTitle": lead.title if lead else item.leadId,
+                "itemCount": len(service.repo.list_response_package_items(item.id)),
+            }
+        )
+    rows.sort(key=lambda row: row["createdAt"], reverse=True)
+    return ApiResponse(data={"items": rows[:100], "total": len(rows)})
+
+
+@router.get("/api/ops/supply-demand/cards", response_model=ApiResponse[dict])
+def list_ops_supply_demand_cards(
+    keyword: str | None = Query(default=None),
+    status: str | None = Query(default=None),
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+):
+    _verify_admin_token(x_admin_token)
+    statuses = {status} if status else None
+    rows = [service._supply_demand_card_payload(item) for item in service.repo.list_supply_demand_cards(statuses=statuses, keyword=keyword)]
+    return ApiResponse(data={"items": rows, "total": len(rows)})
+
+
+@router.post("/api/ops/supply-demand/cards/{card_id}/review", response_model=ApiResponse[dict])
+def review_ops_supply_demand_card(
+    card_id: str,
+    payload: SupplyDemandReviewRequest,
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+):
+    _verify_admin_token(x_admin_token)
+    return ApiResponse(data=service.review_supply_demand_card(card_id, payload.status, payload.reviewNote))
+
+
+@router.post("/api/ops/opportunity-push-digests/generate", response_model=ApiResponse[dict])
+def generate_ops_opportunity_push_digests(
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+):
+    _verify_admin_token(x_admin_token)
+    return ApiResponse(data=service.generate_opportunity_push_digests_for_active_subscriptions())
+
+
 @router.post("/api/ops-admin/feedback", response_model=ApiResponse[dict])
 def create_feedback_ticket(
     payload: FeedbackTicketCreateRequest,
@@ -647,4 +867,36 @@ def update_feedback_ticket(
     )
     if not updated:
         raise HTTPException(status_code=404, detail="反馈工单不存在")
+    return ApiResponse(data=updated)
+
+
+@router.get("/api/ops-admin/rule-learning-samples", response_model=ApiResponse[list[dict]])
+def list_rule_learning_samples(
+    status: str | None = Query(default=None),
+    cardType: str | None = Query(default=None),
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    store: OpsConsoleStore = Depends(get_ops_console_store),
+):
+    _verify_admin_token(x_admin_token)
+    return ApiResponse(data=store.list_rule_learning_samples(status=status, card_type=cardType))
+
+
+@router.patch("/api/ops-admin/rule-learning-samples/{sample_id}", response_model=ApiResponse[dict])
+def update_rule_learning_sample(
+    sample_id: str,
+    payload: RuleLearningSampleUpdateRequest,
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    store: OpsConsoleStore = Depends(get_ops_console_store),
+):
+    _verify_admin_token(x_admin_token)
+    if payload.status and payload.status not in {"pending", "approved", "rejected", "published"}:
+        raise HTTPException(status_code=400, detail="不支持的样本状态")
+    updated = store.update_rule_learning_sample(
+        sample_id,
+        status=payload.status,
+        operator_name=payload.operatorName,
+        review_note=payload.reviewNote,
+    )
+    if not updated:
+        raise HTTPException(status_code=404, detail="规则样本不存在")
     return ApiResponse(data=updated)

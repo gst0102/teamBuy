@@ -1,0 +1,7 @@
+{
+  "navigationBarTitleText": "商机线索",
+  "navigationStyle": "custom",
+  "usingComponents": {
+    "custom-nav": "/components/custom-nav/index"
+  }
+}

@@ -1,0 +1,73 @@
+<view class="page-shell market-page">
+  <custom-nav title="供需广场" show-back="{{true}}" />
+
+  <view class="market-hero">
+    <view>
+      <view class="hero-kicker">公开线索池</view>
+      <view class="hero-title">供需广场</view>
+      <view class="hero-sub">官方收录需求和用户供给都放在这里，先看可联系和可信状态。</view>
+    </view>
+    <button class="publish-btn" bindtap="handlePublish">发布需求/供给</button>
+  </view>
+
+  <view class="stats-grid">
+    <view wx:for="{{stats}}" wx:key="label" class="stat-card">
+      <view>{{item.value}}</view>
+      <text>{{item.label}}</text>
+    </view>
+  </view>
+
+  <view class="filter-panel">
+    <view class="filter-title">分类筛选</view>
+    <view wx:for="{{filterGroups}}" wx:key="key" class="filter-group">
+      <view class="filter-label">{{item.label}}</view>
+      <input
+        wx:if="{{item.key === 'city' || item.key === 'industry' || item.key === 'demandType'}}"
+        class="filter-input"
+        value="{{item.value === '全部' ? '' : item.value}}"
+        data-key="{{item.key}}"
+        placeholder="可自定义输入{{item.label}}"
+        bindinput="handleFilterInput"
+        bindconfirm="handleFilterConfirm"
+      />
+      <view class="filter-row">
+        <view
+          wx:for="{{item.options}}"
+          wx:for-item="option"
+          wx:key="label"
+          class="filter-chip {{option.active ? 'active' : ''}}"
+          data-key="{{item.key}}"
+          data-value="{{option.label}}"
+          bindtap="handleFilterTap"
+        >{{option.label}}</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="market-list-head">
+    <view>
+      <view class="section-title">线索列表</view>
+      <view class="section-sub">区分需求和供给，方便直接行动。</view>
+    </view>
+  </view>
+
+  <view wx:for="{{cards}}" wx:key="id" class="market-card {{item.type}}">
+    <view class="card-head">
+      <view class="badge">{{item.badge}}</view>
+      <view class="time">{{item.timeText}}</view>
+    </view>
+    <view class="card-title">{{item.title}}</view>
+    <view class="card-summary">{{item.summary}}</view>
+    <view class="field-grid">
+      <view><text>城市</text><strong>{{item.city}}</strong></view>
+      <view><text>行业</text><strong>{{item.industry}}</strong></view>
+      <view><text>类型</text><strong>{{item.demandType}}</strong></view>
+      <view><text>联系</text><strong>{{item.contactStatus}}</strong></view>
+    </view>
+    <view class="card-actions">
+      <button class="primary" data-id="{{item.id}}" bindtap="handleOpenDetail">查看详情</button>
+      <button class="secondary" data-id="{{item.id}}" catchtap="handleSave">保存</button>
+    </view>
+  </view>
+  <canvas canvas-id="universalShareCanvas" class="universal-share-canvas"></canvas>
+</view>

@@ -70,8 +70,8 @@ def test_run_content_to_note_builds_rule_based_note_draft():
             "ownerUserId": "user_001",
             "content": {
                 "sourceType": "wecom_thread",
-                "title": "客户购房需求",
-                "textBlocks": ["客户预算 300 万，想看三房。电话 13800138000。", "偏好地铁附近。"],
+                "title": "客户回访记录",
+                "textBlocks": ["客户说下周再沟通。电话 13800138000。", "偏好下午联系。"],
                 "media": [{"type": "image", "url": "https://example.com/cover.webp"}],
                 "sourceRefs": ["wecom_msg_1"],
                 "rawMessageIds": ["raw_1"],
@@ -85,10 +85,11 @@ def test_run_content_to_note_builds_rule_based_note_draft():
     assert data["skillRun"]["status"] == "success"
     assert data["skillRun"]["modelProvider"] == "rule"
     assert data["noteDraft"]["ownerUserId"] == "user_001"
-    assert data["noteDraft"]["title"] == "客户购房需求"
+    assert data["noteDraft"]["title"] == "客户回访记录"
     assert data["noteDraft"]["phone"] == "13800138000"
     assert data["noteDraft"]["coverUrl"] == "https://example.com/cover.webp"
-    assert "偏好地铁附近" in data["noteDraft"]["body"]
+    assert "偏好下午联系" in data["noteDraft"]["body"]
+    assert data["noteDraft"]["visibilityConfig"]["conversionConfig"]["enableLightScrm"] is True
 
 
 def test_run_content_to_note_detects_property_listing_card():
@@ -120,10 +121,11 @@ def test_run_content_to_note_detects_property_listing_card():
     assert {"房产", "房源"}.issubset(set(config["tags"]))
     assert config["structuredData"]["community"] == "碧桂园城市之光1栋1210"
     assert config["structuredData"]["layout"] == "公寓一房"
-    assert config["structuredData"]["area"] == "42平"
-    assert config["structuredData"]["price"] == "1600元/月"
+    assert config["structuredData"]["area"] == "42"
+    assert config["structuredData"]["price"] == "1600"
     assert config["structuredData"]["businessArea"] == "万家丽、高桥北"
     assert config["structuredData"]["images"] == ["https://example.com/house.webp"]
+    assert config["structuredData"]["contact"] == ""
     assert config["conversionConfig"]["enableLightScrm"] is True
     assert config["conversionConfig"]["enableAppointment"] is True
     assert config["conversionConfig"]["enableGroupRelay"] is False
@@ -236,6 +238,81 @@ def test_property_detection_uses_title_as_community_signal():
     assert config["cardType"] == "property_listing"
     assert config["recognitionConfidence"]["level"] == "high"
     assert config["structuredData"]["community"] == "万国城北塔27050"
+
+
+def test_run_content_to_note_detects_single_wechat_note_rental_property():
+    raw_text = "\n".join(
+        [
+            "🏠珠江好世界B5栋5083",
+            "位置：湖南省长沙市开福区福元西路珠江好世界公寓",
+            "【户型】精装复试1房",
+            "【面积】40",
+            "【租金】1980🉐",
+            "【房屋配置】电视机 油烟机 热水器 洗衣机 衣柜 空调",
+        ]
+    )
+    response = client.post(
+        "/api/skills/content-to-note/run",
+        json={
+            "ownerUserId": "user_001",
+            "content": {
+                "sourceType": "wecom_thread",
+                "title": "🏠珠江好世界B5栋5083",
+                "textBlocks": [raw_text],
+                "media": [{"type": "image", "url": "https://example.com/room.webp"}],
+                "sourceRefs": ["wecom_note_single_property"],
+                "rawMessageIds": ["raw_single_property"],
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    config = response.json()["data"]["noteDraft"]["visibilityConfig"]
+    structured = config["structuredData"]
+    assert config["cardType"] == "property_listing"
+    assert config["recognitionConfidence"]["level"] == "high"
+    assert structured["community"] == "🏠珠江好世界B5栋5083"
+    assert structured["address"] == "湖南省长沙市开福区福元西路珠江好世界公寓"
+    assert structured["layout"] in {"精装复式1房", "精装复式"}
+    assert structured["area"] == "40"
+    assert structured["price"] == "1980"
+
+
+def test_run_content_to_note_detects_short_rental_phrase_property():
+    raw_text = "\n".join(
+        [
+            "开福区天健一期H栋1205",
+            "独门独户，底价1500押一付三",
+            "押一付三民水民电",
+            "要求租客不养宠物 爱干净",
+            "密码锁",
+        ]
+    )
+    response = client.post(
+        "/api/skills/content-to-note/run",
+        json={
+            "ownerUserId": "user_001",
+            "content": {
+                "sourceType": "wecom_thread",
+                "title": "开福区天健一期H栋1205",
+                "textBlocks": [raw_text],
+                "media": [{"type": "image", "url": "https://example.com/tianjian.webp"}],
+                "sourceRefs": ["wecom_note_short_rental"],
+                "rawMessageIds": ["raw_short_rental"],
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    config = response.json()["data"]["noteDraft"]["visibilityConfig"]
+    structured = config["structuredData"]
+    assert config["cardType"] == "property_listing"
+    assert config["recognitionConfidence"]["level"] == "high"
+    assert structured["community"] == "开福区天健一期H栋1205"
+    assert structured["price"] == "1500"
+    assert structured["paymentMethod"] == "押一付三"
+    assert structured["utilities"] == "民水民电"
+    assert "密码锁" in structured["remark"]
 
 
 def test_commands_include_showcase_and_billing_entries():

@@ -1,0 +1,75 @@
+<view class="page-shell my-publish-page">
+  <custom-nav title="我的发布" show-back="{{true}}" />
+
+  <view class="my-hero">
+    <view class="hero-kicker">供需广场</view>
+    <view class="hero-title">我的发布</view>
+    <view class="hero-sub">查看展示中、待审核、已下架的需求和供给。</view>
+    <button bindtap="handlePublish">新增发布</button>
+  </view>
+
+  <view wx:for="{{cards}}" wx:key="id" class="publish-card">
+    <view class="card-head">
+      <view class="status-pill">{{item.statusText}}</view>
+      <view class="type-pill">{{item.cardType === 'supply' ? '供给' : '需求'}}</view>
+    </view>
+    <view class="card-title">{{item.title}}</view>
+    <view class="card-summary">{{item.summary}}</view>
+    <view class="meta-row">
+      <text>{{item.city || "不限城市"}}</text>
+      <text>{{item.industry || "综合"}}</text>
+      <text>{{item.demandType}}</text>
+    </view>
+    <view class="actions">
+      <button data-id="{{item.id}}" bindtap="handleEdit">编辑</button>
+      <button wx:if="{{item.status === 'draft' || item.status === 'rejected'}}" data-id="{{item.id}}" bindtap="handleSubmit">提交审核</button>
+      <button wx:if="{{item.status !== 'archived'}}" data-id="{{item.id}}" bindtap="handleArchive">下架</button>
+    </view>
+  </view>
+
+  <view wx:if="{{cards.length === 0}}" class="empty-panel">还没有发布，先新增一条供给或需求。</view>
+
+  <view class="section-head">
+    <view class="section-title">收到的合作申请</view>
+    <view class="section-sub">通过后可按对方联系方式继续沟通。</view>
+  </view>
+
+  <view wx:for="{{applications}}" wx:key="id" class="application-card">
+    <view class="card-head">
+      <view class="status-pill">{{item.status === 'pending' ? '待处理' : item.status === 'accepted' ? '已通过' : item.status === 'rejected' ? '已拒绝' : '已关闭'}}</view>
+      <view class="type-pill">{{item.applicantNickname || '申请人'}}</view>
+    </view>
+    <view class="card-title">{{item.cardTitle || "供需卡"}}</view>
+    <view class="card-summary">{{item.message}}</view>
+    <view class="meta-row">
+      <text wx:if="{{item.contactSnapshot.phone}}">{{item.contactSnapshot.phone}}</text>
+      <text wx:if="{{item.contactSnapshot.wechat}}">{{item.contactSnapshot.wechat}}</text>
+    </view>
+    <view wx:if="{{item.status === 'pending'}}" class="actions">
+      <button data-id="{{item.id}}" data-status="accepted" bindtap="handleReviewApplication">通过</button>
+      <button data-id="{{item.id}}" data-status="rejected" bindtap="handleReviewApplication">拒绝</button>
+    </view>
+  </view>
+
+  <view wx:if="{{applications.length === 0}}" class="empty-panel">还没有收到合作申请。</view>
+
+  <view class="section-head">
+    <view class="section-title">我申请的合作</view>
+    <view class="section-sub">看自己发出的合作申请进展。</view>
+  </view>
+
+  <view wx:for="{{myApplications}}" wx:key="id" class="application-card" data-id="{{item.cardId}}" bindtap="handleOpenSupplyDetail">
+    <view class="card-head">
+      <view class="status-pill">{{item.status === 'pending' ? '待对方处理' : item.status === 'accepted' ? '已通过' : item.status === 'rejected' ? '已拒绝' : '已关闭'}}</view>
+      <view class="type-pill">我申请的</view>
+    </view>
+    <view class="card-title">{{item.cardTitle || "供需卡"}}</view>
+    <view class="card-summary">{{item.cardSummary || item.message}}</view>
+    <view class="meta-row">
+      <text>{{item.message}}</text>
+    </view>
+  </view>
+
+  <view wx:if="{{myApplications.length === 0}}" class="empty-panel">还没有发出合作申请。</view>
+  <canvas canvas-id="universalShareCanvas" class="universal-share-canvas"></canvas>
+</view>

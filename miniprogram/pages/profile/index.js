@@ -72,6 +72,20 @@ function isBusinessCardResource(card = {}) {
   return cardType === "business_card" || card.categoryName === "名片";
 }
 
+function buildResourceToolsH5Url(ticket) {
+  const app = getApp();
+  const globalData = (app && app.globalData) || {};
+  const baseUrl = globalData.apiBaseUrl || "";
+  const apiPrefix = globalData.apiRoutePrefix || "/api";
+  const h5Prefix = globalData.apiRoutePrefix || "";
+  const params = [
+    `ticket=${encodeURIComponent(ticket || "")}`,
+    `apiPrefix=${encodeURIComponent(apiPrefix || "/api")}`,
+    `env=${encodeURIComponent(globalData.environmentName || "")}`
+  ];
+  return `${baseUrl}${h5Prefix}/h5/resource-tools/?${params.join("&")}`;
+}
+
 Page({
   data: {
     user: null,
@@ -91,7 +105,8 @@ Page({
     showResourceRules: false,
     workspaceMode: "notes",
     modeConfig: getModeConfig("notes"),
-    modeOptions: buildModeOptions("notes")
+    modeOptions: buildModeOptions("notes"),
+    profileLegalAgreed: false
   },
   onShow() {
     const currentUser = getCurrentUser();
@@ -193,6 +208,25 @@ Page({
   handleOpenEnterpriseSearch() {
     wx.navigateTo({ url: "/pages/enterprise-resource-search/index" });
   },
+  async handleOpenOpportunityRadar() {
+    const currentUser = getCurrentUser();
+    if (!currentUser || !currentUser.id) {
+      wx.reLaunch({ url: "/pages/login/index" });
+      return;
+    }
+    try {
+      wx.showLoading({ title: "打开资源工具" });
+      const res = await api.createH5Ticket({ userId: currentUser.id, entry: "resource-tools" });
+      const ticket = res && res.data && res.data.ticket;
+      const h5Url = buildResourceToolsH5Url(ticket);
+      wx.hideLoading();
+      wx.navigateTo({ url: `/pages/resource-tools-webview/index?src=${encodeURIComponent(h5Url)}` });
+    } catch (error) {
+      wx.hideLoading();
+      wx.showToast({ title: "资源工具升级中，已打开旧版", icon: "none" });
+      setTimeout(() => wx.navigateTo({ url: "/pages/opportunity-radar/index" }), 700);
+    }
+  },
   handleOpenResourceRules() {
     this.setData({ showResourceRules: true });
   },
@@ -210,6 +244,7 @@ Page({
     }
     this.setData({
       showProfileEditor: true,
+      profileLegalAgreed: false,
       profileDraft: {
         nickname: currentUser.nickname || "",
         avatarUrl: safeAvatarUrl(currentUser.avatarUrl),
@@ -222,6 +257,15 @@ Page({
     this.setData({ showProfileEditor: false });
   },
   noop() {},
+  handleToggleProfileLegalAgree() {
+    this.setData({ profileLegalAgreed: !this.data.profileLegalAgreed });
+  },
+  handleOpenTerms() {
+    wx.navigateTo({ url: "/pages/legal/terms/index" });
+  },
+  handleOpenPrivacy() {
+    wx.navigateTo({ url: "/pages/legal/privacy/index" });
+  },
   handleProfileNicknameInput(event) {
     this.setData({ "profileDraft.nickname": event.detail.value });
   },
@@ -231,10 +275,65 @@ Page({
   handleProfilePhoneInput(event) {
     this.setData({ "profileDraft.phone": event.detail.value });
   },
-  handleChooseAvatar(event) {
-    const avatarUrl = event.detail && event.detail.avatarUrl;
-    if (!avatarUrl) return;
-    this.setData({ "profileDraft.avatarUrl": avatarUrl });
+  handleUsePhoneAsWechat() {
+    const phone = String(this.data.profileDraft.phone || "").trim();
+    if (!phone) {
+      wx.showToast({ title: "请先填写手机号", icon: "none" });
+      return;
+    }
+    this.setData({ "profileDraft.wechat": phone });
+    wx.showToast({ title: "已填入微信号", icon: "success" });
+  },
+  handleChooseAvatarFallback() {
+    wx.showActionSheet({
+      itemList: ["从相册选择头像"],
+      success: () => this.chooseAvatarFromAlbum()
+    });
+  },
+  showAvatarChooseFailed(error = {}) {
+    const message = error.errMsg || error.detail || "系统相册没有打开，请检查微信相册权限后重试";
+    if (/privacy agreement|api scope is not declared/i.test(message)) {
+      wx.showModal({
+        title: "需要补充隐私声明",
+        content: "请在微信小程序后台的用户隐私保护指引里，声明“收集你选中的照片或视频信息”，审核/更新后才能选择相册头像。",
+        showCancel: false
+      });
+      return;
+    }
+    wx.showModal({
+      title: "相册没有打开",
+      content: message,
+      showCancel: false
+    });
+  },
+  chooseAvatarFromAlbum() {
+    if (wx.chooseImage) {
+      wx.chooseImage({
+        count: 1,
+        sourceType: ["album"],
+        success: (res) => {
+          const path = (res.tempFilePaths || [])[0] || "";
+          if (path) this.setData({ "profileDraft.avatarUrl": path });
+        },
+        fail: (error) => this.showAvatarChooseFailed(error)
+      });
+      return;
+    }
+    if (!wx.chooseMedia) {
+      this.showAvatarChooseFailed({ errMsg: "当前微信版本不支持选择图片" });
+      return;
+    }
+    wx.chooseMedia({
+      count: 1,
+      mediaType: ["image"],
+      sourceType: ["album"],
+      success: (res) => {
+        const file = (res.tempFiles || [])[0] || {};
+        const path = file.tempFilePath || "";
+        if (path) this.setData({ "profileDraft.avatarUrl": path });
+      },
+      fail: (error) => this.showAvatarChooseFailed(error)
+    });
   },
   async handleSaveProfile() {
     const currentUser = getCurrentUser();
@@ -245,6 +344,10 @@ Page({
     const nickname = String(this.data.profileDraft.nickname || "").trim();
     if (!nickname) {
       wx.showToast({ title: "请填写昵称", icon: "none" });
+      return;
+    }
+    if (!this.data.profileLegalAgreed) {
+      wx.showToast({ title: "请先阅读并同意协议", icon: "none" });
       return;
     }
     try {

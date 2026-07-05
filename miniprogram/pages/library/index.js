@@ -4,7 +4,6 @@ const resourceStore = require("../../stores/resource-store");
 const { generateBusinessCardShareImage, generateServiceOfferShareImage, generateTitleShareImage } = require("../../utils/business-card-share");
 const { enrichCard, getCurrentUser } = require("../../utils/dashboard");
 const { navigateToResourceEdit, navigateToResourceView } = require("../../utils/resource-navigation");
-const { readWorkspaceMode } = require("../../utils/workspace-mode");
 
 const LIBRARY_ENTRY_FILTER_KEY = "teambuy:libraryEntryFilter";
 const RADAR_ENTRY_TAB_KEY = "teambuy:radarEntryTab";
@@ -43,9 +42,21 @@ const DELIVERY_FILTERS = [
   { key: "sent", label: "已发客户" },
   { key: "feedback", label: "有反馈" }
 ];
+const LIBRARY_TYPE_FILTERS = [
+  { key: "all", label: "全部" },
+  { key: "property", label: "房源" },
+  { key: "opportunity", label: "商机" },
+  { key: "service", label: "服务" },
+  { key: "groupbuy", label: "商品" },
+  { key: "daily", label: "日常" }
+];
 
 function createNoteShareId(noteId) {
   return `share_note_${noteId || "note"}_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
+}
+
+function getCardCoverShareImage(card = {}, shareImages = {}) {
+  return shareImages[card.id] || "";
 }
 
 function buildCustomerShareTitle(title) {
@@ -91,6 +102,27 @@ function isServiceOfferResource(card = {}) {
   const categoryName = card.categoryName || "";
   const labels = [categoryName, ...(card.tagNames || [])].join(" ");
   return cardType === "service_offer" || /服务|方案/.test(labels);
+}
+
+function isOpportunityResource(card = {}) {
+  const config = card.visibilityConfig || {};
+  const structuredData = config.structuredData || {};
+  const text = [
+    card.title,
+    card.projectName,
+    card.detailText,
+    card.summary,
+    card.body,
+    card.categoryName,
+    structuredData.serviceName,
+    structuredData.headline,
+    structuredData.targetAudience,
+    structuredData.serviceContent,
+    config.displayTemplate,
+    config.displayTemplateName,
+    ...(card.tagNames || [])
+  ].filter(Boolean).join(" ");
+  return isServiceOfferResource(card) && /商机|合作|招商|代理|推广|渠道|供给|需求|外贸|独立站|落地页|官网|服务商/.test(text);
 }
 
 function isDailyCard(card = {}) {
@@ -209,36 +241,6 @@ function readEntryFilter(options = {}) {
   }
 }
 
-function entryFilterFromWorkspace(userId) {
-  const mode = readWorkspaceMode(userId);
-  if (mode === "property") {
-    return {
-      mode: "property",
-      cardType: "property_listing",
-      label: "房源资料"
-    };
-  }
-  if (mode === "groupbuy") {
-    return {
-      mode: "groupbuy",
-      cardType: "groupbuy_product",
-      label: "商品资料"
-    };
-  }
-  if (mode === "service") {
-    return {
-      mode: "service",
-      cardType: "service_workspace",
-      label: "名片/服务方案"
-    };
-  }
-  return {
-    mode: "notes",
-    cardType: "notes_workspace",
-    label: "日常资料"
-  };
-}
-
 Page({
   data: {
     keyword: "",
@@ -300,7 +302,9 @@ Page({
       customerActivity: 0
     },
     deliveryFilters: DELIVERY_FILTERS,
-    activeDeliveryFilter: "all"
+    activeDeliveryFilter: "all",
+    libraryTypeFilters: LIBRARY_TYPE_FILTERS,
+    activeLibraryType: "all"
   },
   onLoad(options = {}) {
     this.applyEntryFilter(readEntryFilter(options));
@@ -311,7 +315,7 @@ Page({
       wx.reLaunch({ url: "/pages/login/index" });
       return;
     }
-    const entryFilter = readEntryFilter() || entryFilterFromWorkspace(currentUser.id);
+    const entryFilter = readEntryFilter();
     if (entryFilter) this.applyEntryFilter(entryFilter);
     this.loadCards();
   },
@@ -338,6 +342,7 @@ Page({
               ? { mode: "notes", cardType: "notes_workspace" }
           : entryFilter,
       entryFilterText: isProperty ? "当前只看房源资料" : isGroupbuy ? "当前只看商品资料" : isBusinessCard ? "当前只看我的名片" : isServiceOffer ? "当前只看服务方案" : isService ? "当前只看名片/服务方案" : isNotes ? "当前只看日常资料" : (entryFilter.label || "当前筛选资料"),
+      activeLibraryType: isProperty ? "property" : isGroupbuy ? "groupbuy" : isService ? "service" : isBusinessCard ? "service" : isServiceOffer ? "service" : isNotes ? "daily" : "all",
       activeCategory: "全部",
       activeTag: "全部",
       activeTopicId: "",
@@ -354,8 +359,8 @@ Page({
     const currentUser = getCurrentUser();
     try {
       const [cardsData, categories, topicsRes] = await Promise.all([
-        resourceStore.listCards({ ownerUserId: currentUser ? currentUser.id : "" }, { force: true }),
-        resourceStore.listCategories(currentUser ? currentUser.id : "", { force: true }),
+        resourceStore.listCards({ ownerUserId: currentUser ? currentUser.id : "" }),
+        resourceStore.listCategories(currentUser ? currentUser.id : ""),
         api.fetchTopics(currentUser ? currentUser.id : "").catch(() => ({ data: [] }))
       ]);
       const categoriesById = categories.reduce((result, item) => {
@@ -459,11 +464,13 @@ Page({
     const hasActiveGroupbuyFilters = this.hasActiveGroupbuyFilters();
     const isPropertyMode =
       (this.data.entryFilter && this.data.entryFilter.cardType === "property_listing") ||
+      this.data.activeLibraryType === "property" ||
       this.data.activeCategory === "房源" ||
       this.data.activeCategory === "房产" ||
       hasActivePropertyFilters;
     const isGroupbuyMode =
       (this.data.entryFilter && this.data.entryFilter.cardType === "groupbuy_product") ||
+      this.data.activeLibraryType === "groupbuy" ||
       this.data.activeCategory === "商品" ||
       this.data.activeCategory === "团购" ||
       hasActiveGroupbuyFilters;
@@ -488,6 +495,7 @@ Page({
         return false;
       }
       const matchCategory = this.data.activeCategory === "全部" || card.categoryName === this.data.activeCategory;
+      const matchType = this.matchLibraryType(card);
       const matchTag = this.data.activeTag === "全部" || (card.tagNames || []).includes(this.data.activeTag);
       const config = card.visibilityConfig || {};
       const topicIds = Array.isArray(config.topicIds) ? config.topicIds : [];
@@ -509,7 +517,7 @@ Page({
         .toLowerCase();
       const matchKeyword = !keyword || haystack.includes(keyword);
       const matchDelivery = this.matchDeliveryFilter(card);
-      return matchCategory && matchTag && matchTopic && matchKeyword && matchPropertyFilters && matchGroupbuyFilters && matchDelivery;
+      return matchCategory && matchType && matchTag && matchTopic && matchKeyword && matchPropertyFilters && matchGroupbuyFilters && matchDelivery;
     }).sort((a, b) => {
       const hotDiff = Number(b.hasHotCustomerSignal) - Number(a.hasHotCustomerSignal);
       if (hotDiff) return hotDiff;
@@ -518,14 +526,28 @@ Page({
       const activityDiff = (b.customerActivity || 0) - (a.customerActivity || 0);
       if (activityDiff) return activityDiff;
       return (b.stats.pv || 0) - (a.stats.pv || 0);
-    }).map((card) => ({
-      ...card,
-      shareImageReady: Boolean(shareImages[card.id]),
-      shareDisabled: !shareImages[card.id],
-      shareStatusText: shareImages[card.id] ? "发客户" : "生成中"
-    }));
+    }).map((card) => {
+      const shareImage = getCardCoverShareImage(card, shareImages);
+      const canShare = Boolean(card.sourceNoteId);
+      return {
+        ...card,
+        shareImageReady: Boolean(shareImage),
+        shareDisabled: !canShare || !shareImage,
+        shareStatusText: canShare ? (shareImage ? "发客户" : "封面准备中") : "先编辑"
+      };
+    });
     this.setData({ displayCards, showPropertyFilters: isPropertyMode, showGroupbuyFilters: isGroupbuyMode });
     this.prepareLibraryShareImages(displayCards);
+  },
+  matchLibraryType(card = {}) {
+    const type = this.data.activeLibraryType || "all";
+    if (type === "all") return true;
+    if (type === "property") return isPropertyCard(card);
+    if (type === "groupbuy") return isGroupbuyCard(card);
+    if (type === "opportunity") return isOpportunityResource(card);
+    if (type === "service") return isServiceCard(card) && !isOpportunityResource(card);
+    if (type === "daily") return isDailyCard(card);
+    return true;
   },
   matchDeliveryFilter(card = {}) {
     const filter = this.data.activeDeliveryFilter || "all";
@@ -538,6 +560,18 @@ Page({
   },
   handleDeliveryFilter(event) {
     this.setData({ activeDeliveryFilter: event.currentTarget.dataset.key || "all" }, () => this.applyFilter());
+  },
+  handleLibraryTypeFilter(event) {
+    const type = event.currentTarget.dataset.key || "all";
+    this.setData({
+      activeLibraryType: type,
+      entryFilter: null,
+      entryFilterText: "",
+      activeCategory: "全部",
+      activeTag: "全部",
+      activeTopicId: "",
+      activeTopicName: ""
+    }, () => this.applyFilter());
   },
   hasActivePropertyFilters() {
     return Boolean(
@@ -568,7 +602,8 @@ Page({
       activeCategory: "全部",
       activeTag: "全部",
       activeTopicId: "",
-      activeTopicName: ""
+      activeTopicName: "",
+      activeLibraryType: "all"
     });
     this.loadCards();
   },
@@ -921,9 +956,8 @@ Page({
     wx.navigateTo({ url: "/pages/topics/index" });
   },
   handleManualAdd() {
-    const currentUser = getCurrentUser();
     const entryFilter = this.data.entryFilter || {};
-    const mode = entryFilter.mode || readWorkspaceMode(currentUser && currentUser.id) || "";
+    const type = this.data.activeLibraryType || "";
     if (entryFilter.cardType === "business_card") {
       wx.navigateTo({ url: "/pages/business-card-studio/index" });
       return;
@@ -932,15 +966,15 @@ Page({
       wx.navigateTo({ url: "/pages/service-offer-studio/index" });
       return;
     }
-    if (mode === "groupbuy") {
+    if (entryFilter.cardType === "groupbuy_product" || type === "groupbuy") {
       wx.navigateTo({ url: "/pages/resource-create/index?workspaceMode=groupbuy&scene=groupbuy_product" });
       return;
     }
-    if (mode === "property") {
+    if (entryFilter.cardType === "property_listing" || type === "property") {
       wx.navigateTo({ url: "/pages/resource-create/index?workspaceMode=property&scene=property_listing" });
       return;
     }
-    if (mode === "service") {
+    if (entryFilter.cardType === "service_workspace" || type === "service" || type === "opportunity") {
       wx.navigateTo({ url: "/pages/service-offer-studio/index" });
       return;
     }
@@ -1034,7 +1068,11 @@ Page({
     });
   },
   async prepareLibraryShareImages(cards = []) {
-    const pending = (cards || []).filter((card) => card && card.id && card.sourceNoteId && !(this.data.shareImages || {})[card.id]);
+    const pending = (cards || []).filter((card) => {
+      if (!card || !card.id || !card.sourceNoteId) return false;
+      if ((this.data.shareImages || {})[card.id]) return false;
+      return true;
+    });
     if (!pending.length) return;
     if (!this.libraryShareGenerating) this.libraryShareGenerating = {};
     for (const card of pending) {
@@ -1087,7 +1125,7 @@ Page({
         }
       } catch (error) {
         const markFailed = (item) => item && item.id === card.id
-          ? { ...item, shareImageReady: false, shareDisabled: false, shareStatusText: "重试发客户" }
+          ? { ...item, shareImageReady: false, shareDisabled: !item.sourceNoteId, shareStatusText: item.sourceNoteId ? "重试发客户" : "先编辑" }
           : item;
         this.setData({
           cards: (this.data.cards || []).map(markFailed),
@@ -1103,7 +1141,7 @@ Page({
     const cardId = dataset.id || "";
     const card = (this.data.cards || []).find((item) => item.id === cardId) || {};
     const cover = dataset.cover || card.coverDisplayUrl || card.coverUrl || "";
-    const imageUrl = (this.data.shareImages || {})[cardId] || "";
+    const imageUrl = getCardCoverShareImage(card, this.data.shareImages || {});
     const pendingShare = {
       id: cardId,
       noteId: dataset.noteId || card.sourceNoteId || "",
@@ -1112,7 +1150,10 @@ Page({
       imageUrl
     };
     this.setData({ pendingShare });
-    if (!imageUrl && pendingShare.noteId) this.prepareLibraryShareImages([card]);
+    if (!imageUrl && pendingShare.noteId) {
+      wx.showToast({ title: "封面还在生成，请稍后再发", icon: "none" });
+      this.prepareLibraryShareImages([card]);
+    }
   },
   onShareAppMessage(options) {
     const dataset = options && options.target && options.target.dataset ? options.target.dataset : {};
@@ -1121,7 +1162,7 @@ Page({
     const pendingShare = this.data.pendingShare || {};
     const noteId = dataset.noteId || pendingShare.noteId || card.sourceNoteId || "";
     const title = dataset.title || pendingShare.title || card.title || "资料详情";
-    const imageUrl = pendingShare.imageUrl || "";
+    const imageUrl = pendingShare.imageUrl || getCardCoverShareImage(card, this.data.shareImages || "");
     const user = getCurrentUser();
     if (!noteId) {
       wx.showToast({ title: "这条资料暂不能直接发客户", icon: "none" });
@@ -1134,7 +1175,7 @@ Page({
     if (!imageUrl) {
       wx.showToast({ title: "封面还在生成，请稍后再发", icon: "none" });
       return {
-        title,
+        title: buildCustomerShareTitle(title),
         path: "/pages/library/index"
       };
     }
@@ -1155,7 +1196,7 @@ Page({
     return {
       title: buildCustomerShareTitle(title),
       path: `/pages/note-preview/index?id=${encodeURIComponent(noteId)}&sid=${encodeURIComponent(shareId)}&from=${encodeURIComponent(shareFromUserId)}&src=library_send_customer`,
-      imageUrl
+      ...(imageUrl ? { imageUrl } : {})
     };
   }
 });

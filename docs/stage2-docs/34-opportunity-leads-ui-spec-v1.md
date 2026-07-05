@@ -20,9 +20,9 @@
 当前参考图位于 Codex 生成目录：
 
 ```text
-/Users/yiyi/.codex/generated_images/019f06b1-bd33-7241-82bc-e29562320cad/0.png
-/Users/yiyi/.codex/generated_images/019f06b1-bd33-7241-82bc-e29562320cad/1.png
-/Users/yiyi/.codex/generated_images/019f06b1-bd33-7241-82bc-e29562320cad/2.png
+/Users/yiyi/.codex/generated_images/019f06b1-bd33-7241-82bc-e29562320cad/ig_088247c5b7a20c23016a435f172020819ba8d75a47190d00b2.png
+/Users/yiyi/.codex/generated_images/019f06b1-bd33-7241-82bc-e29562320cad/ig_01dc533b2bbcda8f016a436257fb6c8197afd753525ec1f795.png
+/Users/yiyi/.codex/generated_images/019f06b1-bd33-7241-82bc-e29562320cad/ig_09a381a408c202ae016a4369616618819686b19f70abae48c1.png
 ```
 
 后续如复制到项目内，建议放入：

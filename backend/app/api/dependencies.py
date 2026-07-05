@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import asyncio
+
 from app.core.config import BACKEND_DIR, settings
 from app.services.app_service import AppService
+from app.services.background_task_worker import BackgroundTaskWorker
 from app.services.bootstrap import seed_runtime_state
 from app.services.card_parser_service import CardParserService
 from app.services.content_object_adapter import ContentObjectAdapter
@@ -66,8 +69,41 @@ _wecom_archive_client = WecomArchiveClient(
 _sync_task_queue = SyncTaskQueue(
     _repo,
     lock_timeout_seconds=settings.wecom_sync_lock_timeout_seconds,
+    auto_schedule=settings.sync_task_auto_schedule,
+)
+OCR_TASK_NAMES = {"ocr-recognize-note", "property-table-ocr"}
+_ocr_task_worker = BackgroundTaskWorker(
+    _sync_task_queue,
+    enabled=settings.sync_task_worker_enabled,
+    interval_seconds=settings.sync_task_worker_interval_seconds,
+    task_names=OCR_TASK_NAMES,
+    max_running=max(settings.ocr_task_concurrency, 1),
 )
 _ops_console_store = OpsConsoleStore(settings.data_file.parent / "ops-console-state.json")
+
+
+async def _run_ocr_recognize_task(payload: dict) -> dict:
+    note_id = str(payload.get("noteId") or "")
+    owner_user_id = str(payload.get("ownerUserId") or "")
+    if not note_id or not owner_user_id:
+        raise ValueError("OCR task missing noteId or ownerUserId")
+    return await asyncio.to_thread(_service.recognize_ocr_note_image, note_id, owner_user_id)
+
+
+async def _run_property_table_ocr_task(payload: dict) -> dict:
+    note_id = str(payload.get("noteId") or "")
+    owner_user_id = str(payload.get("ownerUserId") or "")
+    if not note_id or not owner_user_id:
+        raise ValueError("Property table OCR task missing noteId or ownerUserId")
+    return await asyncio.to_thread(_service.recognize_property_table_ocr_note_image, note_id, owner_user_id)
+
+
+def register_background_task_handlers() -> None:
+    _sync_task_queue.register("ocr-recognize-note", _run_ocr_recognize_task)
+    _sync_task_queue.register("property-table-ocr", _run_property_table_ocr_task)
+
+
+register_background_task_handlers()
 
 
 def _notification_reply_text(notification: dict) -> str:
@@ -137,6 +173,10 @@ def get_wecom_mock_service() -> WecomMockService:
 
 def get_sync_task_queue() -> SyncTaskQueue:
     return _sync_task_queue
+
+
+def get_ocr_task_worker() -> BackgroundTaskWorker:
+    return _ocr_task_worker
 
 
 def get_wecom_archive_worker() -> WecomArchiveWorker:

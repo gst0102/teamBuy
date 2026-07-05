@@ -6,7 +6,7 @@ from app.services.media_storage_service import MediaStorageService
 from app.services.media_processing_service import MediaProcessingService
 from app.models.domain import CustomerAction, LeadReminder, ShowcaseEvent, ShowcaseItem, ShowcasePage, UserNote, ViewEvent, WecomArchiveMessage, WecomIdentityBinding
 from app.services.archive_message_parsers import ArchiveMessageParser, ArchiveMessageParserRegistry, ArchiveParseResult
-from app.services.ocr_service import OcrService
+from app.services.ocr_service import OcrResult, OcrService
 from app.services.helpers import new_id
 from app.services.time_utils import now_iso
 from app.services.wecom_archive_worker import WecomArchiveWorker
@@ -57,6 +57,16 @@ def make_test_image_bytes() -> bytes:
     output = BytesIO()
     image.save(output, format="PNG")
     return output.getvalue()
+
+
+def run_test_background_queue(client, delay: float = 0.05) -> None:
+    queue = client.app.dependency_overrides[get_sync_task_queue]()
+
+    async def run():
+        queue.start_pending()
+        await asyncio.sleep(delay)
+
+    asyncio.run(run())
 
 
 def test_wechat_login_uses_openid_identity(client, monkeypatch):
@@ -134,6 +144,548 @@ def test_ops_admin_overview_requires_admin_token(client, monkeypatch):
 
     assert response.status_code == 403
     assert response.json()["detail"] == "admin token verification failed"
+
+
+def test_resource_wallet_initializes_and_persists_by_user(client):
+    user = client.post("/api/auth/mock-login", json={"nickname": "商机用户", "openid": "openid_wallet_owner"}).json()["data"]
+
+    first = client.get("/api/resource-wallet/me", params={"ownerUserId": user["id"]})
+    second = client.get("/api/resource-wallet/me", params={"ownerUserId": user["id"]})
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json()["data"]["wallet"]["balance"] == 100
+    assert second.json()["data"]["wallet"]["balance"] == 100
+    assert len(second.json()["data"]["recentLedgers"]) == 1
+    assert second.json()["data"]["recentLedgers"][0]["ledgerType"] == "grant"
+
+
+def test_ops_can_adjust_resource_wallet(client, monkeypatch):
+    monkeypatch.setattr(settings, "admin_token", "ops-secret")
+    user = client.post("/api/auth/mock-login", json={"nickname": "调整用户", "openid": "openid_wallet_adjust"}).json()["data"]
+
+    response = client.post(
+        "/api/ops/resource-wallet/adjust",
+        headers={"X-Admin-Token": "ops-secret"},
+        json={"userId": user["id"], "pointsDelta": 30, "reason": "人工补发测试积分", "operatorId": "ops-a"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["data"]["wallet"]["balance"] == 130
+    ledger = response.json()["data"]["ledger"]
+    assert ledger["ledgerType"] == "adjust"
+    assert ledger["pointsDelta"] == 30
+
+
+def test_resource_wallet_consume_is_idempotent_for_same_target(client):
+    user = client.post("/api/auth/mock-login", json={"nickname": "扣费用户", "openid": "openid_wallet_consume"}).json()["data"]
+    payload = {
+        "ownerUserId": user["id"],
+        "actionType": "contact_unlock",
+        "targetType": "opportunity_lead",
+        "targetId": "lead-a",
+        "pointsCost": 20,
+        "reason": "查看联系方式",
+    }
+
+    first = client.post("/api/resource-wallet/consume", json=payload)
+    second = client.post("/api/resource-wallet/consume", json=payload)
+    ledger = client.get("/api/resource-wallet/ledger", params={"ownerUserId": user["id"]}).json()["data"]
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json()["data"]["wallet"]["balance"] == 80
+    assert first.json()["data"]["charged"] is True
+    assert second.json()["data"]["wallet"]["balance"] == 80
+    assert second.json()["data"]["duplicate"] is True
+    assert [item["ledgerType"] for item in ledger].count("consume") == 1
+
+
+def test_resource_wallet_uses_free_quota_before_points(client):
+    user = client.post("/api/auth/mock-login", json={"nickname": "免费额度用户", "openid": "openid_wallet_quota"}).json()["data"]
+
+    first = client.post(
+        "/api/resource-wallet/consume",
+        json={
+            "ownerUserId": user["id"],
+            "actionType": "response_package_generate",
+            "targetType": "opportunity_lead",
+            "targetId": "lead-free-1",
+            "pointsCost": 15,
+            "freeQuotaType": "response_package_daily",
+            "freeQuotaLimit": 1,
+            "periodKey": "2026-07-01",
+        },
+    )
+    second = client.post(
+        "/api/resource-wallet/consume",
+        json={
+            "ownerUserId": user["id"],
+            "actionType": "response_package_generate",
+            "targetType": "opportunity_lead",
+            "targetId": "lead-free-2",
+            "pointsCost": 15,
+            "freeQuotaType": "response_package_daily",
+            "freeQuotaLimit": 1,
+            "periodKey": "2026-07-01",
+        },
+    )
+
+    assert first.status_code == 200
+    assert first.json()["data"]["usedFreeQuota"] is True
+    assert first.json()["data"]["wallet"]["balance"] == 100
+    assert second.status_code == 200
+    assert second.json()["data"]["usedFreeQuota"] is False
+    assert second.json()["data"]["wallet"]["balance"] == 85
+
+
+def test_resource_wallet_isolated_between_users(client):
+    user_a = client.post("/api/auth/mock-login", json={"nickname": "钱包A", "openid": "openid_wallet_a"}).json()["data"]
+    user_b = client.post("/api/auth/mock-login", json={"nickname": "钱包B", "openid": "openid_wallet_b"}).json()["data"]
+
+    client.post(
+        "/api/resource-wallet/consume",
+        json={
+            "ownerUserId": user_a["id"],
+            "actionType": "contact_unlock",
+            "targetType": "opportunity_lead",
+            "targetId": "lead-user-a",
+            "pointsCost": 40,
+        },
+    )
+    wallet_a = client.get("/api/resource-wallet/me", params={"ownerUserId": user_a["id"]}).json()["data"]["wallet"]
+    wallet_b = client.get("/api/resource-wallet/me", params={"ownerUserId": user_b["id"]}).json()["data"]["wallet"]
+
+    assert wallet_a["balance"] == 60
+    assert wallet_b["balance"] == 100
+
+
+def test_ops_can_create_and_publish_opportunity_lead(client, monkeypatch):
+    monkeypatch.setattr(settings, "admin_token", "ops-secret")
+
+    response = client.post(
+        "/api/ops/opportunity-leads",
+        headers={"X-Admin-Token": "ops-secret"},
+        json={
+            "title": "长沙新店找开业地推合作",
+            "summary": "餐饮新店需要本地推广渠道，预算明确。",
+            "city": "长沙",
+            "district": "开福区",
+            "industry": "本地生活",
+            "demandType": "找渠道",
+            "content": "需要 7 天内启动，优先有社区群和地推队伍。",
+            "tags": ["长沙", "地推", "餐饮"],
+            "contactStatus": "available",
+            "trustStatus": "verified",
+            "status": "published",
+            "source": {
+                "sourcePlatform": "小红书",
+                "sourceUrl": "https://example.com/source",
+                "sourceAuthor": "测试博主",
+                "rawText": "原始公开线索文本",
+            },
+            "contacts": [
+                {"contactType": "phone", "contactValue": "13611747285", "verifyStatus": "verified"}
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["title"] == "长沙新店找开业地推合作"
+    assert data["status"] == "published"
+    assert data["sources"][0]["sourcePlatform"] == "小红书"
+    assert data["contacts"][0]["contactMasked"] == "136****7285"
+
+
+def test_public_opportunity_leads_hide_source_and_contact_value(client, monkeypatch):
+    monkeypatch.setattr(settings, "admin_token", "ops-secret")
+    created = client.post(
+        "/api/ops/opportunity-leads",
+        headers={"X-Admin-Token": "ops-secret"},
+        json={
+            "title": "上海房产渠道找合作",
+            "summary": "需要能提供租房客源的合作方。",
+            "city": "上海",
+            "industry": "房产",
+            "status": "published",
+            "source": {"sourcePlatform": "微博", "rawText": "不要在前台展示具体来源"},
+            "contacts": [{"contactType": "wechat", "contactValue": "agent_abc_123"}],
+        },
+    ).json()["data"]
+
+    listing = client.get("/api/opportunity-leads")
+    detail = client.get(f"/api/opportunity-leads/{created['id']}")
+
+    assert listing.status_code == 200
+    assert detail.status_code == 200
+    public_text = json.dumps(detail.json()["data"], ensure_ascii=False)
+    assert "微博" not in public_text
+    assert "agent_abc_123" not in public_text
+    assert "官方收录" in public_text
+    assert listing.json()["data"][0]["sourceLabel"] == "官方收录"
+    assert listing.json()["data"][0]["hasContact"] is True
+
+
+def test_opportunity_lead_save_and_followup(client, monkeypatch):
+    monkeypatch.setattr(settings, "admin_token", "ops-secret")
+    user = client.post("/api/auth/mock-login", json={"nickname": "商机跟进用户", "openid": "openid_opp_lead_user"}).json()["data"]
+    lead = client.post(
+        "/api/ops/opportunity-leads",
+        headers={"X-Admin-Token": "ops-secret"},
+        json={"title": "需要装修案例合作", "summary": "业主找装修方案", "city": "长沙", "industry": "装修", "status": "published"},
+    ).json()["data"]
+
+    saved = client.post(
+        f"/api/opportunity-leads/{lead['id']}/save",
+        json={"userId": user["id"], "status": "saved", "note": "适合发服务方案"},
+    )
+    followed = client.post(
+        f"/api/opportunity-leads/{lead['id']}/followups",
+        json={"userId": user["id"], "actionType": "contacted", "note": "已电话沟通"},
+    )
+    saved_list = client.get("/api/opportunity-leads/saved", params={"userId": user["id"]})
+
+    assert saved.status_code == 200
+    assert saved.json()["data"]["save"]["status"] == "saved"
+    assert followed.status_code == 200
+    assert followed.json()["data"]["save"]["status"] == "contacted"
+    assert saved_list.status_code == 200
+    assert saved_list.json()["data"][0]["save"]["status"] == "contacted"
+
+
+def test_response_package_preview_and_create_uses_free_quota(client, monkeypatch):
+    monkeypatch.setattr(settings, "admin_token", "ops-secret")
+    user = client.post("/api/auth/mock-login", json={"nickname": "回应包用户", "openid": "openid_resp_pkg_user"}).json()["data"]
+    service = client.app.dependency_overrides[get_app_service]()
+    now = now_iso()
+    service.repo.save_user_note(
+        UserNote(
+            id="note_response_asset",
+            ownerUserId=user["id"],
+            status="active",
+            title="长沙本地生活推广案例",
+            summary="包含开业地推、社区群和商圈推广案例。",
+            body="长沙本地生活商家开业推广服务介绍。",
+            visibilityConfig={"cardType": "service_offer", "tags": ["长沙", "本地生活", "推广渠道"]},
+            createdAt=now,
+            updatedAt=now,
+        )
+    )
+    lead = client.post(
+        "/api/ops/opportunity-leads",
+        headers={"X-Admin-Token": "ops-secret"},
+        json={
+            "title": "长沙新店找推广渠道",
+            "summary": "开业前需要本地推广合作方。",
+            "city": "长沙",
+            "industry": "本地生活",
+            "demandType": "找渠道",
+            "tags": ["推广渠道"],
+            "status": "published",
+            "contacts": [{"contactType": "phone", "contactValue": "13611747285"}],
+        },
+    ).json()["data"]
+
+    preview = client.post(
+        f"/api/opportunity-leads/{lead['id']}/response-packages/preview",
+        json={"userId": user["id"]},
+    )
+    created = client.post(
+        f"/api/opportunity-leads/{lead['id']}/response-packages",
+        json={"userId": user["id"]},
+    )
+    wallet = client.get("/api/resource-wallet/me", params={"ownerUserId": user["id"]})
+    saved_list = client.get("/api/opportunity-leads/saved", params={"userId": user["id"]})
+
+    assert preview.status_code == 200
+    assert preview.json()["data"]["existingPackageId"] is None
+    assert preview.json()["data"]["recommendedAssets"][0]["assetId"] == "note_response_asset"
+    assert preview.json()["data"]["trackingUrl"] is None
+    assert created.status_code == 200
+    package = created.json()["data"]
+    assert package["usedFreeQuota"] is True
+    assert package["costPoints"] == 0
+    assert package["items"][0]["assetTitle"] == "长沙本地生活推广案例"
+    assert package["trackingUrl"].startswith("/pages/response-package/index?id=")
+    assert wallet.json()["data"]["wallet"]["balance"] == 100
+    assert saved_list.json()["data"][0]["save"]["status"] == "following"
+
+
+def test_response_package_create_is_idempotent_and_private(client, monkeypatch):
+    monkeypatch.setattr(settings, "admin_token", "ops-secret")
+    user = client.post("/api/auth/mock-login", json={"nickname": "回应包拥有者", "openid": "openid_resp_pkg_owner"}).json()["data"]
+    other = client.post("/api/auth/mock-login", json={"nickname": "其他用户", "openid": "openid_resp_pkg_other"}).json()["data"]
+    lead = client.post(
+        "/api/ops/opportunity-leads",
+        headers={"X-Admin-Token": "ops-secret"},
+        json={"title": "上海品牌找渠道", "summary": "需要合作方", "city": "上海", "industry": "品牌", "status": "published"},
+    ).json()["data"]
+
+    first = client.post(f"/api/opportunity-leads/{lead['id']}/response-packages", json={"userId": user["id"]})
+    second = client.post(f"/api/opportunity-leads/{lead['id']}/response-packages", json={"userId": user["id"]})
+    package_id = first.json()["data"]["id"]
+    denied = client.get(f"/api/response-packages/{package_id}", params={"ownerUserId": other["id"]})
+    ledger = client.get("/api/resource-wallet/ledger", params={"ownerUserId": user["id"]}).json()["data"]
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert second.json()["data"]["id"] == package_id
+    assert denied.status_code == 403
+    assert [item["actionType"] for item in ledger].count("response_package_generate") == 1
+
+
+def test_response_package_event_updates_last_viewed(client, monkeypatch):
+    monkeypatch.setattr(settings, "admin_token", "ops-secret")
+    user = client.post("/api/auth/mock-login", json={"nickname": "回应包事件用户", "openid": "openid_resp_pkg_event"}).json()["data"]
+    lead = client.post(
+        "/api/ops/opportunity-leads",
+        headers={"X-Admin-Token": "ops-secret"},
+        json={"title": "深圳客户找服务商", "summary": "需要服务商", "city": "深圳", "industry": "企业服务", "status": "published"},
+    ).json()["data"]
+    package = client.post(f"/api/opportunity-leads/{lead['id']}/response-packages", json={"userId": user["id"]}).json()["data"]
+
+    event = client.post(
+        f"/api/response-packages/{package['id']}/events",
+        json={"eventType": "view", "viewerId": user["id"], "metadata": {"scene": "miniapp"}},
+    )
+    fetched = client.get(f"/api/response-packages/{package['id']}", params={"ownerUserId": user["id"]})
+
+    assert event.status_code == 200
+    assert event.json()["data"]["event"]["eventType"] == "view"
+    assert event.json()["data"]["event"]["metadata"]["scene"] == "miniapp"
+    assert fetched.json()["data"]["lastViewedAt"]
+
+
+def test_ops_opportunity_dashboard_wallets_packages_and_offline(client, monkeypatch):
+    monkeypatch.setattr(settings, "admin_token", "ops-secret")
+    user = client.post("/api/auth/mock-login", json={"nickname": "PC后台用户", "openid": "openid_ops_pc_user"}).json()["data"]
+    lead = client.post(
+        "/api/ops/opportunity-leads",
+        headers={"X-Admin-Token": "ops-secret"},
+        json={"title": "长沙商家找渠道", "summary": "需要推广渠道", "city": "长沙", "industry": "本地生活", "status": "published"},
+    ).json()["data"]
+    package = client.post(f"/api/opportunity-leads/{lead['id']}/response-packages", json={"userId": user["id"]}).json()["data"]
+
+    dashboard = client.get("/api/ops/opportunity-dashboard", headers={"X-Admin-Token": "ops-secret"})
+    wallets = client.get("/api/ops/resource-wallet/users", headers={"X-Admin-Token": "ops-secret"})
+    packages = client.get("/api/ops/response-packages", headers={"X-Admin-Token": "ops-secret"})
+    adjusted = client.post(
+        f"/api/ops/resource-wallet/users/{user['id']}/adjust",
+        headers={"X-Admin-Token": "ops-secret"},
+        json={"userId": user["id"], "pointsDelta": 10, "reason": "PC 后台补发", "operatorId": "ops-pc"},
+    )
+    offlined = client.post(f"/api/ops/opportunity-leads/{lead['id']}/offline", headers={"X-Admin-Token": "ops-secret"})
+    public_detail = client.get(f"/api/opportunity-leads/{lead['id']}")
+
+    assert dashboard.status_code == 200
+    assert dashboard.json()["data"]["summary"]["publishedLeads"] >= 1
+    assert dashboard.json()["data"]["summary"]["todayResponsePackages"] >= 1
+    assert wallets.status_code == 200
+    assert any(item["userId"] == user["id"] for item in wallets.json()["data"]["items"])
+    assert packages.status_code == 200
+    assert packages.json()["data"]["items"][0]["id"] == package["id"]
+    assert packages.json()["data"]["items"][0]["leadTitle"] == "长沙商家找渠道"
+    assert adjusted.status_code == 200
+    assert adjusted.json()["data"]["ledger"]["operatorId"] == "ops-pc"
+    assert offlined.status_code == 200
+    assert offlined.json()["data"]["status"] == "archived"
+    assert public_detail.status_code == 404
+
+
+def test_p1_subscription_unlock_supply_and_response_radar(client, monkeypatch):
+    monkeypatch.setattr(settings, "admin_token", "ops-secret")
+    user = client.post("/api/auth/mock-login", json={"nickname": "P1用户", "openid": "openid_p1_user"}).json()["data"]
+    service = client.app.dependency_overrides[get_app_service]()
+    now = now_iso()
+    service.repo.save_user_note(
+        UserNote(
+            id="note_p1_service_asset",
+            ownerUserId=user["id"],
+            status="active",
+            title="长沙本地生活服务介绍",
+            summary="推广渠道和案例介绍",
+            body="长沙餐饮推广 本地生活 商圈渠道",
+            visibilityConfig={"cardType": "service_offer", "tags": ["长沙", "推广渠道"]},
+            createdAt=now,
+            updatedAt=now,
+        )
+    )
+    service.repo.save_user_note(
+        UserNote(
+            id="note_p1_case_asset",
+            ownerUserId=user["id"],
+            status="active",
+            title="开业推广成功案例",
+            summary="餐饮新店开业案例",
+            body="餐饮 推广 案例",
+            visibilityConfig={"cardType": "business_card", "tags": ["餐饮"]},
+            createdAt=now,
+            updatedAt=now,
+        )
+    )
+    lead = client.post(
+        "/api/ops/opportunity-leads",
+        headers={"X-Admin-Token": "ops-secret"},
+        json={
+            "title": "长沙餐饮新店找推广渠道",
+            "summary": "需要长沙本地生活渠道",
+            "city": "长沙",
+            "industry": "本地生活",
+            "demandType": "找渠道",
+            "status": "published",
+            "contacts": [{"contactType": "phone", "contactValue": "13611747285", "verifyStatus": "verified"}],
+        },
+    ).json()["data"]
+
+    sub = client.post(
+        "/api/opportunity-subscriptions",
+        json={
+            "userId": user["id"],
+            "direction": "两边都看",
+            "lookingFor": "渠道",
+            "providing": "本地服务",
+            "city": "长沙",
+            "contactRequirement": "有电话",
+            "keywords": "餐饮 推广",
+            "reminderCadence": "每天早上",
+        },
+    )
+    matched = client.get("/api/opportunity-leads", params={"userId": user["id"], "city": "长沙", "contactStatus": "有联系方式"})
+    unmatched = client.get("/api/opportunity-leads", params={"userId": user["id"], "city": "深圳"})
+    unlock_first = client.post(f"/api/opportunity-leads/{lead['id']}/unlock-contact", json={"userId": user["id"]})
+    unlock_second = client.post(f"/api/opportunity-leads/{lead['id']}/unlock-contact", json={"userId": user["id"]})
+    saved_update = client.post(
+        f"/api/opportunity-leads/{lead['id']}/save",
+        json={"userId": user["id"], "status": "following", "note": "已约明天跟进", "reminderAt": "2026-07-02T10:00:00+08:00"},
+    )
+    saved_list = client.get(
+        "/api/opportunity-leads/saved",
+        params={"userId": user["id"], "status": "following", "packageStatus": "not_generated"},
+    )
+    preview = client.post(
+        f"/api/opportunity-leads/{lead['id']}/response-packages/preview",
+        json={"userId": user["id"], "selectedAssetIds": ["note_p1_case_asset"]},
+    )
+    package = client.post(
+        f"/api/opportunity-leads/{lead['id']}/response-packages",
+        json={"userId": user["id"], "selectedAssetIds": ["note_p1_case_asset"]},
+    ).json()["data"]
+    saved_after_package = client.get(
+        "/api/opportunity-leads/saved",
+        params={"userId": user["id"], "packageStatus": "generated"},
+    )
+    client.post(f"/api/response-packages/{package['id']}/events", json={"eventType": "view", "viewerId": user["id"]})
+    radar = client.get(f"/api/response-packages/{package['id']}/radar", params={"ownerUserId": user["id"]})
+
+    draft = client.post(
+        "/api/supply-demand/cards",
+        json={
+            "userId": user["id"],
+            "cardType": "supply",
+            "title": "长沙地推团队可接开业推广",
+            "summary": "社区和商圈地推资源",
+            "city": "长沙",
+            "industry": "本地生活",
+            "demandType": "推广渠道",
+            "status": "draft",
+        },
+    )
+    submitted = client.post(f"/api/supply-demand/cards/{draft.json()['data']['id']}/submit", json={"userId": user["id"]})
+    before_review = client.get("/api/supply-demand/cards")
+    reviewed = client.post(
+        f"/api/ops/supply-demand/cards/{draft.json()['data']['id']}/review",
+        headers={"X-Admin-Token": "ops-secret"},
+        json={"status": "published", "reviewNote": "通过"},
+    )
+    applicant = client.post("/api/auth/mock-login", json={"nickname": "申请人", "openid": "openid_p1_applicant", "phone": "13900000001"}).json()["data"]
+    detail = client.get(f"/api/supply-demand/cards/{draft.json()['data']['id']}", params={"userId": applicant["id"]})
+    application = client.post(
+        f"/api/supply-demand/cards/{draft.json()['data']['id']}/applications",
+        json={"userId": applicant["id"], "message": "我可以提供社区团长资源"},
+    )
+    owner_apps = client.get("/api/supply-demand/cards/applications", params={"userId": user["id"], "role": "owner"})
+    applicant_apps = client.get("/api/supply-demand/cards/applications", params={"userId": applicant["id"], "role": "applicant"})
+    app_review = client.post(
+        f"/api/supply-demand/cards/applications/{application.json()['data']['application']['id']}/review",
+        json={"userId": user["id"], "status": "accepted"},
+    )
+    edit_draft = client.post(
+        "/api/supply-demand/cards",
+        json={
+            "userId": user["id"],
+            "cardType": "demand",
+            "title": "需要长沙社区团长资源",
+            "summary": "用于编辑回填测试",
+            "city": "长沙",
+            "industry": "本地生活",
+            "demandType": "找渠道",
+            "status": "draft",
+        },
+    )
+    edit_detail = client.get(f"/api/supply-demand/cards/{edit_draft.json()['data']['id']}", params={"userId": user["id"]})
+    edit_saved = client.put(
+        f"/api/supply-demand/cards/{edit_draft.json()['data']['id']}",
+        json={
+            "userId": user["id"],
+            "cardType": "demand",
+            "title": "需要长沙社区团长资源-已编辑",
+            "summary": "编辑后内容",
+            "city": "长沙",
+            "industry": "本地生活",
+            "demandType": "找渠道",
+            "status": "draft",
+        },
+    )
+    digest = client.post("/api/opportunity-push-digests/generate", json={"userId": user["id"]})
+    ops_digest = client.post("/api/ops/opportunity-push-digests/generate", headers={"X-Admin-Token": "ops-secret"})
+    digests = client.get("/api/opportunity-push-digests", params={"userId": user["id"]})
+    digest_read = client.post(f"/api/opportunity-push-digests/{digest.json()['data']['id']}/read", json={"userId": user["id"]})
+    after_review = client.get("/api/supply-demand/cards", params={"city": "长沙", "industry": "本地生活", "cardType": "supply"})
+    filtered_out = client.get("/api/supply-demand/cards", params={"city": "深圳"})
+    mine = client.get("/api/supply-demand/cards/me", params={"userId": user["id"]})
+
+    assert sub.status_code == 200
+    assert matched.status_code == 200
+    assert matched.json()["data"]["subscription"]["city"] == "长沙"
+    assert matched.json()["data"]["recommendationTitle"] == "今日推荐机会"
+    assert matched.json()["data"]["items"][0]["id"] == lead["id"]
+    assert unmatched.json()["data"]["items"] == []
+    assert unlock_first.status_code == 200
+    assert unlock_first.json()["data"]["contacts"][0]["contactValue"] == "13611747285"
+    assert unlock_first.json()["data"]["charged"] is True
+    assert unlock_second.json()["data"]["duplicate"] is True
+    assert saved_update.json()["data"]["save"]["status"] == "following"
+    assert saved_list.json()["data"][0]["save"]["reminderAt"] == "2026-07-02T10:00:00+08:00"
+    assert saved_list.json()["data"][0]["packageStatus"] == "not_generated"
+    assert preview.json()["data"]["selectedAssetIds"] == ["note_p1_case_asset"]
+    assert preview.json()["data"]["recommendedAssets"][0]["assetId"] == "note_p1_case_asset"
+    assert package["items"][0]["assetId"] == "note_p1_case_asset"
+    assert saved_after_package.json()["data"][0]["packageStatus"] == "generated"
+    assert radar.status_code == 200
+    assert radar.json()["data"]["opened"] is True
+    assert draft.status_code == 200
+    assert submitted.json()["data"]["status"] == "pending_review"
+    assert before_review.json()["data"] == []
+    assert reviewed.json()["data"]["status"] == "published"
+    assert detail.json()["data"]["id"] == draft.json()["data"]["id"]
+    assert application.json()["data"]["application"]["status"] == "pending"
+    assert owner_apps.json()["data"][0]["application"]["message"] == "我可以提供社区团长资源"
+    assert applicant_apps.json()["data"][0]["card"]["title"] == "长沙地推团队可接开业推广"
+    assert app_review.json()["data"]["application"]["status"] == "accepted"
+    assert edit_detail.json()["data"]["isMine"] is True
+    assert edit_detail.json()["data"]["title"] == "需要长沙社区团长资源"
+    assert edit_saved.json()["data"]["title"] == "需要长沙社区团长资源-已编辑"
+    assert digest.json()["data"]["title"] == "今日推荐机会"
+    assert ops_digest.json()["data"]["total"] >= 1
+    assert digest.json()["data"]["totalCount"] >= 1
+    assert digest.json()["data"]["id"] in {item["id"] for item in digests.json()["data"]}
+    assert digest_read.json()["data"]["status"] == "read"
+    assert after_review.json()["data"][0]["title"] == "长沙地推团队可接开业推广"
+    assert filtered_out.json()["data"] == []
+    published_mine = next(item for item in mine.json()["data"] if item["id"] == draft.json()["data"]["id"])
+    assert published_mine["status"] == "published"
+    assert published_mine["applicationCount"] == 1
 
 
 def test_ops_admin_overview_and_leaderboards(client, monkeypatch):
@@ -1004,6 +1556,222 @@ def test_property_batch_parse_numbered_rental_list_with_contacts(client):
     assert parsed["privacySummary"]["upstreamPhones"] == ["15201882219"]
 
 
+def test_property_batch_parse_table_style_apartment_list_with_keycap_digits(client):
+    owner = client.post("/api/auth/mock-login", json={"nickname": "表格式房源用户", "openid": "openid_property_batch_table"}).json()["data"]
+    raw_text = "\n".join(
+        [
+            "湘聚公寓最新房源表🉐🉐所有房源降价直租",
+            "㊗️㊗️㊗️还价就租",
+            "佣金原价年签80%，还价佣金70%",
+            "",
+            "新时代广场，富兴时代地铁6号线，湘雅附一，华创国际，开福寺地铁口",
+            "1925南栋",
+            "2号房一1️⃣2️⃣5️⃣0️⃣",
+            "2015北栋",
+            "9号房一1️⃣1️⃣5️⃣0️⃣（特价）",
+            "",
+            "在水一方，碧沙湖地铁，蓝弯国际，保利国际，南湖医院，书院路",
+            "1811",
+            "9号房一1️⃣1️⃣0️⃣0️⃣（特价）",
+            "",
+            "建鸿达现代公寓，华创国际，开福寺",
+            "414南栋",
+            "3号房一1️⃣3️⃣5️⃣0️⃣",
+            "",
+            "标志大厦，华创国际，开福寺",
+            "606",
+            "6号房一8️⃣5️⃣0️⃣（内窗）",
+            "",
+            "1508",
+            "1号房一1️⃣0️⃣5️⃣0️⃣",
+            "8号房一9️⃣0️⃣0️⃣",
+            "5号房一1️⃣6️⃣0️⃣0️⃣",
+            "",
+            "1. 水费物业费网络费每月30元",
+            "2. 电费：1元一度，所有房子都独立厨卫",
+            "",
+            "电话☎️13268058758微信同号",
+            "各位中介朋友大力推荐，多多联系",
+            "温馨提示：🈲止养宠物",
+        ]
+    )
+
+    service = client.app.dependency_overrides[get_app_service]()
+    assert service._looks_like_property_batch_text(raw_text) is True
+
+    parsed_res = client.post(
+        "/api/notes/property-batch/parse",
+        json={"ownerUserId": owner["id"], "rawText": raw_text},
+    )
+
+    assert parsed_res.status_code == 200
+    parsed = parsed_res.json()["data"]
+    assert parsed["detectedCount"] == 8
+    titles = [item["title"] for item in parsed["candidates"]]
+    assert "新时代广场 · 1925南栋 · 2号房" in titles
+    assert "新时代广场 · 2015北栋 · 9号房" in titles
+    assert "在水一方 · 1811 · 9号房" in titles
+    assert "建鸿达现代公寓 · 414南栋 · 3号房" in titles
+    assert "标志大厦 · 606 · 6号房" in titles
+    assert "标志大厦 · 1508 · 1号房" in titles
+    assert "标志大厦 · 1508 · 8号房" in titles
+    assert "标志大厦 · 1508 · 5号房" in titles
+    assert [item["price"] for item in parsed["candidates"]] == [
+        "1250元/月",
+        "1150元/月",
+        "1100元/月",
+        "1350元/月",
+        "850元/月",
+        "1050元/月",
+        "900元/月",
+        "1600元/月",
+    ]
+    assert parsed["privacySummary"]["upstreamPhones"] == ["13268058758"]
+    assert parsed["privacySummary"]["upstreamWechat"] == "13268058758"
+    assert "佣金" in parsed["privacySummary"]["commission"]
+    assert "禁宠" in parsed["candidates"][0]["publicTags"]
+    assert any("上游电话" in item for item in parsed["candidates"][0]["privateTags"])
+
+
+def test_property_batch_docx_text_samples_keep_expected_split_counts(client):
+    owner = client.post("/api/auth/mock-login", json={"nickname": "房源样本文档用户", "openid": "openid_property_batch_docx_samples"}).json()["data"]
+    samples = [
+        (
+            13,
+            "\n".join(
+                [
+                    "觅租好房！ 可短租、月付",
+                    "🏠一房",
+                    "1.红星安置小区404房，家电齐全，带天然气，1550元/月包物业，钥匙在门口消防栓",
+                    "2.东塘瑞府1710，1600元/月包物业，钥匙在门口消防栓",
+                    "4.剑桥名门4栋903，1550元/月包物业，钥匙在门口窗户上",
+                    "6.华景苑1714，1550元/月包物业，密码看房",
+                    "11.Bobo天下城4栋804，1600元/月包物业，钥匙在楼梯间消防栓",
+                    "建发中央公园9栋206，1700元/月包物业，密码看房",
+                    "东塘瑞府1345房，1450元/月包物业，钥匙在门口消防栓",
+                    "东塘瑞府2507房，1450元/月，钥匙在门口消防栓",
+                    "芒果雅苑1栋1103，1000元/月包物业，密码看房",
+                    "中江佳境天城8栋1906，1150元/月包物业，密码看房",
+                    "新力铂园18栋1929房，1450元/月包物业，密码看房",
+                    "🏠两房",
+                    "1.阳光锦城1209房，1700元/月包物业，密码看房",
+                    "3.东方新世界3栋5039，2000元/月不包物业，钥匙在门口消防栓",
+                    "电话☎️ 15973197572",
+                ]
+            ),
+        ),
+        (
+            12,
+            "\n".join(
+                [
+                    "密码看房，佣金秒结，看房热线：15773132602（微信同号）",
+                    "小区：森和大厦",
+                    "户型：公寓一房  民水民电",
+                    "价格：1500",
+                    "万润时光里 公寓一房 边户 有WiFi",
+                    "1650（使用WiFi需+50每月）",
+                    "小区：明城国际中心 正规一室一厅 民水民电",
+                    "价格：2380特价",
+                    "小区：米兰春天G2-217",
+                    "户型：复式一房 loft一房",
+                    "价格：1300特价",
+                    "小区：碧桂园城市之光",
+                    "价格：1600",
+                    "小区：乐尚城 公寓一房 余5间",
+                    "价格：1200-1500",
+                    "小区：新世界广场 公寓一房",
+                    "价格：1350",
+                    "小区：江南华府",
+                    "户型：公寓一房 民水商电民燃气",
+                    "价格：1400",
+                    "小区：保利中环广场 户型：公寓一房",
+                    "价格：1400",
+                    "小区：世茂璀璨天城 loft两房 带门带衣帽间",
+                    "价格：2000特价不支持谈价",
+                    "平安街 有网络| 余11间",
+                    "580-1350",
+                    "梦华公寓 有网络| 余2间",
+                    "1280-1300",
+                ]
+            ),
+        ),
+        (
+            6,
+            "\n".join(
+                [
+                    "密码锁看房",
+                    "1 上城星座2188房 一室一厅 2380/月 独立卫厨",
+                    "2 上城星座1305房 一室一厅2280/月 独立卫厨",
+                    "1 上海城19栋 2606房 一室一厅 1780/月 独立厨卫",
+                    "2 上海城19栋 2615房 一室一厅 1780/月 独立厨卫",
+                    "3 上海城19栋 2616房 一室一厅 1780/月 独立厨卫",
+                    "4 上海城19栋 2609房(左) 一室1180。独立厨卫",
+                    "发财热线 15273611231 15675889264",
+                ]
+            ),
+        ),
+        (
+            4,
+            "\n".join(
+                [
+                    "新房源，随时看房，中介费50",
+                    "1，合庆镇，向东村，邬家宅7号205一室户1280元",
+                    "合庆镇前哨村马家宅51号超大1室户可做员工宿舍，住6~7个人¥2850",
+                    "锦川佳苑3号204一2房1厅已空。5080元",
+                    "4川虹新苑20号601大厅一室户天然气做饭。2280元",
+                    "养宠物不租13127982873 电话13795267856",
+                ]
+            ),
+        ),
+        (
+            5,
+            "\n".join(
+                [
+                    "地铁14号线地铁50米金葵新城强烈推荐50%中介费+红包",
+                    "945弄24号1101大南厅2680",
+                    "地铁2号线零距离700米妙境路160号213朝南大平层一室一厅2500",
+                    "妙境路107号205朝南一室1680空",
+                    "妙境路107号312朝南一室户1780空",
+                    "妙境路107号307一室户空1780",
+                    "徐小姐17701877537微信同 19921370138李姐",
+                ]
+            ),
+        ),
+        (
+            8,
+            "\n".join(
+                [
+                    "所有房源看中房子给价就租，可办居住证",
+                    "季桥村蔡圈717号",
+                    "203室980",
+                    "205室1080小复式一厅",
+                    "季桥村蔡圈726号",
+                    "109室880",
+                    "201室1180朝阳一室户",
+                    "利民村416号",
+                    "102室1380朝阳大一室户",
+                    "西新村草镇239号",
+                    "105室1580朝阳一室户转租",
+                    "下沙新村257号",
+                    "1280",
+                    "鹤鹤小区49号",
+                    "306室1260",
+                    "看房电话微信:13816149161",
+                ]
+            ),
+        ),
+    ]
+    service = client.app.dependency_overrides[get_app_service]()
+    for expected_count, raw_text in samples:
+        assert service._looks_like_property_batch_text(raw_text) is True
+        parsed_res = client.post(
+            "/api/notes/property-batch/parse",
+            json={"ownerUserId": owner["id"], "rawText": raw_text},
+        )
+        assert parsed_res.status_code == 200
+        assert parsed_res.json()["data"]["detectedCount"] == expected_count
+
+
 def test_property_batch_parse_short_listing_by_whole_text_elements(client):
     owner = client.post("/api/auth/mock-login", json={"nickname": "短挂牌用户", "openid": "openid_property_batch_short_listing"}).json()["data"]
     raw_text = "\n".join(
@@ -1482,6 +2250,54 @@ def test_quick_capture_routes_high_confidence_property(client):
     assert config["structuredData"]["community"] == "滨江花园"
 
 
+def test_property_note_uses_owner_contact_publicly_and_keeps_upstream_private(client):
+    owner = client.post(
+        "/api/auth/mock-login",
+        json={
+            "nickname": "房源发布者",
+            "openid": "openid_property_owner_contact",
+            "phone": "13900001111",
+            "wechat": "agent-yiyi",
+        },
+    ).json()["data"]
+    raw_text = "\n".join(
+        [
+            "开福区天健一期H栋1205",
+            "独门独户，底价1500押一付三",
+            "民水民电，密码锁",
+            "上游电话：18501775740",
+        ]
+    )
+
+    response = client.post(
+        "/api/notes/quick-capture",
+        json={"ownerUserId": owner["id"], "rawText": raw_text},
+    )
+
+    assert response.status_code == 200
+    note = response.json()["data"]
+    config = note["visibilityConfig"]
+    structured = config["structuredData"]
+    assert config["cardType"] == "property_listing"
+    assert note["phone"] == "13900001111"
+    assert structured["phone"] == "13900001111"
+    assert structured["contact"] == "13900001111"
+    assert structured["contactPhone"] == "13900001111"
+    assert structured["wechat"] == "agent-yiyi"
+    assert structured["contactWechat"] == "agent-yiyi"
+    assert config["privateData"]["upstreamPhones"] == ["18501775740"]
+    assert "18501775740" not in structured.get("contact", "")
+
+    public_note = client.get(f"/api/notes/public/{note['id']}").json()["data"]
+    public_config = public_note["visibilityConfig"]
+    public_structured = public_config["structuredData"]
+    assert "privateData" not in public_config
+    assert public_note["phone"] == "13900001111"
+    assert public_structured["contactPhone"] == "13900001111"
+    assert public_structured["contactWechat"] == "agent-yiyi"
+    assert "18501775740" not in json.dumps(public_note, ensure_ascii=False)
+
+
 def test_quick_capture_routes_informal_property_posts_as_high_confidence(client):
     owner = client.post("/api/auth/mock-login", json={"nickname": "朋友圈房源用户", "openid": "openid_quick_property_informal"}).json()["data"]
     samples = [
@@ -1501,6 +2317,47 @@ def test_quick_capture_routes_informal_property_posts_as_high_confidence(client)
         assert config["recognitionConfidence"]["level"] == "high"
         assert config["conversionConfig"]["enableAppointment"] is True
         assert config["structuredData"]["rawText"] == raw_text
+
+
+def test_confirm_plain_rental_note_reextracts_property_fields(client):
+    owner = client.post("/api/auth/mock-login", json={"nickname": "旧普通房源用户", "openid": "openid_confirm_plain_rental"}).json()["data"]
+    raw_text = "\n".join(
+        [
+            "开福区天健一期H栋1205",
+            "独门独户，底价1500押一付三",
+            "押一付三民水民电",
+            "要求租客不养宠物 爱干净",
+            "密码锁",
+        ]
+    )
+    created = client.post(
+        "/api/notes/manual-draft",
+        json={
+            "ownerUserId": owner["id"],
+            "cardType": "text_note",
+            "inputMode": "paste_text",
+            "rawText": raw_text,
+            "title": "开福区天健一期H栋1205 独门独户，底价1500押一付三 押一付三民水民电",
+        },
+    )
+
+    assert created.status_code == 200
+    note = created.json()["data"]
+    assert note["visibilityConfig"]["cardType"] == "text_note"
+
+    confirmed = client.post(
+        f"/api/notes/{note['id']}/confirm-type",
+        json={"ownerUserId": owner["id"], "cardType": "property_listing"},
+    )
+
+    assert confirmed.status_code == 200
+    config = confirmed.json()["data"]["visibilityConfig"]
+    structured = config["structuredData"]
+    assert config["cardType"] == "property_listing"
+    assert structured["price"] == "1500"
+    assert structured["paymentMethod"] == "押一付三"
+    assert structured["utilities"] == "民水民电"
+    assert "不养宠物" in structured["remark"]
 
 
 def test_quick_capture_routes_high_confidence_groupbuy(client):
@@ -2218,24 +3075,17 @@ def test_ocr_image_save_then_recognize_via_content_to_note(client):
     assert saved_note["coverUrl"].startswith("/media/")
     assert saved_config["sourceType"] == "ocr"
     assert saved_config["cardType"] == "image_ocr"
-    assert saved_config["structuredData"]["ocr"]["status"] == "pending"
+    assert saved_config["structuredData"]["ocr"]["status"] == "queued"
+    assert saved_payload["syncTask"]["name"] == "ocr-recognize-note"
 
     service.ocr_service = OcrService(
         provider="mock",
         mock_text="小区：碧桂园城市之光\n户型：公寓一房\n面积：42平\n价格：1600元/月\n位置：万家丽地铁口",
     )
-    recognize_response = client.post(
-        f"/api/ocr/notes/{saved_note['id']}/recognize",
-        json={"ownerUserId": login["id"]},
-    )
+    run_test_background_queue(client)
 
-    assert recognize_response.status_code == 200
-    payload = recognize_response.json()["data"]
-    note = payload["note"]
+    note = client.get(f"/api/notes/{saved_note['id']}", params={"ownerUserId": login["id"]}).json()["data"]
     config = note["visibilityConfig"]
-    assert payload["ocr"]["provider"] == "mock"
-    assert payload["ocr"]["configured"] is True
-    assert payload["ocr"]["status"] == "done"
     assert note["id"] == saved_note["id"]
     assert note["ownerUserId"] == login["id"]
     assert note["status"] == "active"
@@ -2260,7 +3110,9 @@ def test_ocr_recognized_property_batch_creates_notes_and_showcase(client):
         data={"ownerUserId": login["id"]},
         files={"file": ("property-batch.png", buffer.getvalue(), "image/png")},
     )
-    saved_note = save_response.json()["data"]["note"]
+    saved_payload = save_response.json()["data"]
+    saved_note = saved_payload["note"]
+    assert saved_payload["ocr"]["status"] == "queued"
     service.ocr_service = OcrService(
         provider="mock",
         mock_text="\n".join(
@@ -2274,18 +3126,18 @@ def test_ocr_recognized_property_batch_creates_notes_and_showcase(client):
         ),
     )
 
-    recognize_response = client.post(
-        f"/api/ocr/notes/{saved_note['id']}/recognize",
-        json={"ownerUserId": login["id"]},
-    )
+    run_test_background_queue(client)
 
-    assert recognize_response.status_code == 200
-    payload = recognize_response.json()["data"]
-    assert payload["note"]["id"] == saved_note["id"]
-    assert payload["note"]["visibilityConfig"]["cardType"] == "image_ocr"
-    assert payload["note"]["visibilityConfig"]["structuredData"]["ocr"]["status"] == "done"
-    assert payload["propertyBatch"]["createdCount"] == 3
-    showcase_id = payload["propertyBatch"]["showcaseId"]
+    notes = client.get("/api/notes", params={"ownerUserId": login["id"]}).json()["data"]
+    property_notes = [
+        item for item in notes
+        if (item.get("visibilityConfig") or {}).get("sourceType") == "ocr_property_batch"
+    ]
+    assert len(property_notes) == 3
+    source_note = client.get(f"/api/notes/{saved_note['id']}", params={"ownerUserId": login["id"]}).json()["data"]
+    assert source_note["visibilityConfig"]["structuredData"]["ocr"]["status"] == "done"
+    showcases = client.get("/api/showcases", params={"ownerUserId": login["id"]}).json()["data"]
+    showcase_id = next(item["id"] for item in showcases if item["templateId"] == "property_batch_collection")
     showcase = client.get(
         f"/api/showcases/{showcase_id}",
         params={"ownerUserId": login["id"]},
@@ -2293,11 +3145,121 @@ def test_ocr_recognized_property_batch_creates_notes_and_showcase(client):
     assert showcase["templateId"] == "property_batch_collection"
     assert len(showcase["items"]) == 3
     assert any(item["key"] == "price" for item in showcase["displayConfig"]["propertyFilters"])
-    created_note = payload["propertyBatch"]["notes"][0]
+    created_note = property_notes[0]
     assert created_note["coverUrl"].startswith("/media/")
     assert created_note["visibilityConfig"]["sourceType"] == "ocr_property_batch"
     assert created_note["visibilityConfig"]["ocrSourceNoteId"] == saved_note["id"]
     assert "图片识别" in created_note["visibilityConfig"]["tags"]
+
+
+def test_ocr_table_like_low_yield_property_batch_waits_for_manual_review(client):
+    service = client.app.dependency_overrides[get_app_service]()
+    login = client.post("/api/auth/mock-login", json={"nickname": "OCR 表格低质用户"}).json()["data"]
+    image = Image.new("RGB", (220, 140), color="white")
+    buffer = BytesIO()
+    image.save(buffer, format="PNG")
+    buffer.seek(0)
+    save_response = client.post(
+        "/api/ocr/images",
+        data={"ownerUserId": login["id"]},
+        files={"file": ("property-table.png", buffer.getvalue(), "image/png")},
+    )
+    saved_note = save_response.json()["data"]["note"]
+
+    def fake_extract_text(content, filename=None):
+        return OcrResult(
+            text="\n".join(
+                [
+                    "君华爱房·房屋管家",
+                    "2026.6.30房源更新",
+                    "以下房源佣金最高可达50%",
+                    "人民东路",
+                    "府A2号号1031",
+                    "3室1厅1卫",
+                    "6号2508",
+                    "室1厅1卫",
+                    "君合天玺1号03",
+                    "云集大厦1号1110",
+                    "室1斤1卫",
+                    "侯利美锦图3号181",
+                    "室1厅1卫",
+                    "联系电话：18073154517",
+                ]
+            ),
+            provider="paddle",
+            configured=True,
+            confidence=0.81,
+            details={"lineCount": 14},
+        )
+
+    service.ocr_service = OcrService(provider="paddle")
+    service.ocr_service.extract_text = fake_extract_text
+
+    run_test_background_queue(client)
+
+    notes = client.get("/api/notes", params={"ownerUserId": login["id"]}).json()["data"]
+    assert not [
+        item for item in notes
+        if (item.get("visibilityConfig") or {}).get("sourceType") == "ocr_property_batch"
+    ]
+
+
+def test_property_table_ocr_worker_creates_property_batch_notes(client):
+    service = client.app.dependency_overrides[get_app_service]()
+    login = client.post("/api/auth/mock-login", json={"nickname": "007 表格用户", "openid": "openid_property_table_ocr"}).json()["data"]
+    image = Image.new("RGB", (260, 180), color="white")
+    buffer = BytesIO()
+    image.save(buffer, format="PNG")
+    buffer.seek(0)
+
+    class FakePropertyTableOcr:
+        def looks_like_property_table_image(self, content):
+            return True
+
+        def extract_text(self, content, filename=None):
+            rows = [
+                "芙蓉区 人民东路 碧桂园城市之光5号1016 1室1厅1卫 1,400.00",
+                "雨花区 高桥 正荣悦玺1号2207B 1室1厅1卫 1,100.00",
+                "天心区 金盆岭 云集大厦1号1110 1室1厅1卫 1,500.00",
+                "开福区 开福寺 建鸿达现代公寓414南栋3号房 1室1厅1卫 1,350.00",
+                "芙蓉区 五一广场 标志大厦606 1室1厅1卫 850.00",
+                "芙蓉区 五一广场 标志大厦1508-1号房 1室1厅1卫 1,050.00",
+                "芙蓉区 五一广场 标志大厦1508-8号房 1室1厅1卫 900.00",
+                "芙蓉区 五一广场 标志大厦1508-5号房 1室1厅1卫 1,600.00",
+            ]
+            return OcrResult(
+                text="\n".join(rows),
+                provider="paddle-table",
+                configured=True,
+                confidence=0.91,
+                details={"mode": "property-table-row-ocr", "lineCount": len(rows), "rowCount": len(rows)},
+            )
+
+    service.property_table_ocr_service = FakePropertyTableOcr()
+    save_response = client.post(
+        "/api/ocr/images",
+        data={"ownerUserId": login["id"]},
+        files={"file": ("007-table.png", buffer.getvalue(), "image/png")},
+    )
+    assert save_response.status_code == 200
+    saved_payload = save_response.json()["data"]
+    assert saved_payload["ocr"]["status"] == "queued"
+
+    run_test_background_queue(client, delay=0.1)
+
+    notes = client.get("/api/notes", params={"ownerUserId": login["id"]}).json()["data"]
+    property_notes = [
+        item for item in notes
+        if (item.get("visibilityConfig") or {}).get("sourceType") == "ocr_property_table"
+    ]
+    assert len(property_notes) == 8
+    assert any((item.get("visibilityConfig") or {}).get("structuredData", {}).get("price") == "1400元/月" for item in property_notes)
+    source_note = client.get(f"/api/notes/{saved_payload['note']['id']}", params={"ownerUserId": login["id"]}).json()["data"]
+    ocr_data = source_note["visibilityConfig"]["structuredData"]["ocr"]
+    assert ocr_data["status"] == "done"
+    assert ocr_data["provider"] == "paddle-table"
+    showcases = client.get("/api/showcases", params={"ownerUserId": login["id"]}).json()["data"]
+    assert any(item["templateId"] == "property_batch_collection" for item in showcases)
 
 
 def test_note_image_capture_saves_image_without_recognition(client):
@@ -2321,9 +3283,9 @@ def test_note_image_capture_saves_image_without_recognition(client):
     assert note["coverUrl"].startswith("/media/")
     assert config["cardType"] == "image_ocr"
     assert config["sourceType"] == "ocr"
-    assert config["structuredData"]["ocr"]["status"] == "pending"
-    assert payload["ocr"]["status"] == "pending"
-    assert payload["ocr"]["details"]["reason"] == "图片已保存，等待用户主动识别。"
+    assert config["structuredData"]["ocr"]["status"] == "queued"
+    assert payload["ocr"]["status"] == "queued"
+    assert payload["syncTask"]["name"] == "ocr-recognize-note"
 
 
 def test_ocr_unconfigured_keeps_saved_image_note(client):
@@ -2341,17 +3303,10 @@ def test_ocr_unconfigured_keeps_saved_image_note(client):
     )
     note = save_response.json()["data"]["note"]
 
-    response = client.post(
-        f"/api/ocr/notes/{note['id']}/recognize",
-        json={"ownerUserId": login["id"]},
-    )
+    run_test_background_queue(client)
 
-    assert response.status_code == 200
-    payload = response.json()["data"]
-    updated_note = payload["note"]
+    updated_note = client.get(f"/api/notes/{note['id']}", params={"ownerUserId": login["id"]}).json()["data"]
     config = updated_note["visibilityConfig"]
-    assert payload["ocr"]["configured"] is False
-    assert payload["ocr"]["status"] == "not_configured"
     assert updated_note["id"] == note["id"]
     assert updated_note["coverUrl"].startswith("/media/")
     assert config["cardType"] == "image_ocr"

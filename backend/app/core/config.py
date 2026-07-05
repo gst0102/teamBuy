@@ -35,6 +35,7 @@ def env_path(name: str, default: str = "") -> Path | None:
 
 @dataclass(slots=True)
 class Settings:
+    app_role: str = env_value("APP_ROLE", "api")
     app_env: str = env_value("APP_ENV", "development")
     app_host: str = env_value("APP_HOST", "127.0.0.1")
     app_port: int = env_int("APP_PORT", 8000)
@@ -65,6 +66,11 @@ class Settings:
     wecom_archive_proxy_password: str = env_value("WECOM_ARCHIVE_PROXY_PASSWORD", "")
     wecom_archive_worker_enabled: bool = env_value("WECOM_ARCHIVE_WORKER_ENABLED", "false").lower() in {"1", "true", "yes"}
     wecom_archive_worker_interval_seconds: int = env_int("WECOM_ARCHIVE_WORKER_INTERVAL_SECONDS", 60)
+    background_tasks_in_api: bool = env_value("BACKGROUND_TASKS_IN_API", "true").lower() in {"1", "true", "yes"}
+    sync_task_worker_enabled: bool = env_value("SYNC_TASK_WORKER_ENABLED", "false").lower() in {"1", "true", "yes"}
+    sync_task_worker_interval_seconds: int = env_int("SYNC_TASK_WORKER_INTERVAL_SECONDS", 5)
+    sync_task_auto_schedule: bool = env_value("SYNC_TASK_AUTO_SCHEDULE", "true").lower() in {"1", "true", "yes"}
+    ocr_task_concurrency: int = env_int("OCR_TASK_CONCURRENCY", 1)
     wecom_bind_intent_ttl_seconds: int = env_int("WECOM_BIND_INTENT_TTL_SECONDS", 3600)
     wecom_unclaimed_default_owner_user_id: str = env_value("WECOM_UNCLAIMED_DEFAULT_OWNER_USER_ID", "")
     robot_gateway_token: str = env_value("ROBOT_GATEWAY_TOKEN", "")
@@ -92,6 +98,8 @@ class Settings:
     wechat_miniapp_secret: str = env_value("WECHAT_MINIAPP_SECRET", "")
     wechat_jscode2session_url: str = env_value("WECHAT_JSCODE2SESSION_URL", "https://api.weixin.qq.com/sns/jscode2session")
     allow_mock_login: bool = env_value("ALLOW_MOCK_LOGIN", "true").lower() in {"1", "true", "yes"}
+    h5_auth_secret: str = env_value("H5_AUTH_SECRET", env_value("WECOM_ADMIN_TOKEN", "teamBuy-h5-dev-secret"))
+    h5_auth_ticket_ttl_seconds: int = env_int("H5_AUTH_TICKET_TTL_SECONDS", 600)
     tencent_map_key: str = env_value("TENCENT_MAP_KEY", "")
     tencent_map_geocoder_url: str = env_value("TENCENT_MAP_GEOCODER_URL", "https://apis.map.qq.com/ws/geocoder/v1/")
     tyc_api_key: str = env_value("TYC_API_KEY", "")

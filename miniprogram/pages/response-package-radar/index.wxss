@@ -1,0 +1,105 @@
+.radar-page {
+  padding-bottom: 56rpx;
+}
+
+.radar-hero,
+.metric-card,
+.event-panel {
+  width: 100%;
+  border: 1rpx solid #dbe6f7;
+  border-radius: 24rpx;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 16rpx 40rpx rgba(31, 88, 168, 0.08);
+  box-sizing: border-box;
+}
+
+.radar-hero {
+  margin-top: 14rpx;
+  padding: 30rpx 26rpx;
+  background: linear-gradient(135deg, #f0f7ff, #ffffff 58%, #eefcf5);
+}
+
+.hero-kicker {
+  color: #079455;
+  font-size: 22rpx;
+  font-weight: 900;
+}
+
+.hero-title {
+  margin-top: 8rpx;
+  color: #101828;
+  font-size: 40rpx;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.hero-sub {
+  margin-top: 12rpx;
+  color: #667085;
+  font-size: 23rpx;
+  line-height: 1.45;
+}
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12rpx;
+  margin-top: 18rpx;
+}
+
+.metric-card {
+  min-width: 0;
+  padding: 20rpx 12rpx;
+  text-align: center;
+}
+
+.metric-card text {
+  color: #667085;
+  font-size: 20rpx;
+  font-weight: 800;
+}
+
+.metric-card strong {
+  display: block;
+  margin-top: 8rpx;
+  color: #1677ff;
+  font-size: 28rpx;
+  font-weight: 900;
+}
+
+.event-panel {
+  margin-top: 18rpx;
+  padding: 24rpx;
+}
+
+.panel-title {
+  color: #101828;
+  font-size: 29rpx;
+  font-weight: 900;
+}
+
+.event-row {
+  display: flex;
+  gap: 16rpx;
+  margin-top: 18rpx;
+}
+
+.event-dot {
+  width: 18rpx;
+  height: 18rpx;
+  margin-top: 8rpx;
+  border-radius: 50%;
+  background: #1677ff;
+}
+
+.event-type {
+  color: #172033;
+  font-size: 24rpx;
+  font-weight: 900;
+}
+
+.event-time {
+  margin-top: 6rpx;
+  color: #667085;
+  font-size: 22rpx;
+}

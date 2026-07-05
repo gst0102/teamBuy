@@ -21,11 +21,13 @@ class SyncTaskQueue:
         worker_id: str | None = None,
         retry_delay_seconds: int = 30,
         lock_timeout_seconds: int = 600,
+        auto_schedule: bool = True,
     ):
         self.repo = repo
         self.worker_id = worker_id or f"worker_{uuid4().hex}"
         self.retry_delay_seconds = retry_delay_seconds
         self.lock_timeout_seconds = lock_timeout_seconds
+        self.auto_schedule = auto_schedule
         self.handlers: dict[str, TaskHandler] = {}
         self._scheduled_task_ids: set[str] = set()
 
@@ -47,7 +49,8 @@ class SyncTaskQueue:
         )
         self.repo.save_sync_task(task)
         self._log(task.id, "queued", f"Task {name} queued", {"payload": task.payload})
-        self._schedule(task.id)
+        if self.auto_schedule:
+            self._schedule(task.id)
         return task
 
     def list_recent(self, limit: int = 50) -> list[SyncTask]:
@@ -56,16 +59,39 @@ class SyncTaskQueue:
     def list_logs(self, task_id: str | None = None, limit: int = 100) -> list[SyncTaskLog]:
         return self.repo.list_sync_task_logs(task_id, limit)
 
-    def start_pending(self) -> int:
+    def start_pending(
+        self,
+        names: set[str] | None = None,
+        max_to_schedule: int | None = None,
+        max_running: int | None = None,
+    ) -> int:
         scheduled = 0
+        if max_running is not None:
+            running_count = len(
+                [
+                    task
+                    for task in self.repo.list_sync_tasks({"running"}, limit=200)
+                    if not names or task.name in names
+                ]
+            )
+            if running_count >= max_running:
+                return 0
         for task in self.repo.list_sync_tasks({"queued", "retrying", "running"}, limit=100):
+            if names and task.name not in names:
+                continue
             if self._is_ready(task):
                 self._schedule(task.id)
                 scheduled += 1
+                if max_to_schedule is not None and scheduled >= max_to_schedule:
+                    break
+                if max_running is not None and scheduled >= max_running:
+                    break
             elif task.status in {"queued", "retrying"} and task.nextRunAt:
                 delay = max(1, int((parse_iso(task.nextRunAt) - parse_iso(now_iso())).total_seconds()))
                 asyncio.create_task(self._schedule_after_delay(task.id, delay))
                 scheduled += 1
+                if max_to_schedule is not None and scheduled >= max_to_schedule:
+                    break
         return scheduled
 
     def _schedule(self, task_id: str) -> None:

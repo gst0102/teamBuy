@@ -1,0 +1,46 @@
+<view class="page-shell sd-detail-page">
+  <custom-nav title="供需详情" show-back="{{true}}" />
+
+  <view class="detail-hero">
+    <view class="badge">{{card.badge}}</view>
+    <view class="hero-title">{{card.title}}</view>
+    <view class="hero-sub">{{card.summary || "对方还没有补充详细说明。"}}</view>
+    <view class="owner-row">
+      <text>发布者</text>
+      <strong>{{card.ownerNickname || "资料用户"}}</strong>
+      <text>{{card.applicationCount}} 人申请</text>
+    </view>
+  </view>
+
+  <view class="info-panel">
+    <view class="panel-title">结构化信息</view>
+    <view class="field-grid">
+      <view><text>城市</text><strong>{{card.city || "不限"}}</strong></view>
+      <view><text>行业</text><strong>{{card.industry || "综合"}}</strong></view>
+      <view><text>类型</text><strong>{{card.demandType || "合作"}}</strong></view>
+      <view><text>联系</text><strong>{{card.contactRequirement || "申请联系"}}</strong></view>
+    </view>
+    <view wx:if="{{card.tags.length}}" class="tag-row">
+      <text wx:for="{{card.tags}}" wx:key="*this">{{item}}</text>
+    </view>
+  </view>
+
+  <view class="info-panel">
+    <view class="panel-title">合作申请</view>
+    <view wx:if="{{card.isMine}}" class="tip-box">这是你自己的发布，可在“我的发布”里查看收到的申请。</view>
+    <view wx:elif="{{card.applicationStatusText}}" class="tip-box">当前状态：{{card.applicationStatusText}}</view>
+    <block wx:else>
+      <textarea class="apply-input" value="{{applicationText}}" placeholder="简单说明你能提供什么，或想怎么合作" bindinput="setApplicationText" />
+      <button class="apply-btn" loading="{{applying}}" bindtap="handleApply">申请合作</button>
+    </block>
+  </view>
+
+  <view wx:if="{{card.linkedNoteTitle}}" class="info-panel">
+    <view class="panel-title">关联资料</view>
+    <view class="linked-card" bindtap="handleOpenLinkedNote">
+      <view>{{card.linkedNoteTitle}}</view>
+      <text>打开查看</text>
+    </view>
+  </view>
+  <canvas canvas-id="universalShareCanvas" class="universal-share-canvas"></canvas>
+</view>

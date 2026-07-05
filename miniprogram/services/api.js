@@ -1,6 +1,9 @@
 const { buildApiUrl, request } = require("../utils/request");
 const { withCachedMedia, withCachedCards } = require("../utils/media-cache");
 
+const NOTE_CACHE_PREFIX = "teambuy:notes-cache";
+const NOTE_CACHE_TTL_MS = 5 * 60 * 1000;
+
 function toAbsoluteUrl(url) {
   if (!url) return url;
   if (/^https?:\/\//i.test(url)) return url;
@@ -16,15 +19,21 @@ function toAbsoluteUrl(url) {
 
 function normalizeCardPayload(card) {
   if (!card || typeof card !== "object") return card;
+  const structuredData = ((card.visibilityConfig || {}).structuredData) || {};
+  const normalizedMedia = Array.isArray(card.media)
+    ? card.media.map((item) => ({
+        ...item,
+        url: toAbsoluteUrl(item.url)
+      }))
+    : card.media;
+  const firstImage = Array.isArray(normalizedMedia)
+    ? normalizedMedia.find((item) => item && item.type === "image" && item.url)
+    : null;
+  const structuredCoverUrl = toAbsoluteUrl(structuredData.coverUrl);
   return {
     ...card,
-    coverUrl: toAbsoluteUrl(card.coverUrl),
-    media: Array.isArray(card.media)
-      ? card.media.map((item) => ({
-          ...item,
-          url: toAbsoluteUrl(item.url)
-        }))
-      : card.media
+    coverUrl: structuredCoverUrl || toAbsoluteUrl(card.coverUrl) || (firstImage && firstImage.url) || "",
+    media: normalizedMedia
   };
 }
 
@@ -48,6 +57,76 @@ function normalizeAndCacheCard(card) {
 
 function normalizeAndCacheNote(note) {
   return withCachedMedia(normalizeNotePayload(note));
+}
+
+function cacheScope() {
+  const app = getApp();
+  const data = (app && app.globalData) || {};
+  return [data.environmentName || "", data.apiBaseUrl || "", data.apiRoutePrefix || ""].join("|");
+}
+
+function noteListCacheKey(params = {}) {
+  const normalized = {
+    ownerUserId: params.ownerUserId || "",
+    keyword: params.keyword || "",
+    sourceType: params.sourceType || "",
+    systemCategory: params.systemCategory || "",
+    tag: params.tag || "",
+    topicId: params.topicId || "",
+    sort: params.sort || "",
+    includeDeleted: Boolean(params.includeDeleted)
+  };
+  return `${NOTE_CACHE_PREFIX}:list:${cacheScope()}:${JSON.stringify(normalized)}`;
+}
+
+function noteItemCacheKey(ownerUserId, noteId) {
+  return `${NOTE_CACHE_PREFIX}:item:${cacheScope()}:${ownerUserId || ""}:${noteId || ""}`;
+}
+
+function readCache(key) {
+  try {
+    const item = wx.getStorageSync(key);
+    if (!item || !item.savedAt) return null;
+    if (Date.now() - Number(item.savedAt || 0) > NOTE_CACHE_TTL_MS) return null;
+    return item.data || null;
+  } catch (error) {
+    return null;
+  }
+}
+
+function writeCache(key, data) {
+  try {
+    wx.setStorageSync(key, { savedAt: Date.now(), data });
+  } catch (error) {
+    // Cache is a speed hint; network data remains the source of truth.
+  }
+}
+
+function writeNoteItemCache(note) {
+  if (!note || !note.id) return;
+  writeCache(noteItemCacheKey(note.ownerUserId, note.id), note);
+}
+
+function invalidateNoteListCaches(ownerUserId) {
+  try {
+    const info = wx.getStorageInfoSync();
+    const ownerText = `"ownerUserId":"${ownerUserId || ""}"`;
+    (info.keys || []).forEach((key) => {
+      if (key.startsWith(`${NOTE_CACHE_PREFIX}:list:`) && (!ownerUserId || key.includes(ownerText))) {
+        wx.removeStorageSync(key);
+      }
+    });
+  } catch (error) {
+    // Cache invalidation is best effort.
+  }
+}
+
+function getCachedNotes(params = {}) {
+  return readCache(noteListCacheKey(params)) || [];
+}
+
+function getCachedNote(noteId, ownerUserId) {
+  return readCache(noteItemCacheKey(ownerUserId, noteId));
 }
 
 function normalizeShowcasePayload(showcase) {
@@ -145,6 +224,14 @@ function createWecomBindIntent(userId) {
   });
 }
 
+function createH5Ticket(payload) {
+  return request({
+    url: "/api/auth/h5-ticket",
+    method: "POST",
+    data: payload
+  });
+}
+
 function fetchNotes(params = {}) {
   const query = [];
   if (params.ownerUserId) query.push(`ownerUserId=${params.ownerUserId}`);
@@ -159,10 +246,14 @@ function fetchNotes(params = {}) {
   const suffix = query.length ? `?${query.join("&")}` : "";
   return request({
     url: `/api/notes${suffix}`
-  }).then(async (res) => ({
-    ...res,
-    data: Array.isArray(res.data) ? await Promise.all(res.data.map(normalizeAndCacheNote)) : res.data
-  }));
+  }).then(async (res) => {
+    const data = Array.isArray(res.data) ? await Promise.all(res.data.map(normalizeAndCacheNote)) : res.data;
+    if (Array.isArray(data)) {
+      writeCache(noteListCacheKey(params), data);
+      data.forEach(writeNoteItemCache);
+    }
+    return { ...res, data };
+  });
 }
 
 function fetchTagSuggestions(params = {}) {
@@ -182,7 +273,11 @@ function createManualNoteDraft(payload) {
   }).then(async (res) => ({
     ...res,
     data: await normalizeAndCacheNote(res.data)
-  }));
+  })).then((res) => {
+    writeNoteItemCache(res.data);
+    invalidateNoteListCaches(payload.ownerUserId);
+    return res;
+  });
 }
 
 function createQuickNoteCapture(payload) {
@@ -193,7 +288,11 @@ function createQuickNoteCapture(payload) {
   }).then(async (res) => ({
     ...res,
     data: await normalizeAndCacheNote(res.data)
-  }));
+  })).then((res) => {
+    writeNoteItemCache(res.data);
+    invalidateNoteListCaches(payload.ownerUserId);
+    return res;
+  });
 }
 
 function parsePropertyBatch(payload) {
@@ -277,10 +376,12 @@ function removeNoteFromTopic(noteId, topicId, ownerUserId) {
 function fetchNote(noteId, ownerUserId) {
   return request({
     url: `/api/notes/${noteId}?ownerUserId=${ownerUserId}`
-  }).then(async (res) => ({
-    ...res,
-    data: await normalizeAndCacheNote(res.data)
-  }));
+  }).then(async (res) => {
+    const data = await normalizeAndCacheNote(res.data);
+    writeNoteItemCache(data);
+    invalidateNoteListCaches(payload.ownerUserId);
+    return { ...res, data };
+  });
 }
 
 function fetchPublicNote(noteId) {
@@ -390,10 +491,12 @@ function updateNote(noteId, payload) {
     url: `/api/notes/${noteId}`,
     method: "PUT",
     data: payload
-  }).then(async (res) => ({
-    ...res,
-    data: await normalizeAndCacheNote(res.data)
-  }));
+  }).then(async (res) => {
+    const data = await normalizeAndCacheNote(res.data);
+    writeNoteItemCache(data);
+    invalidateNoteListCaches(payload.ownerUserId);
+    return { ...res, data };
+  });
 }
 
 function duplicateNote(noteId, ownerUserId) {
@@ -461,10 +564,11 @@ function confirmNoteType(noteId, payload) {
     url: `/api/notes/${noteId}/confirm-type`,
     method: "POST",
     data: payload
-  }).then(async (res) => ({
-    ...res,
-    data: await normalizeAndCacheNote(res.data)
-  }));
+  }).then(async (res) => {
+    const data = await normalizeAndCacheNote(res.data);
+    writeNoteItemCache(data);
+    return { ...res, data };
+  });
 }
 
 function deleteNote(noteId, ownerUserId) {
@@ -859,6 +963,182 @@ function deleteLeadReminder(reminderId, ownerUserId) {
   });
 }
 
+function fetchOpportunityLeads(params = {}) {
+  const query = [];
+  ["keyword", "userId", "city", "industry", "demandType", "contactStatus"].forEach((key) => {
+    if (params[key]) query.push(`${key}=${encodeURIComponent(params[key])}`);
+  });
+  const suffix = query.length ? `?${query.join("&")}` : "";
+  return request({ url: `/api/opportunity-leads${suffix}` });
+}
+
+function fetchOpportunityLead(leadId) {
+  return request({ url: `/api/opportunity-leads/${leadId}` });
+}
+
+function fetchSavedOpportunityLeads(userId, params = {}) {
+  const query = [`userId=${encodeURIComponent(userId)}`];
+  ["status", "keyword", "packageStatus"].forEach((key) => {
+    if (params[key]) query.push(`${key}=${encodeURIComponent(params[key])}`);
+  });
+  return request({ url: `/api/opportunity-leads/saved?${query.join("&")}` });
+}
+
+function saveOpportunityLead(leadId, payload) {
+  return request({
+    url: `/api/opportunity-leads/${leadId}/save`,
+    method: "POST",
+    data: payload
+  });
+}
+
+function addOpportunityFollowup(leadId, payload) {
+  return request({
+    url: `/api/opportunity-leads/${leadId}/followups`,
+    method: "POST",
+    data: payload
+  });
+}
+
+function unlockOpportunityContact(leadId, payload) {
+  return request({
+    url: `/api/opportunity-leads/${leadId}/unlock-contact`,
+    method: "POST",
+    data: payload
+  });
+}
+
+function previewResponsePackage(leadId, payload) {
+  return request({
+    url: `/api/opportunity-leads/${leadId}/response-packages/preview`,
+    method: "POST",
+    data: payload
+  });
+}
+
+function createResponsePackage(leadId, payload) {
+  return request({
+    url: `/api/opportunity-leads/${leadId}/response-packages`,
+    method: "POST",
+    data: payload
+  });
+}
+
+function fetchResponsePackage(packageId, ownerUserId) {
+  return request({
+    url: `/api/response-packages/${packageId}?ownerUserId=${encodeURIComponent(ownerUserId)}`
+  });
+}
+
+function recordResponsePackageEvent(packageId, payload) {
+  return request({
+    url: `/api/response-packages/${packageId}/events`,
+    method: "POST",
+    data: payload
+  });
+}
+
+function fetchResponsePackageRadar(packageId, ownerUserId) {
+  return request({
+    url: `/api/response-packages/${packageId}/radar?ownerUserId=${encodeURIComponent(ownerUserId)}`
+  });
+}
+
+function fetchOpportunitySubscriptions(userId) {
+  return request({ url: `/api/opportunity-subscriptions/me?userId=${encodeURIComponent(userId)}` });
+}
+
+function saveOpportunitySubscription(payload) {
+  return request({
+    url: "/api/opportunity-subscriptions",
+    method: "POST",
+    data: payload
+  });
+}
+
+function fetchSupplyDemandCards(params = {}) {
+  const query = [];
+  ["keyword", "city", "industry", "demandType", "cardType", "contactStatus"].forEach((key) => {
+    if (params[key]) query.push(`${key}=${encodeURIComponent(params[key])}`);
+  });
+  return request({ url: `/api/supply-demand/cards${query.length ? `?${query.join("&")}` : ""}` });
+}
+
+function fetchMySupplyDemandCards(userId) {
+  return request({ url: `/api/supply-demand/cards/me?userId=${encodeURIComponent(userId)}` });
+}
+
+function fetchSupplyDemandCard(cardId, userId) {
+  const query = userId ? `?userId=${encodeURIComponent(userId)}` : "";
+  return request({ url: `/api/supply-demand/cards/${cardId}${query}` });
+}
+
+function saveSupplyDemandCard(payload) {
+  return request({
+    url: "/api/supply-demand/cards",
+    method: "POST",
+    data: payload
+  });
+}
+
+function updateSupplyDemandCard(cardId, payload) {
+  return request({
+    url: `/api/supply-demand/cards/${cardId}`,
+    method: "PUT",
+    data: payload
+  });
+}
+
+function submitSupplyDemandCard(cardId, userId) {
+  return request({
+    url: `/api/supply-demand/cards/${cardId}/submit`,
+    method: "POST",
+    data: { userId }
+  });
+}
+
+function applySupplyDemandCard(cardId, payload) {
+  return request({
+    url: `/api/supply-demand/cards/${cardId}/applications`,
+    method: "POST",
+    data: payload
+  });
+}
+
+function fetchSupplyDemandApplications(userId, role = "owner") {
+  return request({
+    url: `/api/supply-demand/cards/applications?userId=${encodeURIComponent(userId)}&role=${encodeURIComponent(role)}`
+  });
+}
+
+function reviewSupplyDemandApplication(applicationId, payload) {
+  return request({
+    url: `/api/supply-demand/cards/applications/${applicationId}/review`,
+    method: "POST",
+    data: payload
+  });
+}
+
+function fetchOpportunityPushDigests(userId) {
+  return request({ url: `/api/opportunity-push-digests?userId=${encodeURIComponent(userId)}` });
+}
+
+function generateOpportunityPushDigest(userId) {
+  return request({
+    url: "/api/opportunity-push-digests/generate",
+    method: "POST",
+    data: { userId }
+  });
+}
+
+function markOpportunityPushDigestRead(digestId, userId) {
+  return request({
+    url: `/api/opportunity-push-digests/${digestId}/read`,
+    method: "POST",
+    data: { userId }
+  });
+}
+
 module.exports = {
   mockLogin,
   wechatLogin,
@@ -867,7 +1147,9 @@ module.exports = {
   claimImport,
   claimImportByToken,
   createWecomBindIntent,
+  createH5Ticket,
   fetchNotes,
+  getCachedNotes,
   fetchTagSuggestions,
   createManualNoteDraft,
   createQuickNoteCapture,
@@ -881,6 +1163,7 @@ module.exports = {
   addNoteToTopic,
   removeNoteFromTopic,
   fetchNote,
+  getCachedNote,
   fetchPublicNote,
   geocodeAddress,
   searchEnterpriseResources,
@@ -939,5 +1222,30 @@ module.exports = {
   fetchLeadReminder,
   upsertLeadReminder,
   updateLeadReminder,
-  deleteLeadReminder
+  deleteLeadReminder,
+  fetchOpportunityLeads,
+  fetchOpportunityLead,
+  fetchSavedOpportunityLeads,
+  saveOpportunityLead,
+  addOpportunityFollowup,
+  unlockOpportunityContact,
+  previewResponsePackage,
+  createResponsePackage,
+  fetchResponsePackage,
+  recordResponsePackageEvent,
+  fetchResponsePackageRadar,
+  fetchOpportunitySubscriptions,
+  saveOpportunitySubscription,
+  fetchSupplyDemandCards,
+  fetchMySupplyDemandCards,
+  fetchSupplyDemandCard,
+  saveSupplyDemandCard,
+  updateSupplyDemandCard,
+  submitSupplyDemandCard,
+  applySupplyDemandCard,
+  fetchSupplyDemandApplications,
+  reviewSupplyDemandApplication,
+  fetchOpportunityPushDigests,
+  generateOpportunityPushDigest,
+  markOpportunityPushDigestRead
 };

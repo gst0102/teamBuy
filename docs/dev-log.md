@@ -1,5 +1,817 @@
 # 2026-06-21
 
+## 2026-07-05 项目收口：整理迁移配置与 GitHub 上传准备
+
+本轮处理：
+
+- 按项目规则重新读取：
+  - `AGENTS.md`
+  - `docs/project-memory.md`
+  - `docs/decisions.md`
+  - `docs/pitfalls.md`
+  - `docs/dev-log.md`
+  - `docs/handoff-latest.md`
+- 检查当前工作区：
+  - 分支：`codex/version-protection-20260629`
+  - 远程：`git@github.com:gst0102/teamBuy.git`
+  - 当前分支相对远端 `ahead 1`
+  - 工作区存在大量未提交二期改动，包含后端、H5、小程序、文档
+- 补项目收口文档：
+  - 新增 `docs/project-closeout-20260705.md`
+  - 新增 `docs/config-migration-reference.md`
+- 新增收口规则：
+  - `.gitignore` 增加 `artifacts/`
+  - 本地部署比对目录不再参与 GitHub 上传
+
+本轮结论：
+
+- 当前仓库更适合做“阶段归档 + 新项目复用底座”。
+- 当前前端默认配置仍是测试环境：
+  - `apiBaseUrl=https://teambuy.lifelove.top`
+  - `apiRoutePrefix=/test-api`
+  - `mediaRoutePrefix=/test-media`
+  - `environmentName=test`
+- 可迁移重点已整理进 `docs/config-migration-reference.md`：
+  - 域名 / 服务器
+  - 小程序 AppID
+  - H5 `web-view + ticket` 模式
+  - 后端环境变量骨架
+
+验证：
+
+- 文档与 `.gitignore` 改动已落盘。
+- 后续准备在提交前再统一执行一次 `git diff --check`。
+
+## 2026-07-03 资源工具 H5：补本地预览模式，并强化首页雷达感 / 我的发布控制台感
+
+本轮完成：
+
+- 资源工具 H5 增加本地预览模式：
+  - 在 `file://`、`localhost`、`127.0.0.1` 直接打开时，不再因为缺少 ticket 只显示“登录状态已过期”。
+  - 预览模式会注入示例用户、示例机会、示例供需、示例资料、示例回应包。
+  - 保存、申请合作、提交审核、保存订阅、下架等动作在预览模式下只做前端模拟提示，不调用真实接口。
+- 首页继续按“更酷一点”的方向打磨：
+  - 增加实时刷新胶囊、扫描条感、信号柱动效和更明显的匹配分区域。
+  - 加入“本地预览模式”小胶囊，便于区分真数据和视觉预览。
+  - 维持首屏紧凑布局，继续突出“去找需求 / 去盯资源”两个主动作。
+- 我的发布页继续产品化：
+  - 增加最近动态、优先处理、建议动作三块控制台信息。
+  - 修正 `＋ 新建发布 / 查看历史` 按钮的默认边框问题，改为统一 CTA 样式。
+  - 补统一焦点态、按下态，去掉浏览器默认橙边/黑边带来的未完成感。
+
+验证：
+
+- H5 内联脚本语法通过。
+- `git diff --check -- backend/app/static/h5/resource-tools/index.html` 通过。
+- 本地浏览器预览已确认：首页可直接进入示例雷达页，“我的发布”可直接进入控制台页。
+- 已同步测试后端并重启 `teambuy-test-backend-test-1`。
+- 公网 `https://teambuy.lifelove.top/test-health` 正常。
+- 公网 `https://teambuy.lifelove.top/test-api/h5/resource-tools/` 已确认包含：
+  - `preview-banner`
+  - `isLocalPreviewHost`
+  - `buildPreviewPackage`
+  - `mine-console-strip`
+  - `lead-live-pill`
+- 远端 H5 内联脚本解析通过。
+
+追加打磨：
+
+- 首页机会卡继续压层级：
+  - 标题字号稍提，摘要和元信息间距重排。
+  - 城市、行业改为轻胶囊，时间单独收在右侧。
+  - 按钮前增加轻分隔线，让卡片结构更清楚。
+- 我的发布单卡改为专用发布卡骨架：
+  - 头像方块改成更像序号/状态入口的 index 角标。
+  - 标题、摘要限制行数，避免长内容撑乱卡片。
+  - 城市 / 行业 / 类型 / 状态改成四格指标块。
+  - 操作区改为主按钮 + 紧凑次按钮，更像控制台卡片。
+
+补充验证：
+
+- H5 内联脚本再次通过。
+- `git diff --check -- backend/app/static/h5/resource-tools/index.html` 通过。
+- 已再次同步测试后端，公网测试页已包含：
+  - `lead-meta-pill`
+  - `lead-card-divider`
+  - `mine-publish-card`
+  - `mine-publish-title`
+  - `mine-publish-metrics`
+  - `mine-publish-actions`
+
+继续打磨：
+
+- 首页顶部统计区增加轻量“扫描面板”节点：
+  - 扫描状态
+  - 重点城市
+  - 当前热点
+  - 并补脉冲点，让顶部更像实时面板。
+- “我的发布”里的“收到申请”改为控制台语言：
+  - 新增工单式申请卡
+  - 展示申请人 / 渠道意向 / 建议动作三格信息
+  - 文案从“普通合作信息”改为“优先处理的申请任务”
+
+补充验证：
+
+- H5 内联脚本再次通过。
+- `git diff --check -- backend/app/static/h5/resource-tools/index.html` 通过。
+- 已同步测试后端，公网测试页已包含：
+  - `lead-panel-strip`
+  - `lead-panel-node`
+  - `lead-panel-dot`
+  - `mine-application-card`
+  - `mine-application-grid`
+  - `mine-application-actions`
+
+补修正：
+
+- 用户反馈“看不到扫描面板”和“收到申请这些 DOM 没反应”。
+- 已确认原因不是样式缺失，而是：
+  - 用户打开的是 `?page=opportunities` 的“我的机会”页，不是首页首屏。
+  - 预览模式下“我的发布”原先没有喂申请 mock 数据。
+  - `通过 / 拒绝` 在预览模式下原先没有模拟反馈。
+- 已修正：
+  - 在“我的机会”页顶部也显示一版扫描面板，并明确提示“机会页同步显示”。
+  - 预览模式下为“我的发布”补充收到申请和我申请的合作 mock 数据。
+  - 预览模式下 `通过 / 拒绝` 已可弹出模拟反馈。
+
+再次验证：
+
+- H5 内联脚本通过。
+- `git diff --check -- backend/app/static/h5/resource-tools/index.html` 通过。
+- 已同步测试后端，公网测试页已包含：
+  - `previewReceivedApplications`
+  - `previewMyApplications`
+  - `机会页同步显示`
+  - `预览：已模拟通过申请`
+
+继续打磨：
+
+- “我申请的合作”已统一成控制台申请卡语言：
+  - 改为蓝色申请卡视角
+  - 增加申请去向 / 当前状态 / 建议动作三格信息
+  - 增加 `查看原需求 / 继续找资源` 两个动作
+- 供需广场顶部改成一个完整产品面板：
+  - 新增 `market-top-panel`
+  - hero、统计、筛选合并在同一块面板里
+  - 筛选区新增轻量运行摘要：重点城市 / 当前热点 / 筛选方式
+
+再次验证：
+
+- H5 内联脚本通过。
+- `git diff --check -- backend/app/static/h5/resource-tools/index.html` 通过。
+- 已同步测试后端，公网测试页已包含：
+  - `market-top-panel`
+  - `market-filter-panel`
+  - `market-panel-head`
+  - `market-scan-row`
+  - `mine-application-card applied`
+  - `继续找资源`
+
+## 2026-07-03 资源工具 H5：补“发布历史”、需求详情和供需搜索
+
+本轮完成：
+
+- “我的发布”补历史入口，新增历史页面用于查看已下架/历史供需。
+- 供需详情拆出需求详情样式，`cardType=demand` 时不再复用普通供给详情卡。
+- 发布供需页资料选择卡改为紧凑卡片，长标题最多显示两行，并补“查看详情”按钮。
+- 供给预览页“会员可查看 / 对方可申请联系”改为可点击 DOM 按钮，点击后可回到发布页继续编辑。
+- 供需广场补真搜索框和搜索按钮，支持输入关键词后刷新当前列表。
+- 供需广场卡片第二操作改为“申请合作 / 立即联系”，避免误走机会保存链路。
+- 订阅页上方配置与下方“正在为你盯”改为实时联动。
+- 发布供需新增草稿缓存，解决预览页提交时读不到标题和联系方式的问题。
+- 顶部工具栏改为横向可滑动，`发布`、`我的` 不再隐藏。
+- 资源工具导航重新收敛：
+  - 顶部只保留 `我的机会 / 需求广场 / 已保存 / 订阅` 四个主入口。
+  - `发布供需 / 我的发布` 改成独立一排胶囊按钮。
+  - 首页内部重复 tab 和底部重复导航移除。
+- 发布供需表单不再默认塞满内容，改为“空值 + 示例占位”；编辑旧内容时才回填。
+- 发布保存时仍保留草稿链路，避免预览页提交时再次丢标题。
+- 首页首屏进一步压缩信息密度，并增加“去找需求 / 去盯资源”两个快捷入口。
+- 我的发布页补强为更完整页面，增加 `＋ 新建发布 / 查看历史` 两个明显按钮。
+
+验证：
+
+- H5 内联脚本语法通过。
+- `git diff --check -- backend/app/static/h5/resource-tools/index.html` 通过。
+
+## 2026-07-03 资源工具 H5：按 34 号参考图完成 9 页视觉骨架
+
+本轮完成：
+
+- 继续上一轮 systemError 中断点，不从头重做，只补完“我的发布”页。
+- 已按 `docs/stage2-docs/34-opportunity-leads-ui-spec-v1.md` 的 3 张参考图完成 9 个 H5 页面视觉骨架：
+  - 商机线索首页
+  - 我的机会
+  - 线索详情
+  - 订阅雷达
+  - 已保存
+  - 供需广场
+  - 发布供给
+  - 供给预览
+  - 我的发布
+- “我的发布”从旧版通用卡片替换为参考图风格：统计卡、展示中/待处理/收到申请状态、发布卡片、合作申请区、再发布入口。
+- 发布供给“下一步”补齐 `preview-supply` 动作，能进入供给预览页。
+
+验证：
+
+- H5 内联脚本语法解析通过。
+- H5 页面标记检查通过：`lead-summary-card`、`match-overview-card`、`lead-detail-page`、`subscription-like-page`、`saved-like-page`、`market-like-page`、`publish-progress`、`preview-page`、`mine-page`。
+- `.venv312/bin/python -m compileall -q backend/app` 通过。
+- `git diff --check -- backend/app/static/h5/resource-tools/index.html docs/dev-log.md docs/decisions.md docs/pitfalls.md docs/handoff-latest.md` 通过。
+- 已同步测试后端并重启 `teambuy-test-backend-test-1`。
+- 公网 `https://teambuy.lifelove.top/test-health` 返回正常。
+- 公网 `https://teambuy.lifelove.top/test-api/h5/resource-tools/` 已确认包含 9 个页面结构标记，远端内联脚本解析通过。
+
+注意：
+
+- 本轮只同步测试环境，未改生产环境。
+- 当前为 H5 视觉骨架和主链路按钮补齐，真机仍需继续按截图微调间距、字体和卡片高度。
+
+## 2026-07-02 资源工具 H5：体验打磨与筛选排序
+
+本轮完成：
+
+- 顶部功能导航从固定 6 列改为横向滑动胶囊，避免手机窄屏挤压。
+- 机会/供需列表新增城市、行业、类型、排序筛选胶囊。
+- 筛选条件会带到接口请求，同时前端保留兜底过滤；接口暂时不识别参数时，页面仍能按当前返回数据筛选。
+- 排序支持“推荐优先 / 最新优先”。
+- 发布供需页不再展示 `supply/demand` 内部值，改为“我能提供 / 我在寻找”中文胶囊。
+- 发布供需页城市、行业、类型、联系要求改为“自定义输入 + 常用胶囊”组合，用户可以点选也可以自己输入。
+- H5 操作按钮补充居中和最小宽度约束，降低按钮文本变形概率。
+
+验证：
+
+- H5 内联脚本语法解析通过。
+- `.venv312/bin/python -m compileall -q backend/app` 通过。
+- `git diff --check -- backend/app/static/h5/resource-tools/index.html` 通过。
+- 已同步测试后端并重启 `teambuy-test-backend-test-1`，未碰生产。
+- 公网 `https://teambuy.lifelove.top/test-health` 返回正常。
+- 公网 `https://teambuy.lifelove.top/test-api/h5/resource-tools/` 已包含筛选、中文发布方向和新页面脚本。
+
+注意：
+
+- 当前筛选接口参数属于兼容增强，后端如果后续要做数据库级精准筛选，可继续在对应列表接口里消费 `city/industry/demandType`。
+- 小程序前端配置当前仍为测试环境：`/test-api`、`/test-media`。
+
+追加修正：
+
+- 用户反馈“之前里面 4 个页面，现在像一个页面，没法验收”。
+- 已将 H5 默认首屏改成资源工具入口页：
+  - 4 个主入口卡片：机会雷达、供需广场、已保存、订阅雷达。
+  - 发布供需、我的发布作为常用动作入口放在下方。
+  - 默认不再直接进入机会列表，也不默认展开搜索和筛选。
+  - 顶部导航固定为 4 个主页面 + 刷新，不再把发布/我的挤进主导航。
+  - 页面标题会随模块切换：首页是资源工具，进入模块后再显示对应模块名。
+- 已同步测试后端并重启 `teambuy-test-backend-test-1`。
+- 公网页面确认包含 `module-card`、机会雷达、供需广场、已保存、订阅雷达等新入口。
+
+再次修正：
+
+- 用户反馈 H5 与之前原生页面差别仍然很大，要求尽量 1:1 还原原样式和效果。
+- 已按原生小程序页面重新还原 H5 的 4 个核心页视觉骨架：
+  - 机会雷达：恢复“我的机会”hero、匹配度圆形、主动推荐、雷达图、主推机会卡、更多机会卡。
+  - 供需广场：恢复公开线索池 hero、发布按钮、四格统计、分类筛选面板、线索列表卡。
+  - 已保存：恢复轻量跟进台 hero、四个状态统计、回应包筛选、跟进卡。
+  - 订阅雷达：恢复配置分组、标签选择、关键词、提醒节奏、正在为你盯、保存按钮。
+- 这次不再使用“简化卡片列表”作为主要页面，而是让 H5 页面结构尽量贴近原生 WXML/WXSS。
+- 已再次同步测试后端并重启 `teambuy-test-backend-test-1`。
+- 公网页面确认包含 `radar-visual`、`stats-grid`、`已保存线索`、`正在为你盯` 等还原后的模块。
+
+首页专项微调：
+
+- 用户确认先只碰第一页，并要求按 34 号文档三张参考图逐项还原，不要随意变化。
+- 已先按第一张参考图左一“商机线索首页”重做 H5 默认首屏：
+  - 隐藏 H5 自带大 hero、工具 tab 和状态条。
+  - 默认首屏改为绿色统计卡：今日机会、高匹配、可联系、今日新增。
+  - 恢复四个首页 tab：我的机会、需求广场、订阅、已保存。
+  - 恢复首页线索卡：标签、标题、摘要、城市/行业/时间、查看详情/保存按钮。
+  - 恢复底部四项导航视觉：线索、广场、订阅、我的。
+  - 测试库无机会数据时提供只用于视觉验收的预览卡，点击详情/保存不会请求不存在的后端数据。
+- 已同步测试后端并重启 `teambuy-test-backend-test-1`。
+- 公网页面确认包含 `lead-summary-card`、`今日为你筛出`、`lead-bottom-nav` 等首页模块。
+
+## 2026-07-02 资源工具 H5 化最小闭环
+
+本轮完成：
+
+- 后端新增 H5 短期登录票据：
+  - `POST /api/auth/h5-ticket`：小程序用当前 `userId` 换取短期签名票据。
+  - `GET /api/auth/h5-session`：H5 用票据校验并换取当前用户信息。
+  - 票据为 HMAC 签名，默认 10 分钟有效，不建表，不直接信任前端裸传 `userId`。
+- 后端新增 H5 静态入口：
+  - `/h5/resource-tools/` 返回资源工具 H5 首屏。
+  - H5 首屏支持校验登录态、读取机会列表、读取供需列表、关键词搜索和刷新。
+- 小程序新增 `pages/resource-tools-webview/index` 通用 web-view 容器。
+- “我的”页资源工具/商机雷达入口改为先签发 H5 票据，再打开 H5；失败时回退原生商机雷达页。
+- 原生商机/供需/回应包页面全部保留，当前 H5 只是最小闭环入口，不替换完整业务能力。
+
+已验证：
+
+- `node --check miniprogram/pages/resource-tools-webview/index.js miniprogram/pages/profile/index.js miniprogram/services/api.js`：通过。
+- `.venv312/bin/python -m compileall -q backend/app`：通过。
+- 小程序 `app.json` 和 H5 web-view 页面 JSON 校验：通过。
+- 后端 TestClient 烟测通过：mock 登录、签发 H5 票据、校验 H5 session、访问 `/h5/resource-tools/`。
+- `git diff --check`：通过。
+
+注意：
+
+- 本轮未部署测试后端、未部署生产、未上传小程序。
+- 真机 web-view 访问需要微信小程序后台配置 H5 业务域名，域名应为 `https://teambuy.lifelove.top`。
+- 当前 H5 详情和保存按钮只提示“下一步迁移”，还未接原生详情/保存完整动作。
+
+测试环境部署：
+
+- 已只同步测试后端，未碰生产后端。
+- 测试端备份：`/home/ubuntu/teamBuy-deploy-backups/20260702-145729-h5-resource-tools-test`。
+- 同步方式：`rsync backend/app/` 到测试服务器，再 `docker cp backend/app/. teambuy-test-backend-test-1:/app/app/`，重启测试容器。
+- 由于测试 Nginx 只把 `/test-api` 转发到测试容器，H5 测试路径使用 `/test-api/h5/resource-tools/`；生产路径仍预留 `/h5/resource-tools/`。
+- 公网验证：
+  - `https://teambuy.lifelove.top/test-health`：200。
+  - `https://teambuy.lifelove.top/test-api/h5/resource-tools/`：200。
+  - `POST /test-api/auth/h5-ticket`：200。
+  - `GET /test-api/auth/h5-session`：200。
+  - `/test-api/opportunity-leads?userId=...`：200。
+  - `/test-api/supply-demand/cards`：200。
+
+提交审核前文案清理：
+
+- 已清理资源工具用户侧展示文案中的 `H5`、`最小闭环`、`原生小程序页面` 等开发字眼。
+- 小程序异常 toast 改为产品文案：`资源工具地址无效`、`资源工具升级中，已打开旧版`。
+- 测试环境已同步最新文案，公网页面确认不再包含用户可见的 H5 开发文案。
+
+## 2026-07-02 资源工具 H5：详情和基础动作
+
+本轮完成：
+
+- 资源工具 H5 列表卡片支持进入详情：
+  - 机会详情：展示标题、摘要、城市、行业、需求类型、联系方式状态和行动建议。
+  - 供需详情：展示标题、摘要、城市、行业、类型、联系要求和标签。
+- 机会详情支持基础动作：
+  - 保存机会，调用 `/api/opportunity-leads/{id}/save`。
+  - 查看联系方式，调用 `/api/opportunity-leads/{id}/unlock-contact`，扣分和 24 小时免重复由后端资源钱包规则控制。
+- 供需详情支持申请合作，调用 `/api/supply-demand/cards/{id}/applications`。
+- 列表页“先保存 / 申请合作”已直接接真实接口，不再只提示升级中。
+
+已验证：
+
+- H5 内联脚本语法解析通过。
+- 后端 compileall 通过。
+- 本地 TestClient 验证 H5 页面、签票和验票通过。
+- `git diff --check` 通过。
+- 已同步测试后端，公网 `https://teambuy.lifelove.top/test-api/h5/resource-tools/` 已包含新动作文案。
+
+注意：
+
+- 当前没有额外造测试数据；如果测试库没有已发布机会或供需卡，页面仍会显示空列表。
+- 回应包、订阅雷达、发布供需、我的发布/申请列表还未迁入 H5。
+
+## 2026-07-02 资源工具 H5：已保存、订阅和回应包基础闭环
+
+本轮完成：
+
+- 顶部入口扩展为四个模块：机会、供需、已保存、订阅。
+- 已保存跟进台：
+  - 接 `/api/opportunity-leads/saved`。
+  - 展示已保存线索、状态、回应包状态。
+  - 支持进入机会详情。
+  - 支持生成或打开回应包。
+- 订阅雷达：
+  - 接 `/api/opportunity-subscriptions/me` 读取现有订阅。
+  - 表单支持订阅方向、我在找、我能提供、城市、关键词、联系方式要求。
+  - 接 `/api/opportunity-subscriptions` 保存订阅。
+- 回应包基础显示：
+  - 从机会详情或已保存线索生成回应包。
+  - 接 `/api/opportunity-leads/{id}/response-packages`。
+  - 接 `/api/response-packages/{id}` 打开已生成回应包。
+  - 展示需求摘要、回应话术、推荐资料、跟进建议。
+  - 支持复制回应内容。
+
+已验证：
+
+- H5 内联脚本语法解析通过。
+- 后端 compileall 通过。
+- 本地 TestClient 覆盖订阅保存、订阅读取、已保存列表和 H5 页面关键词检查。
+- `git diff --check` 通过。
+- 已同步测试后端，公网确认新增模块文案存在。
+- 公网 `/test-api/opportunity-subscriptions/me` 和 `/test-api/opportunity-leads/saved` 返回 200。
+
+注意：
+
+- 当前仍未迁移发布供需、我的发布/我的申请、回应包反馈雷达。
+- 如果测试库为空，已保存和订阅可以显示空态或表单，但机会/供需列表没有卡片可点。
+
+## 2026-07-02 资源工具 H5：发布供需、我的发布/申请、回应包反馈
+
+本轮完成：
+
+- 顶部入口继续扩展：新增 `发布`、`我的`。
+- 发布供需：
+  - 支持填写供给/需求方向、标题、摘要、城市、行业、类型、联系要求、标签。
+  - 支持保存草稿和提交审核。
+  - 接 `/api/supply-demand/cards` 和 `/api/supply-demand/cards/{id}/submit`。
+- 我的发布/申请：
+  - 接 `/api/supply-demand/cards/me` 展示我的发布。
+  - 接 `/api/supply-demand/cards/applications?role=owner` 展示收到的合作申请。
+  - 接 `/api/supply-demand/cards/applications?role=applicant` 展示我申请的合作。
+  - 收到的申请支持通过/拒绝，接 `/api/supply-demand/cards/applications/{id}/review`。
+- 回应包反馈雷达：
+  - 回应包详情新增“查看反馈”。
+  - 接 `/api/response-packages/{id}/radar`。
+  - 展示打开、复制、联系、最近反馈和事件记录。
+
+已验证：
+
+- H5 内联脚本语法解析通过。
+- 后端 compileall 通过。
+- 本地 TestClient 覆盖供需发布、提交审核、我的发布接口和 H5 页面关键词检查。
+- `git diff --check` 通过。
+- 已同步测试后端。
+- 公网确认 H5 新入口文案存在，`/test-api/supply-demand/cards/me` 和 `/test-api/supply-demand/cards/applications` 返回 200。
+
+注意：
+
+- 发布供需 H5 当前先做基础字段，关联资料/合集选择器还未迁入。
+- 我的发布 H5 当前支持提交审核和查看详情，编辑回填、下架等细节后续再补。
+
+## 2026-07-02 资源工具 H5：发布关联、编辑回填、下架与反馈埋点
+
+本轮完成：
+
+- 发布供需关联资料/合集选择器：
+  - 打开发布页时读取 `/api/notes?ownerUserId=...` 和 `/api/showcases?ownerUserId=...`。
+  - 可在发布表单里选择一条资料或合集作为关联资源。
+  - 保存时写入 `linkedResourceType/linkedResourceId`，兼容资料时写入 `linkedNoteId`。
+- 我的发布编辑回填：
+  - “我的发布”卡片新增编辑按钮。
+  - 点击编辑读取 `/api/supply-demand/cards/{id}?userId=...` 并回填发布表单。
+  - 编辑保存时走 `PUT /api/supply-demand/cards/{id}`。
+- 我的发布下架：
+  - “我的发布”卡片新增下架按钮。
+  - 下架先读取详情，再用 `PUT /api/supply-demand/cards/{id}` 更新为 `archived`。
+- 回应包反馈事件埋点：
+  - 复制回应内容时调用 `/api/response-packages/{id}/events` 写入 `copy` 事件。
+  - 回应包反馈雷达可统计复制行为。
+
+已验证：
+
+- H5 内联脚本语法解析通过。
+- 后端 compileall 通过。
+- 本地 TestClient 覆盖供需关联字段保存、编辑更新为下架和 H5 页面关键词检查。
+- `git diff --check` 通过。
+- 已同步测试后端。
+- 公网确认 H5 页面包含关联资料/合集、编辑、下架和反馈事件埋点逻辑。
+- 公网 `/test-api/notes`、`/test-api/showcases` 返回 200。
+
+## 2026-07-02 商机雷达真机反馈修复：保存提示、发布供需、筛选输入
+
+本轮完成：
+
+- 我的雷达保存失败排查与前端兜底：
+  - 保存前检查登录用户是否有 `user.id`。
+  - 只对真实 `opp_*` 商机线索调用保存接口，非商机内容提示去供需详情申请。
+  - 保存失败时展示后端返回的具体原因；如果是登录态失效，会清除本地用户，避免继续拿旧用户请求。
+- 发布供需页：
+  - “我能提供 / 我在寻找”改为稳定 `view` 胶囊，不再使用原生 `button` 撑变形。
+  - 删除“绑定资料 ID”输入，改为从用户自己的资料库和合集列表中选择关联资料。
+  - 供需卡新增并保存 `linkedResourceType/linkedResourceId`，兼容旧 `linkedNoteId`。
+  - 城市、行业、类型支持自定义输入，同时保留常用标签快捷选择。
+- 供需广场筛选：
+  - 城市、行业、需求类型新增自定义输入框。
+  - 常用标签仍可快捷点选，输入确认后按真实接口参数筛选。
+
+已验证：
+
+- `node --check miniprogram/pages/supply-demand-publish/index.js miniprogram/pages/opportunity-market/index.js miniprogram/pages/opportunity-radar/index.js miniprogram/services/api.js`：通过。
+- 小程序 `app.json`、发布供需页、供需广场页 JSON 校验：通过。
+- `PYTHONPATH=backend DATABASE_BACKEND=json DATABASE_URL= DATA_FILE=/tmp/teambuy-bugfix-radar-supply.json .venv312/bin/python -m pytest backend/tests/test_app.py::test_p1_subscription_unlock_supply_and_response_radar -q`：1 passed。
+- `PYTHONPATH=backend DATABASE_BACKEND=json DATABASE_URL= DATA_FILE=/tmp/teambuy-bugfix-regression.json .venv312/bin/python -m pytest backend/tests/test_app.py -q -k "p1_subscription or response_package or opportunity_lead or resource_wallet or ops_opportunity_dashboard"`：13 passed。
+- 后端 compileall：通过。
+- `git diff --check`：通过。
+
+注意：
+
+- 本轮未部署生产，也未上传小程序。
+- 如果用户当前真机仍连接旧测试后端，保存接口可能仍失败；需要上传包含本轮前端的新体验版并保证测试后端有对应接口。
+
+## 2026-07-01 商机雷达 P1：订阅、解锁、反馈、供给发布与后台审核
+
+本轮完成：
+
+- 完成 P1 1-5：
+  - 订阅雷达真实保存：新增 `opportunity_subscriptions` 数据模型、JSON/Postgres 仓储、后端接口和小程序订阅页保存/回填。
+  - 联系方式解锁：新增线索联系方式解锁接口，按资源积分扣减，重复解锁不重复扣分，返回完整联系方式并写跟进记录。
+  - 回应包雷达反馈页：新增回应包反馈接口和小程序反馈页，聚合打开、联系、保存等事件，给出下一步建议。
+  - 我的发布 / 发布供给：新增供需卡模型、公开列表、我的发布列表、发布供给页、提交审核流程。
+  - 供给审核后台：PC 运营后台新增供给审核入口，支持筛选、通过、驳回。
+- 小程序供需广场改为混合展示官方商机线索和已发布供需卡。
+- 小程序“我的机会”接入用户订阅匹配结果，不再只展示固定 mock。
+- 小程序线索详情“查看联系方式”接入真实解锁接口；demo 数据仍本地成功，避免 mock id 打真实 API 报错。
+- 新增 P1 闭环回归测试，覆盖订阅保存、匹配线索、解锁联系方式、回应包反馈、供给提交审核和公开展示。
+
+已验证：
+
+- `PYTHONPATH=backend DATABASE_BACKEND=json DATABASE_URL= DATA_FILE=/tmp/teambuy-p1-test2.json .venv312/bin/python -m pytest backend/tests/test_app.py::test_p1_subscription_unlock_supply_and_response_radar -q`：1 passed。
+- `PYTHONPATH=backend DATABASE_BACKEND=json DATABASE_URL= DATA_FILE=/tmp/teambuy-p1-regression.json .venv312/bin/python -m pytest backend/tests/test_app.py -q -k "p1_subscription or response_package or opportunity_lead or resource_wallet or ops_opportunity_dashboard"`：13 passed。
+- `PYTHONPATH=backend DATABASE_BACKEND=json DATABASE_URL= DATA_FILE=/tmp/teambuy-p1-compile.json .venv312/bin/python -m compileall -q backend/app`：通过。
+- `node --check` 覆盖 `miniprogram/services/api.js`、商机雷达、线索详情、供需广场、回应包、回应包反馈、供给发布、我的发布页面：通过。
+- 小程序 `app.json` 和新增页面 JSON 校验：通过。
+- `git diff --check`：通过。
+
+注意：
+
+- 本轮未部署生产，也未上传小程序；当前只是本地代码和测试环境可验证状态。
+- 供给发布里的关联资料当前先用 `linkedNoteId` 手动输入，后续 P2 可改成资料选择器。
+- 供需广场里供给卡的“保存/联系”后续还需要设计成申请合作或回应包流程；本轮 P1 先完成发布、审核和展示闭环。
+
+## 2026-07-01 商机雷达 P1 体验补强：跟进台、订阅推荐、资料勾选、广场筛选
+
+本轮完成：
+
+- 已保存跟进台完善：
+  - 后端已保存列表支持按跟进状态、关键词、回应包状态筛选。
+  - 已保存列表返回 `responsePackage/packageStatus/latestFollowup/followupCount`，用于展示回应包状态和最近动作。
+  - 小程序已保存页支持切换回应包筛选、编辑跟进状态、快捷设置提醒时间、打开已生成回应包。
+- 订阅匹配结果：
+  - `/api/opportunity-leads?userId=...` 改为按用户 active 订阅生成“今日推荐机会”，按匹配分排序并返回推荐规则和生成时间。
+  - 支持城市、行业、需求类型、联系方式状态筛选，不再只是展示全部线索。
+- 回应包可选资料：
+  - 回应包预览请求支持 `selectedAssetIds`。
+  - 后端返回 `assetOptions/selectedAssetIds`，用户可在小程序里勾选或替换资料后再生成回应包。
+  - 生成回应包会按用户勾选资料写入 `ResponsePackageItem`。
+- 供需广场筛选：
+  - 供需广场后端支持城市、行业、需求类型、需求/供给方向、联系方式状态筛选。
+  - 小程序供需广场筛选胶囊接真实接口参数，筛选后重新拉取数据。
+
+已验证：
+
+- `PYTHONPATH=backend DATABASE_BACKEND=json DATABASE_URL= DATA_FILE=/tmp/teambuy-p1-enhance-test.json .venv312/bin/python -m pytest backend/tests/test_app.py::test_p1_subscription_unlock_supply_and_response_radar -q`：1 passed。
+- `PYTHONPATH=backend DATABASE_BACKEND=json DATABASE_URL= DATA_FILE=/tmp/teambuy-p1-enhance-regression.json .venv312/bin/python -m pytest backend/tests/test_app.py -q -k "p1_subscription or response_package or opportunity_lead or resource_wallet or ops_opportunity_dashboard"`：13 passed。
+- `PYTHONPATH=backend DATABASE_BACKEND=json DATABASE_URL= DATA_FILE=/tmp/teambuy-p1-enhance-compile.json .venv312/bin/python -m compileall -q backend/app`：通过。
+- `node --check` 覆盖 `services/api.js`、已保存、回应包、供需广场、我的机会页面：通过。
+- 小程序相关 JSON 校验：通过。
+- `git diff --check`：通过。
+
+注意：
+
+- 本轮仍未部署生产，也未上传小程序。
+- 供需卡详情页还未单独开发；供需广场点击非商机线索卡时先提示“供需卡详情后续开放”。
+
+## 2026-07-01 商机雷达 P1 延伸：供需详情、合作申请、站内主动推荐
+
+本轮完成：
+
+- 供需卡独立详情页：
+  - 新增后端 `GET /api/supply-demand/cards/{card_id}`。
+  - 新增小程序 `pages/supply-demand-detail/index`。
+  - 供需广场点击 `sd_*` 等非商机线索卡时进入供需详情页，不再误跳商机详情。
+- 合作申请：
+  - 新增 `SupplyDemandApplication` 模型和 JSON/Postgres 仓储。
+  - 新增申请、申请列表、处理申请接口。
+  - 供需详情页支持填写留言并申请合作。
+  - 我的发布页展示收到的合作申请，支持通过/拒绝。
+- 主动推送：
+  - 新增 `OpportunityPushDigest` 模型和 JSON/Postgres 仓储。
+  - 新增站内推荐摘要接口：生成、列表、标记已读。
+  - 我的机会页新增“主动推荐”模块，可生成今日推荐摘要并标记已读。
+  - 当前不外发微信模板消息或企业微信消息，只做站内待推送/推荐摘要记录。
+
+已验证：
+
+- `PYTHONPATH=backend DATABASE_BACKEND=json DATABASE_URL= DATA_FILE=/tmp/teambuy-p1-next-test.json .venv312/bin/python -m pytest backend/tests/test_app.py::test_p1_subscription_unlock_supply_and_response_radar -q`：1 passed。
+- `PYTHONPATH=backend DATABASE_BACKEND=json DATABASE_URL= DATA_FILE=/tmp/teambuy-p1-next-regression.json .venv312/bin/python -m pytest backend/tests/test_app.py -q -k "p1_subscription or response_package or opportunity_lead or resource_wallet or ops_opportunity_dashboard"`：13 passed。
+- `PYTHONPATH=backend DATABASE_BACKEND=json DATABASE_URL= DATA_FILE=/tmp/teambuy-p1-next-compile.json .venv312/bin/python -m compileall -q backend/app`：通过。
+- `node --check` 覆盖 `services/api.js`、供需详情、我的发布、我的机会、供需广场页面：通过。
+- 小程序 `app.json` 与新增页面 JSON 校验：通过。
+- `git diff --check`：通过。
+
+注意：
+
+- 本轮未部署生产，也未上传小程序。
+- 主动推送当前是站内摘要，不是微信/企微外发；后续如要外发，需要单独确认授权、触达频率和退订机制。
+
+## 2026-07-01 商机雷达 P1 尾巴：编辑回填、我申请的列表、后台触发站内推荐
+
+本轮完成：
+
+- 我的发布编辑回填：
+  - 供需发布页支持 `id` 参数进入编辑模式。
+  - 进入编辑时通过供需详情接口回填标题、摘要、城市、行业、类型、联系方式要求、关联资料和标签。
+  - 保存草稿和提交审核时会带原卡片 `id`，不再重复新建。
+  - 供需详情接口允许 owner 查看自己的草稿、待审、驳回和已发布卡；非 owner 只能查看已发布卡。
+- 我申请的合作列表：
+  - “我的发布”页新增“我申请的合作”区块。
+  - 调用现有 applicant 视角申请接口，展示自己发出的申请状态和卡片信息。
+- 站内推荐自动生成接口/后台触发：
+  - 后端新增 `generate_opportunity_push_digests_for_active_subscriptions`，遍历 active 订阅用户批量生成站内推荐摘要。
+  - PC 后台供给审核页新增“生成站内推荐摘要”按钮，调用 `/api/ops/opportunity-push-digests/generate`。
+  - 仍然不外发微信/企微消息。
+
+已验证：
+
+- `PYTHONPATH=backend DATABASE_BACKEND=json DATABASE_URL= DATA_FILE=/tmp/teambuy-p1-tail-test3.json .venv312/bin/python -m pytest backend/tests/test_app.py::test_p1_subscription_unlock_supply_and_response_radar -q`：1 passed。
+- `PYTHONPATH=backend DATABASE_BACKEND=json DATABASE_URL= DATA_FILE=/tmp/teambuy-p1-tail-regression2.json .venv312/bin/python -m pytest backend/tests/test_app.py -q -k "p1_subscription or response_package or opportunity_lead or resource_wallet or ops_opportunity_dashboard"`：13 passed。
+- `PYTHONPATH=backend DATABASE_BACKEND=json DATABASE_URL= DATA_FILE=/tmp/teambuy-p1-tail-compile.json .venv312/bin/python -m compileall -q backend/app`：通过。
+- `node --check` 覆盖 `services/api.js`、供需发布、我的发布、供需详情、我的机会页面：通过。
+- 小程序 JSON 校验和 `git diff --check`：通过。
+
+注意：
+
+- 本轮未部署生产，也未上传小程序。
+- 站内推荐摘要可由用户手动生成，也可由 PC 后台触发批量生成；没有定时任务和外部消息发送。
+
+## 2026-07-01 房源公开联系方式与上游联系方式分离
+
+本轮完成：
+
+- 生成房源卡时，公开联系方式默认使用发布者“我的”资料里的手机号和微信。
+- 房源原文中识别到的电话、微信和上游备注继续写入 `visibilityConfig.privateData/privateTags`，不再作为公开联系电话。
+- 公开客户页过滤 `privateData/privateTags` 后，会补入发布者自己的 `phone/wechat`，并把公开 `body` 替换为安全房源摘要，避免原文上游电话泄露。
+- 批量房源、手动粘贴、快捷记录、普通笔记确认成房源都会走同一套 owner 联系方式补齐逻辑。
+- 已热更新生产和测试后端，最新备份：`/home/ubuntu/teamBuy/backend/backups/codex-20260701-141141-owner-contact-empty-field-fix/`。
+
+已验证：
+
+- `.venv312/bin/python -m pytest backend/tests/test_skill_router.py -q`：14 passed。
+- `.venv312/bin/python -m pytest backend/tests/test_app.py -q -k "owner_contact or upstream_private or property_note_uses"`：2 passed。
+- `.venv312/bin/python -m compileall -q backend/app backend/tests`：通过。
+- 生产健康检查正常。
+- 生产容器内验证：owner 手机 `13900001111` 和微信 `agent-yiyi` 自动进入公开字段；上游电话 `18501775740` 仅在 `privateData.upstreamPhones`，公开 payload 中不存在。
+
+## 2026-07-01 测试环境房源识别与旧普通笔记候选兜底
+
+本轮完成：
+
+- 排查用户 13:44 上传 `开福区天健一期H栋1205` 仍显示普通笔记且没有“整理成房源”按钮的问题。
+- 确认根因：生产 `/api` 已是新规则，但测试 `/test-api` 仍是旧 `skill_router_service.py`，同一段文案在测试后端返回 `text_note`、房源分 1、`typeSuggestions=[]`。
+- 已把 `backend/app/services/skill_router_service.py` 同步热更新到测试容器 `teambuy-test-backend-test-1` 和生产容器 `teambuy-backend-1`。
+- 小程序房源编辑页增加前端兜底：旧普通笔记即使后端没有 `typeSuggestions`，只要标题/正文命中明显租房信号，也展示“整理成房源”候选按钮。
+- 后端确认类型逻辑补充回归：普通笔记确认成房源时，优先复用识别器重新抽取租金、押付、水电等字段。
+
+已验证：
+
+- 生产 `https://teambuy.lifelove.top/health` 正常。
+- 测试 `/test-api/skills/content-to-note/run` 对该文案返回 `cardType=property_listing`、`level=high`、`price=1500`、`paymentMethod=押一付三`、`utilities=民水民电`。
+- `.venv312/bin/python -m pytest backend/tests/test_skill_router.py -q`：14 passed。
+- `.venv312/bin/python -m pytest backend/tests/test_app.py -q -k "quick_capture or confirm_plain_rental_note or manual_draft"`：9 passed。
+- `node --check miniprogram/pages/note-edit/index.js`：通过。
+- 小程序 JSON 校验：通过。
+
+注意：
+
+- 旧体验版如果仍连 `/test-api`，必须重新上传包含前端兜底按钮的新版本，页面上才会出现候选按钮。
+- 本轮曾短暂误传本地混有未上线商机线索依赖的 `app_service.py`，导致容器启动失败；已立即恢复线上备份，并改为使用干净线上版本做最小补丁后重新部署。
+
+## 2026-07-01 上游备注常驻输入与日常资料默认 SCRM
+
+本轮完成：
+
+- 房源编辑页“仅自己可见：上游备注”改为常驻输入区，不再要求已有 `privateData` 才显示。
+- 支持手动填写上游电话、上游微信、上游联系人、中介费、密码锁、看房备注、上游备注。
+- 手动填写内容保存到 `visibilityConfig.privateData`，继续不进入客户页、公开分享页和生成同款公开资料。
+- 小程序默认转化配置调整：房源、团购、服务卡、日常普通资料默认 `enableLightScrm=true`。
+- 后端普通 `text_note` 默认 `conversionConfig.enableLightScrm=true`，与前端默认口径一致。
+- 已热更新生产后端 `backend/app/services/skill_router_service.py`，备份到 `/home/ubuntu/teamBuy/backend/backups/codex-20260701-134651-scrm-upstream-defaults/skill_router_service.py`。
+
+已验证：
+
+- `.venv312/bin/python -m pytest backend/tests/test_skill_router.py -q`：14 passed。
+- `node --check miniprogram/pages/note-edit/index.js`：通过。
+- `node --check miniprogram/app.js`：通过。
+- 小程序 JSON 校验：通过。
+- `git diff --check`：通过。
+- 生产 `https://teambuy.lifelove.top/health` 正常。
+- 生产普通文本卡验证返回 `cardType=text_note` 且 `conversionConfig.enableLightScrm=true`。
+
+## 2026-07-01 单条房源识别生产热更新与小程序切生产
+
+本轮完成：
+
+- 已将 `backend/app/services/skill_router_service.py` 热更新到生产服务器 `/home/ubuntu/teamBuy`。
+- 生产原文件已备份到 `/home/ubuntu/teamBuy/backend/backups/codex-20260701-133204-skill-router/skill_router_service.py`。
+- 已重启生产容器 `teambuy-backend-1`。
+- 小程序全局配置 `miniprogram/app.js` 已从测试环境切回生产环境：`apiRoutePrefix=""`、`mediaRoutePrefix=""`、`environmentName="production"`。
+
+已验证：
+
+- `https://teambuy.lifelove.top/health` 返回 `status=ok`。
+- 生产 `POST /api/skills/content-to-note/run` 使用典型租房微信笔记验证，返回 `cardType=property_listing`、`recognitionConfidence.level=high`。
+- `node --check miniprogram/app.js`：通过。
+- 小程序 JSON 校验：通过。
+- `git diff --check`：通过。
+
+## 2026-07-01 单条微信笔记房源识别与房源编辑单位输入修复
+
+本轮完成：
+
+- 修正单条微信笔记房源识别规则，补齐真实租房口语信号：押付、民水民电、独门独户、禁宠、密码锁、底价、租客、空置/搬空、看房、房屋配置等。
+- 支持 `【租金】1980`、`【面积】40` 这类微信笔记括号字段。
+- 房源字段生成时，面积和租金统一保存为数字值，例如 `40`、`1980`，单位由前端展示。
+- 房源编辑页把“租金”和“面积”改为数字输入，右侧固定单位：`元/月`、`㎡`。
+- 增加回归测试覆盖 `珠江好世界B5栋5083` 完整单套微信笔记，以及 `开福区天健一期H栋1205 / 底价1500 / 押一付三 / 民水民电 / 不养宠物 / 密码锁` 短租房笔记。
+
+已验证：
+
+- `.venv312/bin/python -m pytest backend/tests/test_skill_router.py -q`：14 passed。
+- `.venv312/bin/python -m pytest backend/tests/test_app.py -q -k "property or wecom_archive_process"`：18 passed。
+- `.venv312/bin/python -m compileall -q backend/app backend/tests`：通过。
+- `node --check miniprogram/pages/note-edit/index.js`：通过。
+- 小程序 JSON 校验：通过。
+- `git diff --check`：通过。
+
+## 2026-07-01 商机雷达 P0：小程序静态 UI
+
+本轮完成：
+
+- 按 `docs/stage2-docs/34-opportunity-leads-ui-spec-v1.md` 和参考图要求，先做商机线索静态 UI，不接接口。
+- 新增页面：
+  - `pages/opportunity-radar/index`
+  - `pages/opportunity-market/index`
+  - `pages/opportunity-detail/index`
+  - `pages/opportunity-saved/index`
+  - `pages/opportunity-subscription/index`
+- `我的` 页资源工具里的 `商机线索` 从近期开放改为可点击入口。
+- 我的机会页包含雷达图、匹配度、最高匹配机会、匹配原因、建议动作和 `生成回应包 / 查看联系方式 / 保存`。
+- 供需广场包含统计、筛选、需求卡、供给卡和发布入口。
+- 详情页包含结构化摘要、行动建议和跟进状态。
+- 已保存页按跟进状态分组，订阅页用标签点选配置雷达订阅。
+
+已验证：
+
+- 新增 5 个页面和 `profile/index.js` 的 `node --check`：通过。
+- 小程序 `app.json` 和新增页面 JSON 解析：通过。
+- `git diff --check`：通过。
+- 自测报告：`docs/qa/商机线索静态UI_Codex自测报告.md`。
+
+## 2026-07-01 商机雷达 P0：商机线索数据模型和后台录入
+
+本轮完成：
+
+- 按 P0 第二步实现商机线索基础数据模型和后台录入。
+- 新增后端模型：商机线索、线索来源、线索联系人、线索匹配、用户保存、用户跟进。
+- 新增运营接口：
+  - `GET /api/ops/opportunity-leads`
+  - `GET /api/ops/opportunity-leads/{lead_id}`
+  - `POST /api/ops/opportunity-leads`
+- 新增小程序预留接口：
+  - `GET /api/opportunity-leads`
+  - `GET /api/opportunity-leads/{lead_id}`
+  - `GET /api/opportunity-leads/saved`
+  - `POST /api/opportunity-leads/{lead_id}/save`
+  - `POST /api/opportunity-leads/{lead_id}/followups`
+- PC 运营后台新增 `商机线索` 标签页，可人工录入标题、摘要、城市、行业、内容、来源和联系方式。
+- 前台接口默认只展示 `官方收录`，不展示具体第三方来源，不返回完整联系方式。
+
+已验证：
+
+- `.venv312/bin/python -m pytest backend/tests/test_app.py -q -k "opportunity_lead or resource_wallet"`：8 passed。
+- `.venv312/bin/python -m pytest backend/tests -q`：189 passed。
+- `.venv312/bin/python -m compileall -q backend/app`：通过。
+- PC 后台内嵌脚本语法检查：通过。
+- `git diff --check`：通过。
+
+## 2026-07-01 房源编辑页上游备注前端展示
+
+本轮完成：
+
+- 小程序房源编辑页新增“仅自己可见：上游备注”信息块。
+- 该信息块只在 `房源工作台 -> 编辑资料` 且存在 `visibilityConfig.privateData/privateTags` 时展示。
+- 支持展示上游电话、上游微信、上游联系人、中介费、密码锁、看房备注、红包备注、租客限制、来源房源和私密标签。
+- 增加“复制全部”和单项“复制”按钮，方便用户查到上游电话后直接使用。
+- 明确提示这些内容只在当前账号查看，客户页、公开分享页和生成同款公开资料不展示。
+- 本轮只改小程序前端展示，不改后端归档解析、存储结构和客户公开接口。
+
+已验证：
+
+- `node --check miniprogram/pages/note-edit/index.js`：通过。
+- 小程序 JSON 校验：通过。
+- `git diff --check`：通过。
+
+## 2026-07-01 商机雷达 P0：后端积分账本底座
+
+本轮完成：
+
+- 按 `docs/stage2-docs/36-opportunity-radar-phase2-dev-checklist.md` 的 P0 顺序，先实现资源工具积分账本底座。
+- 新增后端模型：用户积分钱包、积分流水、免费额度、解锁记录。
+- 新增接口：
+  - `GET /api/resource-wallet/me`
+  - `GET /api/resource-wallet/ledger`
+  - `POST /api/resource-wallet/consume`
+  - `POST /api/ops/resource-wallet/adjust`
+- 后端消费规则已覆盖：
+  - 用户首次进入自动创建钱包并发放初始积分。
+  - 同一用户、同一对象、同一动作 24 小时内不重复扣积分。
+  - 免费额度优先于积分扣减。
+  - 运营后台可用管理员口令调整积分，并写入流水。
+  - 用户之间钱包和流水隔离。
+- 本轮没有做支付、会员、保证金、双向收费、自动联系。
+
+已验证：
+
+- `.venv312/bin/python -m pytest backend/tests/test_app.py -q -k "resource_wallet"`：5 passed。
+- `.venv312/bin/python -m pytest backend/tests -q`：186 passed。
+- `.venv312/bin/python -m compileall -q backend/app`：通过。
+- `git diff --check`：通过。
+
 ## 2026-07-01 批量房源自动生成合集 P0
 
 本轮实现：
@@ -8504,3 +9316,926 @@
 - 相关绑定码测试 5 条通过。
 - 后端完整测试 142 条通过。
 - 小程序首页 JS 静态检查通过。
+
+## 2026-07-01 资料列表发客户不再等待分享图
+
+本轮优化：
+
+- 资料列表“发客户”按钮不再依赖 canvas 分享图生成完成。
+- 有首图的资料直接使用首图作为微信分享图，避免等待隐藏 canvas 绘制和上传。
+- 没有首图的资料也允许先发客户，只是不带自定义分享图。
+- 只有缺少 `sourceNoteId`、无法打开客户页的资料才禁用按钮，并显示“先编辑”。
+
+已验证：
+
+- `node --check miniprogram/pages/library/index.js` 通过。
+
+## 2026-07-01 房源编辑封面、复制和商圈候选修正
+
+本轮优化：
+
+- 房源编辑页切换封面时，同步更新 `structuredData.coverUrl` 和图片列表，客户预览/房源卡片会跟随新封面。
+- 资料列表卡片封面增加兜底：没有 `coverUrl` 时直接使用第一张图片媒体作为缩略图。
+- 上游备注“复制全部”改为从页面状态读取，不再把整段文本塞进 DOM dataset。
+- “复制全部”和单项“复制”增加按压变深效果，并补充复制失败提示。
+- 商圈/区域快捷候选去掉本地写死项，改为从原文、标题、备注、地址和已识别字段提取；固定兜底只保留“人民广场 / 五一广场”。
+
+已验证：
+
+- `node --check miniprogram/pages/note-edit/index.js` 通过。
+- `node --check miniprogram/services/api.js` 通过。
+- `node --check miniprogram/utils/note-display.js` 通过。
+- `git diff --check` 通过。
+
+## 2026-07-01 二期测试前端切回测试环境
+
+本轮调整：
+
+- 小程序全局配置 `miniprogram/app.js` 切为测试环境：
+  - `apiBaseUrl=https://teambuy.lifelove.top`
+  - `apiRoutePrefix=/test-api`
+  - `mediaRoutePrefix=/test-media`
+  - `environmentName=test`
+- 环境切换后会清理旧登录缓存，避免生产登录态混入测试环境。
+
+已验证：
+
+- `node --check miniprogram/app.js` 通过。
+- URL 拼接：`/api/cards` -> `https://teambuy.lifelove.top/test-api/cards`。
+- `GET https://teambuy.lifelove.top/test-api/cards` 返回 200。
+
+## 2026-07-01 表格式多套房源归档拆分规则
+
+本轮修复：
+
+- 批量房源入口先归一化 keycap emoji 数字，例如 `1️⃣2️⃣5️⃣0️⃣` -> `1250`。
+- 批量房源识别补充“区域标题 / 楼栋行 / 房号价格行”表格式规则。
+- 支持类似“新时代广场... / 1925南栋 / 2号房一1250”的多套公寓房源表拆分。
+- “微信同号”会把识别到的手机号同步写入上游微信私密字段。
+- 上游电话、微信同号、佣金仍进入私密数据；客户页不公开展示。
+
+已验证：
+
+- `pytest backend/tests/test_app.py -q -k "property_batch"` 通过，6 条批量房源相关测试全部通过。
+
+补充验证：
+
+- 重新读取 `/Users/yiyi/Desktop/房源样本.docx`。
+- 文字样本 001-006 已全部通过本地解析稳定性检查：
+  - 样本 001：预期 13，实际 13，归档入口命中。
+  - 样本 002：预期 12，实际 12，归档入口命中。
+  - 样本 003：预期 6，实际 6，归档入口命中。
+  - 样本 004：预期 4，实际 4，归档入口命中。
+  - 样本 005：预期 5，实际 5，归档入口命中。
+  - 样本 006：预期 8，实际 8，归档入口命中。
+- 新增回归覆盖字段块房源、元/月清单、地址后接房号价格、价格区间、空置尾缀等真实格式。
+- 图片样本 007 属于 OCR 链路，本轮未用文字解析器直接验收。
+
+已验证：
+
+- `.venv312/bin/python -m pytest backend/tests/test_app.py -q -k "property_batch"` 通过，7 条批量房源相关测试全部通过。
+- 原始 docx 文字样本复测 `ALL_OK=True`。
+
+部署：
+
+- 已备份服务器当前后端文件：`/home/ubuntu/teamBuy/backend/backups/codex-20260701-162139-property-batch-text/app_service.py`。
+- 已将批量房源文字规则最小补丁同步到测试容器 `teambuy-test-backend-test-1` 和生产容器 `teambuy-backend-1`。
+- 两个容器均已重启，并在容器内验证 15:39 样本 + docx 001-006 全部通过。
+- 公网验证：
+  - `https://teambuy.lifelove.top/health` 返回 200。
+  - `https://teambuy.lifelove.top/test-api/cards` 返回 200。
+  - `https://teambuy.lifelove.top/api/cards` 返回 200。
+
+## 2026-07-01 图片样本 007 OCR 验证与防误拆
+
+本轮验证：
+
+- 从 `/Users/yiyi/Desktop/房源样本.docx` 抽取图片样本 007：`/tmp/property_docx_media/image1.png`。
+- 测试环境真实 OCR 配置为 `OCR_PROVIDER=paddle`。
+- 直接识别原图结果：
+  - OCR configured=true。
+  - confidence 约 0.816。
+  - 只识别出 26 行。
+  - 表格大量小字、房号、价格串行或漏识别。
+  - 当前解析器只能从低质 OCR 文本中误拆 4 条，不满足“太多套”预期。
+- 尝试 2x/3x 切块增强后，Paddle 同步识别耗时过长，不适合直接阻塞用户请求。
+
+本轮修复：
+
+- OCR 批量房源新增防误拆保护：当 OCR 文本明显是表格式房源图，但只解析出少量候选时，不自动创建房源合集。
+- 这样 007 当前不会误生成 4 条错误房源，而是保留 OCR 笔记，等待后续 OCR 表格后处理。
+
+已验证：
+
+- 本地 `pytest backend/tests/test_app.py -q -k "ocr_recognized_property_batch or ocr_table_like_low_yield or property_batch"`：8 passed。
+- 已同步测试后端和生产后端。
+- 容器内验证：
+  - 15:39 文字样本仍拆 8 套。
+  - 007 低质 OCR 文本解析出 4 条，但触发 manual review 防误拆。
+- 公网 `/health`、`/test-api/cards`、`/api/cards` 均返回 200。
+
+补充专项实验：
+
+- 使用 OpenCV 对 007 原图做表格线检测，能稳定检测到 5 个业务列：区域、商圈、房源地址、户型、月租。
+- 横线可切出约 163 个行区间。
+- 改为“单行裁剪 + 4 倍放大 + 单进程 PaddleOCR”后，全表 OCR 约 51 秒完成。
+- 全表得到 159 行有效 OCR 文本，头尾数据均可读，例如：
+  - `芙蓉区 人民东路 碧桂园城市之光5号1016 1室1厅1卫 1,400.00`
+  - `雨花区 高桥 正荣悦玺1号2207B 1室1厅1卫 1,100.00`
+- 对 OCR 行文本做规则解析后，159 行中 156 行可结构化为房源候选。
+- 失败样式主要是：
+  - 区域/商圈顺序错位，例如 `金盆岭 天心区 ...`。
+  - `星沙` 这类非“区”结尾区域和路名地址边界需要专项规则。
+  - 极少数行价格漏识别。
+
+结论：
+
+- 007 可以做，但不能走当前整图 OCR。
+- 可行路线是新增“表格房源图片 OCR”专项 worker：检测网格 -> 按行裁剪 -> 单进程 OCR -> 行文本结构化 -> 生成批量房源候选。
+- 该链路耗时约 50 秒，应设计为后台任务或明确等待态，不适合阻塞普通上传请求。
+
+## 2026-07-01 OCR 后台任务架构本地改造
+
+本轮改造：
+
+- 新增 `BackgroundTaskWorker`，可按任务名从 `SyncTaskQueue` 拉取待执行任务。
+- `SyncTaskQueue` 增加 `auto_schedule`、任务名过滤、`max_running` 和 `max_to_schedule`，用于 API 入队但不立即执行。
+- 图片上传/识别相关接口改为：保存图片资料 -> 创建 `ocr-recognize-note` 任务 -> 标记 OCR `queued` -> 返回 `syncTask`。
+- 新增 `mark_ocr_note_queued`，让前端可直接展示“识别中”而不是卡在请求等待。
+- 新增 `backend/app/worker.py`，作为后台 worker 入口。
+- `docker-compose.yml` 拆分：
+  - `backend`：API 进程，关闭 OCR/归档后台任务。
+  - `backend-worker`：OCR 队列 worker，默认 `OCR_TASK_CONCURRENCY=1`。
+  - `archive-worker`：企业微信会话归档 worker。
+- 预留 `property-table-ocr` 任务名，但当前仍复用普通 OCR handler；007 表格检测、切行和结构化算法尚未接入正式 worker。
+
+已验证：
+
+- `.venv312/bin/python -m compileall -q backend/app backend/tests` 通过。
+- `.venv312/bin/python -m pytest backend/tests/test_app.py backend/tests/test_sync_task_queue.py -q -k "ocr or image_capture or property_batch or archive_worker or sync_task"`：19 passed。
+- `git diff --check` 通过。
+
+## 2026-07-01 007 表格 OCR 专项 worker 接入
+
+本轮改造：
+
+- 新增 `PropertyTableOcrService` 和 `property_table_ocr_worker`。
+- 普通 OCR 后台任务会先做表格线检测；命中表格图时自动转入专项表格 OCR，不需要前端额外按钮。
+- `property-table-ocr` 队列任务已注册到 `recognize_property_table_ocr_note_image`，不再复用普通 OCR handler。
+- 表格 OCR 流程为：OpenCV 检测表格线 -> 按行裁剪 -> 单进程 PaddleOCR -> 行文本结构化 -> 批量生成房源候选。
+- 表格行解析支持 `1,400.00`、`1, 600. 00` 这类 OCR 价格格式，统一归一为 `1400元/月`。
+- 生成的批量房源使用 `sourceType=ocr_property_table`，源 OCR note 记录 `ocrSourceNoteId`。
+
+真实 007 验证：
+
+- 使用 `/tmp/property_docx_media/image1.png` 对应的 `/Users/yiyi/Desktop/房源样本.docx` 图片样本。
+- 生产 worker 容器表格检测结果：
+  - `tableLike=true`
+  - 检测到竖线 `[0, 136, 330, 636, 765, 893]`
+  - 检测到约 167 个行区间。
+- 生产 worker 完整 OCR：
+  - `configured=true`
+  - confidence 约 `0.989`
+  - 有效文本 163 行。
+- 生产解析器结构化结果：
+  - 从真实 OCR 文本中解析出 159 套房源候选。
+  - 示例：`碧桂园城市之光5号1016 · 1室1厅1卫 · 1400元/月`。
+  - 尾部示例：`正荣悦玺1号2207B · 1室1厅1卫 · 1100元/月`。
+
+部署：
+
+- 已部署生产后端三进程架构。
+- 新增文件已同步生产：
+  - `backend/app/services/property_table_ocr_service.py`
+  - `backend/app/services/property_table_ocr_worker.py`
+- 对生产 `app_service.py` 和 `dependencies.py` 采用最小补丁，没有整文件覆盖。
+- 服务器备份目录：`backend/backups/codex-20260701-*-property-table-ocr`。
+
+验证：
+
+- 本地 `.venv312/bin/python -m compileall -q backend/app backend/tests` 通过。
+- 本地 `.venv312/bin/python -m pytest backend/tests/test_app.py backend/tests/test_sync_task_queue.py -q -k "ocr or image_capture or property_batch or archive_worker or sync_task"`：20 passed。
+- `git diff --check` 通过。
+- 公网 `https://teambuy.lifelove.top/health` 返回 200。
+- 生产容器 `backend`、`backend-worker`、`archive-worker` 均 Up。
+
+注意：
+
+- 为避免污染生产账号，本轮没有通过公网 API 直接上传 007 并生成 159 条测试房源；已在生产容器内分别验证表格检测、完整 OCR 和结构化解析。
+- 后续真机上传 007 时，会由普通 OCR 任务自动检测表格图并进入专项流程。
+
+待上线动作：
+
+- 已于 2026-07-01 20:52 部署到生产服务器。
+- 服务器备份目录：`/home/ubuntu/teamBuy/backend/backups/codex-20260701-203506-ocr-worker-arch`。
+- 当前生产容器：
+  - `teambuy-backend-1`：API。
+  - `teambuy-backend-worker-1`：OCR 后台队列 worker。
+  - `teambuy-archive-worker-1`：企业微信会话归档 worker。
+- `docker compose config --services` 已确认包含 `postgres/backend/backend-worker/archive-worker`。
+- 已补 `DATABASE_REQUIRE_POSTGRES=true`，生产 Postgres 连接失败时不再静默 fallback 到 JSON。
+- 已补 `pg_advisory_xact_lock(81207008435)`，避免三个进程同时启动执行 schema 初始化时互相 deadlock。
+- 公网验证：
+  - `https://teambuy.lifelove.top/health` 返回 200。
+  - `/api/ocr/images` 上传测试图立即返回 `ocr.status=queued` 和 `syncTask`。
+  - OCR worker 约 10 秒后消费任务，测试任务 `sync_task_aaa9d6e9c2ff4556b20177ac14eaa60a` 状态为 `success`。
+  - 对应测试 note `note_5ba04883aa` 从 `queued` 更新为 `empty`，provider 为 `paddle`。
+
+部署中发现并修复：
+
+- API 进程曾因 Postgres 初始化异常静默 fallback 到 `/backend/mock/runtime-state.json`，导致 API 能看到 note、worker/Postgres 看不到 task；已通过 `DATABASE_REQUIRE_POSTGRES=true` 防止生产再次分裂。
+- 三个进程同时 `init_schema()` 时曾出现 Postgres DDL deadlock；已通过 advisory lock 串行化 schema 初始化。
+- 曾误将本地完整 `repository.py` 拷贝到服务器，带入未上线的商机模型导入导致服务启动失败；已恢复服务器线上系 repository，并只补最小 patch。
+
+本地验证：
+
+- `.venv312/bin/python -m compileall -q backend/app backend/tests` 通过。
+- `.venv312/bin/python -m pytest backend/tests/test_app.py backend/tests/test_sync_task_queue.py -q -k "ocr or image_capture or property_batch or archive_worker or sync_task"`：19 passed。
+- `git diff --check` 通过。
+
+## 2026-07-01 商机线索 P0 第 4/5 片：小程序接接口与回应包 P0
+
+本轮改造：
+
+- 后端新增回应包 P0 链路：
+  - `POST /api/opportunity-leads/{id}/response-packages/preview`
+  - `POST /api/opportunity-leads/{id}/response-packages`
+  - `GET /api/response-packages/{id}`
+  - `POST /api/response-packages/{id}/events`
+- 回应包内容包括：商机摘要、推荐资料、首次联系话术、跟进建议和小程序追踪路径。
+- 预览不扣积分；正式生成先用每月免费额度，再按 20 积分消耗。
+- 同一用户对同一商机重复生成回应包，返回已有回应包，不重复扣积分。
+- 生成回应包后自动把商机保存为“跟进中”，并写入一条跟进记录。
+- 小程序商机页由静态数据改为真实接口优先、mock 兜底：
+  - 我的机会
+  - 供需广场
+  - 线索详情
+  - 已保存线索
+  - 新增回应包页
+
+已验证：
+
+- `node --check` 覆盖 `miniprogram/services/api.js` 和商机/回应包相关页面 JS，全部通过。
+- 小程序 `app.json` 和相关页面 JSON 解析通过。
+- `DATABASE_BACKEND=json DATABASE_URL= DATA_FILE=/tmp/teambuy-test-response-package.json .venv312/bin/python -m pytest backend/tests/test_app.py -q -k "response_package or opportunity_lead or resource_wallet"`：11 passed。
+- `DATABASE_BACKEND=json DATABASE_URL= DATA_FILE=/tmp/teambuy-test-response-package.json .venv312/bin/python -m compileall -q backend/app` 通过。
+- `git diff --check` 通过。
+
+全量测试说明：
+
+- 使用本地 JSON 测试库跑全量后端测试：198 passed、1 failed。
+- 失败项为 `test_health_reports_database_configuration` 固定断言数据库 backend 是 `postgres`，而本次为避开本机 Postgres 密码问题使用了 `DATABASE_BACKEND=json`。
+- 本次新增和改动相关的商机、回应包、资源积分测试全部通过。
+
+待确认：
+
+- 后端接口仍需部署到测试环境后，小程序真实接口才能拿到最新 P0 回应包数据。
+- 小程序体验版需要用户在微信开发者工具中重新预览/上传。
+
+## 2026-07-01 商机线索 P0 第 6 片：PC 后台增强
+
+本轮改造：
+
+- PC 运营后台新增二期能力：
+  - 商机线索看板：今日资源工具人数、今日积分消耗、今日回应包、线索状态统计。
+  - 商机线索列表新增回应包数量和快捷下架。
+  - 新增“积分账本”Tab：用户积分列表、余额/发放/消耗/流水、人工调整积分。
+  - 新增“回应包记录”Tab：查看回应包、所属用户、关联商机、资料数、积分消耗、最近打开。
+- 后端新增运营接口：
+  - `GET /api/ops/opportunity-dashboard`
+  - `POST /api/ops/opportunity-leads/{lead_id}/offline`
+  - `GET /api/ops/resource-wallet/users`
+  - `POST /api/ops/resource-wallet/users/{user_id}/adjust`
+  - `GET /api/ops/response-packages`
+- 所有新增运营接口继续使用 `X-Admin-Token` 鉴权。
+
+已验证：
+
+- `DATABASE_BACKEND=json DATABASE_URL= DATA_FILE=/tmp/teambuy-test-ops-pc.json .venv312/bin/python -m pytest backend/tests/test_app.py -q -k "ops_opportunity_dashboard or response_package or opportunity_lead or resource_wallet"`：12 passed。
+- `DATABASE_BACKEND=json DATABASE_URL= DATA_FILE=/tmp/teambuy-test-ops-pc.json .venv312/bin/python -m compileall -q backend/app` 通过。
+- 提取 `backend/app/static/ops-admin/index.html` 内 `<script>` 后用 Node `new Function(...)` 检查通过。
+
+待确认：
+
+- 需要部署测试后端后，在 `/ops` 页面用管理员 Token 真机/浏览器确认表格和操作。
+- 供给卡审核仍未做独立模型和审核流，当前 P0 先覆盖商机、积分、回应包和反馈工单。
+
+## 2026-07-02 商机 P1 真机测试：测试后端未同步导致订阅/发布保存 404
+
+现象：
+
+- 小程序当前仍连接测试环境：`apiBaseUrl=https://teambuy.lifelove.top`、`apiRoutePrefix=/test-api`。
+- 真机进入“订阅雷达”提示“订阅读取失败”，保存失败。
+- 真机进入“发布供需”点击保存/提交返回 `Not Found`。
+
+排查：
+
+- 本地 FastAPI 已注册：
+  - `GET/POST /api/opportunity-subscriptions`
+  - `GET/POST/PUT /api/supply-demand/cards`
+  - `POST /api/supply-demand/cards/{card_id}/submit`
+- 公网测试环境仍返回 404：
+  - `https://teambuy.lifelove.top/test-api/opportunity-subscriptions/me?userId=route_check` -> 404 `{"detail":"Not Found"}`
+  - `https://teambuy.lifelove.top/test-api/supply-demand/cards` -> 404 `{"detail":"Not Found"}`
+
+处理：
+
+- 前端已把这类 404 的 toast 优化为“测试后端未同步接口”，避免继续显示英文 `Not Found`。
+- 本轮未部署生产，也未部署测试后端。
+
+下一步：
+
+- 需要只部署测试环境后端，使 `/test-api/opportunity-subscriptions/*` 和 `/test-api/supply-demand/cards/*` 生效。
+- 部署后再用真机回归：订阅读取、订阅保存、发布供需保存草稿、提交审核、我的发布编辑回填。
+
+## 2026-07-02 资料库分享封面勾子统一
+
+本轮改造：
+
+- 资料库发客户不再把原首图裸用作 `imageUrl`。
+- 所有可发客户的资料卡都走分享图生成：
+  - 有封面：用首图按比例裁切，并叠加底部“由资料整理助手生成 · 点击生成同款”。
+  - 无封面：生成标题图，并叠加同样底部勾子。
+- 分享图未准备好时，按钮显示“封面准备中”，点击时提示稍后再发，避免发出没有勾子的默认卡片。
+
+验证：
+
+- `node --check miniprogram/pages/library/index.js && node --check miniprogram/utils/business-card-share.js && node --check miniprogram/pages/showcases/index.js && node --check miniprogram/pages/showcase-view/index.js && node --check miniprogram/pages/note-preview/index.js` 通过。
+- `git diff --check` 通过。
+
+## 2026-07-02 二期页面统一分享 imageUrl 层
+
+本轮改造：
+
+- 新增 `miniprogram/utils/universal-share.js`：
+  - 统一生成带底部勾子的分享图。
+  - 有封面时复用首图裁切，无图时走标题图。
+  - 统一返回 `title/path/imageUrl`。
+- 新增全局隐藏 canvas 样式 `.universal-share-canvas`。
+- 二期 10 个页面接入 `onShareAppMessage`：
+  - `opportunity-radar`
+  - `opportunity-market`
+  - `opportunity-detail`
+  - `opportunity-saved`
+  - `opportunity-subscription`
+  - `response-package`
+  - `response-package-radar`
+  - `supply-demand-detail`
+  - `supply-demand-my`
+  - `supply-demand-publish`
+
+验证：
+
+- 10 个二期页面 JS + `utils/universal-share.js` `node --check` 通过。
+- 10 个二期页面 WXML 均包含 `canvas-id="universalShareCanvas"`。
+- `git diff --check` 通过。
+
+未做：
+
+- 未部署测试后端，未部署生产，未上传小程序。
+- 分享图真机显示仍需用户上传/预览小程序后验证。
+
+## 2026-07-02 测试后端同步商机 P1 路由
+
+本轮处理：
+
+- 只处理测试环境，不碰生产环境。
+- 服务器备份路径：`/home/ubuntu/teamBuy-deploy-backups/20260702-103933-p1-test-routes`。
+- 标准测试 compose build 卡在系统依赖阶段，已中止；旧测试容器保持运行。
+- 修正同步路径后，将本地 `backend/app` 热同步到测试容器真实加载目录 `/app/app/`，并重启 `teambuy-test-backend-test-1`。
+
+验证：
+
+- 测试容器路由表已包含商机 P1 路由。
+- `GET https://teambuy.lifelove.top/test-health` 返回 200，数据库为 postgres。
+- `GET https://teambuy.lifelove.top/test-api/opportunity-subscriptions/me?userId=user_a732f38f21` 返回 200。
+- `POST https://teambuy.lifelove.top/test-api/opportunity-subscriptions` 返回 200。
+- `GET https://teambuy.lifelove.top/test-api/supply-demand/cards` 返回 200。
+- `POST https://teambuy.lifelove.top/test-api/supply-demand/cards` 返回 200。
+- `GET https://teambuy.lifelove.top/test-api/opportunity-leads?userId=user_a732f38f21` 返回 200。
+
+清理：
+
+- 探测创建的订阅 `opp_sub_e863a027c7` 已 DELETE，状态为 deleted。
+- 探测创建的供需卡 `sd_17ca6283ba` 已 PUT 为 archived。
+
+注意：
+
+- 因为 `GET /api/supply-demand/cards/me` 当前会返回 archived 记录，真机“我的发布”如果看到“测试供需发布”，它是已归档的探测数据。
+- 本轮未部署生产，未上传小程序。
+# 2026-07-02 资料详情胶囊、个人头像交互与前端缓存
+
+本轮处理：
+
+- 个人资料弹窗：
+  - 删除独立“选择头像”按钮。
+  - 改为点击头像本身触发微信 `chooseAvatar`。
+  - 头像居中展示。
+- 资料详情页胶囊：
+  - 统一候选类型、功能组、快捷选项、状态标签、预览标签和媒体角标的胶囊尺寸。
+  - 胶囊字体、背景块高度、内边距缩小，横向间距加大。
+  - 保持 flex 居中和不换行。
+- 前端缓存：
+  - `miniprogram/services/api.js` 新增用户级 note 列表/详情缓存。
+  - 缓存 key 按环境、API 前缀、用户、查询条件隔离。
+  - 资料详情页先读缓存再拉后端。
+  - 旧“我的笔记”列表先读缓存再刷新。
+  - 资料库页不再强制绕过 `resource-store` 缓存。
+  - `resource-store` 支持从本地 storage 直接返回卡片/分类缓存。
+
+验证：
+
+- `node --check` 覆盖 profile、note-edit、notes、library、api、resource-store，全部通过。
+- 小程序相关 JSON 校验通过。
+- `git diff --check` 通过。
+
+注意：
+
+- 后端缓存本轮未直接实现，避免 OCR/归档 worker 写入后读旧数据；后续建议用 ETag/短 TTL/写入失效。
+- 前端缓存需要重新上传小程序后才生效。
+
+# 2026-07-02 商机/服务纠错入口与规则样本池
+
+本轮处理：
+
+- 小程序资料详情页普通笔记候选规则新增商机/服务兜底：
+  - 建站、推广、落地页、独立站、官网商城、小程序开发、服务器、CDN、源码交付、返点、联系电话等信号会出现“商机合作”候选。
+- 调整资料详情页候选按钮和功能按钮：
+  - 候选按钮改为两列，间距更大。
+  - 胶囊高度、字体和背景视觉减小，避免真机上显得过重。
+- 后端确认类型接口记录规则学习样本：
+  - 用户把资料从普通笔记切到房源/商品/商机/服务时，写入 `OpsConsoleStore.ruleLearningSamples`。
+  - 记录原类型、选择类型、原文、识别解释和标签。
+- PC 运营后台新增“规则样本池”：
+  - 支持按状态和类型筛选。
+  - 支持将样本标记为确认或拒绝。
+  - 第一版不自动发布全局规则。
+
+验证：
+
+- `node --check miniprogram/pages/login/index.js` 通过。
+- `node --check miniprogram/pages/note-edit/index.js` 通过。
+- PC 后台内联脚本 `node --check` 通过。
+- `PYTHONPATH=backend .venv312/bin/python` 验证规则样本池存取通过。
+- `.venv312/bin/python -m compileall -q backend/app backend/tests` 通过。
+- `.venv312/bin/python -m pytest backend/tests/test_app.py -q -k "confirm_plain_rental_note or quick_capture or owner_contact"`：10 passed。
+- `git diff --check` 通过。
+
+注意：
+
+- 本轮未部署生产，未上传小程序。
+- PC 后台“确认样本”只是审核样本，不会自动改变全局识别规则；后续需要做“规则配置发布 + 历史样本回归”。
+
+# 2026-07-02 登录页缩略图真机稳定性修复
+
+本轮处理：
+
+- 将登录页左侧房源缩略图从 `login-room.webp` 转为 `login-room.jpg`。
+- 新图尺寸为 360x270，体积约 21KB。
+- 登录页引用改为 `/static/workspace/login-room.jpg`。
+- 图片加载失败时展示“房”字兜底，避免真机出现空白块。
+
+验证：
+
+- 已确认生成的 JPG 文件存在，格式为 JPEG，尺寸 360x270。
+- 后续仍需用户在微信开发者工具重新上传体验版后真机确认。
+
+# 2026-07-02 生产热修基线归档与二期合并准备
+
+本轮处理：
+
+- 已从生产服务器 `/home/ubuntu/teamBuy` 拉取当前线上关键文件，归档到 `artifacts/prod-baseline-20260702-ocr-property/`。
+- 归档范围包括：
+  - `docker-compose.yml`
+  - `backend/app/api/dependencies.py`
+  - `backend/app/worker.py`
+  - `backend/app/services/app_service.py`
+  - `backend/app/services/repository.py`
+  - `backend/app/services/sync_task_queue.py`
+  - `backend/app/services/background_task_worker.py`
+  - `backend/app/services/property_table_ocr_service.py`
+  - `backend/app/services/property_table_ocr_worker.py`
+- 已确认生产容器当前状态：
+  - `teambuy-backend-1` Up
+  - `teambuy-backend-worker-1` Up
+  - `teambuy-archive-worker-1` Up
+  - `teambuy-postgres-1` healthy
+- 已新增合并计划文档：`docs/stage2-docs/37-production-hotfix-merge-plan.md`。
+
+合并判断：
+
+- 本地和生产一致的重点文件：`docker-compose.yml`、`dependencies.py`、`worker.py`、`sync_task_queue.py`、`background_task_worker.py`、`property_table_ocr_service.py`、`property_table_ocr_worker.py`。
+- 高风险人工合并文件：`app_service.py`、`repository.py`。
+- 原因：本地这两个文件已经包含二期商机/资源钱包/供需能力，生产版本包含已上线 OCR/房源热修，二期上线前必须统一合并。
+
+下一步：
+
+- 将生产热修整理为独立 commit 或基线分支。
+- 将二期后端代码合入该基线。
+- 在统一分支上完成 OCR、007 表格 OCR、批量房源、单条房源识别、会话归档 worker 回归。
+
+# 2026-07-02 个人资料弹层交互微调
+
+本轮处理：
+
+- 个人资料弹层关闭按钮改为右上角透明点击区，去掉浅色胶囊背景。
+- 头像选择改为点击头像本身，去掉头像背后的浅色背景。
+- 弹层遮罩空白处继续支持点击关闭，弹层内部点击不误关闭。
+- 字段顺序调整为昵称、手机号、微信号。
+- 微信号处新增“手机微信同号”，点击后把手机号填入微信号。
+- 头像继续使用微信原生 `open-type="chooseAvatar"`，昵称输入框继续使用 `type="nickname"`。
+
+验证：
+
+- `node --check miniprogram/pages/profile/index.js` 通过。
+- `python3 -m json.tool miniprogram/pages/profile/index.json >/dev/null` 通过。
+
+# 2026-07-02 规则样本池部署到测试后端
+
+本轮处理：
+
+- 只同步测试后端，未碰生产后端。
+- 服务器备份：`/home/ubuntu/teamBuy-deploy-backups/20260702-140814-rule-learning-test`。
+- 同步本地 `backend/app` 到测试服务器 `/home/ubuntu/teamBuy/backend/app`。
+- 热同步到测试容器：`docker cp backend/app/. teambuy-test-backend-test-1:/app/app/`。
+- 重启测试容器：`teambuy-test-backend-test-1`。
+
+验证：
+
+- 本地 `.venv312/bin/python -m compileall -q backend/app backend/tests` 通过。
+- 本地 `.venv312/bin/python -m pytest backend/tests/test_app.py -q -k "confirm_plain_rental_note or quick_capture or owner_contact or rule"`：10 passed。
+- 本地 `.venv312/bin/python -m pytest backend/tests/test_skill_router.py -q`：14 passed。
+- 公网 `https://teambuy.lifelove.top/test-health` 返回 200。
+- 公网 `/test-api/ops-admin/rule-learning-samples` 无 Token 返回 403，确认不是 404。
+- 公网带测试管理员 Token 请求 `/test-api/ops-admin/rule-learning-samples?cardType=service_offer` 返回 200。
+- 用测试账号创建临时笔记并确认类型为 `service_offer` 后，样本池生成 `rule_sample_7582ffaf54`；随后已将该验证样本标记为 `rejected`，并删除临时笔记 `note_8a82e792af`。
+
+注意：
+
+- 当前部署完成的是“用户纠错/确认类型 -> 进入规则样本池 -> PC 后台人工审核”的收集闭环。
+- “审核通过后自动发布为全局规则并影响后续高置信分类”仍未完成，需要后续继续开发。
+
+补充：
+
+- 修复 PC 测试后台 `/test-ops` 页面接口前缀：
+  - 生产 `/ops` 继续请求 `/api/...`。
+  - 测试 `/test-ops` 自动请求 `/test-api/...`。
+- 已同步更新后的 `backend/app/static/ops-admin/index.html` 到测试后端容器。
+
+# 2026-07-02 资料库统一入口实验版
+
+本轮处理：
+
+- 底部 Tab 的 `pages/library` 改为统一资料库：
+  - 默认展示全部资料，不再按当前工作场景自动过滤。
+  - 新增类型筛选：全部、房源、商机、服务、商品、日常。
+  - 类型筛选在前端本地完成，减少切换等待。
+  - 房源/商品筛选面板在选择对应类型时展示。
+- `pages/notes` 也同步改成统一资料库文案和本地类型筛选：
+  - 后端只按搜索/来源/标签/专题取数。
+  - 房源、商机、服务、商品、日常、待确认在前端本地切换。
+
+验证：
+
+- `node --check miniprogram/pages/library/index.js` 通过。
+- `node --check miniprogram/pages/notes/index.js` 通过。
+- `python3 -m json.tool miniprogram/pages/library/index.json >/dev/null` 通过。
+- `python3 -m json.tool miniprogram/pages/notes/index.json >/dev/null` 通过。
+- `git diff --check` 通过。
+
+注意：
+
+- 本轮只改小程序前端和文档，未部署后端。
+- 首页/雷达仍保留工作场景概念；本轮先验证“资料库统一入口”的体验。
+
+补充：
+
+- 首页 `pages/home` 也改为统一入口版：
+  - 移除首屏“四场景选择”弹窗。
+  - 移除顶部“当前场景 / 切换场景”入口。
+  - 首页标题改为“今天收到的资料”。
+  - 首屏固定三个主入口：添加资料、查看资料库、客户雷达。
+  - 房源、商机、服务、商品、合集改成“快捷工具”，不再作为全局模式切换。
+  - 首页统计按全部资料口径展示，不再按当前工作场景过滤。
+
+验证补充：
+
+- `node --check miniprogram/pages/home/index.js` 通过。
+- `python3 -m json.tool miniprogram/pages/home/index.json >/dev/null` 通过。
+
+# 2026-07-02 资料库按钮与登录页统一文案收口
+
+本轮处理：
+
+- 修复 `pages/library` “新增资料”点击无反应：
+  - 原因是统一资料库改造时移除了 `readWorkspaceMode` import，但 `handleManualAdd` 仍引用该函数，真机点击会触发运行时错误。
+  - 现改为根据 `entryFilter` 和 `activeLibraryType` 决定跳转目标。
+- 修正资料库商品/服务空态按钮：
+  - “新建商品 / 商品合集”“做名片 / 做方案”“做服务方案”等空态按钮统一改成小胶囊、flex 居中、限宽居中。
+  - “用当前筛选生成合集 / 用当前筛选生成商品合集”和“重置筛选”改为 54rpx 高、21rpx 字号、限宽居中。
+- 登录页文案从“房源工作台 / 一键生成房源卡”改成 SCRM 获客口径：
+  - 首屏标题：“把资料变成你的客户 SCRM”。
+  - 强调客户打开、咨询、留资和跟进状态沉淀到账号。
+  - 功能点改为资料获客、客户雷达、线索跟进、成交复盘。
+
+验证：
+
+- `node --check miniprogram/pages/library/index.js && node --check miniprogram/pages/home/index.js && node --check miniprogram/pages/login/index.js` 通过。
+- `miniprogram/pages/library/index.json`、`home/index.json`、`login/index.json` JSON 解析通过。
+- `git diff --check -- miniprogram/pages/library/index.js miniprogram/pages/library/index.wxss miniprogram/pages/login/index.wxml miniprogram/pages/login/index.js` 通过。
+
+注意：
+
+- 本轮只改小程序前端，不需要部署后端。
+- 真机看到登录页仍是旧“房源工作台”，通常说明小程序体验版还没有重新上传最新前端。
+
+# 2026-07-02 小程序前端切回生产环境
+
+本轮处理：
+
+- `miniprogram/app.js` 切回生产配置：
+  - `apiBaseUrl`: `https://teambuy.lifelove.top`
+  - `apiRoutePrefix`: 空字符串，直接请求 `/api/...`
+  - `mediaRoutePrefix`: 空字符串，直接请求 `/media/...`
+  - `environmentName`: `production`
+
+验证：
+
+- `node --check miniprogram/app.js && node --check miniprogram/utils/request.js && node --check miniprogram/services/api.js` 通过。
+- 本地验证 `buildApiUrl('/api/health')` 输出 `https://teambuy.lifelove.top/api/health`。
+- 本地验证 `buildApiUrl('/media/example.jpg')` 输出 `https://teambuy.lifelove.top/media/example.jpg`。
+
+注意：
+
+- 这是前端环境配置切换，不涉及后端部署。
+- 因 `currentUser` 存储里会记录旧环境信息，切到生产后旧测试登录态会被自动清理，需要重新微信登录。
+
+# 2026-07-02 生产后端部署前检查：本轮不部署后端
+
+检查结论：
+
+- 本地后端仍有大量未提交/未统一合并改动，包含二期商机、供需、资源钱包、H5、规则样本池等，不适合直接整包部署生产。
+- 生产环境当前已经运行 OCR worker、archive worker 和 Postgres，不需要为了本轮前端文案/生产配置切换重新部署后端。
+
+线上检查：
+
+- `https://teambuy.lifelove.top/health` 返回 `status=ok`，数据库后端为 `postgres`。
+- 服务器 `docker compose ps` 显示：
+  - `teambuy-backend-1` Up
+  - `teambuy-backend-worker-1` Up
+  - `teambuy-archive-worker-1` Up
+  - `teambuy-postgres-1` Up healthy
+
+注意：
+
+- `/api/health` 返回 404 是因为健康检查路由在根路径 `/health`，不是生产故障。
+- 当前建议只上传小程序前端；后端二期功能必须走统一分支、测试通过后再生产部署。
+
+# 2026-07-02 小程序前端切回测试环境
+
+本轮处理：
+
+- 用户已提交生产前端后，将 `miniprogram/app.js` 切回二期开发测试环境：
+  - `apiBaseUrl`: `https://teambuy.lifelove.top`
+  - `apiRoutePrefix`: `/test-api`
+  - `mediaRoutePrefix`: `/test-media`
+  - `environmentName`: `test`
+
+验证：
+
+- `node --check miniprogram/app.js && node --check miniprogram/utils/request.js && node --check miniprogram/services/api.js` 通过。
+- 本地验证 `buildApiUrl('/api/health')` 输出 `https://teambuy.lifelove.top/test-api/health`。
+
+注意：
+
+- 本轮只切前端开发配置，不涉及后端部署。
+- 切回测试后，真机二期开发会读取测试后端和测试库；不要用它判断生产归档数据是否存在。
+
+# 2026-07-02 登录与头像点击反馈修补
+
+本轮处理：
+
+- 按用户要求重新把 `miniprogram/app.js` 切回生产前端配置：
+  - `apiRoutePrefix`: 空字符串
+  - `mediaRoutePrefix`: 空字符串
+  - `environmentName`: `production`
+- `pages/login/index.js`：
+  - 微信登录点击后立即显示 `登录中` loading，成功/失败都会关闭，避免真机误判为按钮没反应。
+- `pages/profile/index.*`：
+  - 头像按钮增加 `bindtap` 兜底检测，旧微信版本不支持 `chooseAvatar` 时提示“当前微信版本不支持头像选择”。
+  - 头像按钮明确 `position/z-index/flex` 点击热区，头像图片设置 `pointer-events: none`，点击统一落到原生 button 上。
+
+验证：
+
+- `node --check miniprogram/app.js && node --check miniprogram/pages/login/index.js && node --check miniprogram/pages/profile/index.js && node --check miniprogram/utils/request.js && node --check miniprogram/services/api.js` 通过。
+- `miniprogram/pages/login/index.json`、`profile/index.json` JSON 解析通过。
+- 本地验证生产 `buildApiUrl('/api/auth/wechat-login')` 输出 `https://teambuy.lifelove.top/api/auth/wechat-login`。
+- 公网探测生产登录路由：无效 code 返回 400 `invalid code`，证明不是路由 404。
+- `git diff --check -- miniprogram/app.js miniprogram/pages/login/index.js miniprogram/pages/profile/index.js miniprogram/pages/profile/index.wxml miniprogram/pages/profile/index.wxss` 通过。
+
+注意：
+
+- `chooseAvatar` 必须在真机微信环境和支持的基础库中触发；开发者工具或旧微信版本可能不会弹系统头像选择。
+- 生产前端配置已打开，当前工作区不再是测试配置。
+
+# 2026-07-02 安卓头像选择兜底
+
+本轮处理：
+
+- 用户反馈 iOS 真机可以调起头像/昵称，安卓真机调不起来。
+- `pages/profile/index.*` 增加安卓平台识别：
+  - iOS/非安卓继续使用微信官方 `button open-type="chooseAvatar"`。
+  - 安卓改为普通头像点击区，点击后走“从相册选择头像”兜底。
+  - 选择到的本地图片继续复用原保存逻辑，保存时上传为头像资源。
+
+说明：
+
+- 微信昵称不是后端接口，也不是可强制弹出的授权窗；当前只能通过 `input type="nickname"` 获取微信系统建议。
+- 安卓微信不弹昵称建议时，用户仍可直接手动输入昵称并保存。
+
+验证：
+
+- `node --check miniprogram/pages/profile/index.js` 通过。
+- `miniprogram/pages/profile/index.json` JSON 解析通过。
+- `git diff --check -- miniprogram/pages/profile/index.js miniprogram/pages/profile/index.wxml miniprogram/pages/profile/index.wxss miniprogram/app.js` 通过。
+
+补充修复：
+
+- 安卓相册兜底从优先 `wx.chooseMedia` 改为优先 `wx.chooseImage`。
+- 原因：用户真机出现微信内部 `received error code -3 on sync-*`，能点到入口但系统相册未打开，疑似安卓微信/基础库对 `chooseMedia` 调相册链路不稳定。
+- 失败时弹窗展示系统 `errMsg`，便于继续定位是否为微信相册权限、系统权限或基础库问题。
+
+# 2026-07-02 小程序前端再次切回测试环境
+
+本轮处理：
+
+- 用户已提交生产前端后，将 `miniprogram/app.js` 切回测试环境：
+  - `apiRoutePrefix`: `/test-api`
+  - `mediaRoutePrefix`: `/test-media`
+  - `environmentName`: `test`
+
+验证：
+
+- `node --check miniprogram/app.js && node --check miniprogram/utils/request.js && node --check miniprogram/services/api.js` 通过。
+- 本地验证 `buildApiUrl('/api/auth/wechat-login')` 输出 `https://teambuy.lifelove.top/test-api/auth/wechat-login`。
+
+状态：
+
+- 当前工作区适合继续二期测试开发。
+
+# 2026-07-03 H5 资源工具：我的页拆成可直达二级路径
+
+本轮处理：
+
+- `backend/app/static/h5/resource-tools/index.html`
+  - 将“我的发布”拆成四个可直达子路径：
+    - `?page=mine`
+    - `?page=mine-received`
+    - `?page=my-applications`
+    - `?page=mine-history`
+  - `mine` 主页不再把“收到申请 / 我申请的合作 / 历史”全堆在一张长页面中，而是用明显的二级 tab 切换。
+  - 保留统一的总览统计卡和控制台条，但下方主体区按子路径只展示一个核心模块，减少滑动查找。
+  - “历史”不再走 detail 临时页，改成和 `mine` 同级的可刷新列表页。
+
+验证：
+
+- `node -e "new Function(...)"` 解析 `index.html` 内联脚本通过。
+- `git diff --check -- backend/app/static/h5/resource-tools/index.html` 通过。
+
+状态：
+
+- 这轮只改 H5 测试链路，不碰生产环境。
+- 下次提交生产前端前，需要再次切回生产配置。
+
+# 2026-07-03 头像选择统一走相册
+
+本轮处理：
+
+- 用户反馈生产版本安卓可以通过相册选头像，iOS 又不行。
+- 为避免 `button open-type="chooseAvatar"` 在 iOS/安卓、微信版本和基础库之间表现不一致，`pages/profile` 头像入口统一改为：
+  - 点击头像；
+  - 打开“从相册选择头像”；
+  - 使用 `wx.chooseImage` 优先选择图片；
+  - 保存时复用现有上传头像逻辑。
+- 移除我的页头像入口里的 `open-type="chooseAvatar"`、平台判断 `isAndroid` 和相关回调。
+
+说明：
+
+- 昵称仍使用普通输入框并保留 `type="nickname"`，微信昵称建议不作为强依赖。
+- 头像统一相册后，只依赖“选中的照片或视频信息”隐私声明，不再依赖微信头像弹窗。
+
+验证：
+
+- `node --check miniprogram/pages/profile/index.js` 通过。
+- `miniprogram/pages/profile/index.json` JSON 解析通过。
+- `rg chooseAvatar/isAndroid` 确认我的页不再使用官方头像弹窗逻辑。
+- `git diff --check -- miniprogram/pages/profile/index.js miniprogram/pages/profile/index.wxml miniprogram/pages/profile/index.wxss` 通过。
+
+# 2026-07-03 小程序前端切回生产环境
+
+本轮处理：
+
+- 为提交头像兼容修复，将 `miniprogram/app.js` 切回生产配置：
+  - `apiRoutePrefix`: 空字符串
+  - `mediaRoutePrefix`: 空字符串
+  - `environmentName`: `production`
+
+验证：
+
+- `node --check miniprogram/app.js && node --check miniprogram/utils/request.js && node --check miniprogram/services/api.js && node --check miniprogram/pages/profile/index.js` 通过。
+- 本地验证 `buildApiUrl('/api/auth/wechat-login')` 输出 `https://teambuy.lifelove.top/api/auth/wechat-login`。
+- 本地验证 `buildApiUrl('/media/example.jpg')` 输出 `https://teambuy.lifelove.top/media/example.jpg`。
+- `git diff --check -- miniprogram/app.js miniprogram/pages/profile/index.js miniprogram/pages/profile/index.wxml miniprogram/pages/profile/index.wxss` 通过。
+
+状态：
+
+- 当前工作区小程序配置为生产前端配置，可用于提交/上传。
+
+# 2026-07-03 小程序前端切回测试环境
+
+本轮处理：
+
+- 用户已提交生产前端后，将 `miniprogram/app.js` 切回测试环境：
+  - `apiRoutePrefix`: `/test-api`
+  - `mediaRoutePrefix`: `/test-media`
+  - `environmentName`: `test`
+
+验证：
+
+- `node --check miniprogram/app.js && node --check miniprogram/utils/request.js && node --check miniprogram/services/api.js` 通过。
+- 本地验证 `buildApiUrl('/api/auth/wechat-login')` 输出 `https://teambuy.lifelove.top/test-api/auth/wechat-login`。
+
+状态：
+
+- 当前工作区适合继续二期测试开发。
+
+# 2026-07-03 用户协议与隐私政策合规补齐
+
+本轮处理：
+
+- 新增小程序协议页面：
+  - `pages/legal/terms/index`：资料整理助手用户服务协议。
+  - `pages/legal/privacy/index`：资料整理助手隐私政策。
+- 协议主体统一为：湖南悦享互动科技有限公司。
+- 登录页新增“我已阅读并同意《用户服务协议》和《隐私政策》”：
+  - 不勾选时禁止微信登录和本地便捷登录。
+  - 协议名称可点击进入对应页面。
+- 我的页个人资料弹窗新增协议勾选：
+  - 保存昵称、头像、手机号、微信号前必须勾选同意。
+  - 协议名称可点击进入对应页面。
+- 隐私政策内容覆盖当前真实场景：
+  - 微信登录标识、昵称、头像。
+  - 手机号、微信号。
+  - 选中的照片或视频信息。
+  - 资料图片、资料内容、客户线索、浏览/咨询/留资/跟进状态。
+  - 位置展示、导航和地图标记。
+  - 上游联系方式、私密备注默认不在客户页展示。
+
+验证：
+
+- `node --check` 已覆盖 `login/index.js`、`profile/index.js`、`legal/terms/index.js`、`legal/privacy/index.js`。
+- `miniprogram/app.json`、登录页、我的页、两个协议页 JSON 解析通过。
+- `git diff --check` 已覆盖协议相关页面和入口改动。
+
+注意：
+
+- 这是前端合规补齐，不涉及后端部署。
+- 当前工作区仍为测试环境配置；提交生产前端前需要切回生产配置。
+
+# 2026-07-03 小程序前端切回生产环境用于重新上传
+
+本轮处理：
+
+- 将 `miniprogram/app.js` 切回生产配置：
+  - `apiRoutePrefix`: 空字符串
+  - `mediaRoutePrefix`: 空字符串
+  - `environmentName`: `production`
+
+验证：
+
+- `node --check` 已覆盖 `app.js`、`utils/request.js`、`services/api.js`、登录页、我的页和两个协议页。
+- 本地验证 `buildApiUrl('/api/auth/wechat-login')` 输出 `https://teambuy.lifelove.top/api/auth/wechat-login`。
+- 本地验证 `buildApiUrl('/media/example.jpg')` 输出 `https://teambuy.lifelove.top/media/example.jpg`。
+- `git diff --check -- miniprogram/app.js miniprogram/app.json miniprogram/pages/login miniprogram/pages/profile miniprogram/pages/legal` 通过。
+
+状态：
+
+- 当前工作区小程序配置为生产前端配置，可用于重新上传。
+
+# 2026-07-03 小程序前端切回测试环境
+
+本轮处理：
+
+- 用户完成生产上传后，将 `miniprogram/app.js` 切回测试配置：
+  - `apiRoutePrefix`: `/test-api`
+  - `mediaRoutePrefix`: `/test-media`
+  - `environmentName`: `test`
+
+验证：
+
+- `node --check miniprogram/app.js && node --check miniprogram/utils/request.js && node --check miniprogram/services/api.js` 通过。
+- 本地验证 `buildApiUrl('/api/auth/wechat-login')` 输出 `https://teambuy.lifelove.top/test-api/auth/wechat-login`。
+
+状态：
+
+- 当前工作区适合继续二期测试开发。

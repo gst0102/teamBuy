@@ -296,6 +296,11 @@
           <button data-tab="upload">群二维码批量上传</button>
           <button data-tab="botchannels">群发渠道映射</button>
           <button data-tab="joinway">小程序加群配置</button>
+          <button data-tab="opportunities">商机线索</button>
+          <button data-tab="wallets">积分账本</button>
+          <button data-tab="packages">回应包记录</button>
+          <button data-tab="supplyreview">供给审核</button>
+          <button data-tab="rulesamples">规则样本池</button>
           <button data-tab="feedback">反馈工单</button>
           <button data-tab="queue">系统待处理</button>
         </div>
@@ -737,6 +742,272 @@
           </div>
         </section>
 
+        <section id="tab-opportunities" class="tab-panel hidden">
+          <div class="grid metrics" id="opportunityDashboardCards" style="margin-bottom: 16px;"></div>
+          <div class="panel" style="margin-bottom: 16px;">
+            <div class="section-head">
+              <h2>积分消耗排行</h2>
+              <span class="subtle">按历史消耗排序，辅助识别高频资源用户</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>用户</th>
+                    <th>累计消耗</th>
+                  </tr>
+                </thead>
+                <tbody id="opportunityPointsRankTable"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="grid forms">
+            <div class="form-card">
+              <div class="section-head">
+                <h2>录入商机线索</h2>
+                <span class="subtle">先人工收录，后续再接自动来源</span>
+              </div>
+              <div class="form-grid">
+                <input id="opportunityLeadId" placeholder="线索 ID（编辑时自动填入）" readonly />
+                <input id="opportunityTitle" placeholder="线索标题" />
+                <textarea id="opportunitySummary" placeholder="一句话摘要"></textarea>
+                <div class="row">
+                  <input id="opportunityCity" placeholder="城市" />
+                  <input id="opportunityDistrict" placeholder="区域" />
+                </div>
+                <div class="row">
+                  <input id="opportunityIndustry" placeholder="行业" />
+                  <input id="opportunityDemandType" placeholder="需求类型，例如：找渠道" />
+                </div>
+                <textarea id="opportunityContent" placeholder="完整需求内容"></textarea>
+                <input id="opportunityTags" placeholder="标签，用逗号分隔" />
+                <div class="row">
+                  <select id="opportunityStatus">
+                    <option value="draft">草稿</option>
+                    <option value="published">发布</option>
+                    <option value="archived">归档</option>
+                    <option value="rejected">拒绝</option>
+                  </select>
+                  <select id="opportunityTrustStatus">
+                    <option value="pending">待审核</option>
+                    <option value="verified">可联系</option>
+                    <option value="risk">风险</option>
+                  </select>
+                </div>
+                <div class="row">
+                  <select id="opportunityContactStatus">
+                    <option value="pending_verify">联系待核验</option>
+                    <option value="available">有联系方式</option>
+                    <option value="masked">已脱敏</option>
+                    <option value="locked">需解锁</option>
+                    <option value="none">无联系方式</option>
+                  </select>
+                  <input id="opportunityExpiresAt" placeholder="过期时间 2026-07-10T18:00:00+08:00" />
+                </div>
+                <button class="primary" id="saveOpportunityBtn">保存线索</button>
+              </div>
+            </div>
+            <div class="form-card">
+              <div class="section-head">
+                <h2>来源与联系</h2>
+                <span class="subtle">前台默认不展示具体来源</span>
+              </div>
+              <div class="form-grid">
+                <div class="row">
+                  <input id="opportunitySourcePlatform" placeholder="来源平台" />
+                  <input id="opportunitySourceAuthor" placeholder="来源作者" />
+                </div>
+                <input id="opportunitySourceUrl" placeholder="来源链接" />
+                <textarea id="opportunityRawText" placeholder="原始文本，后台留档"></textarea>
+                <div class="row">
+                  <select id="opportunityContactType">
+                    <option value="phone">电话</option>
+                    <option value="wechat">微信</option>
+                    <option value="link">链接</option>
+                    <option value="other">其他</option>
+                  </select>
+                  <input id="opportunityContactValue" placeholder="联系方式" />
+                </div>
+                <input id="opportunityContactMasked" placeholder="脱敏展示，留空自动生成" />
+              </div>
+            </div>
+          </div>
+          <div class="panel" style="margin-top: 16px;">
+            <div class="section-head">
+              <h2>商机线索列表</h2>
+              <span class="subtle">点击行可载入编辑</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>标题</th>
+                    <th>城市 / 行业</th>
+                    <th>状态</th>
+                    <th>联系</th>
+                    <th>可信</th>
+                    <th>回应包</th>
+                    <th>更新时间</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="opportunityTable"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section id="tab-wallets" class="tab-panel hidden">
+          <div class="panel" style="margin-bottom: 16px;">
+            <div class="row">
+              <input id="walletKeyword" placeholder="搜昵称 / userId / openid" />
+              <button class="primary" id="searchWalletsBtn">搜索积分用户</button>
+            </div>
+          </div>
+          <div class="grid forms">
+            <div class="form-card">
+              <div class="section-head">
+                <h2>用户积分</h2>
+                <span class="subtle">点击用户行可带入右侧调整</span>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>用户</th>
+                      <th>余额</th>
+                      <th>累计发放</th>
+                      <th>累计消耗</th>
+                      <th>流水数</th>
+                      <th>最近流水</th>
+                    </tr>
+                  </thead>
+                  <tbody id="walletUserTable"></tbody>
+                </table>
+              </div>
+            </div>
+            <div class="form-card">
+              <div class="section-head">
+                <h2>调整积分</h2>
+                <span class="subtle">会写入积分流水</span>
+              </div>
+              <div class="form-grid">
+                <input id="walletAdjustUserId" placeholder="用户 ID" />
+                <input id="walletAdjustDelta" type="number" placeholder="调整分值，例如 20 或 -20" />
+                <input id="walletAdjustReason" placeholder="调整原因" />
+                <input id="walletAdjustOperator" placeholder="操作人" />
+                <button class="primary" id="adjustWalletBtn">提交调整</button>
+              </div>
+              <div class="tip">正数为补发积分，负数为扣减积分；调整后余额不能小于 0。</div>
+            </div>
+          </div>
+        </section>
+
+        <section id="tab-packages" class="tab-panel hidden">
+          <div class="panel" style="margin-bottom: 16px;">
+            <div class="row">
+              <input id="packageKeyword" placeholder="搜回应包 / 用户 / 商机" />
+              <button class="primary" id="searchPackagesBtn">搜索回应包</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>回应包</th>
+                  <th>用户</th>
+                  <th>商机</th>
+                  <th>资料数</th>
+                  <th>消耗</th>
+                  <th>状态</th>
+                  <th>最近打开</th>
+                  <th>创建时间</th>
+                </tr>
+              </thead>
+              <tbody id="responsePackageTable"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="tab-supplyreview" class="tab-panel hidden">
+          <div class="panel" style="margin-bottom: 16px;">
+            <div class="row">
+              <input id="supplyReviewKeyword" placeholder="搜标题 / 城市 / 行业" />
+              <select id="supplyReviewStatus">
+                <option value="">全部状态</option>
+                <option value="pending_review">待审核</option>
+                <option value="published">已通过</option>
+                <option value="rejected">已拒绝</option>
+                <option value="archived">已下架</option>
+              </select>
+            </div>
+            <div style="margin-top: 12px;">
+              <button class="primary" id="searchSupplyReviewBtn">搜索供给</button>
+              <button class="secondary" id="generateOpportunityPushBtn">生成站内推荐摘要</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>标题</th>
+                  <th>用户</th>
+                  <th>类型</th>
+                  <th>城市 / 行业</th>
+                  <th>状态</th>
+                  <th>资料</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="supplyReviewTable"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="tab-rulesamples" class="tab-panel hidden">
+          <div class="panel" style="margin-bottom: 16px;">
+            <div class="section-head">
+              <div>
+                <h2>规则样本池</h2>
+                <div class="subtle">用户把资料改成房源、商品或商机后，先进入这里审核，不直接影响全局规则。</div>
+              </div>
+              <button class="primary" id="refreshRuleSamplesBtn">刷新样本</button>
+            </div>
+            <div class="row">
+              <select id="ruleSampleStatus">
+                <option value="">全部状态</option>
+                <option value="pending">待审核</option>
+                <option value="approved">已确认</option>
+                <option value="rejected">已拒绝</option>
+                <option value="published">已发布为规则</option>
+              </select>
+              <select id="ruleSampleCardType">
+                <option value="">全部类型</option>
+                <option value="property_listing">房源</option>
+                <option value="groupbuy_product">商品</option>
+                <option value="service_offer">商机/服务</option>
+                <option value="business_card">名片</option>
+              </select>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>资料</th>
+                  <th>用户选择</th>
+                  <th>原类型</th>
+                  <th>状态</th>
+                  <th>样本文本</th>
+                  <th>更新时间</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="ruleSampleTable"></tbody>
+            </table>
+          </div>
+        </section>
+
         <section id="tab-feedback" class="tab-panel hidden">
           <div class="grid forms">
             <div class="form-card">
@@ -855,6 +1126,12 @@
     <script>
       const state = {
         uploadPreview: null,
+        opportunityLeads: [],
+        opportunityDashboard: null,
+        resourceWalletUsers: [],
+        responsePackages: [],
+        supplyReviewCards: [],
+        ruleLearningSamples: [],
         feedbackItems: [],
         joinWayItems: [],
         customerGroups: [],
@@ -878,9 +1155,16 @@
         document.getElementById("adminToken").value = localStorage.getItem("teamBuy:opsAdminToken") || "";
       }
 
+      function apiUrl(url) {
+        if (window.location.pathname.startsWith("/test-ops") && url.startsWith("/api/")) {
+          return `/test-api/${url.slice(5)}`;
+        }
+        return url;
+      }
+
       async function request(url, options = {}) {
         const headers = { "Content-Type": "application/json", "X-Admin-Token": getToken(), ...(options.headers || {}) };
-        const response = await fetch(url, { ...options, headers });
+        const response = await fetch(apiUrl(url), { ...options, headers });
         const payload = await response.json();
         if (!response.ok) {
           throw new Error(payload.detail || payload.message || "请求失败");
@@ -1082,6 +1366,131 @@
         `).join("") || `<tr><td colspan="8" class="subtle">暂无群发渠道，先保存一个测试群</td></tr>`;
       }
 
+      function renderOpportunityDashboard(data = {}) {
+        state.opportunityDashboard = data;
+        const summary = data.summary || {};
+        const cards = [
+          ["今日资源工具人数", summary.todayResourceUsers || 0],
+          ["今日积分消耗", summary.todayPointsConsumed || 0],
+          ["今日回应包", summary.todayResponsePackages || 0],
+          ["已发布线索", summary.publishedLeads || 0],
+          ["草稿线索", summary.draftLeads || 0],
+          ["已下架线索", summary.archivedLeads || 0],
+          ["已保存线索", summary.savedLeadCount || 0],
+          ["生成回应包线索", summary.responsePackageLeadCount || 0]
+        ];
+        document.getElementById("opportunityDashboardCards").innerHTML = cards.map(([label, value]) => `
+          <div class="metric">
+            <div class="metric-label">${label}</div>
+            <div class="metric-value">${value}</div>
+          </div>
+        `).join("");
+        document.getElementById("opportunityPointsRankTable").innerHTML = (data.pointsRank || []).map((item) => `
+          <tr>
+            <td>${item.nickname || item.userId}<div class="subtle">${item.userId}</div></td>
+            <td>${item.pointsConsumed}</td>
+          </tr>
+        `).join("") || `<tr><td colspan="2" class="subtle">暂无积分消耗</td></tr>`;
+      }
+
+      function renderOpportunities(items = []) {
+        state.opportunityLeads = items;
+        document.getElementById("opportunityTable").innerHTML = items.map((item) => `
+          <tr data-opportunity-id="${item.id}">
+            <td>${item.title}<div class="subtle">${item.summary || ""}</div></td>
+            <td>${item.city || "-"} / ${item.industry || "-"}</td>
+            <td>${item.status}</td>
+            <td>${item.contactStatus}</td>
+            <td>${item.trustStatus}</td>
+            <td>${item.responsePackageCount || 0}</td>
+            <td>${formatDate(item.updatedAt)}</td>
+            <td>
+              <button class="secondary" data-action="offline-opportunity" data-id="${item.id}" ${item.status === "archived" ? "disabled" : ""}>下架</button>
+            </td>
+          </tr>
+        `).join("") || `<tr><td colspan="8" class="subtle">暂无商机线索</td></tr>`;
+      }
+
+      function renderWalletUsers(items = []) {
+        state.resourceWalletUsers = items;
+        document.getElementById("walletUserTable").innerHTML = items.map((item) => `
+          <tr data-wallet-user-id="${item.userId}">
+            <td>${item.nickname || item.userId}<div class="subtle">${item.userId}</div></td>
+            <td>${item.balance ?? "未初始化"}</td>
+            <td>${item.totalGranted || 0}</td>
+            <td>${item.totalConsumed || 0}</td>
+            <td>${item.ledgerCount || 0}</td>
+            <td>${formatDate(item.lastLedgerAt)}</td>
+          </tr>
+        `).join("") || `<tr><td colspan="6" class="subtle">暂无积分用户</td></tr>`;
+      }
+
+      function renderResponsePackages(items = []) {
+        state.responsePackages = items;
+        document.getElementById("responsePackageTable").innerHTML = items.map((item) => `
+          <tr>
+            <td>${item.title}<div class="subtle">${item.id}</div></td>
+            <td>${item.ownerNickname || item.ownerUserId}<div class="subtle">${item.ownerUserId}</div></td>
+            <td>${item.leadTitle || item.leadId}</td>
+            <td>${item.itemCount || 0}</td>
+            <td>${item.usedFreeQuota ? "免费额度" : `${item.costPoints || 0} 分`}</td>
+            <td>${item.status}</td>
+            <td>${formatDate(item.lastViewedAt)}</td>
+            <td>${formatDate(item.createdAt)}</td>
+          </tr>
+        `).join("") || `<tr><td colspan="8" class="subtle">暂无回应包记录</td></tr>`;
+      }
+
+      function renderSupplyReviewCards(items = []) {
+        state.supplyReviewCards = items;
+        document.getElementById("supplyReviewTable").innerHTML = items.map((item) => `
+          <tr data-supply-card-id="${item.id}">
+            <td>${item.title}<div class="subtle">${item.summary || ""}</div></td>
+            <td>${item.ownerNickname || item.ownerUserId}<div class="subtle">${item.ownerUserId}</div></td>
+            <td>${item.cardType === "demand" ? "需求" : "供给"}</td>
+            <td>${item.city || "-"} / ${item.industry || "-"}</td>
+            <td>${item.status}</td>
+            <td>${item.linkedNoteTitle || item.linkedNoteId || "-"}</td>
+            <td>
+              <button class="secondary" data-action="review-supply" data-id="${item.id}" data-status="published">通过</button>
+              <button class="secondary" data-action="review-supply" data-id="${item.id}" data-status="rejected">拒绝</button>
+              <button class="secondary" data-action="review-supply" data-id="${item.id}" data-status="archived">下架</button>
+            </td>
+          </tr>
+        `).join("") || `<tr><td colspan="7" class="subtle">暂无供给审核数据</td></tr>`;
+      }
+
+      function renderRuleLearningSamples(items = []) {
+        state.ruleLearningSamples = items;
+        const labels = {
+          property_listing: "房源",
+          groupbuy_product: "商品",
+          service_offer: "商机/服务",
+          business_card: "名片",
+          text_note: "普通笔记"
+        };
+        const statusLabels = {
+          pending: "待审核",
+          approved: "已确认",
+          rejected: "已拒绝",
+          published: "已发布"
+        };
+        document.getElementById("ruleSampleTable").innerHTML = items.map((item) => `
+          <tr data-rule-sample-id="${item.id}">
+            <td>${item.title || "-"}<div class="subtle">${item.noteId || "-"} · ${item.ownerUserId || "-"}</div></td>
+            <td>${labels[item.selectedCardType] || item.selectedLabel || item.selectedCardType}</td>
+            <td>${labels[item.previousCardType] || item.previousCardType || "-"}</td>
+            <td><span class="badge ${item.status === "pending" ? "warn" : ""}">${statusLabels[item.status] || item.status}</span></td>
+            <td><div style="max-width: 360px; white-space: normal; line-height: 1.5;">${(item.rawText || "").slice(0, 180)}</div></td>
+            <td>${formatDate(item.updatedAt)}</td>
+            <td>
+              <button class="secondary" data-action="review-rule-sample" data-id="${item.id}" data-status="approved">确认</button>
+              <button class="secondary" data-action="review-rule-sample" data-id="${item.id}" data-status="rejected">拒绝</button>
+            </td>
+          </tr>
+        `).join("") || `<tr><td colspan="7" class="subtle">暂无规则样本。用户在资料详情里手动切换类型后会进入这里。</td></tr>`;
+      }
+
       function renderFeedback(items = []) {
         state.feedbackItems = items;
         document.getElementById("feedbackTable").innerHTML = items.map((item) => `
@@ -1172,6 +1581,64 @@
         renderBotChannels(data || []);
       }
 
+      async function loadOpportunityDashboard() {
+        const data = await request("/api/ops/opportunity-dashboard");
+        renderOpportunityDashboard(data || {});
+      }
+
+      async function loadOpportunities() {
+        const data = await request("/api/ops/opportunity-leads");
+        renderOpportunities(data || []);
+      }
+
+      async function loadWalletUsers() {
+        const keyword = document.getElementById("walletKeyword").value.trim();
+        const data = await request(`/api/ops/resource-wallet/users${keyword ? `?keyword=${encodeURIComponent(keyword)}` : ""}`);
+        renderWalletUsers(data.items || []);
+      }
+
+      async function loadResponsePackages() {
+        const keyword = document.getElementById("packageKeyword").value.trim();
+        const data = await request(`/api/ops/response-packages${keyword ? `?keyword=${encodeURIComponent(keyword)}` : ""}`);
+        renderResponsePackages(data.items || []);
+      }
+
+      async function loadSupplyReviewCards() {
+        const keyword = document.getElementById("supplyReviewKeyword").value.trim();
+        const status = document.getElementById("supplyReviewStatus").value;
+        const query = [];
+        if (keyword) query.push(`keyword=${encodeURIComponent(keyword)}`);
+        if (status) query.push(`status=${encodeURIComponent(status)}`);
+        const data = await request(`/api/ops/supply-demand/cards${query.length ? `?${query.join("&")}` : ""}`);
+        renderSupplyReviewCards(data.items || []);
+      }
+
+      async function loadRuleLearningSamples() {
+        const status = document.getElementById("ruleSampleStatus").value;
+        const cardType = document.getElementById("ruleSampleCardType").value;
+        const query = [];
+        if (status) query.push(`status=${encodeURIComponent(status)}`);
+        if (cardType) query.push(`cardType=${encodeURIComponent(cardType)}`);
+        const data = await request(`/api/ops-admin/rule-learning-samples${query.length ? `?${query.join("&")}` : ""}`);
+        renderRuleLearningSamples(data || []);
+      }
+
+      async function reviewRuleLearningSample(sampleId, status) {
+        await request(`/api/ops-admin/rule-learning-samples/${sampleId}`, {
+          method: "PATCH",
+          body: JSON.stringify({ status, operatorName: "ops" })
+        });
+        await loadRuleLearningSamples();
+      }
+
+      async function generateOpportunityPushDigests() {
+        const data = await request("/api/ops/opportunity-push-digests/generate", {
+          method: "POST",
+          body: "{}"
+        });
+        alert(`已生成 ${data.total || 0} 条站内推荐摘要${(data.failed || []).length ? `，失败 ${data.failed.length} 条` : ""}`);
+      }
+
       async function loadFeedback() {
         const data = await request("/api/ops-admin/feedback");
         renderFeedback(data || []);
@@ -1192,6 +1659,12 @@
           loadSingleGroups(),
           loadJoinWays(),
           loadBotChannels(),
+          loadOpportunityDashboard(),
+          loadOpportunities(),
+          loadWalletUsers(),
+          loadResponsePackages(),
+          loadSupplyReviewCards(),
+          loadRuleLearningSamples(),
           loadFeedback(),
           loadQueue()
         ]);
@@ -1201,7 +1674,7 @@
         if (!state.batchFile) throw new Error("请先选择 Excel 或 CSV 文件");
         const formData = new FormData();
         formData.append("file", state.batchFile);
-        const response = await fetch("/api/ops-admin/group-upload/preview-file", {
+        const response = await fetch(apiUrl("/api/ops-admin/group-upload/preview-file"), {
           method: "POST",
           headers: { "X-Admin-Token": getToken() },
           body: formData
@@ -1218,7 +1691,7 @@
         formData.append("file", state.batchFile);
         formData.append("batchName", document.getElementById("batchName").value);
         formData.append("operatorName", document.getElementById("operatorName").value);
-        const response = await fetch("/api/ops-admin/group-upload/batches-file", {
+        const response = await fetch(apiUrl("/api/ops-admin/group-upload/batches-file"), {
           method: "POST",
           headers: { "X-Admin-Token": getToken() },
           body: formData
@@ -1314,6 +1787,86 @@
         await loadBotChannels();
       }
 
+      async function saveOpportunity() {
+        const tags = (document.getElementById("opportunityTags").value || "")
+          .split(/[,，]/)
+          .map((item) => item.trim())
+          .filter(Boolean);
+        const contactValue = document.getElementById("opportunityContactValue").value;
+        await request("/api/ops/opportunity-leads", {
+          method: "POST",
+          body: JSON.stringify({
+            id: document.getElementById("opportunityLeadId").value || null,
+            title: document.getElementById("opportunityTitle").value,
+            summary: document.getElementById("opportunitySummary").value,
+            city: document.getElementById("opportunityCity").value,
+            district: document.getElementById("opportunityDistrict").value,
+            industry: document.getElementById("opportunityIndustry").value,
+            demandType: document.getElementById("opportunityDemandType").value,
+            content: document.getElementById("opportunityContent").value,
+            tags,
+            status: document.getElementById("opportunityStatus").value,
+            trustStatus: document.getElementById("opportunityTrustStatus").value,
+            contactStatus: document.getElementById("opportunityContactStatus").value,
+            expiresAt: document.getElementById("opportunityExpiresAt").value || null,
+            source: {
+              sourcePlatform: document.getElementById("opportunitySourcePlatform").value,
+              sourceUrl: document.getElementById("opportunitySourceUrl").value,
+              sourceAuthor: document.getElementById("opportunitySourceAuthor").value,
+              rawText: document.getElementById("opportunityRawText").value
+            },
+            contacts: contactValue ? [{
+              contactType: document.getElementById("opportunityContactType").value,
+              contactValue,
+              contactMasked: document.getElementById("opportunityContactMasked").value
+            }] : []
+          })
+        });
+        document.getElementById("opportunityLeadId").value = "";
+        document.getElementById("opportunityTitle").value = "";
+        document.getElementById("opportunitySummary").value = "";
+        document.getElementById("opportunityContent").value = "";
+        document.getElementById("opportunityContactValue").value = "";
+        document.getElementById("opportunityContactMasked").value = "";
+        await loadOpportunityDashboard();
+        await loadOpportunities();
+      }
+
+      async function offlineOpportunity(leadId) {
+        if (!leadId) return;
+        if (!window.confirm("确认下架这条商机线索？下架后小程序不可见。")) return;
+        await request(`/api/ops/opportunity-leads/${leadId}/offline`, { method: "POST", body: "{}" });
+        await Promise.all([loadOpportunityDashboard(), loadOpportunities()]);
+      }
+
+      async function adjustWallet() {
+        const userId = document.getElementById("walletAdjustUserId").value.trim();
+        const pointsDelta = Number(document.getElementById("walletAdjustDelta").value || 0);
+        if (!userId) throw new Error("请先填写用户 ID");
+        if (!pointsDelta) throw new Error("调整分值不能为 0");
+        await request(`/api/ops/resource-wallet/users/${encodeURIComponent(userId)}/adjust`, {
+          method: "POST",
+          body: JSON.stringify({
+            userId,
+            pointsDelta,
+            reason: document.getElementById("walletAdjustReason").value,
+            operatorId: document.getElementById("walletAdjustOperator").value
+          })
+        });
+        document.getElementById("walletAdjustDelta").value = "";
+        document.getElementById("walletAdjustReason").value = "";
+        await Promise.all([loadOpportunityDashboard(), loadWalletUsers()]);
+      }
+
+      async function reviewSupplyCard(cardId, status) {
+        const note = window.prompt("审核备注（可留空）", "") || "";
+        await request(`/api/ops/supply-demand/cards/${cardId}/review`, {
+          method: "POST",
+          body: JSON.stringify({ status, reviewNote: note })
+        });
+        await loadSupplyReviewCards();
+      }
+
       async function createFeedback() {
         await request("/api/ops-admin/feedback", {
           method: "POST",
@@ -1368,6 +1921,12 @@
         document.getElementById("createJoinWayBtn").addEventListener("click", () => createJoinWay().catch((error) => alert(error.message)));
         document.getElementById("loadCustomerGroupsBtn").addEventListener("click", () => loadCustomerGroups().catch((error) => alert(error.message)));
         document.getElementById("saveBotChannelBtn").addEventListener("click", () => saveBotChannel().catch((error) => alert(error.message)));
+        document.getElementById("saveOpportunityBtn").addEventListener("click", () => saveOpportunity().catch((error) => alert(error.message)));
+        document.getElementById("searchWalletsBtn").addEventListener("click", () => loadWalletUsers().catch((error) => alert(error.message)));
+        document.getElementById("adjustWalletBtn").addEventListener("click", () => adjustWallet().catch((error) => alert(error.message)));
+        document.getElementById("searchPackagesBtn").addEventListener("click", () => loadResponsePackages().catch((error) => alert(error.message)));
+        document.getElementById("searchSupplyReviewBtn").addEventListener("click", () => loadSupplyReviewCards().catch((error) => alert(error.message)));
+        document.getElementById("generateOpportunityPushBtn").addEventListener("click", () => generateOpportunityPushDigests().catch((error) => alert(error.message)));
         document.getElementById("createFeedbackBtn").addEventListener("click", () => createFeedback().catch((error) => alert(error.message)));
         document.getElementById("updateFeedbackBtn").addEventListener("click", () => updateFeedback().catch((error) => alert(error.message)));
         document.getElementById("purposeChips").addEventListener("click", (event) => {
@@ -1417,6 +1976,57 @@
           document.getElementById("botChannelRemark").value = item.remark || "";
           document.getElementById("botChannelEnabled").value = item.enabled ? "true" : "false";
         });
+        document.getElementById("opportunityTable").addEventListener("click", (event) => {
+          const actionButton = event.target.closest("[data-action='offline-opportunity']");
+          if (actionButton) {
+            offlineOpportunity(actionButton.dataset.id).catch((error) => alert(error.message));
+            return;
+          }
+          const row = event.target.closest("tr[data-opportunity-id]");
+          if (!row) return;
+          const item = state.opportunityLeads.find((lead) => lead.id === row.dataset.opportunityId);
+          if (!item) return;
+          const source = (item.sources || [])[0] || {};
+          const contact = (item.contacts || [])[0] || {};
+          document.getElementById("opportunityLeadId").value = item.id || "";
+          document.getElementById("opportunityTitle").value = item.title || "";
+          document.getElementById("opportunitySummary").value = item.summary || "";
+          document.getElementById("opportunityCity").value = item.city || "";
+          document.getElementById("opportunityDistrict").value = item.district || "";
+          document.getElementById("opportunityIndustry").value = item.industry || "";
+          document.getElementById("opportunityDemandType").value = item.demandType || "需求";
+          document.getElementById("opportunityContent").value = item.content || "";
+          document.getElementById("opportunityTags").value = (item.tags || []).join("，");
+          document.getElementById("opportunityStatus").value = item.status || "draft";
+          document.getElementById("opportunityTrustStatus").value = item.trustStatus || "pending";
+          document.getElementById("opportunityContactStatus").value = item.contactStatus || "pending_verify";
+          document.getElementById("opportunityExpiresAt").value = item.expiresAt || "";
+          document.getElementById("opportunitySourcePlatform").value = source.sourcePlatform || "";
+          document.getElementById("opportunitySourceAuthor").value = source.sourceAuthor || "";
+          document.getElementById("opportunitySourceUrl").value = source.sourceUrl || "";
+          document.getElementById("opportunityRawText").value = source.rawText || "";
+          document.getElementById("opportunityContactType").value = contact.contactType || "phone";
+          document.getElementById("opportunityContactValue").value = contact.contactValueEncrypted || "";
+          document.getElementById("opportunityContactMasked").value = contact.contactMasked || "";
+        });
+        document.getElementById("walletUserTable").addEventListener("click", (event) => {
+          const row = event.target.closest("tr[data-wallet-user-id]");
+          if (!row) return;
+          document.getElementById("walletAdjustUserId").value = row.dataset.walletUserId || "";
+        });
+        document.getElementById("supplyReviewTable").addEventListener("click", (event) => {
+          const button = event.target.closest("[data-action='review-supply']");
+          if (!button) return;
+          reviewSupplyCard(button.dataset.id, button.dataset.status).catch((error) => alert(error.message));
+        });
+        document.getElementById("ruleSampleTable").addEventListener("click", (event) => {
+          const button = event.target.closest("[data-action='review-rule-sample']");
+          if (!button) return;
+          reviewRuleLearningSample(button.dataset.id, button.dataset.status).catch((error) => alert(error.message));
+        });
+        document.getElementById("refreshRuleSamplesBtn").addEventListener("click", () => loadRuleLearningSamples().catch((error) => alert(error.message)));
+        document.getElementById("ruleSampleStatus").addEventListener("change", () => loadRuleLearningSamples().catch((error) => alert(error.message)));
+        document.getElementById("ruleSampleCardType").addEventListener("change", () => loadRuleLearningSamples().catch((error) => alert(error.message)));
         document.getElementById("feedbackTable").addEventListener("click", (event) => {
           const row = event.target.closest("tr[data-feedback-id]");
           if (!row) return;

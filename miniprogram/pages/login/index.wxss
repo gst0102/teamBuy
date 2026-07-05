@@ -115,6 +115,15 @@ page {
   background: #e5eee9;
 }
 
+.mini-cover-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #0f7a4c;
+  font-size: 42rpx;
+  font-weight: 950;
+}
+
 .mini-body {
   min-width: 0;
 }
@@ -285,6 +294,48 @@ page {
 
 .login-panel {
   padding-bottom: 30rpx;
+}
+
+.legal-agree-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 14rpx;
+  margin-top: 22rpx;
+  color: #667085;
+  font-size: 22rpx;
+  line-height: 1.5;
+}
+
+.legal-checkbox {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32rpx;
+  height: 32rpx;
+  margin-top: 2rpx;
+  border: 2rpx solid #cbd5e1;
+  border-radius: 8rpx;
+  color: #ffffff;
+  font-size: 22rpx;
+  font-weight: 900;
+  line-height: 1;
+  box-sizing: border-box;
+}
+
+.legal-checkbox.checked {
+  border-color: #0f7a4c;
+  background: #0f7a4c;
+}
+
+.legal-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.legal-copy text {
+  color: #1662c4;
+  font-weight: 900;
 }
 
 .wechat-btn,

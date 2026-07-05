@@ -1,5 +1,5 @@
 const NOISY_LABELS = new Set(["未整理", "待整理", "待跟进", "已整理", "房源候选", "团购候选"]);
-const PROPERTY_CONTEXT_LABELS = ["房产", "房源", "租房", "小区", "公寓", "万家丽", "高桥北", "汽车东站", "袁隆平地铁口", "高桥"];
+const PROPERTY_CONTEXT_LABELS = ["房产", "房源", "租房", "小区", "公寓", "人民广场", "五一广场"];
 const { getSalesPageTemplate } = require("./sales-page-templates");
 
 const CARD_TYPE_LABELS = {

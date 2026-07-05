@@ -1,0 +1,152 @@
+.my-publish-page {
+  padding-bottom: 56rpx;
+}
+
+.my-hero,
+.publish-card,
+.application-card,
+.empty-panel {
+  width: 100%;
+  border: 1rpx solid #dbe6f7;
+  border-radius: 24rpx;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 16rpx 40rpx rgba(31, 88, 168, 0.08);
+  box-sizing: border-box;
+}
+
+.my-hero {
+  margin-top: 14rpx;
+  padding: 30rpx 26rpx;
+  background: linear-gradient(135deg, #f0f7ff, #ffffff 58%, #eefcf5);
+}
+
+.hero-kicker {
+  color: #079455;
+  font-size: 22rpx;
+  font-weight: 900;
+}
+
+.hero-title {
+  margin-top: 8rpx;
+  color: #101828;
+  font-size: 40rpx;
+  font-weight: 900;
+}
+
+.hero-sub,
+.card-summary,
+.empty-panel {
+  margin-top: 12rpx;
+  color: #667085;
+  font-size: 23rpx;
+  line-height: 1.45;
+}
+
+.my-hero button,
+.actions button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 62rpx;
+  margin: 18rpx 0 0;
+  padding: 0 28rpx;
+  border-radius: 999rpx;
+  color: #ffffff;
+  background: #1677ff;
+  font-size: 23rpx;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.publish-card {
+  margin-top: 16rpx;
+  padding: 24rpx;
+}
+
+.application-card {
+  margin-top: 16rpx;
+  padding: 24rpx;
+}
+
+.section-head {
+  margin: 28rpx 4rpx 12rpx;
+}
+
+.section-title {
+  color: #101828;
+  font-size: 28rpx;
+  font-weight: 900;
+}
+
+.section-sub {
+  margin-top: 6rpx;
+  color: #667085;
+  font-size: 22rpx;
+}
+
+.card-head,
+.meta-row,
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  align-items: center;
+}
+
+.status-pill,
+.type-pill,
+.meta-row text {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42rpx;
+  padding: 0 16rpx;
+  border-radius: 999rpx;
+  color: #1677ff;
+  background: #eaf2ff;
+  font-size: 21rpx;
+  font-weight: 900;
+}
+
+.type-pill {
+  color: #027a48;
+  background: #dcfae6;
+}
+
+.card-title {
+  margin-top: 18rpx;
+  color: #101828;
+  font-size: 31rpx;
+  line-height: 1.28;
+  font-weight: 900;
+}
+
+.meta-row {
+  margin-top: 16rpx;
+}
+
+.meta-row text {
+  color: #344054;
+  background: #f2f4f7;
+  font-size: 20rpx;
+}
+
+.actions {
+  justify-content: center;
+  margin-top: 18rpx;
+}
+
+.actions button {
+  flex: 0 1 220rpx;
+  margin-top: 0;
+  color: #1677ff;
+  background: #eef5ff;
+}
+
+.empty-panel {
+  padding: 26rpx;
+}
+
+button::after {
+  border: 0;
+}

@@ -270,7 +270,11 @@
           <block wx:for="{{propertyFields}}" wx:key="key">
             <view class="field">
               <view class="label">{{item.label}}</view>
-              <input class="input" value="{{item.value}}" data-key="{{item.key}}" bindinput="handleStructuredInput" placeholder="{{item.placeholder}}" />
+              <view class="unit-input-wrap" wx:if="{{item.unit}}">
+                <input class="input unit-input" type="{{item.inputType || 'text'}}" value="{{item.value}}" data-key="{{item.key}}" bindinput="handleStructuredInput" placeholder="{{item.placeholder}}" />
+                <text class="field-unit">{{item.unit}}</text>
+              </view>
+              <input wx:else class="input" type="{{item.inputType || 'text'}}" value="{{item.value}}" data-key="{{item.key}}" bindinput="handleStructuredInput" placeholder="{{item.placeholder}}" />
               <view class="quick-options" wx:if="{{item.quickOptions.length}}">
                 <block wx:for="{{item.quickOptions}}" wx:for-item="option" wx:key="*this">
                   <text data-key="{{item.key}}" data-value="{{option}}" bindtap="handleQuickFieldOption">{{option}}</text>
@@ -311,6 +315,35 @@
         </view>
       </view>
       <view class="hidden-tip" wx:else>这个板块已隐藏，客户页不展示。</view>
+    </view>
+
+    <view class="form-panel block-panel upstream-private-panel" wx:if="{{isProperty && activePropertyDetailTab === 'edit'}}">
+      <view class="block-head">
+        <view>
+          <view class="section-title">仅自己可见：上游备注</view>
+          <view class="section-hint">上游联系方式、中介费、密码锁和看房备注只在你的账号里保存，客户页不展示。</view>
+        </view>
+        <button wx:if="{{upstreamPrivateInfo.copyText}}" class="text-btn upstream-copy-all" hover-class="copy-btn-active" data-scope="all" bindtap="handleCopyUpstreamPrivateInfo">复制全部</button>
+      </view>
+      <view class="upstream-private-list" wx:if="{{upstreamPrivateInfo.visible}}">
+        <view class="upstream-private-row" wx:for="{{upstreamPrivateInfo.rows}}" wx:key="key">
+          <view class="upstream-private-main">
+            <view class="upstream-private-label">{{item.label}}</view>
+            <view class="upstream-private-value">{{item.value}}</view>
+          </view>
+          <button class="upstream-copy-btn" hover-class="copy-btn-active" data-text="{{item.copyText}}" bindtap="handleCopyUpstreamPrivateInfo">复制</button>
+        </view>
+      </view>
+      <view class="upstream-private-edit-list">
+        <block wx:for="{{upstreamPrivateFields}}" wx:key="key">
+          <view class="field">
+            <view class="label">{{item.label}}</view>
+            <textarea wx:if="{{item.multiline}}" class="textarea small upstream-private-textarea" value="{{item.value}}" data-key="{{item.key}}" bindinput="handleUpstreamPrivateInput" placeholder="{{item.placeholder}}"></textarea>
+            <input wx:else class="input" value="{{item.value}}" data-key="{{item.key}}" bindinput="handleUpstreamPrivateInput" placeholder="{{item.placeholder}}" />
+          </view>
+        </block>
+      </view>
+      <view class="upstream-private-foot">这些内容不会进入客户预览、公开分享页或生成同款的公开资料。</view>
     </view>
 
     <view class="form-panel block-panel" wx:if="{{isGroupbuy && activePropertyDetailTab === 'edit'}}">

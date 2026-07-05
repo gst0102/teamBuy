@@ -1,10 +1,10 @@
 <view class="page-shell">
-  <custom-nav title="我的笔记" />
+  <custom-nav title="资料库" />
 
   <view class="notes-header">
     <view>
-      <view class="notes-title">我的笔记</view>
-      <view class="notes-subtitle">从企业微信和手动整理沉淀的资料</view>
+      <view class="notes-title">统一资料库</view>
+      <view class="notes-subtitle">房源、商机、服务和日常资料都在这里</view>
     </view>
     <view class="notes-tools">
       <view class="notes-count">{{notes.length}}</view>
@@ -33,7 +33,7 @@
   </view>
 
   <view class="filter-row">
-    <view class="filter-title">分类</view>
+    <view class="filter-title">类型</view>
     <view class="filter-line">
       <block wx:for="{{categoryQuickFilters}}" wx:key="value">
         <text class="filter-chip {{activeCategoryKey === item.key ? 'active' : ''}}" data-mode="{{item.mode}}" data-value="{{item.value}}" data-key="{{item.key}}" bindtap="handleCategoryFilter">{{item.label}}</text>
@@ -75,7 +75,7 @@
   </view>
 
   <view class="list-meta">
-    <text>共 {{notes.length}} 条</text>
+    <text>显示 {{notes.length}} / {{allNotes.length}} 条</text>
     <text class="{{activeSystemCategory === '待整理' ? 'active' : ''}}" bindtap="handleUnorganizedFilter">未整理</text>
     <text bindtap="handleSortToggle">{{sort === 'collected' ? '按收藏时间' : '按更新时间'}}</text>
   </view>

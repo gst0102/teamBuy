@@ -81,6 +81,24 @@
   white-space: nowrap;
 }
 
+.home-main-actions {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+
+.home-main-actions .hero-scene-pill {
+  min-height: 54rpx;
+  padding: 0 22rpx;
+  background: #ffffff;
+  color: #1677ff;
+  box-shadow: 0 8rpx 20rpx rgba(31, 88, 168, 0.07);
+}
+
+.home-main-actions .hero-scene-pill.primary {
+  background: #1677ff;
+  color: #ffffff;
+}
+
 .hero-soft-tip {
   min-width: 0;
   color: #718096;
@@ -456,7 +474,7 @@
 .assistant-action {
   position: relative;
   display: grid;
-  grid-template-columns: 58rpx minmax(0, 1fr);
+  grid-template-columns: 58rpx minmax(0, 1fr) auto;
   align-items: center;
   gap: 14rpx;
   min-width: 0;
@@ -940,7 +958,7 @@
   }
 
   .hero-bottomline {
-    flex-direction: column;
+    flex-direction: row;
     align-items: flex-start;
   }
 

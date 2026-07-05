@@ -67,3 +67,49 @@ class FeedbackTicketUpdateRequest(BaseModel):
     replyText: str | None = None
     rewardNote: str | None = None
     operatorName: str | None = None
+
+
+class RuleLearningSampleUpdateRequest(BaseModel):
+    status: str | None = None
+    operatorName: str | None = None
+    reviewNote: str | None = None
+
+
+class OpportunityLeadContactPayload(BaseModel):
+    contactType: str = Field(default="wechat")
+    contactValue: str = Field(default="")
+    contactMasked: str | None = None
+    verifyStatus: str = Field(default="pending")
+
+
+class OpportunityLeadSourcePayload(BaseModel):
+    sourcePlatform: str | None = None
+    sourceUrl: str | None = None
+    sourceAuthor: str | None = None
+    sourcePublishedAt: str | None = None
+    rawText: str = Field(default="")
+    rawImages: list[str] = Field(default_factory=list)
+
+
+class OpportunityLeadUpsertRequest(BaseModel):
+    id: str | None = None
+    title: str = Field(default="")
+    summary: str = Field(default="")
+    city: str | None = None
+    district: str | None = None
+    industry: str | None = None
+    demandType: str = Field(default="需求")
+    content: str = Field(default="")
+    tags: list[str] = Field(default_factory=list)
+    contactStatus: str = Field(default="pending_verify")
+    trustStatus: str = Field(default="pending")
+    status: str = Field(default="draft")
+    priority: str | None = None
+    expiresAt: str | None = None
+    source: OpportunityLeadSourcePayload | None = None
+    contacts: list[OpportunityLeadContactPayload] = Field(default_factory=list)
+
+
+class SupplyDemandReviewRequest(BaseModel):
+    status: str = Field(default="published")
+    reviewNote: str | None = None

@@ -11,18 +11,21 @@ from app.api.routes_auth import router as auth_router
 from app.api.routes_cards import router as cards_router
 from app.api.routes_dashboard import router as dashboard_router
 from app.api.routes_enterprise_resources import router as enterprise_resources_router
+from app.api.routes_h5 import router as h5_router
 from app.api.routes_imports import router as imports_router
 from app.api.routes_location import router as location_router
 from app.api.routes_messages import router as messages_router
 from app.api.routes_notes import router as notes_router
 from app.api.routes_ocr import router as ocr_router
+from app.api.routes_opportunities import packages_router, push_router, router as opportunities_router, subscriptions_router, supply_demand_router
 from app.api.routes_ops_admin import router as ops_admin_router
 from app.api.routes_orders import router as orders_router
 from app.api.routes_robot import router as robot_router
+from app.api.routes_resource_wallet import router as resource_wallet_router
 from app.api.routes_showcases import router as showcases_router
 from app.api.routes_skills import router as skills_router
 from app.api.routes_wecom import recover_persisted_sync_tasks, router as wecom_router
-from app.api.dependencies import get_wecom_archive_worker
+from app.api.dependencies import get_ocr_task_worker, get_wecom_archive_worker, register_background_task_handlers
 from app.core.config import settings
 from app.core.database import DatabaseConfigError, check_postgres_connection, validate_database_settings
 
@@ -31,12 +34,17 @@ mimetypes.add_type("image/webp", ".webp")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await recover_persisted_sync_tasks()
+    register_background_task_handlers()
     archive_worker = get_wecom_archive_worker()
-    archive_worker.start()
+    ocr_task_worker = get_ocr_task_worker()
+    if settings.background_tasks_in_api:
+        await recover_persisted_sync_tasks()
+        archive_worker.start()
+        ocr_task_worker.start()
     try:
         yield
     finally:
+        await ocr_task_worker.stop()
         await archive_worker.stop()
 
 
@@ -51,6 +59,7 @@ app.add_middleware(
 )
 
 app.include_router(auth_router)
+app.include_router(h5_router)
 app.include_router(imports_router)
 app.include_router(cards_router)
 app.include_router(dashboard_router)
@@ -59,12 +68,18 @@ app.include_router(wecom_router)
 app.include_router(skills_router)
 app.include_router(notes_router)
 app.include_router(ocr_router)
+app.include_router(opportunities_router)
+app.include_router(packages_router)
+app.include_router(subscriptions_router)
+app.include_router(supply_demand_router)
+app.include_router(push_router)
 app.include_router(ops_admin_router)
 app.include_router(orders_router)
 app.include_router(robot_router)
 app.include_router(showcases_router)
 app.include_router(messages_router)
 app.include_router(location_router)
+app.include_router(resource_wallet_router)
 
 settings.media_storage_dir.mkdir(parents=True, exist_ok=True)
 app.mount(

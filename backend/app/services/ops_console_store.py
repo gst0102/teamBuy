@@ -77,6 +77,25 @@ class FeedbackTicket(BaseModel):
     updatedAt: str
 
 
+class RuleLearningSample(BaseModel):
+    id: str
+    noteId: str | None = None
+    ownerUserId: str | None = None
+    title: str = ""
+    rawText: str = ""
+    previousCardType: str | None = None
+    selectedCardType: str
+    selectedLabel: str | None = None
+    source: str = "note_confirm_type"
+    status: str = "pending"
+    recognition: dict = Field(default_factory=dict)
+    tags: list[str] = Field(default_factory=list)
+    operatorName: str | None = None
+    reviewNote: str | None = None
+    createdAt: str
+    updatedAt: str
+
+
 class WecomGroupJoinWayConfig(BaseModel):
     id: str
     configId: str
@@ -113,6 +132,7 @@ class OpsConsoleState(BaseModel):
     singleGroupResources: list[SingleGroupResource] = Field(default_factory=list)
     groupUploadBatches: list[GroupUploadBatch] = Field(default_factory=list)
     feedbackTickets: list[FeedbackTicket] = Field(default_factory=list)
+    ruleLearningSamples: list[RuleLearningSample] = Field(default_factory=list)
     wecomGroupJoinWays: list[WecomGroupJoinWayConfig] = Field(default_factory=list)
     groupBotChannels: list[GroupBotChannel] = Field(default_factory=list)
 
@@ -380,6 +400,91 @@ class OpsConsoleStore:
         if status:
             tickets = [item for item in tickets if item.status == status]
         return [item.model_dump() for item in tickets]
+
+    def create_rule_learning_sample(
+        self,
+        *,
+        note_id: str | None,
+        owner_user_id: str | None,
+        title: str,
+        raw_text: str,
+        previous_card_type: str | None,
+        selected_card_type: str,
+        selected_label: str | None = None,
+        source: str = "note_confirm_type",
+        recognition: dict | None = None,
+        tags: list[str] | None = None,
+    ) -> dict:
+        now = now_iso()
+        clean_title = (title or "").strip()
+        clean_text = (raw_text or "").strip()
+        state = self.load()
+        existing = next(
+            (
+                item
+                for item in state.ruleLearningSamples
+                if note_id and item.noteId == note_id and item.selectedCardType == selected_card_type
+            ),
+            None,
+        )
+        if existing:
+            existing.title = clean_title or existing.title
+            existing.rawText = clean_text or existing.rawText
+            existing.previousCardType = previous_card_type or existing.previousCardType
+            existing.selectedLabel = selected_label or existing.selectedLabel
+            existing.recognition = recognition or existing.recognition
+            existing.tags = tags or existing.tags
+            existing.updatedAt = now
+            record = existing
+        else:
+            record = RuleLearningSample(
+                id=new_id("rule_sample"),
+                noteId=note_id,
+                ownerUserId=owner_user_id,
+                title=clean_title,
+                rawText=clean_text[:3000],
+                previousCardType=previous_card_type,
+                selectedCardType=selected_card_type,
+                selectedLabel=selected_label,
+                source=source,
+                recognition=recognition or {},
+                tags=tags or [],
+                createdAt=now,
+                updatedAt=now,
+            )
+            state.ruleLearningSamples.insert(0, record)
+        self.save(state)
+        return record.model_dump()
+
+    def list_rule_learning_samples(self, status: str | None = None, card_type: str | None = None) -> list[dict]:
+        samples = self.load().ruleLearningSamples
+        if status:
+            samples = [item for item in samples if item.status == status]
+        if card_type:
+            samples = [item for item in samples if item.selectedCardType == card_type]
+        return [item.model_dump() for item in samples]
+
+    def update_rule_learning_sample(
+        self,
+        sample_id: str,
+        *,
+        status: str | None = None,
+        operator_name: str | None = None,
+        review_note: str | None = None,
+    ) -> dict | None:
+        state = self.load()
+        sample = next((item for item in state.ruleLearningSamples if item.id == sample_id), None)
+        if not sample:
+            return None
+        if status:
+            sample.status = status
+        if operator_name is not None:
+            sample.operatorName = operator_name.strip() or None
+        if review_note is not None:
+            sample.reviewNote = review_note.strip() or None
+        sample.updatedAt = now_iso()
+        self.save(state)
+        return sample.model_dump()
 
     def create_feedback_ticket(
         self,

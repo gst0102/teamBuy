@@ -39,7 +39,7 @@ async function listCards(params = {}, options = {}) {
   if (!options.force) {
     const cached = wx.getStorageSync(storageKey("cards", params.ownerUserId));
     if (Array.isArray(cached) && cached.length) {
-      setCards(params.ownerUserId, cached);
+      return setCards(params.ownerUserId, cached);
     }
   }
   const res = await api.fetchCards(params);
@@ -50,6 +50,12 @@ async function listCategories(ownerUserId, options = {}) {
   const key = ownerKey(ownerUserId);
   if (!options.force && state.categoriesByOwner[key]) {
     return state.categoriesByOwner[key];
+  }
+  if (!options.force) {
+    const cached = wx.getStorageSync(storageKey("categories", ownerUserId));
+    if (Array.isArray(cached) && cached.length) {
+      return setCategories(ownerUserId, cached);
+    }
   }
   const res = await api.fetchCategories(ownerUserId);
   return setCategories(ownerUserId, res.data || []);

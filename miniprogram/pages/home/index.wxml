@@ -1,36 +1,14 @@
 <view class="page-shell home-page">
   <custom-nav title="首页" />
 
-  <view class="mode-picker-mask" wx:if="{{modeChooserVisible}}">
-    <view class="mode-picker">
-      <view class="mode-picker-kicker">使用场景</view>
-      <view class="mode-picker-title">你今天主要用哪个场景？</view>
-      <view class="mode-picker-sub">只影响首页和雷达展示。</view>
-      <view class="mode-option-list">
-        <block wx:for="{{modeOptions}}" wx:key="key">
-          <view class="mode-option {{item.tone}} {{item.activeClass}}" data-mode="{{item.key}}" bindtap="handleChooseMode">
-            <view class="mode-option-icon">{{item.icon}}</view>
-            <view class="mode-option-main">
-              <view class="mode-option-title">{{item.name}}</view>
-              <view class="mode-option-desc">{{item.desc}}</view>
-              <view class="mode-option-fit">{{item.fit}}</view>
-            </view>
-          </view>
-        </block>
-      </view>
-      <button class="daily-btn" bindtap="handleUseDailyMode">先用日常资料</button>
-    </view>
-  </view>
-
   <view class="opportunity-hero">
     <view class="hero-topline">
       <view class="hero-copy-block">
         <view class="hero-kicker-row">
-          <view class="hero-kicker">今天先做什么</view>
-          <view class="mode-switch-mini" bindtap="handleOpenModeChooser">{{modeConfig.shortName || '房源'}}</view>
+          <view class="hero-kicker">资料整理助手</view>
         </view>
-        <view class="hero-title">先看机会，再决定下一步</view>
-        <view class="hero-subtitle">谁动了，我先知。</view>
+        <view class="hero-title">今天收到的资料</view>
+        <view class="hero-subtitle">统一收进资料库，再按房源、商机、服务、商品和日常筛选。</view>
       </view>
       <view class="radar-visual">
         <view class="radar-orbit">
@@ -57,8 +35,10 @@
         </view>
       </view>
     </view>
-    <view class="hero-bottomline">
-      <view class="hero-scene-pill" bindtap="handleOpenModeChooser">当前：{{modeConfig.name}}</view>
+    <view class="hero-bottomline home-main-actions">
+      <view class="hero-scene-pill primary" bindtap="handleQuickAdd">添加资料</view>
+      <view class="hero-scene-pill" bindtap="handleGoLibrary">查看资料库</view>
+      <view class="hero-scene-pill" bindtap="handleGoRadar">客户雷达</view>
     </view>
   </view>
 
@@ -89,35 +69,20 @@
   <view class="assistant-panel">
     <view class="section-head clean">
       <view>
-        <view class="section-title">{{homeUi.assistantTitle}}</view>
-        <view class="section-sub">{{homeUi.assistantSub}}</view>
+        <view class="section-title">快捷工具</view>
+        <view class="section-sub">按需要处理房源、商机、服务、商品和合集。</view>
       </view>
     </view>
     <view class="assistant-actions">
-      <view class="assistant-action primary" data-action="{{homeUi.primaryAction.action}}" bindtap="handleQuickAction">
-        <image wx:if="{{homeUi.primaryAction.iconImage}}" class="assistant-action-icon" src="{{homeUi.primaryAction.iconImage}}" mode="aspectFit"></image>
-        <view wx:else class="assistant-action-mark">{{homeUi.primaryAction.icon}}</view>
+      <view class="assistant-action {{index === 0 ? 'primary' : ''}}" wx:for="{{homeQuickTools}}" wx:key="key" data-action="{{item.action}}" bindtap="handleQuickAction">
+        <image wx:if="{{item.iconImage}}" class="assistant-action-icon" src="{{item.iconImage}}" mode="aspectFit"></image>
+        <view wx:else class="assistant-action-mark">{{item.icon}}</view>
         <view>
-          <view class="assistant-action-title">{{homeUi.primaryAction.label}}</view>
-          <view class="assistant-action-desc">{{homeUi.primaryAction.desc}}</view>
+          <view class="assistant-action-title">{{item.label}}</view>
+          <view class="assistant-action-desc">{{item.desc}}</view>
         </view>
-        <view class="contact-overlay" wx:if="{{homeUi.primaryAction.contact}}" catchtap="handleAssistantBindTap"></view>
-      </view>
-      <view class="assistant-action" data-action="{{homeUi.secondaryAction.action}}" bindtap="handleQuickAction">
-        <view class="assistant-action-mark">{{homeUi.secondaryAction.icon}}</view>
-        <view>
-          <view class="assistant-action-title">{{homeUi.secondaryAction.label}}</view>
-          <view class="assistant-action-desc">{{homeUi.secondaryAction.desc}}</view>
-        </view>
-      </view>
-      <view class="assistant-action wecom" wx:if="{{homeUi.wecomTitle}}">
-        <view class="assistant-action-mark wecom-mark">微</view>
-        <view>
-          <view class="assistant-action-title">{{homeUi.wecomTitle}}</view>
-          <view class="assistant-action-desc">{{homeUi.wecomSub}}</view>
-        </view>
-        <view class="assistant-action-chip">添加</view>
-        <view class="contact-overlay" catchtap="handleAssistantBindTap"></view>
+        <view class="assistant-action-chip" wx:if="{{item.chip}}">{{item.chip}}</view>
+        <view class="contact-overlay" wx:if="{{item.contact}}" catchtap="handleAssistantBindTap"></view>
       </view>
     </view>
   </view>
@@ -201,8 +166,6 @@
         </view>
       </block>
     </scroll-view>
-    <view class="empty-state" wx:else>{{homeUi.recentEmpty}}</view>
+    <view class="empty-state" wx:else>还没有最近资料，可以先新增一条资料，或把微信里的内容转发给资料助手。</view>
   </view>
-
-  <view class="scene-soft-link" bindtap="handleOpenModeChooser">也可以用于商品、服务商机和资料包 · 切换场景</view>
 </view>

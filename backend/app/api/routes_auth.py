@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 
 from app.api.dependencies import get_app_service
-from app.schemas.auth import MockLoginRequest, UserProfileUpdateRequest, WechatLoginRequest, WecomBindIntentRequest
+from app.schemas.auth import H5TicketRequest, MockLoginRequest, UserProfileUpdateRequest, WechatLoginRequest, WecomBindIntentRequest
 from app.schemas.common import ApiResponse
 from app.services.app_service import AppService
 
@@ -39,3 +39,19 @@ def create_wecom_bind_intent(
     service: AppService = Depends(get_app_service),
 ):
     return ApiResponse(data=service.create_wecom_bind_intent(payload.userId))
+
+
+@router.post("/h5-ticket", response_model=ApiResponse[dict])
+def create_h5_ticket(
+    payload: H5TicketRequest,
+    service: AppService = Depends(get_app_service),
+):
+    return ApiResponse(data=service.create_h5_session_ticket(payload.userId, payload.entry))
+
+
+@router.get("/h5-session", response_model=ApiResponse[dict])
+def get_h5_session(
+    ticket: str = Query(...),
+    service: AppService = Depends(get_app_service),
+):
+    return ApiResponse(data=service.verify_h5_session_ticket(ticket))

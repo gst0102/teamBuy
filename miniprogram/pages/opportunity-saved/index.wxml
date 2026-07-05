@@ -1,0 +1,39 @@
+<view class="page-shell saved-page">
+  <custom-nav title="已保存" show-back="{{true}}" />
+
+  <view class="saved-hero">
+    <view class="hero-kicker">轻量跟进台</view>
+    <view class="hero-title">已保存线索</view>
+    <view class="hero-sub">这里不是收藏夹，按下一步动作处理机会。</view>
+  </view>
+
+  <view class="status-tabs">
+    <view wx:for="{{statusTabs}}" wx:key="key" class="status-tab {{activeStatus === item.key ? 'active' : ''}}" data-key="{{item.key}}" bindtap="handleStatusTap">
+      <view>{{item.label}}</view>
+      <text>{{item.count}}</text>
+    </view>
+  </view>
+
+  <view class="package-filter-row">
+    <view wx:for="{{packageFilters}}" wx:key="key" class="filter-pill {{activePackageStatus === item.key ? 'active' : ''}}" data-key="{{item.key}}" bindtap="handlePackageFilterTap">{{item.label}}</view>
+  </view>
+
+  <view wx:for="{{visibleCards}}" wx:key="id" class="saved-card" data-id="{{item.id}}" bindtap="handleOpenDetail">
+    <view class="card-head">
+      <view class="status-pill">{{item.status}}</view>
+      <view class="package-pill">{{item.packageStatus}}</view>
+    </view>
+    <view class="card-title">{{item.title}}</view>
+    <view class="follow-grid">
+      <view><text>提醒时间</text><strong>{{item.reminder}}</strong></view>
+      <view><text>最近动作</text><strong>{{item.latestAction}}</strong></view>
+    </view>
+    <view class="note-box">{{item.note}}</view>
+    <view class="actions">
+      <button data-id="{{item.id}}" data-action="{{item.nextAction}}" catchtap="handleQuickAction">{{item.nextAction}}</button>
+      <button data-id="{{item.id}}" data-status="{{item.statusKey}}" catchtap="handleStatusEdit">改状态</button>
+      <button data-id="{{item.id}}" catchtap="handleReminderEdit">设提醒</button>
+    </view>
+  </view>
+  <canvas canvas-id="universalShareCanvas" class="universal-share-canvas"></canvas>
+</view>

@@ -1,0 +1,120 @@
+<view class="page-shell opportunity-page">
+  <custom-nav title="商机线索" show-back="{{true}}" />
+
+  <view class="opportunity-tabs">
+    <view wx:for="{{tabs}}" wx:key="key" class="opportunity-tab {{activeTab === item.key ? 'active' : ''}}" data-key="{{item.key}}" bindtap="handleTabTap">{{item.label}}</view>
+  </view>
+
+  <view class="radar-hero-card">
+    <view class="hero-copy">
+      <view class="hero-kicker">机会雷达</view>
+      <view class="hero-title">我的机会</view>
+      <view class="hero-sub">{{recommendationMeta}}</view>
+    </view>
+    <view class="match-score-box">
+      <text>匹配度</text>
+      <view>{{topOpportunity.score}}</view>
+    </view>
+  </view>
+
+  <view class="push-panel">
+    <view class="panel-head">
+      <view>
+        <view class="section-title">主动推荐</view>
+        <view class="section-sub">站内摘要，暂不外发微信通知。</view>
+      </view>
+      <button loading="{{generatingDigest}}" bindtap="handleGenerateDigest">生成今日推荐</button>
+    </view>
+    <view wx:if="{{pushDigests.length === 0}}" class="push-empty">暂无推荐摘要，点击生成后会保存到这里。</view>
+    <view wx:for="{{pushDigests}}" wx:key="id" class="push-card">
+      <view>
+        <view class="push-title">{{item.title}}</view>
+        <view class="push-summary">{{item.summary}}</view>
+      </view>
+      <button wx:if="{{item.status !== 'read'}}" data-id="{{item.id}}" bindtap="handleReadDigest">已读</button>
+      <text wx:else>已读</text>
+    </view>
+  </view>
+
+  <view class="radar-card">
+    <view class="radar-panel">
+      <view class="radar-visual">
+        <view class="radar-ring ring-1"></view>
+        <view class="radar-ring ring-2"></view>
+        <view class="radar-ring ring-3"></view>
+        <view class="radar-axis axis-h"></view>
+        <view class="radar-axis axis-v"></view>
+        <view class="radar-shape"></view>
+        <view class="radar-core">{{topOpportunity.score}}</view>
+      </view>
+      <view class="radar-dimensions">
+        <view wx:for="{{topOpportunity.radar}}" wx:key="label" class="dimension-row">
+          <text>{{item.label}}</text>
+          <view class="dimension-bar"><view style="width: {{item.value}}%;"></view></view>
+          <strong>{{item.value}}</strong>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view class="section-head">
+    <view>
+      <view class="section-title">{{recommendationTitle}}</view>
+      <view class="section-sub">优先处理这条，成交动作最短。</view>
+    </view>
+    <view class="section-badge">{{topOpportunity.level}}</view>
+  </view>
+
+  <view class="opportunity-card featured" data-id="{{topOpportunity.id}}" bindtap="handleOpenDetail">
+    <view class="card-topline">
+      <view class="level-pill">{{topOpportunity.level}}</view>
+      <view class="score-pill">{{topOpportunity.score}} 分</view>
+    </view>
+    <view class="opportunity-title">{{topOpportunity.title}}</view>
+    <view class="opportunity-summary">{{topOpportunity.summary}}</view>
+    <view class="meta-row">
+      <text>{{topOpportunity.city}}</text>
+      <text>{{topOpportunity.industry}}</text>
+      <text>{{topOpportunity.demandType}}</text>
+    </view>
+    <view class="reason-block">
+      <view class="reason-label">匹配原因</view>
+      <view class="reason-tags">
+        <text wx:for="{{topOpportunity.reasons}}" wx:key="*this">{{item}}</text>
+      </view>
+    </view>
+    <view class="suggestion-row">
+      <text>建议动作</text>
+      <view>{{topOpportunity.action}}</view>
+    </view>
+    <view class="action-grid">
+      <button class="main-action" catchtap="handleGeneratePackage">生成回应包</button>
+      <button class="light-action" catchtap="handleContact">联系</button>
+      <button class="light-action" catchtap="handleSave">保存</button>
+    </view>
+  </view>
+
+  <view class="section-head list-head">
+    <view>
+      <view class="section-title">更多机会</view>
+      <view class="section-sub">不是信息流，是候选动作池。</view>
+    </view>
+  </view>
+
+  <view wx:for="{{moreOpportunities}}" wx:key="id" class="opportunity-card compact" data-id="{{item.id}}" bindtap="handleOpenDetail">
+    <view class="card-topline">
+      <view class="level-pill muted">{{item.level}}</view>
+      <view class="score-pill">{{item.score}} 分</view>
+    </view>
+    <view class="opportunity-title small">{{item.title}}</view>
+    <view class="opportunity-summary">{{item.summary}}</view>
+    <view class="reason-tags compact-tags">
+      <text wx:for="{{item.reasons}}" wx:key="*this">{{item}}</text>
+    </view>
+    <view class="suggestion-row soft">
+      <text>下一步</text>
+      <view>{{item.action}}</view>
+    </view>
+  </view>
+  <canvas canvas-id="universalShareCanvas" class="universal-share-canvas"></canvas>
+</view>

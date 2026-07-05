@@ -1,0 +1,247 @@
+.detail-page {
+  padding-bottom: 56rpx;
+}
+
+.detail-hero,
+.info-panel,
+.action-panel,
+.follow-panel {
+  width: 100%;
+  border: 1rpx solid #dbe6f7;
+  border-radius: 24rpx;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 16rpx 40rpx rgba(31, 88, 168, 0.08);
+  box-sizing: border-box;
+}
+
+.detail-hero {
+  margin-top: 14rpx;
+  padding: 30rpx 26rpx;
+  background: linear-gradient(135deg, #f0f7ff, #ffffff 60%, #eefcf5);
+}
+
+.hero-badge,
+.fit-tags text {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42rpx;
+  padding: 0 16rpx;
+  border-radius: 999rpx;
+  color: #027a48;
+  background: #dcfae6;
+  font-size: 21rpx;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.hero-title {
+  margin-top: 18rpx;
+  color: #101828;
+  font-size: 42rpx;
+  line-height: 1.2;
+  font-weight: 900;
+}
+
+.hero-summary {
+  margin-top: 14rpx;
+  color: #475467;
+  font-size: 24rpx;
+  line-height: 1.5;
+}
+
+.info-panel,
+.action-panel,
+.follow-panel {
+  margin-top: 18rpx;
+  padding: 24rpx;
+}
+
+.panel-title {
+  color: #101828;
+  font-size: 30rpx;
+  font-weight: 900;
+}
+
+.field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12rpx;
+  margin-top: 18rpx;
+}
+
+.field-item {
+  min-width: 0;
+  padding: 16rpx;
+  border-radius: 16rpx;
+  background: #f8fbff;
+  box-sizing: border-box;
+}
+
+.field-item text {
+  display: block;
+  color: #667085;
+  font-size: 20rpx;
+  font-weight: 800;
+}
+
+.field-item strong {
+  display: block;
+  margin-top: 8rpx;
+  color: #172033;
+  font-size: 23rpx;
+  line-height: 1.35;
+  font-weight: 900;
+}
+
+.content-box {
+  margin-top: 18rpx;
+  padding: 18rpx;
+  border-radius: 16rpx;
+  color: #344054;
+  background: #f9fafb;
+  font-size: 24rpx;
+  line-height: 1.55;
+}
+
+.action-copy {
+  margin-top: 10rpx;
+  color: #667085;
+  font-size: 23rpx;
+  line-height: 1.45;
+}
+
+.fit-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  margin-top: 16rpx;
+}
+
+.fit-tags text {
+  color: #1677ff;
+  background: #eaf2ff;
+}
+
+.suggest-card {
+  margin-top: 18rpx;
+  padding: 18rpx;
+  border-left: 6rpx solid #12b76a;
+  border-radius: 16rpx;
+  background: #f0fdf4;
+}
+
+.suggest-card view {
+  color: #027a48;
+  font-size: 22rpx;
+  font-weight: 900;
+}
+
+.suggest-card text {
+  display: block;
+  margin-top: 8rpx;
+  color: #172033;
+  font-size: 24rpx;
+  line-height: 1.45;
+  font-weight: 800;
+}
+
+.main-action,
+.secondary-actions button,
+.follow-actions button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0 22rpx;
+  border-radius: 999rpx;
+  font-weight: 900;
+  line-height: 1;
+  white-space: nowrap;
+  box-sizing: border-box;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.main-action {
+  width: 76%;
+  max-width: 480rpx;
+  height: 72rpx;
+  margin: 22rpx auto 0;
+  color: #ffffff;
+  background: #1677ff;
+  font-size: 26rpx;
+}
+
+.secondary-actions {
+  display: flex;
+  justify-content: center;
+  gap: 14rpx;
+  width: 100%;
+  margin: 16rpx auto 0;
+  padding: 0 8rpx;
+  box-sizing: border-box;
+}
+
+.secondary-actions button,
+.follow-actions button {
+  height: 62rpx;
+  color: #1677ff;
+  background: #eef5ff;
+  font-size: 22rpx;
+}
+
+.secondary-actions button {
+  flex: 1 1 0;
+  max-width: 300rpx;
+  min-width: 0;
+}
+
+.main-action::after,
+.secondary-actions button::after,
+.follow-actions button::after {
+  border: 0;
+}
+
+.follow-row {
+  display: flex;
+  gap: 16rpx;
+  margin-top: 18rpx;
+}
+
+.follow-dot {
+  width: 18rpx;
+  height: 18rpx;
+  margin-top: 8rpx;
+  border-radius: 50%;
+  background: #1677ff;
+}
+
+.follow-status {
+  color: #172033;
+  font-size: 24rpx;
+  font-weight: 900;
+}
+
+.follow-desc {
+  margin-top: 6rpx;
+  color: #667085;
+  font-size: 22rpx;
+  line-height: 1.45;
+}
+
+.follow-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12rpx;
+  margin-top: 22rpx;
+  padding: 0 8rpx;
+  box-sizing: border-box;
+}
+
+.follow-actions button {
+  flex: 1 1 190rpx;
+  max-width: 260rpx;
+  min-width: 0;
+}

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Protocol
 
@@ -21,8 +22,25 @@ from app.models.domain import (
     MediaAsset,
     MediaAssetRef,
     MediaRetryJob,
+    OpportunityLead,
+    OpportunityLeadContact,
+    OpportunityLeadFollowup,
+    OpportunityLeadMatch,
+    OpportunityLeadSave,
+    OpportunityLeadSource,
+    OpportunitySubscription,
     RawMessage,
     RelayEntry,
+    ResourceFreeQuota,
+    ResourcePointLedger,
+    ResourceUnlockRecord,
+    ResourceWallet,
+    ResponsePackage,
+    ResponsePackageEvent,
+    ResponsePackageItem,
+    OpportunityPushDigest,
+    SupplyDemandCard,
+    SupplyDemandApplication,
     ShowcasePage,
     ShowcaseEvent,
     SkillRun,
@@ -335,6 +353,133 @@ class AppRepository(Protocol):
         ...
 
     def list_wecom_archive_messages(self, limit: int = 100) -> list[WecomArchiveMessage]:
+        ...
+
+    def get_resource_wallet(self, owner_user_id: str) -> ResourceWallet | None:
+        ...
+
+    def save_resource_wallet(self, wallet: ResourceWallet) -> None:
+        ...
+
+    def save_resource_point_ledger(self, ledger: ResourcePointLedger) -> None:
+        ...
+
+    def list_resource_point_ledgers(self, owner_user_id: str, limit: int = 100) -> list[ResourcePointLedger]:
+        ...
+
+    def get_resource_free_quota(self, owner_user_id: str, quota_type: str, period_key: str) -> ResourceFreeQuota | None:
+        ...
+
+    def save_resource_free_quota(self, quota: ResourceFreeQuota) -> None:
+        ...
+
+    def find_resource_unlock_record(
+        self,
+        owner_user_id: str,
+        action_type: str,
+        target_type: str,
+        target_id: str,
+    ) -> ResourceUnlockRecord | None:
+        ...
+
+    def save_resource_unlock_record(self, record: ResourceUnlockRecord) -> None:
+        ...
+
+    def list_opportunity_leads(self, statuses: set[str] | None = None, keyword: str | None = None) -> list[OpportunityLead]:
+        ...
+
+    def get_opportunity_lead(self, lead_id: str) -> OpportunityLead | None:
+        ...
+
+    def save_opportunity_lead(self, lead: OpportunityLead) -> None:
+        ...
+
+    def list_opportunity_lead_sources(self, lead_id: str) -> list[OpportunityLeadSource]:
+        ...
+
+    def save_opportunity_lead_source(self, source: OpportunityLeadSource) -> None:
+        ...
+
+    def list_opportunity_lead_contacts(self, lead_id: str) -> list[OpportunityLeadContact]:
+        ...
+
+    def save_opportunity_lead_contact(self, contact: OpportunityLeadContact) -> None:
+        ...
+
+    def get_opportunity_lead_save(self, lead_id: str, user_id: str) -> OpportunityLeadSave | None:
+        ...
+
+    def save_opportunity_lead_save(self, lead_save: OpportunityLeadSave) -> None:
+        ...
+
+    def list_opportunity_lead_saves_for_user(self, user_id: str) -> list[OpportunityLeadSave]:
+        ...
+
+    def save_opportunity_lead_followup(self, followup: OpportunityLeadFollowup) -> None:
+        ...
+
+    def list_opportunity_lead_followups(self, lead_id: str, user_id: str | None = None) -> list[OpportunityLeadFollowup]:
+        ...
+
+    def get_response_package(self, package_id: str) -> ResponsePackage | None:
+        ...
+
+    def get_response_package_for_lead_user(self, lead_id: str, owner_user_id: str) -> ResponsePackage | None:
+        ...
+
+    def save_response_package(self, package: ResponsePackage) -> None:
+        ...
+
+    def list_response_package_items(self, package_id: str) -> list[ResponsePackageItem]:
+        ...
+
+    def save_response_package_item(self, item: ResponsePackageItem) -> None:
+        ...
+
+    def save_response_package_event(self, event: ResponsePackageEvent) -> None:
+        ...
+
+    def list_opportunity_subscriptions(self, owner_user_id: str) -> list[OpportunitySubscription]:
+        ...
+
+    def save_opportunity_subscription(self, subscription: OpportunitySubscription) -> None:
+        ...
+
+    def list_supply_demand_cards(
+        self,
+        owner_user_id: str | None = None,
+        statuses: set[str] | None = None,
+        keyword: str | None = None,
+    ) -> list[SupplyDemandCard]:
+        ...
+
+    def get_supply_demand_card(self, card_id: str) -> SupplyDemandCard | None:
+        ...
+
+    def save_supply_demand_card(self, card: SupplyDemandCard) -> None:
+        ...
+
+    def list_supply_demand_applications(
+        self,
+        card_id: str | None = None,
+        applicant_user_id: str | None = None,
+        owner_user_id: str | None = None,
+    ) -> list[SupplyDemandApplication]:
+        ...
+
+    def get_supply_demand_application(self, application_id: str) -> SupplyDemandApplication | None:
+        ...
+
+    def save_supply_demand_application(self, application: SupplyDemandApplication) -> None:
+        ...
+
+    def list_opportunity_push_digests(self, owner_user_id: str) -> list[OpportunityPushDigest]:
+        ...
+
+    def get_opportunity_push_digest(self, digest_id: str) -> OpportunityPushDigest | None:
+        ...
+
+    def save_opportunity_push_digest(self, digest: OpportunityPushDigest) -> None:
         ...
 
 
@@ -933,6 +1078,251 @@ class JsonRepository:
         messages = self.load().wecom_archive_messages
         return sorted(messages, key=lambda item: (item.seq, item.createdAt), reverse=True)[:limit]
 
+    def get_resource_wallet(self, owner_user_id: str) -> ResourceWallet | None:
+        return next((item for item in self.load().resource_wallets if item.ownerUserId == owner_user_id), None)
+
+    def save_resource_wallet(self, wallet: ResourceWallet) -> None:
+        state = self.load()
+        state.resource_wallets = [item for item in state.resource_wallets if item.id != wallet.id]
+        state.resource_wallets.append(wallet)
+        self.save(state)
+
+    def save_resource_point_ledger(self, ledger: ResourcePointLedger) -> None:
+        state = self.load()
+        state.resource_point_ledgers = [item for item in state.resource_point_ledgers if item.id != ledger.id]
+        state.resource_point_ledgers.append(ledger)
+        self.save(state)
+
+    def list_resource_point_ledgers(self, owner_user_id: str, limit: int = 100) -> list[ResourcePointLedger]:
+        ledgers = [item for item in self.load().resource_point_ledgers if item.ownerUserId == owner_user_id]
+        return sorted(ledgers, key=lambda item: item.createdAt, reverse=True)[:limit]
+
+    def get_resource_free_quota(self, owner_user_id: str, quota_type: str, period_key: str) -> ResourceFreeQuota | None:
+        return next(
+            (
+                item
+                for item in self.load().resource_free_quotas
+                if item.ownerUserId == owner_user_id and item.quotaType == quota_type and item.periodKey == period_key
+            ),
+            None,
+        )
+
+    def save_resource_free_quota(self, quota: ResourceFreeQuota) -> None:
+        state = self.load()
+        state.resource_free_quotas = [item for item in state.resource_free_quotas if item.id != quota.id]
+        state.resource_free_quotas.append(quota)
+        self.save(state)
+
+    def find_resource_unlock_record(
+        self,
+        owner_user_id: str,
+        action_type: str,
+        target_type: str,
+        target_id: str,
+    ) -> ResourceUnlockRecord | None:
+        records = [
+            item
+            for item in self.load().resource_unlock_records
+            if item.ownerUserId == owner_user_id
+            and item.actionType == action_type
+            and item.targetType == target_type
+            and item.targetId == target_id
+        ]
+        return sorted(records, key=lambda item: item.unlockedAt, reverse=True)[0] if records else None
+
+    def save_resource_unlock_record(self, record: ResourceUnlockRecord) -> None:
+        state = self.load()
+        state.resource_unlock_records = [item for item in state.resource_unlock_records if item.id != record.id]
+        state.resource_unlock_records.append(record)
+        self.save(state)
+
+    def list_opportunity_leads(self, statuses: set[str] | None = None, keyword: str | None = None) -> list[OpportunityLead]:
+        leads = self.load().opportunity_leads
+        if statuses:
+            leads = [item for item in leads if item.status in statuses]
+        clean_keyword = (keyword or "").strip().lower()
+        if clean_keyword:
+            leads = [
+                item
+                for item in leads
+                if clean_keyword in item.title.lower()
+                or clean_keyword in item.summary.lower()
+                or clean_keyword in item.content.lower()
+                or clean_keyword in (item.city or "").lower()
+                or clean_keyword in (item.industry or "").lower()
+            ]
+        return sorted(leads, key=lambda item: item.publishedAt or item.updatedAt, reverse=True)
+
+    def get_opportunity_lead(self, lead_id: str) -> OpportunityLead | None:
+        return next((item for item in self.load().opportunity_leads if item.id == lead_id), None)
+
+    def save_opportunity_lead(self, lead: OpportunityLead) -> None:
+        state = self.load()
+        state.opportunity_leads = [item for item in state.opportunity_leads if item.id != lead.id]
+        state.opportunity_leads.append(lead)
+        self.save(state)
+
+    def list_opportunity_lead_sources(self, lead_id: str) -> list[OpportunityLeadSource]:
+        sources = [item for item in self.load().opportunity_lead_sources if item.leadId == lead_id]
+        return sorted(sources, key=lambda item: item.sourceCapturedAt, reverse=True)
+
+    def save_opportunity_lead_source(self, source: OpportunityLeadSource) -> None:
+        state = self.load()
+        state.opportunity_lead_sources = [item for item in state.opportunity_lead_sources if item.id != source.id]
+        state.opportunity_lead_sources.append(source)
+        self.save(state)
+
+    def list_opportunity_lead_contacts(self, lead_id: str) -> list[OpportunityLeadContact]:
+        contacts = [item for item in self.load().opportunity_lead_contacts if item.leadId == lead_id]
+        return sorted(contacts, key=lambda item: item.createdAt, reverse=True)
+
+    def save_opportunity_lead_contact(self, contact: OpportunityLeadContact) -> None:
+        state = self.load()
+        state.opportunity_lead_contacts = [item for item in state.opportunity_lead_contacts if item.id != contact.id]
+        state.opportunity_lead_contacts.append(contact)
+        self.save(state)
+
+    def get_opportunity_lead_save(self, lead_id: str, user_id: str) -> OpportunityLeadSave | None:
+        return next(
+            (item for item in self.load().opportunity_lead_saves if item.leadId == lead_id and item.userId == user_id),
+            None,
+        )
+
+    def save_opportunity_lead_save(self, lead_save: OpportunityLeadSave) -> None:
+        state = self.load()
+        state.opportunity_lead_saves = [item for item in state.opportunity_lead_saves if item.id != lead_save.id]
+        state.opportunity_lead_saves.append(lead_save)
+        self.save(state)
+
+    def list_opportunity_lead_saves_for_user(self, user_id: str) -> list[OpportunityLeadSave]:
+        saves = [item for item in self.load().opportunity_lead_saves if item.userId == user_id]
+        return sorted(saves, key=lambda item: item.updatedAt, reverse=True)
+
+    def save_opportunity_lead_followup(self, followup: OpportunityLeadFollowup) -> None:
+        state = self.load()
+        state.opportunity_lead_followups = [item for item in state.opportunity_lead_followups if item.id != followup.id]
+        state.opportunity_lead_followups.append(followup)
+        self.save(state)
+
+    def list_opportunity_lead_followups(self, lead_id: str, user_id: str | None = None) -> list[OpportunityLeadFollowup]:
+        followups = [item for item in self.load().opportunity_lead_followups if item.leadId == lead_id]
+        if user_id:
+            followups = [item for item in followups if item.userId == user_id]
+        return sorted(followups, key=lambda item: item.createdAt, reverse=True)
+
+    def get_response_package(self, package_id: str) -> ResponsePackage | None:
+        return next((item for item in self.load().response_packages if item.id == package_id), None)
+
+    def get_response_package_for_lead_user(self, lead_id: str, owner_user_id: str) -> ResponsePackage | None:
+        packages = [
+            item
+            for item in self.load().response_packages
+            if item.leadId == lead_id and item.ownerUserId == owner_user_id and item.status != "archived"
+        ]
+        return sorted(packages, key=lambda item: item.updatedAt, reverse=True)[0] if packages else None
+
+    def save_response_package(self, package: ResponsePackage) -> None:
+        state = self.load()
+        state.response_packages = [item for item in state.response_packages if item.id != package.id]
+        state.response_packages.append(package)
+        self.save(state)
+
+    def list_response_package_items(self, package_id: str) -> list[ResponsePackageItem]:
+        items = [item for item in self.load().response_package_items if item.responsePackageId == package_id]
+        return sorted(items, key=lambda item: item.sortOrder)
+
+    def save_response_package_item(self, item: ResponsePackageItem) -> None:
+        state = self.load()
+        state.response_package_items = [row for row in state.response_package_items if row.id != item.id]
+        state.response_package_items.append(item)
+        self.save(state)
+
+    def save_response_package_event(self, event: ResponsePackageEvent) -> None:
+        state = self.load()
+        state.response_package_events = [item for item in state.response_package_events if item.id != event.id]
+        state.response_package_events.append(event)
+        self.save(state)
+
+    def list_opportunity_subscriptions(self, owner_user_id: str) -> list[OpportunitySubscription]:
+        rows = [
+            item
+            for item in self.load().opportunity_subscriptions
+            if item.ownerUserId == owner_user_id and item.status != "deleted"
+        ]
+        return sorted(rows, key=lambda item: item.updatedAt, reverse=True)
+
+    def save_opportunity_subscription(self, subscription: OpportunitySubscription) -> None:
+        state = self.load()
+        state.opportunity_subscriptions = [item for item in state.opportunity_subscriptions if item.id != subscription.id]
+        state.opportunity_subscriptions.append(subscription)
+        self.save(state)
+
+    def list_supply_demand_cards(
+        self,
+        owner_user_id: str | None = None,
+        statuses: set[str] | None = None,
+        keyword: str | None = None,
+    ) -> list[SupplyDemandCard]:
+        rows = self.load().supply_demand_cards
+        if owner_user_id:
+            rows = [item for item in rows if item.ownerUserId == owner_user_id]
+        if statuses:
+            rows = [item for item in rows if item.status in statuses]
+        q = (keyword or "").strip().lower()
+        if q:
+            rows = [
+                item
+                for item in rows
+                if q in f"{item.title} {item.summary} {item.city or ''} {item.industry or ''} {item.demandType}".lower()
+            ]
+        return sorted(rows, key=lambda item: item.updatedAt, reverse=True)
+
+    def get_supply_demand_card(self, card_id: str) -> SupplyDemandCard | None:
+        return next((item for item in self.load().supply_demand_cards if item.id == card_id), None)
+
+    def save_supply_demand_card(self, card: SupplyDemandCard) -> None:
+        state = self.load()
+        state.supply_demand_cards = [item for item in state.supply_demand_cards if item.id != card.id]
+        state.supply_demand_cards.append(card)
+        self.save(state)
+
+    def list_supply_demand_applications(
+        self,
+        card_id: str | None = None,
+        applicant_user_id: str | None = None,
+        owner_user_id: str | None = None,
+    ) -> list[SupplyDemandApplication]:
+        rows = self.load().supply_demand_applications
+        if card_id:
+            rows = [item for item in rows if item.cardId == card_id]
+        if applicant_user_id:
+            rows = [item for item in rows if item.applicantUserId == applicant_user_id]
+        if owner_user_id:
+            rows = [item for item in rows if item.ownerUserId == owner_user_id]
+        return sorted(rows, key=lambda item: item.updatedAt, reverse=True)
+
+    def get_supply_demand_application(self, application_id: str) -> SupplyDemandApplication | None:
+        return next((item for item in self.load().supply_demand_applications if item.id == application_id), None)
+
+    def save_supply_demand_application(self, application: SupplyDemandApplication) -> None:
+        state = self.load()
+        state.supply_demand_applications = [item for item in state.supply_demand_applications if item.id != application.id]
+        state.supply_demand_applications.append(application)
+        self.save(state)
+
+    def list_opportunity_push_digests(self, owner_user_id: str) -> list[OpportunityPushDigest]:
+        rows = [item for item in self.load().opportunity_push_digests if item.ownerUserId == owner_user_id]
+        return sorted(rows, key=lambda item: item.createdAt, reverse=True)
+
+    def get_opportunity_push_digest(self, digest_id: str) -> OpportunityPushDigest | None:
+        return next((item for item in self.load().opportunity_push_digests if item.id == digest_id), None)
+
+    def save_opportunity_push_digest(self, digest: OpportunityPushDigest) -> None:
+        state = self.load()
+        state.opportunity_push_digests = [item for item in state.opportunity_push_digests if item.id != digest.id]
+        state.opportunity_push_digests.append(digest)
+        self.save(state)
+
 
 class PostgresRepository:
     TABLES = {
@@ -962,6 +1352,23 @@ class PostgresRepository:
         "skill_runs": "skill_runs",
         "wecom_archive_cursors": "wecom_archive_cursors",
         "wecom_archive_messages": "wecom_archive_messages",
+        "resource_wallets": "resource_wallets",
+        "resource_point_ledgers": "resource_point_ledgers",
+        "resource_free_quotas": "resource_free_quotas",
+        "resource_unlock_records": "resource_unlock_records",
+        "opportunity_leads": "opportunity_leads",
+        "opportunity_lead_sources": "opportunity_lead_sources",
+        "opportunity_lead_contacts": "opportunity_lead_contacts",
+        "opportunity_lead_matches": "opportunity_lead_matches",
+        "opportunity_lead_saves": "opportunity_lead_saves",
+        "opportunity_lead_followups": "opportunity_lead_followups",
+        "response_packages": "response_packages",
+        "response_package_items": "response_package_items",
+        "response_package_events": "response_package_events",
+        "opportunity_subscriptions": "opportunity_subscriptions",
+        "supply_demand_cards": "supply_demand_cards",
+        "supply_demand_applications": "supply_demand_applications",
+        "opportunity_push_digests": "opportunity_push_digests",
     }
     FIELD_COLUMNS = {
         "users": [
@@ -1172,6 +1579,119 @@ class PostgresRepository:
             ("generated_note_id", "text", "generatedNoteId"),
             ("processed_at", "timestamptz", "processedAt"),
         ],
+        "resource_wallets": [
+            ("owner_user_id", "text", "ownerUserId"),
+            ("balance", "integer", "balance"),
+            ("status", "text", "status"),
+        ],
+        "resource_point_ledgers": [
+            ("owner_user_id", "text", "ownerUserId"),
+            ("wallet_id", "text", "walletId"),
+            ("ledger_type", "text", "ledgerType"),
+            ("action_type", "text", "actionType"),
+            ("target_type", "text", "targetType"),
+            ("target_id", "text", "targetId"),
+            ("created_at_source", "timestamptz", "createdAt"),
+        ],
+        "resource_free_quotas": [
+            ("owner_user_id", "text", "ownerUserId"),
+            ("quota_type", "text", "quotaType"),
+            ("period_key", "text", "periodKey"),
+        ],
+        "resource_unlock_records": [
+            ("owner_user_id", "text", "ownerUserId"),
+            ("action_type", "text", "actionType"),
+            ("target_type", "text", "targetType"),
+            ("target_id", "text", "targetId"),
+            ("unlocked_at", "timestamptz", "unlockedAt"),
+            ("expires_at", "timestamptz", "expiresAt"),
+        ],
+        "opportunity_leads": [
+            ("title", "text", "title"),
+            ("city", "text", "city"),
+            ("district", "text", "district"),
+            ("industry", "text", "industry"),
+            ("demand_type", "text", "demandType"),
+            ("contact_status", "text", "contactStatus"),
+            ("trust_status", "text", "trustStatus"),
+            ("status", "text", "status"),
+            ("published_at", "timestamptz", "publishedAt"),
+            ("expires_at", "timestamptz", "expiresAt"),
+        ],
+        "opportunity_lead_sources": [
+            ("lead_id", "text", "leadId"),
+            ("source_platform", "text", "sourcePlatform"),
+            ("source_captured_at", "timestamptz", "sourceCapturedAt"),
+        ],
+        "opportunity_lead_contacts": [
+            ("lead_id", "text", "leadId"),
+            ("contact_type", "text", "contactType"),
+            ("verify_status", "text", "verifyStatus"),
+        ],
+        "opportunity_lead_matches": [
+            ("lead_id", "text", "leadId"),
+            ("user_id", "text", "userId"),
+            ("match_score", "integer", "matchScore"),
+            ("status", "text", "status"),
+        ],
+        "opportunity_lead_saves": [
+            ("lead_id", "text", "leadId"),
+            ("user_id", "text", "userId"),
+            ("status", "text", "status"),
+            ("reminder_at", "timestamptz", "reminderAt"),
+        ],
+        "opportunity_lead_followups": [
+            ("lead_id", "text", "leadId"),
+            ("user_id", "text", "userId"),
+            ("action_type", "text", "actionType"),
+        ],
+        "response_packages": [
+            ("owner_user_id", "text", "ownerUserId"),
+            ("lead_id", "text", "leadId"),
+            ("status", "text", "status"),
+            ("title", "text", "title"),
+            ("sent_at", "timestamptz", "sentAt"),
+            ("last_viewed_at", "timestamptz", "lastViewedAt"),
+        ],
+        "response_package_items": [
+            ("response_package_id", "text", "responsePackageId"),
+            ("asset_type", "text", "assetType"),
+            ("asset_id", "text", "assetId"),
+            ("sort_order", "integer", "sortOrder"),
+        ],
+        "response_package_events": [
+            ("response_package_id", "text", "responsePackageId"),
+            ("event_type", "text", "eventType"),
+            ("viewer_id", "text", "viewerId"),
+            ("anonymous_id", "text", "anonymousId"),
+        ],
+        "opportunity_subscriptions": [
+            ("owner_user_id", "text", "ownerUserId"),
+            ("status", "text", "status"),
+            ("city", "text", "city"),
+            ("direction", "text", "direction"),
+        ],
+        "supply_demand_cards": [
+            ("owner_user_id", "text", "ownerUserId"),
+            ("card_type", "text", "cardType"),
+            ("status", "text", "status"),
+            ("title", "text", "title"),
+            ("city", "text", "city"),
+            ("industry", "text", "industry"),
+            ("published_at", "timestamptz", "publishedAt"),
+        ],
+        "supply_demand_applications": [
+            ("card_id", "text", "cardId"),
+            ("applicant_user_id", "text", "applicantUserId"),
+            ("owner_user_id", "text", "ownerUserId"),
+            ("status", "text", "status"),
+        ],
+        "opportunity_push_digests": [
+            ("owner_user_id", "text", "ownerUserId"),
+            ("subscription_id", "text", "subscriptionId"),
+            ("status", "text", "status"),
+            ("created_at_index", "timestamptz", "createdAt"),
+        ],
     }
     INDEXES = {
         "import_batches": [
@@ -1287,6 +1807,68 @@ class PostgresRepository:
             ("idx_wecom_archive_messages_msg_id", "msg_id"),
             ("idx_wecom_archive_messages_type_time", "msg_type, msg_time"),
             ("idx_wecom_archive_messages_generated_note", "generated_note_id"),
+        ],
+        "resource_wallets": [
+            ("idx_resource_wallets_owner", "owner_user_id"),
+        ],
+        "resource_point_ledgers": [
+            ("idx_resource_point_ledgers_owner_time", "owner_user_id, created_at_source"),
+            ("idx_resource_point_ledgers_target", "owner_user_id, action_type, target_type, target_id"),
+        ],
+        "resource_free_quotas": [
+            ("idx_resource_free_quotas_owner_type", "owner_user_id, quota_type, period_key"),
+        ],
+        "resource_unlock_records": [
+            ("idx_resource_unlock_records_target", "owner_user_id, action_type, target_type, target_id"),
+            ("idx_resource_unlock_records_expiry", "expires_at"),
+        ],
+        "opportunity_leads": [
+            ("idx_opportunity_leads_status_time", "status, published_at, updated_at"),
+            ("idx_opportunity_leads_city_industry", "city, industry"),
+            ("idx_opportunity_leads_expires", "expires_at"),
+        ],
+        "opportunity_lead_sources": [
+            ("idx_opportunity_lead_sources_lead", "lead_id, source_captured_at"),
+        ],
+        "opportunity_lead_contacts": [
+            ("idx_opportunity_lead_contacts_lead", "lead_id, verify_status"),
+        ],
+        "opportunity_lead_matches": [
+            ("idx_opportunity_lead_matches_user_score", "user_id, match_score"),
+            ("idx_opportunity_lead_matches_lead_user", "lead_id, user_id"),
+        ],
+        "opportunity_lead_saves": [
+            ("idx_opportunity_lead_saves_user_status", "user_id, status, updated_at"),
+            ("idx_opportunity_lead_saves_lead_user", "lead_id, user_id"),
+        ],
+        "opportunity_lead_followups": [
+            ("idx_opportunity_lead_followups_lead_user", "lead_id, user_id, created_at"),
+        ],
+        "response_packages": [
+            ("idx_response_packages_owner_time", "owner_user_id, updated_at"),
+            ("idx_response_packages_lead_owner", "lead_id, owner_user_id"),
+        ],
+        "response_package_items": [
+            ("idx_response_package_items_package", "response_package_id, sort_order"),
+        ],
+        "response_package_events": [
+            ("idx_response_package_events_package_time", "response_package_id, created_at"),
+        ],
+        "opportunity_subscriptions": [
+            ("idx_opportunity_subscriptions_owner_status", "owner_user_id, status, updated_at"),
+        ],
+        "supply_demand_cards": [
+            ("idx_supply_demand_cards_status_time", "status, updated_at"),
+            ("idx_supply_demand_cards_owner_status", "owner_user_id, status, updated_at"),
+            ("idx_supply_demand_cards_type_status", "card_type, status, updated_at"),
+        ],
+        "supply_demand_applications": [
+            ("idx_supply_demand_apps_card_status", "card_id, status, updated_at"),
+            ("idx_supply_demand_apps_owner_status", "owner_user_id, status, updated_at"),
+            ("idx_supply_demand_apps_applicant", "applicant_user_id, updated_at"),
+        ],
+        "opportunity_push_digests": [
+            ("idx_opportunity_push_owner_status", "owner_user_id, status, created_at_index"),
         ],
     }
 
@@ -2056,9 +2638,260 @@ class PostgresRepository:
         )
         return [WecomArchiveMessage.model_validate(row) for row in rows]
 
+    def get_resource_wallet(self, owner_user_id: str) -> ResourceWallet | None:
+        rows = self._list_payloads("resource_wallets", "owner_user_id = %s", (owner_user_id,), "updated_at desc, id desc")
+        return ResourceWallet.model_validate(rows[0]) if rows else None
+
+    def save_resource_wallet(self, wallet: ResourceWallet) -> None:
+        self._save_model("resource_wallets", wallet)
+
+    def save_resource_point_ledger(self, ledger: ResourcePointLedger) -> None:
+        self._save_model("resource_point_ledgers", ledger)
+
+    def list_resource_point_ledgers(self, owner_user_id: str, limit: int = 100) -> list[ResourcePointLedger]:
+        rows = self._list_payloads(
+            "resource_point_ledgers",
+            "owner_user_id = %s",
+            (owner_user_id,),
+            "created_at_source desc, id desc limit %s" % int(limit),
+        )
+        return [ResourcePointLedger.model_validate(row) for row in rows]
+
+    def get_resource_free_quota(self, owner_user_id: str, quota_type: str, period_key: str) -> ResourceFreeQuota | None:
+        rows = self._list_payloads(
+            "resource_free_quotas",
+            "owner_user_id = %s and quota_type = %s and period_key = %s",
+            (owner_user_id, quota_type, period_key),
+            "updated_at desc, id desc",
+        )
+        return ResourceFreeQuota.model_validate(rows[0]) if rows else None
+
+    def save_resource_free_quota(self, quota: ResourceFreeQuota) -> None:
+        self._save_model("resource_free_quotas", quota)
+
+    def find_resource_unlock_record(
+        self,
+        owner_user_id: str,
+        action_type: str,
+        target_type: str,
+        target_id: str,
+    ) -> ResourceUnlockRecord | None:
+        rows = self._list_payloads(
+            "resource_unlock_records",
+            "owner_user_id = %s and action_type = %s and target_type = %s and target_id = %s",
+            (owner_user_id, action_type, target_type, target_id),
+            "unlocked_at desc, id desc",
+        )
+        return ResourceUnlockRecord.model_validate(rows[0]) if rows else None
+
+    def save_resource_unlock_record(self, record: ResourceUnlockRecord) -> None:
+        self._save_model("resource_unlock_records", record)
+
+    def list_opportunity_leads(self, statuses: set[str] | None = None, keyword: str | None = None) -> list[OpportunityLead]:
+        where_parts = ["true"]
+        params: list[str] = []
+        if statuses:
+            where_parts.append("status = any(%s)")
+            params.append(list(statuses))
+        clean_keyword = (keyword or "").strip()
+        if clean_keyword:
+            where_parts.append("(title ilike %s or payload->>'summary' ilike %s or payload->>'content' ilike %s or city ilike %s or industry ilike %s)")
+            like = f"%{clean_keyword}%"
+            params.extend([like, like, like, like, like])
+        rows = self._list_payloads(
+            "opportunity_leads",
+            " and ".join(where_parts),
+            tuple(params),
+            "coalesce(published_at, updated_at) desc, id desc",
+        )
+        return [OpportunityLead.model_validate(row) for row in rows]
+
+    def get_opportunity_lead(self, lead_id: str) -> OpportunityLead | None:
+        payload = self.get_payload_by_id("opportunity_leads", lead_id)
+        return OpportunityLead.model_validate(payload) if payload else None
+
+    def save_opportunity_lead(self, lead: OpportunityLead) -> None:
+        self._save_model("opportunity_leads", lead)
+
+    def list_opportunity_lead_sources(self, lead_id: str) -> list[OpportunityLeadSource]:
+        rows = self._list_payloads(
+            "opportunity_lead_sources",
+            "lead_id = %s",
+            (lead_id,),
+            "source_captured_at desc, id desc",
+        )
+        return [OpportunityLeadSource.model_validate(row) for row in rows]
+
+    def save_opportunity_lead_source(self, source: OpportunityLeadSource) -> None:
+        self._save_model("opportunity_lead_sources", source)
+
+    def list_opportunity_lead_contacts(self, lead_id: str) -> list[OpportunityLeadContact]:
+        rows = self._list_payloads(
+            "opportunity_lead_contacts",
+            "lead_id = %s",
+            (lead_id,),
+            "created_at desc, id desc",
+        )
+        return [OpportunityLeadContact.model_validate(row) for row in rows]
+
+    def save_opportunity_lead_contact(self, contact: OpportunityLeadContact) -> None:
+        self._save_model("opportunity_lead_contacts", contact)
+
+    def get_opportunity_lead_save(self, lead_id: str, user_id: str) -> OpportunityLeadSave | None:
+        rows = self._list_payloads(
+            "opportunity_lead_saves",
+            "lead_id = %s and user_id = %s",
+            (lead_id, user_id),
+            "updated_at desc, id desc",
+        )
+        return OpportunityLeadSave.model_validate(rows[0]) if rows else None
+
+    def save_opportunity_lead_save(self, lead_save: OpportunityLeadSave) -> None:
+        self._save_model("opportunity_lead_saves", lead_save)
+
+    def list_opportunity_lead_saves_for_user(self, user_id: str) -> list[OpportunityLeadSave]:
+        rows = self._list_payloads(
+            "opportunity_lead_saves",
+            "user_id = %s",
+            (user_id,),
+            "updated_at desc, id desc",
+        )
+        return [OpportunityLeadSave.model_validate(row) for row in rows]
+
+    def save_opportunity_lead_followup(self, followup: OpportunityLeadFollowup) -> None:
+        self._save_model("opportunity_lead_followups", followup)
+
+    def list_opportunity_lead_followups(self, lead_id: str, user_id: str | None = None) -> list[OpportunityLeadFollowup]:
+        where_parts = ["lead_id = %s"]
+        params: list[str] = [lead_id]
+        if user_id:
+            where_parts.append("user_id = %s")
+            params.append(user_id)
+        rows = self._list_payloads(
+            "opportunity_lead_followups",
+            " and ".join(where_parts),
+            tuple(params),
+            "created_at desc, id desc",
+        )
+        return [OpportunityLeadFollowup.model_validate(row) for row in rows]
+
+    def get_response_package(self, package_id: str) -> ResponsePackage | None:
+        payload = self.get_payload_by_id("response_packages", package_id)
+        return ResponsePackage.model_validate(payload) if payload else None
+
+    def get_response_package_for_lead_user(self, lead_id: str, owner_user_id: str) -> ResponsePackage | None:
+        rows = self._list_payloads(
+            "response_packages",
+            "lead_id = %s and owner_user_id = %s and status != %s",
+            (lead_id, owner_user_id, "archived"),
+            "updated_at desc, id desc",
+        )
+        return ResponsePackage.model_validate(rows[0]) if rows else None
+
+    def save_response_package(self, package: ResponsePackage) -> None:
+        self._save_model("response_packages", package)
+
+    def list_response_package_items(self, package_id: str) -> list[ResponsePackageItem]:
+        rows = self._list_payloads(
+            "response_package_items",
+            "response_package_id = %s",
+            (package_id,),
+            "sort_order asc, id asc",
+        )
+        return [ResponsePackageItem.model_validate(row) for row in rows]
+
+    def save_response_package_item(self, item: ResponsePackageItem) -> None:
+        self._save_model("response_package_items", item)
+
+    def save_response_package_event(self, event: ResponsePackageEvent) -> None:
+        self._save_model("response_package_events", event)
+
+    def list_opportunity_subscriptions(self, owner_user_id: str) -> list[OpportunitySubscription]:
+        rows = self._list_payloads(
+            "opportunity_subscriptions",
+            "owner_user_id = %s and status <> 'deleted'",
+            (owner_user_id,),
+            "updated_at desc, id desc",
+        )
+        return [OpportunitySubscription.model_validate(row) for row in rows]
+
+    def save_opportunity_subscription(self, subscription: OpportunitySubscription) -> None:
+        self._save_model("opportunity_subscriptions", subscription)
+
+    def list_supply_demand_cards(
+        self,
+        owner_user_id: str | None = None,
+        statuses: set[str] | None = None,
+        keyword: str | None = None,
+    ) -> list[SupplyDemandCard]:
+        where_parts = ["true"]
+        params: list[str | list[str]] = []
+        if owner_user_id:
+            where_parts.append("owner_user_id = %s")
+            params.append(owner_user_id)
+        if statuses:
+            where_parts.append("status = any(%s)")
+            params.append(list(statuses))
+        if keyword:
+            where_parts.append("(title ilike %s or payload->>'summary' ilike %s or city ilike %s or industry ilike %s)")
+            params.extend([f"%{keyword}%", f"%{keyword}%", f"%{keyword}%", f"%{keyword}%"])
+        rows = self._list_payloads("supply_demand_cards", " and ".join(where_parts), tuple(params), "updated_at desc, id desc")
+        return [SupplyDemandCard.model_validate(row) for row in rows]
+
+    def get_supply_demand_card(self, card_id: str) -> SupplyDemandCard | None:
+        payload = self.get_payload_by_id("supply_demand_cards", card_id)
+        return SupplyDemandCard.model_validate(payload) if payload else None
+
+    def save_supply_demand_card(self, card: SupplyDemandCard) -> None:
+        self._save_model("supply_demand_cards", card)
+
+    def list_supply_demand_applications(
+        self,
+        card_id: str | None = None,
+        applicant_user_id: str | None = None,
+        owner_user_id: str | None = None,
+    ) -> list[SupplyDemandApplication]:
+        where_parts = ["true"]
+        params: list[str] = []
+        if card_id:
+            where_parts.append("card_id = %s")
+            params.append(card_id)
+        if applicant_user_id:
+            where_parts.append("applicant_user_id = %s")
+            params.append(applicant_user_id)
+        if owner_user_id:
+            where_parts.append("owner_user_id = %s")
+            params.append(owner_user_id)
+        rows = self._list_payloads("supply_demand_applications", " and ".join(where_parts), tuple(params), "updated_at desc, id desc")
+        return [SupplyDemandApplication.model_validate(row) for row in rows]
+
+    def get_supply_demand_application(self, application_id: str) -> SupplyDemandApplication | None:
+        payload = self.get_payload_by_id("supply_demand_applications", application_id)
+        return SupplyDemandApplication.model_validate(payload) if payload else None
+
+    def save_supply_demand_application(self, application: SupplyDemandApplication) -> None:
+        self._save_model("supply_demand_applications", application)
+
+    def list_opportunity_push_digests(self, owner_user_id: str) -> list[OpportunityPushDigest]:
+        rows = self._list_payloads(
+            "opportunity_push_digests",
+            "owner_user_id = %s",
+            (owner_user_id,),
+            "created_at_index desc, id desc",
+        )
+        return [OpportunityPushDigest.model_validate(row) for row in rows]
+
+    def get_opportunity_push_digest(self, digest_id: str) -> OpportunityPushDigest | None:
+        payload = self.get_payload_by_id("opportunity_push_digests", digest_id)
+        return OpportunityPushDigest.model_validate(payload) if payload else None
+
+    def save_opportunity_push_digest(self, digest: OpportunityPushDigest) -> None:
+        self._save_model("opportunity_push_digests", digest)
+
     def init_schema(self) -> None:
         with psycopg.connect(self.database_url) as conn:
             with conn.transaction():
+                conn.execute("select pg_advisory_xact_lock(81207008435)")
                 for table_name in self.TABLES.values():
                     conn.execute(
                         f"""
@@ -2130,6 +2963,24 @@ class PostgresRepository:
                     where storage_sha256 is not null and status = 'active'
                     """
                 )
+                conn.execute(
+                    """
+                    create unique index if not exists uq_resource_wallets_owner
+                    on resource_wallets (owner_user_id)
+                    """
+                )
+                conn.execute(
+                    """
+                    create unique index if not exists uq_resource_free_quotas_owner_period
+                    on resource_free_quotas (owner_user_id, quota_type, period_key)
+                    """
+                )
+                conn.execute(
+                    """
+                    create unique index if not exists uq_opportunity_lead_saves_lead_user
+                    on opportunity_lead_saves (lead_id, user_id)
+                    """
+                )
 
     def _upsert_payload(self, conn, table_name: str, payload: dict) -> None:
         payload = strip_unicode_surrogates(payload)
@@ -2180,5 +3031,8 @@ def build_repository(database_backend: str, database_url: str, data_file: Path) 
         try:
             return PostgresRepository(database_url)
         except psycopg.Error:
+            require_postgres = os.getenv("DATABASE_REQUIRE_POSTGRES", "").lower() in {"1", "true", "yes"}
+            if require_postgres:
+                raise
             return JsonRepository(data_file)
     return JsonRepository(data_file)

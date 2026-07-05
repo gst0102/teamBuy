@@ -1,0 +1,59 @@
+<view class="page-shell subscription-page">
+  <custom-nav title="订阅雷达" show-back="{{true}}" />
+
+  <view class="sub-hero">
+    <view class="hero-kicker">让系统替你盯</view>
+    <view class="hero-title">订阅雷达</view>
+    <view class="hero-sub">配置你想找的机会和你能提供的资源，先在小程序机会页提醒你。</view>
+  </view>
+
+  <view class="config-panel">
+    <view class="config-group">
+      <view class="group-title">订阅方向</view>
+      <view class="chip-row">
+        <view wx:for="{{directionOptions}}" wx:key="label" class="option-chip {{item.selected ? 'active' : ''}}" data-key="direction" data-value="{{item.label}}" bindtap="handleSimpleOptionTap">{{item.label}}</view>
+      </view>
+    </view>
+
+    <view wx:for="{{tagGroups}}" wx:key="key" class="config-group">
+      <view class="group-title">{{item.title}}</view>
+      <input class="keyword-input tag-input" value="{{item.value}}" placeholder="{{item.placeholder}}" data-key="{{item.key}}" bindinput="handleTagInput" />
+      <view class="chip-row">
+        <view wx:for="{{item.options}}" wx:for-item="option" wx:key="label" class="option-chip {{option.selected ? 'active' : ''}}" data-key="{{item.key}}" data-value="{{option.label}}" bindtap="handleTagTap">{{option.label}}</view>
+      </view>
+    </view>
+
+    <view class="config-group">
+      <view class="group-title">联系方式要求</view>
+      <view class="chip-row">
+        <view wx:for="{{contactOptions}}" wx:key="label" class="option-chip {{item.selected ? 'active' : ''}}" data-key="contact" data-value="{{item.label}}" bindtap="handleSimpleOptionTap">{{item.label}}</view>
+      </view>
+    </view>
+
+    <view class="config-group">
+      <view class="group-title">关键词</view>
+      <input class="keyword-input" value="{{keywords}}" placeholder="例如：开业推广 / 商家合作" bindinput="handleKeywordsInput" />
+    </view>
+
+    <view class="config-group">
+      <view class="group-title">提醒节奏</view>
+      <view class="group-hint">当前用于小程序内“我的机会”排序和提醒；微信/企微主动通知后续单独确认。</view>
+      <view class="chip-row">
+        <view class="option-chip {{reminderCadence === '实时' ? 'active' : ''}}" data-value="实时" bindtap="handleReminderTap">实时</view>
+        <view class="option-chip {{reminderCadence === '每天早上' ? 'active' : ''}}" data-value="每天早上" bindtap="handleReminderTap">每天早上</view>
+        <view class="option-chip {{reminderCadence === '每周汇总' ? 'active' : ''}}" data-value="每周汇总" bindtap="handleReminderTap">每周汇总</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="watching-card">
+    <view class="watching-title">正在为你盯</view>
+    <view class="watching-line">{{selected.city}} + {{selected.direction}}</view>
+    <view class="watching-line">我找：{{selected.lookingFor}} · 我能提供：{{selected.providing}}</view>
+    <view class="watching-line">{{keywords}}</view>
+    <view class="watching-sub">{{selected.contact}} · {{reminderCadence}} · 小程序内提醒</view>
+  </view>
+
+  <button class="save-btn" bindtap="handleSave">保存雷达订阅</button>
+  <canvas canvas-id="universalShareCanvas" class="universal-share-canvas"></canvas>
+</view>

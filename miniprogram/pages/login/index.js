@@ -9,7 +9,9 @@ Page({
     avatarUrl: "",
     allowMockLogin: false,
     returnUrl: "",
-    loggingIn: false
+    loggingIn: false,
+    loginCoverFailed: false,
+    legalAgreed: false
   },
   onLoad(options = {}) {
     const app = getApp();
@@ -26,6 +28,23 @@ Page({
   },
   handleNicknameChange(event) {
     this.setData({ nickname: event.detail.value });
+  },
+  handleLoginCoverError() {
+    this.setData({ loginCoverFailed: true });
+  },
+  handleToggleLegalAgree() {
+    this.setData({ legalAgreed: !this.data.legalAgreed });
+  },
+  handleOpenTerms() {
+    wx.navigateTo({ url: "/pages/legal/terms/index" });
+  },
+  handleOpenPrivacy() {
+    wx.navigateTo({ url: "/pages/legal/privacy/index" });
+  },
+  ensureLegalAgreed() {
+    if (this.data.legalAgreed) return true;
+    wx.showToast({ title: "请先阅读并同意协议", icon: "none" });
+    return false;
   },
   requestWxCode() {
     return new Promise((resolve, reject) => {
@@ -77,6 +96,7 @@ Page({
   },
   async handleWechatLogin() {
     if (this.data.loggingIn) return;
+    if (!this.ensureLegalAgreed()) return;
     const app = getApp();
     const baseUrl = (app.globalData && app.globalData.apiBaseUrl) || "";
     if (!/^https:\/\//i.test(baseUrl)) {
@@ -88,6 +108,7 @@ Page({
       return;
     }
     this.setData({ loggingIn: true });
+    wx.showLoading({ title: "登录中" });
     try {
       const code = await this.requestWxCode();
       const res = await api.wechatLogin({
@@ -95,8 +116,10 @@ Page({
         nickname: this.data.nickname || getRandomDefaultNickname(),
         avatarUrl: this.data.avatarUrl
       });
+      wx.hideLoading();
       this.saveLogin(res.data);
     } catch (error) {
+      wx.hideLoading();
       if ((error.detail || "").includes("微信登录未配置")) {
         wx.showModal({
           title: "登录服务暂不可用",
@@ -111,11 +134,13 @@ Page({
         showCancel: false
       });
     } finally {
+      wx.hideLoading();
       this.setData({ loggingIn: false });
     }
   },
   async handleMockLogin() {
     if (this.data.loggingIn) return;
+    if (!this.ensureLegalAgreed()) return;
     if (!this.data.allowMockLogin) {
       wx.showModal({
         title: "当前不可用",

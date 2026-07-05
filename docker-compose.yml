@@ -22,12 +22,73 @@ services:
     env_file:
       - ./backend/.env
     environment:
+      APP_ROLE: api
       APP_HOST: 0.0.0.0
+      BACKGROUND_TASKS_IN_API: "false"
+      SYNC_TASK_AUTO_SCHEDULE: "false"
+      SYNC_TASK_WORKER_ENABLED: "false"
+      WECOM_ARCHIVE_WORKER_ENABLED: "false"
       DATABASE_BACKEND: postgres
+      DATABASE_REQUIRE_POSTGRES: "true"
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-teambuy}:${POSTGRES_PASSWORD:-teambuy_dev_password}@postgres:5432/${POSTGRES_DB:-teambuy}
       MEDIA_STORAGE_DIR: /app/mock/media
     ports:
       - "${APP_PORT:-8000}:8000"
+    volumes:
+      - backend_media:/app/mock/media
+      - ./backend/secrets:/app/secrets:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  backend-worker:
+    build:
+      context: ./backend
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}
+    command: ["python", "-m", "app.worker"]
+    env_file:
+      - ./backend/.env
+    environment:
+      APP_ROLE: ocr-worker
+      BACKGROUND_TASKS_IN_API: "false"
+      SYNC_TASK_AUTO_SCHEDULE: "false"
+      SYNC_TASK_WORKER_ENABLED: "true"
+      SYNC_TASK_WORKER_INTERVAL_SECONDS: ${SYNC_TASK_WORKER_INTERVAL_SECONDS:-5}
+      OCR_TASK_CONCURRENCY: ${OCR_TASK_CONCURRENCY:-1}
+      WECOM_ARCHIVE_WORKER_ENABLED: "false"
+      DATABASE_BACKEND: postgres
+      DATABASE_REQUIRE_POSTGRES: "true"
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-teambuy}:${POSTGRES_PASSWORD:-teambuy_dev_password}@postgres:5432/${POSTGRES_DB:-teambuy}
+      MEDIA_STORAGE_DIR: /app/mock/media
+    volumes:
+      - backend_media:/app/mock/media
+      - ./backend/secrets:/app/secrets:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  archive-worker:
+    build:
+      context: ./backend
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}
+    command: ["python", "-m", "app.worker"]
+    env_file:
+      - ./backend/.env
+    environment:
+      APP_ROLE: archive-worker
+      BACKGROUND_TASKS_IN_API: "false"
+      SYNC_TASK_AUTO_SCHEDULE: "false"
+      SYNC_TASK_WORKER_ENABLED: "false"
+      WECOM_ARCHIVE_WORKER_ENABLED: "true"
+      WECOM_ARCHIVE_WORKER_INTERVAL_SECONDS: ${WECOM_ARCHIVE_WORKER_INTERVAL_SECONDS:-60}
+      DATABASE_BACKEND: postgres
+      DATABASE_REQUIRE_POSTGRES: "true"
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-teambuy}:${POSTGRES_PASSWORD:-teambuy_dev_password}@postgres:5432/${POSTGRES_DB:-teambuy}
+      MEDIA_STORAGE_DIR: /app/mock/media
     volumes:
       - backend_media:/app/mock/media
       - ./backend/secrets:/app/secrets:ro

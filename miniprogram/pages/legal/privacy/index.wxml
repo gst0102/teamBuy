@@ -1,0 +1,60 @@
+<view class="legal-page">
+  <custom-nav title="隐私政策" showBack="{{true}}" />
+
+  <view class="legal-card">
+    <view class="legal-title">资料整理助手隐私政策</view>
+    <view class="legal-meta">生效日期：2026年7月3日</view>
+    <view class="legal-meta">个人信息处理者：湖南悦享互动科技有限公司</view>
+
+    <view class="section">
+      <view class="section-title">一、我们如何收集和使用信息</view>
+      <view class="paragraph">为提供登录、资料整理、客户线索管理、资料分享、头像设置、客户联系和跟进服务，我们会在你授权或主动填写后处理必要信息。</view>
+      <view class="paragraph">账号信息：微信登录标识、昵称、头像，用于账号识别、资料归属、资料页展示和客户联系展示。</view>
+      <view class="paragraph">联系方式：你主动填写的手机号、微信号，用于资料页联系展示、客户沟通、生成资料卡和服务页。</view>
+      <view class="paragraph">图片和资料：你选择的头像图片、资料图片、房源或服务资料、商品资料、商机资料，用于生成资料页、分享图、合集和客户展示内容。</view>
+      <view class="paragraph">客户线索：客户打开记录、浏览记录、咨询、留言、预约、接龙、下单、手机号、微信号、备注和跟进状态，用于你的客户 SCRM 管理。</view>
+      <view class="paragraph">位置信息：当你使用位置展示、导航或地图标记功能时，我们会根据你的授权处理位置相关信息，用于生成位置标记或展示地图位置。</view>
+    </view>
+
+    <view class="section">
+      <view class="section-title">二、我们如何保存信息</view>
+      <view class="paragraph">我们会在实现服务目的所必需的期限内保存你的资料、账号信息和客户线索。你删除资料、清空内容或停止使用相关功能后，我们会在合理期限内处理相关数据，但法律法规或平台规则另有要求的除外。</view>
+    </view>
+
+    <view class="section">
+      <view class="section-title">三、我们如何使用图片和相册信息</view>
+      <view class="paragraph">当你选择头像、上传资料图片、生成分享图或资料海报时，小程序会调用微信提供的图片选择能力。我们只处理你主动选择的照片或视频信息，不会读取你的全部相册内容。</view>
+    </view>
+
+    <view class="section">
+      <view class="section-title">四、信息展示与分享</view>
+      <view class="paragraph">你发布或分享的资料页可能展示你设置的昵称、头像、手机号、微信号、资料图片、资料说明、位置和联系方式。请在分享前确认公开内容无误。</view>
+      <view class="paragraph">系统识别到的上游电话、中介费、密码锁、看房备注等私密备注默认仅在你的账号内保存，不在客户页展示，除非你主动编辑为公开内容。</view>
+    </view>
+
+    <view class="section">
+      <view class="section-title">五、第三方与平台能力</view>
+      <view class="paragraph">本服务运行于微信小程序环境，会使用微信登录、图片选择、昵称输入、地图、分享等平台能力。相关能力由微信平台提供并受微信规则约束。</view>
+    </view>
+
+    <view class="section">
+      <view class="section-title">六、你的权利</view>
+      <view class="paragraph">你可以在小程序内修改昵称、头像、手机号、微信号，也可以编辑或删除你的资料内容。你可以通过帮助与反馈联系我们，申请查询、更正或删除与你相关的信息。</view>
+    </view>
+
+    <view class="section">
+      <view class="section-title">七、未成年人保护</view>
+      <view class="paragraph">本服务主要面向具备资料管理、客户沟通和商业经营需求的用户。如未成年人使用本服务，应在监护人同意和指导下进行。</view>
+    </view>
+
+    <view class="section">
+      <view class="section-title">八、政策更新</view>
+      <view class="paragraph">我们可能根据产品功能、法律法规或平台规则变化更新本政策。更新后会在小程序内展示。你继续使用本服务，即视为接受更新后的政策。</view>
+    </view>
+
+    <view class="section">
+      <view class="section-title">九、联系我们 </view>
+      <view class="paragraph">如你对个人信息保护有疑问、建议或投诉，可以通过小程序内的帮助与反馈入口联系我们。250667571@qq.com</view>
+    </view>
+  </view>
+</view>

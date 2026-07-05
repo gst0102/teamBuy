@@ -31,3 +31,4 @@ Thumbs.db
 tmp/
 temp/
 backend/mock/media/
+artifacts/

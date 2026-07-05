@@ -1,0 +1,36 @@
+<view class="page-shell radar-page">
+  <custom-nav title="回应包反馈" show-back="{{true}}" />
+
+  <view class="radar-hero">
+    <view class="hero-kicker">雷达反馈</view>
+    <view class="hero-title">{{radar.package.title || "回应包反馈"}}</view>
+    <view class="hero-sub">{{radar.nextSuggestion}}</view>
+  </view>
+
+  <view class="metric-grid">
+    <view class="metric-card">
+      <text>是否打开</text>
+      <strong>{{radar.opened ? "已打开" : "未打开"}}</strong>
+    </view>
+    <view class="metric-card">
+      <text>打开次数</text>
+      <strong>{{radar.eventCounts.view || 0}}</strong>
+    </view>
+    <view class="metric-card">
+      <text>联系点击</text>
+      <strong>{{radar.eventCounts.contact_click || 0}}</strong>
+    </view>
+  </view>
+
+  <view class="event-panel">
+    <view class="panel-title">最近轨迹</view>
+    <view wx:for="{{radar.events}}" wx:key="createdAt" class="event-row">
+      <view class="event-dot"></view>
+      <view>
+        <view class="event-type">{{item.eventType}}</view>
+        <view class="event-time">{{item.createdAt}}</view>
+      </view>
+    </view>
+  </view>
+  <canvas canvas-id="universalShareCanvas" class="universal-share-canvas"></canvas>
+</view>

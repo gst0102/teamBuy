@@ -30,8 +30,42 @@ const SOURCE_FILTERS = [
   { label: "小程序", value: "miniapp", key: "source:miniapp" }
 ];
 
+const UNIFIED_TYPE_FILTERS = [
+  { label: "全部资料", value: "", mode: "all", key: "all" },
+  { label: "待确认", value: "pending", mode: "status", key: "status:pending" },
+  { label: "房源", value: "property", mode: "type", key: "type:property" },
+  { label: "商机", value: "opportunity", mode: "type", key: "type:opportunity" },
+  { label: "服务", value: "service", mode: "type", key: "type:service" },
+  { label: "商品", value: "groupbuy", mode: "type", key: "type:groupbuy" },
+  { label: "日常", value: "plain", mode: "type", key: "type:plain" }
+];
+
 function isPlainNoteItem(note) {
   return note && note.cardType === "text_note" && !note.suggestionText && !note.migrationConfirmType;
+}
+
+function isOpportunityNote(note) {
+  if (!note) return false;
+  const text = [
+    note.title,
+    note.summary,
+    note.body,
+    note.systemCategory,
+    note.serviceOfferPreview && note.serviceOfferPreview.templateScene,
+    note.serviceOfferPreview && note.serviceOfferPreview.templateName,
+    ...(note.bookmarkTags || [])
+  ].filter(Boolean).join(" ");
+  return note.cardType === "service_offer" && /商机|合作|招商|代理|推广|渠道|供给|需求|外贸|独立站|落地页|官网|服务商/.test(text);
+}
+
+function matchesUnifiedType(note, type) {
+  if (!type) return true;
+  if (type === "property") return note.isProperty;
+  if (type === "groupbuy") return note.isGroupbuy;
+  if (type === "opportunity") return isOpportunityNote(note);
+  if (type === "service") return note.isServiceCard && !isOpportunityNote(note);
+  if (type === "plain") return isPlainNoteItem(note);
+  return true;
 }
 
 function withInitialShareState(note) {
@@ -49,26 +83,21 @@ Page({
     user: null,
     keyword: "",
     notes: [],
+    allNotes: [],
     sourceFilters: SOURCE_FILTERS,
     activeSourceType: "",
     activeTag: "",
     activeTopicId: "",
     activeSystemCategory: "",
     activePlainNoteOnly: false,
+    activeTypeFilter: "",
     activeCategoryKey: "all",
     activeMigrationPending: false,
     sort: "collected",
     viewMode: "list",
     showAllCategories: false,
     showAllTags: false,
-    categoryQuickFilters: [
-      { label: "全部", value: "", mode: "all", key: "all" },
-      { label: "普通笔记", value: "plain_note", mode: "plain", key: "plain_note" },
-      { label: "房源", value: "房源", mode: "system", key: "system:房源" },
-      { label: "商品团购", value: "团购", mode: "system", key: "system:团购" },
-      { label: "电子名片", value: "名片", mode: "system", key: "system:名片" },
-      { label: "服务方案", value: "服务", mode: "system", key: "system:服务" }
-    ],
+    categoryQuickFilters: UNIFIED_TYPE_FILTERS,
     tagQuickFilters: [
       { name: "最近使用", value: "" },
       { name: "房产", value: "房产" },
@@ -86,13 +115,15 @@ Page({
     const migrationPending = options.migrationPending === "1";
     const plainOnly = options.plain === "1";
     const systemCategory = options.systemCategory || "";
+    const typeFilter = plainOnly ? "plain" : "";
     this.setData({
       activeTopicId: options.topicId || "",
       activeSourceType: sourceType,
       activeMigrationPending: migrationPending,
       activePlainNoteOnly: plainOnly,
+      activeTypeFilter: typeFilter,
       activeSystemCategory: systemCategory,
-      activeCategoryKey: plainOnly ? "plain_note" : sourceType ? `source:${sourceType}` : systemCategory ? `system:${systemCategory}` : "all"
+      activeCategoryKey: migrationPending ? "status:pending" : typeFilter ? `type:${typeFilter}` : sourceType ? `source:${sourceType}` : systemCategory ? `system:${systemCategory}` : "all"
     });
   },
   onShow() {
@@ -109,24 +140,34 @@ Page({
     this.setData({ keyword: event.detail.value, activeMigrationPending: false });
   },
   async loadNotes() {
-    const { user, keyword, activeSourceType, activeTag, activeTopicId, activeSystemCategory, activePlainNoteOnly, sort } = this.data;
+    const { user, keyword, activeSourceType, activeTag, activeTopicId, sort } = this.data;
     if (!user) return;
+    const params = {
+      ownerUserId: user.id,
+      keyword: keyword.trim(),
+      sourceType: activeSourceType,
+      tag: activeTag,
+      topicId: activeTopicId,
+      sort
+    };
+    const cachedNotes = api.getCachedNotes(params);
+    if (cachedNotes.length) {
+      const cachedAll = cachedNotes.map(decorateNoteForList);
+      const cachedVisible = this.applyLocalFilters(cachedAll).map(withInitialShareState);
+      this.setData({
+        allNotes: cachedAll,
+        notes: cachedVisible,
+        tagFilters: this.buildTagFilters(cachedVisible),
+        migrationSummary: this.buildMigrationSummary(cachedAll)
+      });
+      this.loadScrmSummaries(cachedVisible);
+    }
     this.setData({ loading: true });
     try {
-      const res = await api.fetchNotes({
-        ownerUserId: user.id,
-        keyword: keyword.trim(),
-        sourceType: activeSourceType,
-        systemCategory: activeSystemCategory,
-        tag: activeTag,
-        topicId: activeTopicId,
-        sort
-      });
+      const res = await api.fetchNotes(params);
       const allNotes = (res.data || []).map(decorateNoteForList);
-      let notes = activePlainNoteOnly ? allNotes.filter(isPlainNoteItem) : allNotes;
-      notes = this.data.activeMigrationPending ? notes.filter((note) => note.migrationNeedsAction) : notes;
-      notes = notes.map(withInitialShareState);
-      this.setData({ notes, tagFilters: this.buildTagFilters(notes), migrationSummary: this.buildMigrationSummary(allNotes) });
+      const notes = this.applyLocalFilters(allNotes).map(withInitialShareState);
+      this.setData({ allNotes, notes, tagFilters: this.buildTagFilters(notes), migrationSummary: this.buildMigrationSummary(allNotes) });
       this.loadScrmSummaries(notes);
       this.prepareNoteShareImages(notes);
     } catch (error) {
@@ -134,6 +175,26 @@ Page({
     } finally {
       this.setData({ loading: false });
     }
+  },
+  applyLocalFilters(notes) {
+    const { activeMigrationPending, activePlainNoteOnly, activeTypeFilter, activeSystemCategory } = this.data;
+    let visible = notes || [];
+    if (activeMigrationPending) visible = visible.filter((note) => note.migrationNeedsAction);
+    if (activePlainNoteOnly) visible = visible.filter(isPlainNoteItem);
+    if (activeTypeFilter) visible = visible.filter((note) => matchesUnifiedType(note, activeTypeFilter));
+    if (activeSystemCategory) visible = visible.filter((note) => note.systemCategory === activeSystemCategory);
+    return visible;
+  },
+  refreshVisibleNotesFromLocal() {
+    const allNotes = this.data.allNotes || [];
+    const notes = this.applyLocalFilters(allNotes).map(withInitialShareState);
+    this.setData({
+      notes,
+      tagFilters: this.buildTagFilters(notes),
+      migrationSummary: this.buildMigrationSummary(allNotes)
+    });
+    this.loadScrmSummaries(notes);
+    this.prepareNoteShareImages(notes);
   },
   async prepareNoteShareImages(notes) {
     const shareableNotes = (notes || []).filter((note) => note && note.id);
@@ -223,16 +284,24 @@ Page({
       activeTag: ""
     };
     if (mode === "plain") {
-      Object.assign(next, { activePlainNoteOnly: true, activeSourceType: "", activeSystemCategory: "" });
+      Object.assign(next, { activePlainNoteOnly: true, activeTypeFilter: "plain", activeSourceType: "", activeSystemCategory: "" });
+    } else if (mode === "type") {
+      Object.assign(next, { activePlainNoteOnly: value === "plain", activeTypeFilter: value, activeSourceType: "", activeSystemCategory: "" });
+    } else if (mode === "status") {
+      Object.assign(next, { activeMigrationPending: true, activePlainNoteOnly: false, activeTypeFilter: "", activeSourceType: "", activeSystemCategory: "" });
     } else if (mode === "system") {
-      Object.assign(next, { activePlainNoteOnly: false, activeSourceType: "", activeSystemCategory: value });
+      Object.assign(next, { activePlainNoteOnly: false, activeTypeFilter: "", activeSourceType: "", activeSystemCategory: value });
     } else if (mode === "source") {
-      Object.assign(next, { activePlainNoteOnly: false, activeSourceType: value, activeSystemCategory: "" });
+      Object.assign(next, { activePlainNoteOnly: false, activeTypeFilter: "", activeSourceType: value, activeSystemCategory: "" });
     } else {
-      Object.assign(next, { activePlainNoteOnly: false, activeSourceType: "", activeSystemCategory: "" });
+      Object.assign(next, { activePlainNoteOnly: false, activeTypeFilter: "", activeSourceType: "", activeSystemCategory: "" });
     }
     this.setData(next);
-    this.loadNotes();
+    if (mode === "source") {
+      this.loadNotes();
+      return;
+    }
+    this.refreshVisibleNotesFromLocal();
   },
   toggleTags() {
     this.setData({ showAllTags: !this.data.showAllTags });
@@ -284,6 +353,7 @@ Page({
       activeSourceType: value,
       activeCategoryKey: value ? `source:${value}` : "all",
       activePlainNoteOnly: false,
+      activeTypeFilter: "",
       activeSystemCategory: "",
       activeTag: "",
       activeMigrationPending: false
@@ -320,20 +390,21 @@ Page({
       activeSystemCategory: active,
       activeCategoryKey: active ? "system:待整理" : "all",
       activePlainNoteOnly: false,
+      activeTypeFilter: "",
       activeSourceType: "",
       activeMigrationPending: false
     });
-    this.loadNotes();
+    this.refreshVisibleNotesFromLocal();
   },
   handleMigrationPendingFilter() {
     if (!this.data.migrationSummary || !this.data.migrationSummary.hasPending) {
-      this.setData({ activeMigrationPending: false, activeSystemCategory: "", activeSourceType: "", activePlainNoteOnly: false, activeCategoryKey: "all", activeTag: "" });
-      this.loadNotes();
+      this.setData({ activeMigrationPending: false, activeSystemCategory: "", activeSourceType: "", activePlainNoteOnly: false, activeTypeFilter: "", activeCategoryKey: "all", activeTag: "" });
+      this.refreshVisibleNotesFromLocal();
       return;
     }
     const active = !this.data.activeMigrationPending;
-    this.setData({ activeMigrationPending: active, activeSystemCategory: "", activeSourceType: "", activePlainNoteOnly: false, activeCategoryKey: "all", activeTag: "" });
-    this.loadNotes();
+    this.setData({ activeMigrationPending: active, activeSystemCategory: "", activeSourceType: "", activePlainNoteOnly: false, activeTypeFilter: "", activeCategoryKey: active ? "status:pending" : "all", activeTag: "" });
+    this.refreshVisibleNotesFromLocal();
   },
   handleOpenFirstPending() {
     const summary = this.data.migrationSummary || {};

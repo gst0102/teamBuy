@@ -95,16 +95,26 @@ const WORKFLOW_STEPS = [
 const PROPERTY_FIELDS = [
   { key: "community", label: "小区 / 标题", placeholder: "例如：碧桂园城市之光1栋1210" },
   { key: "layout", label: "户型", placeholder: "例如：公寓一房", quickOptions: ["公寓一房", "一室一厅", "两室一厅", "三室两厅"] },
-  { key: "price", label: "价格 / 租金", placeholder: "例如：1600元/月" },
-  { key: "area", label: "面积", placeholder: "例如：38㎡", quickOptions: ["30㎡内", "30-50㎡", "50㎡以上"] },
+  { key: "price", label: "租金", placeholder: "例如：1600", unit: "元/月", inputType: "digit" },
+  { key: "area", label: "面积", placeholder: "例如：38", unit: "㎡", inputType: "digit", quickOptions: ["30", "40", "50"] },
   { key: "floor", label: "楼层 / 电梯", placeholder: "例如：电梯高层", quickOptions: ["电梯房", "楼梯房", "低楼层", "高楼层"] },
   { key: "utilities", label: "水电物业", placeholder: "例如：自缴", quickOptions: ["民水民电", "商水商电", "水电自缴", "物业已含"] },
   { key: "paymentMethod", label: "押付方式", placeholder: "例如：押一付一", quickOptions: ["押一付一", "押一付三", "押二付一"] },
   { key: "moveInTime", label: "入住时间", placeholder: "例如：随时入住", quickOptions: ["随时入住", "本周可住", "月底可住"] },
-  { key: "businessArea", label: "商圈 / 区域", placeholder: "例如：万家丽、高桥北", quickOptions: ["万家丽", "高桥北", "汽车东站", "袁隆平地铁口", "高桥"] },
+  { key: "businessArea", label: "商圈 / 区域", placeholder: "例如：五一广场、人民广场", quickOptions: ["人民广场", "五一广场"] },
   { key: "address", label: "地址 / 位置", placeholder: "可选" },
   { key: "serviceFee", label: "服务费", placeholder: "例如：服务费200", quickOptions: ["无服务费", "服务费200", "合同期内收一次服务费"] },
   { key: "contact", label: "联系方式", placeholder: "可选" }
+];
+
+const UPSTREAM_PRIVATE_FIELDS = [
+  { key: "upstreamPhonesText", label: "上游电话", placeholder: "房东/渠道电话，可填多个，用空格或换行分隔" },
+  { key: "upstreamWechat", label: "上游微信", placeholder: "可选，只自己可见" },
+  { key: "upstreamContact", label: "上游联系人", placeholder: "例如：张姐 / 房东A / 渠道" },
+  { key: "commission", label: "中介费", placeholder: "例如：中介费50% / 无中介费" },
+  { key: "lockNote", label: "密码锁", placeholder: "例如：密码锁，进门后请复位" },
+  { key: "viewingNote", label: "看房备注", placeholder: "例如：提前半小时联系上游，可随时看房", multiline: true },
+  { key: "privateRemark", label: "上游备注", placeholder: "写给自己看的私密备注，客户页不展示", multiline: true }
 ];
 
 const GROUPBUY_FIELDS = [
@@ -173,7 +183,7 @@ const PROPERTY_STATUS_OPTIONS = [
 ];
 
 const NOISY_LABELS = new Set(["未整理", "待整理", "待跟进", "已整理", "房源候选", "团购候选"]);
-const PROPERTY_CONTEXT_LABELS = ["房产", "房源", "租房", "小区", "公寓", "万家丽", "高桥北", "汽车东站", "袁隆平地铁口", "高桥"];
+const PROPERTY_CONTEXT_LABELS = ["房产", "房源", "租房", "小区", "公寓", "人民广场", "五一广场"];
 const LAST_CONTACT_PHONE_KEY = "teambuy:lastContactPhone";
 const LAST_PROPERTY_CITY_KEY = "teambuy:lastPropertyCity";
 const FLOAT_SAVE_SIZE = 42;
@@ -318,18 +328,61 @@ function buildOcrInfo(config, structuredData) {
   };
 }
 
-function hydrateFields(fields, data) {
+function fieldDisplayValue(field, data = {}) {
+  const rawValue = data && data[field.key] ? String(data[field.key]) : "";
+  if (!field.unit) return rawValue;
+  if (field.key === "price") {
+    const match = rawValue.match(/\d+(?:\.\d+)?/);
+    return match ? match[0] : rawValue.replace(/元\/月|\/月|每月|元|块/g, "").trim();
+  }
+  if (field.key === "area") {
+    const match = rawValue.match(/\d+(?:\.\d+)?/);
+    return match ? match[0] : rawValue.replace(/平米|平方|㎡|平/g, "").trim();
+  }
+  return rawValue;
+}
+
+function hydrateFields(fields, data, form = {}) {
   return fields.map((field) => ({
     ...field,
-    value: data && data[field.key] ? data[field.key] : "",
-    quickOptions: buildFieldQuickOptions(field, data)
+    value: fieldDisplayValue(field, data),
+    quickOptions: buildFieldQuickOptions(field, data, form)
   }));
 }
 
-function buildFieldQuickOptions(field, data) {
+function extractBusinessAreaOptions(data = {}, form = {}) {
+  const text = [
+    data.businessArea,
+    data.address,
+    data.community,
+    data.remark,
+    data.rawText,
+    form.title,
+    form.summary,
+    form.body
+  ].filter(Boolean).join("\n");
+  const options = [
+    ...splitUsefulLabels(data.businessArea || "")
+  ];
+  const patterns = [
+    /(?:商圈|区域|位置|附近|近)[：:\s]*([\u4e00-\u9fffA-Za-z0-9]{2,12})/g,
+    /([\u4e00-\u9fffA-Za-z0-9]{2,12}(?:广场|商圈|地铁口|地铁站|车站|公园|中心|CBD))/g,
+    /([\u4e00-\u9fffA-Za-z0-9]{2,12})(?:附近|旁边|周边|边上)/g
+  ];
+  patterns.forEach((pattern) => {
+    let match;
+    while ((match = pattern.exec(text))) {
+      options.push(match[1]);
+    }
+  });
+  return filterUsefulLabels(options)
+    .filter((item) => !/^(房源|房产|租房|小区|公寓|位置|区域|附近)$/.test(item));
+}
+
+function buildFieldQuickOptions(field, data, form = {}) {
   const options = [...(field.quickOptions || [])];
   if (field.key === "businessArea") {
-    options.push(...splitUsefulLabels(data.businessArea || ""));
+    options.push(...extractBusinessAreaOptions(data, form));
   }
   return Array.from(new Set(options.filter(Boolean))).slice(0, 8);
 }
@@ -426,8 +479,8 @@ function defaultConversionConfig(cardType) {
   if (cardType === "groupbuy_product") {
     return {
       showContactPhone: true,
-      enableLightScrm: false,
-      collectLeads: false,
+      enableLightScrm: true,
+      collectLeads: true,
       enableAppointment: false,
       enablePrivateConsultation: false,
       enableSharePoster: true,
@@ -447,7 +500,16 @@ function defaultConversionConfig(cardType) {
       enablePaymentPlaceholder: false
     };
   }
-  return {};
+  return {
+    showContactPhone: false,
+    enableLightScrm: true,
+    collectLeads: false,
+    enableAppointment: false,
+    enablePrivateConsultation: false,
+    enableSharePoster: false,
+    enableGroupRelay: false,
+    enablePaymentPlaceholder: false
+  };
 }
 
 function defaultMiniappConversionConfig(structuredData) {
@@ -584,6 +646,74 @@ function buildSuggestionButtons(suggestions) {
       signalsText: Array.isArray(item.signals) && item.signals.length ? item.signals.slice(0, 4).join("、") : "",
       confidenceText: item.confidence ? `${Math.round(Number(item.confidence) * 100)}%` : ""
     }));
+}
+
+function scoreTextSignals(text, patterns) {
+  return patterns.reduce((score, pattern) => score + (pattern.test(text) ? 1 : 0), 0);
+}
+
+function buildFallbackTypeSuggestions(cardType, note = {}) {
+  if (cardType !== "text_note") return [];
+  const config = note.visibilityConfig || {};
+  const structuredData = config.structuredData || {};
+  const text = [
+    note.title,
+    note.summary,
+    note.body,
+    structuredData.rawText
+  ].filter(Boolean).join("\n");
+  if (!text.trim()) return [];
+  const propertyScore = scoreTextSignals(text, [
+    /房源|房产|租房|出租|小区|楼盘|公寓|栋|室|房|看房|带看/,
+    /户型|一室|两室|二室|三室|一房|两房|二房|三房|公寓|独门独户/,
+    /租金|月租|价格|底价|[0-9]{3,5}\s*(?:元\/月|元|\/月)?/,
+    /面积|平米|平方|㎡|m²|[0-9]+(?:\.[0-9]+)?\s*平/i,
+    /押一付一|押一付三|押二付一|押付|民水民电|商水商电/,
+    /密码锁|不养宠物|禁宠|租客|空置|搬空|爱干净/
+  ]);
+  const groupbuyScore = scoreTextSignals(text, [
+    /团购|接龙|下单|拼团|预订|预定/,
+    /商品|好物|现货|到货|库存|限量/,
+    /规格|口味|套餐|单价|售价/,
+    /自提|配送|发货|取货|包邮/,
+    /[0-9]+(\.[0-9]+)?元|[0-9]+斤|[0-9]+箱|[0-9]+份/
+  ]);
+  const serviceScore = scoreTextSignals(text, [
+    /商机|服务|合作|代理|渠道|招商|招募|返点|返佣|介绍客户/,
+    /推广|获客|落地页|独立站|官网|企业官网|线上商城|电商/,
+    /小程序|公众号|网站|建站|wordpress|shopify|shopee|服务器|企业邮箱|CDN/i,
+    /开发|定制|源码交付|技术维护|二次开发|API对接|部署/,
+    /报价|费用|价格|[0-9]{2,6}\s*起|联系电话|微信同号/
+  ]);
+  const suggestions = [];
+  if (propertyScore >= 2 && propertyScore >= groupbuyScore) {
+    suggestions.push({
+      cardType: "property_listing",
+      label: "房源",
+      reason: "当前内容命中租房关键词，可整理成房源字段卡。",
+      signals: ["租金/底价", "押付/水电", "房源特征"],
+      confidence: 0.76
+    });
+  }
+  if (groupbuyScore >= 2) {
+    suggestions.push({
+      cardType: "groupbuy_product",
+      label: "商品",
+      reason: "当前内容命中团购商品关键词，可整理成商品卡。",
+      signals: ["价格/规格", "下单/配送"],
+      confidence: 0.72
+    });
+  }
+  if (serviceScore >= 2) {
+    suggestions.push({
+      cardType: "service_offer",
+      label: "商机合作",
+      reason: "当前内容命中服务、推广、建站或合作关键词，可整理成商机/服务卡。",
+      signals: ["服务/推广", "报价/返点", "联系方式"],
+      confidence: 0.74
+    });
+  }
+  return suggestions;
 }
 
 function hiddenSectionMap(config) {
@@ -758,6 +888,111 @@ function buildPropertyPublishChecks(form = {}, structuredData = {}, conversionCo
     tone: item.ok ? "ok" : "warn",
     statusText: item.ok ? "已完成" : "待完善"
   }));
+}
+
+function normalizePrivateList(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item || "").trim()).filter(Boolean);
+  }
+  const text = String(value || "").trim();
+  return text ? [text] : [];
+}
+
+function normalizeUpstreamPrivateData(privateData = {}) {
+  const phones = normalizePrivateList(privateData.upstreamPhones);
+  return {
+    upstreamPhonesText: phones.join("\n"),
+    upstreamWechat: String(privateData.upstreamWechat || "").trim(),
+    upstreamContact: String(privateData.upstreamContact || "").trim(),
+    commission: String(privateData.commission || "").trim(),
+    lockNote: String(privateData.lockNote || privateData.lockPassword || "").trim(),
+    viewingNote: String(privateData.viewingNote || "").trim(),
+    privateRemark: String(privateData.privateRemark || "").trim()
+  };
+}
+
+function splitPrivatePhones(value) {
+  return String(value || "")
+    .split(/[\s,，、/]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function buildUpstreamPrivateFields(privateData = {}) {
+  const normalized = normalizeUpstreamPrivateData(privateData);
+  return UPSTREAM_PRIVATE_FIELDS.map((field) => ({
+    ...field,
+    value: normalized[field.key] || ""
+  }));
+}
+
+function buildPrivateDataFromInput(current = {}, key, value) {
+  const privateData = { ...(current || {}) };
+  if (key === "upstreamPhonesText") {
+    const phones = splitPrivatePhones(value);
+    if (phones.length) {
+      privateData.upstreamPhones = phones;
+    } else {
+      delete privateData.upstreamPhones;
+    }
+    return privateData;
+  }
+  const text = String(value || "").trim();
+  if (text) {
+    privateData[key] = text;
+  } else {
+    delete privateData[key];
+  }
+  return privateData;
+}
+
+function buildUpstreamPrivateInfo(config = {}) {
+  const privateData = config.privateData || {};
+  const privateTags = normalizePrivateList(config.privateTags);
+  const rows = [];
+  const phones = normalizePrivateList(privateData.upstreamPhones);
+  if (phones.length) {
+    rows.push({
+      key: "upstreamPhones",
+      label: "上游电话",
+      value: phones.join(" / "),
+      copyText: phones.join("\n")
+    });
+  }
+  const fieldMap = [
+    ["upstreamWechat", "上游微信"],
+    ["upstreamContact", "上游联系人"],
+    ["commission", "中介费"],
+    ["lockNote", "密码锁"],
+    ["lockPassword", "密码"],
+    ["viewingNote", "看房备注"],
+    ["privateRemark", "上游备注"],
+    ["bonusNote", "红包备注"],
+    ["sourceLineHint", "来源房源"]
+  ];
+  fieldMap.forEach(([key, label]) => {
+    const value = String(privateData[key] || "").trim();
+    if (value) rows.push({ key, label, value, copyText: value });
+  });
+  const restrictions = normalizePrivateList(privateData.restrictions);
+  if (restrictions.length) {
+    rows.push({
+      key: "restrictions",
+      label: "租客限制",
+      value: restrictions.join(" / "),
+      copyText: restrictions.join("\n")
+    });
+  }
+  const tagText = privateTags.filter((item) => !/^上游电话\d+个$/.test(item)).join(" / ");
+  if (tagText) {
+    rows.push({ key: "privateTags", label: "私密标签", value: tagText, copyText: tagText });
+  }
+  const copyText = rows.map((item) => `${item.label}：${item.value}`).join("\n");
+  return {
+    visible: rows.length > 0,
+    rows,
+    copyText
+  };
 }
 
 function buildProductCustomerPreview(form = {}, structuredData = {}, conversionConfig = {}) {
@@ -1400,6 +1635,8 @@ Page({
     propertyStatusOptions: buildPropertyStatusOptions("active"),
     propertyCustomerPreview: buildPropertyCustomerPreview(),
     propertyPublishChecks: [],
+    upstreamPrivateInfo: buildUpstreamPrivateInfo(),
+    upstreamPrivateFields: buildUpstreamPrivateFields(),
     productCustomerPreview: buildProductCustomerPreview(),
     productPublishChecks: [],
     showGroupbuyEdit: false,
@@ -1485,6 +1722,10 @@ Page({
   async loadNote() {
     const { user, noteId } = this.data;
     if (!user || !noteId) return;
+    const cached = api.getCachedNote(noteId, user.id);
+    if (cached) {
+      this.applyLoadedNote(cached);
+    }
     try {
       const res = await api.fetchNote(noteId, user.id);
       const note = res.data || {};
@@ -1572,7 +1813,10 @@ Page({
     };
     const mediaItems = buildMediaItems(form);
     const ocrInfo = buildOcrInfo(effectiveConfig, structuredData);
-    const suggestionButtons = buildSuggestionButtons(effectiveConfig.typeSuggestions);
+    const suggestionButtons = buildSuggestionButtons([
+      ...(Array.isArray(effectiveConfig.typeSuggestions) ? effectiveConfig.typeSuggestions : []),
+      ...buildFallbackTypeSuggestions(cardType, { ...note, visibilityConfig: effectiveConfig })
+    ]);
     const isPlainNote = cardType === "text_note" && !isBookmark && !miniappInfo.visible && !ocrInfo.visible && !suggestionButtons.length;
     const showOperationalControls = !isPlainNote || this.data.plainNoteOpsOpen;
     this.setData({
@@ -1617,6 +1861,8 @@ Page({
       displayTemplateName: effectiveConfig.displayTemplateName || "",
       propertyCustomerPreview: cardType === "property_listing" ? buildPropertyCustomerPreview(form, structuredData, conversionConfig) : buildPropertyCustomerPreview(),
       propertyPublishChecks: cardType === "property_listing" ? buildPropertyPublishChecks(form, structuredData, conversionConfig) : [],
+      upstreamPrivateInfo: cardType === "property_listing" ? buildUpstreamPrivateInfo(effectiveConfig) : buildUpstreamPrivateInfo(),
+      upstreamPrivateFields: cardType === "property_listing" ? buildUpstreamPrivateFields(effectiveConfig.privateData || {}) : buildUpstreamPrivateFields(),
       productCustomerPreview: cardType === "groupbuy_product" ? buildProductCustomerPreview(form, structuredData, conversionConfig) : buildProductCustomerPreview(),
       productPublishChecks: cardType === "groupbuy_product" ? buildProductPublishChecks(form, structuredData, conversionConfig) : [],
       showGroupbuyEdit: cardType === "groupbuy_product" && this.data.activePropertyDetailTab === "edit",
@@ -1628,7 +1874,7 @@ Page({
       mediaItems,
       propertyStatusOptions: buildPropertyStatusOptions(structuredData.propertyStatus),
       mapPreview: buildMapPreview(structuredData),
-      propertyFields: hydrateFields(PROPERTY_FIELDS, structuredData),
+      propertyFields: hydrateFields(PROPERTY_FIELDS, structuredData, form),
       groupbuyFields: hydrateFields(GROUPBUY_FIELDS, structuredData),
       productInfoFields: hydrateFields(PRODUCT_INFO_FIELDS, structuredData),
       productFulfillmentFields: hydrateFields(PRODUCT_FULFILLMENT_FIELDS, structuredData),
@@ -1825,7 +2071,7 @@ Page({
     const cardType = config.cardType || "text_note";
     this.setData({
       structuredData,
-      propertyFields: hydrateFields(PROPERTY_FIELDS, structuredData),
+      propertyFields: hydrateFields(PROPERTY_FIELDS, structuredData, this.data.form),
       groupbuyFields: hydrateFields(GROUPBUY_FIELDS, structuredData),
       productInfoFields: hydrateFields(PRODUCT_INFO_FIELDS, structuredData),
       productFulfillmentFields: hydrateFields(PRODUCT_FULFILLMENT_FIELDS, structuredData),
@@ -1842,6 +2088,37 @@ Page({
       suggestedTagOptions: buildSuggestedTagOptions(cardType, structuredData, this.data.form, config),
       suggestedTopicOptions: buildSuggestedTopicOptions(cardType, structuredData, this.data.form, this.data.topics, config),
       mapPreview: buildMapPreview(structuredData),
+      "form.visibilityConfig": config
+    });
+  },
+  handleCopyUpstreamPrivateInfo(event) {
+    const dataset = (event && event.currentTarget && event.currentTarget.dataset) || {};
+    const text = dataset.scope === "all"
+      ? ((this.data.upstreamPrivateInfo && this.data.upstreamPrivateInfo.copyText) || "")
+      : (dataset.text || "");
+    if (!text) {
+      wx.showToast({ title: "暂无可复制内容", icon: "none" });
+      return;
+    }
+    wx.setClipboardData({
+      data: text,
+      success: () => wx.showToast({ title: dataset.scope === "all" ? "已复制全部" : "已复制", icon: "success" }),
+      fail: () => wx.showToast({ title: "复制失败", icon: "none" })
+    });
+  },
+  handleUpstreamPrivateInput(event) {
+    const key = event.currentTarget.dataset.key;
+    const value = event.detail.value;
+    const currentConfig = this.data.form.visibilityConfig || {};
+    const privateData = buildPrivateDataFromInput(currentConfig.privateData || {}, key, value);
+    const config = {
+      ...currentConfig,
+      privateData,
+      cardState: "editing"
+    };
+    this.setData({
+      upstreamPrivateFields: buildUpstreamPrivateFields(privateData),
+      upstreamPrivateInfo: buildUpstreamPrivateInfo(config),
       "form.visibilityConfig": config
     });
   },
@@ -1889,7 +2166,7 @@ Page({
     const cardType = config.cardType || "text_note";
     this.setData({
       structuredData,
-      propertyFields: hydrateFields(PROPERTY_FIELDS, structuredData),
+      propertyFields: hydrateFields(PROPERTY_FIELDS, structuredData, this.data.form),
       groupbuyFields: hydrateFields(GROUPBUY_FIELDS, structuredData),
       productInfoFields: hydrateFields(PRODUCT_INFO_FIELDS, structuredData),
       productFulfillmentFields: hydrateFields(PRODUCT_FULFILLMENT_FIELDS, structuredData),
@@ -2056,7 +2333,7 @@ Page({
       const cardType = config.cardType || "text_note";
       this.setData({
         structuredData: nextStructuredData,
-        propertyFields: hydrateFields(PROPERTY_FIELDS, nextStructuredData),
+        propertyFields: hydrateFields(PROPERTY_FIELDS, nextStructuredData, this.data.form),
         displaySubtitle: buildDisplaySubtitle(cardType, this.data.form, nextStructuredData),
         propertyCustomerPreview: cardType === "property_listing" ? buildPropertyCustomerPreview(this.data.form, nextStructuredData, this.data.conversionConfig || {}) : this.data.propertyCustomerPreview,
         propertyPublishChecks: cardType === "property_listing" ? buildPropertyPublishChecks(this.data.form, nextStructuredData, this.data.conversionConfig || {}) : this.data.propertyPublishChecks,
@@ -2155,7 +2432,8 @@ Page({
     try {
       const res = await api.confirmNoteType(noteId, {
         ownerUserId: user.id,
-        cardType
+        cardType,
+        source: "miniapp_note_edit"
       });
       this.applyLoadedNote(res.data || {});
       wx.showToast({ title: "已切换", icon: "success" });
@@ -2306,7 +2584,7 @@ Page({
     this.setData({
       structuredData,
       propertyStatusOptions: buildPropertyStatusOptions(status),
-      propertyFields: hydrateFields(PROPERTY_FIELDS, structuredData),
+      propertyFields: hydrateFields(PROPERTY_FIELDS, structuredData, this.data.form),
       displaySubtitle: buildDisplaySubtitle(cardType, this.data.form, structuredData),
       propertyCustomerPreview: cardType === "property_listing" ? buildPropertyCustomerPreview(this.data.form, structuredData, this.data.conversionConfig || {}) : this.data.propertyCustomerPreview,
       propertyPublishChecks: cardType === "property_listing" ? buildPropertyPublishChecks(this.data.form, structuredData, this.data.conversionConfig || {}) : this.data.propertyPublishChecks,
@@ -2412,7 +2690,11 @@ Page({
   },
   applyMediaState(form) {
     const incomingData = ((form.visibilityConfig || {}).structuredData) || this.data.structuredData || {};
-    const structuredData = { ...incomingData, images: buildImageUrls(form) };
+    const structuredData = {
+      ...incomingData,
+      coverUrl: form.coverUrl || "",
+      images: buildImageUrls(form)
+    };
     const config = { ...(form.visibilityConfig || {}), structuredData, cardState: "editing" };
     form.visibilityConfig = config;
     const mediaItems = buildMediaItems(form);

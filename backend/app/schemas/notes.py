@@ -72,6 +72,7 @@ class TopicNoteRequest(BaseModel):
 class NoteTypeConfirmRequest(BaseModel):
     ownerUserId: str
     cardType: str
+    source: str | None = None
 
 
 class CustomerActionSubmitRequest(BaseModel):

@@ -28,3 +28,8 @@ class UserProfileUpdateRequest(BaseModel):
 
 class WecomBindIntentRequest(BaseModel):
     userId: str
+
+
+class H5TicketRequest(BaseModel):
+    userId: str
+    entry: str = "resource-tools"

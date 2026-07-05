@@ -2,21 +2,28 @@
   <custom-nav title="资料" />
   <view class="library-hero">
     <view class="hero-copy">
-      <view class="hero-kicker">适合发客户的资料</view>
-      <view class="hero-title">我的资料</view>
-      <view class="hero-subtitle">发客户前，先看状态。</view>
+      <view class="hero-kicker">一个入口找全部资料</view>
+      <view class="hero-title">统一资料库</view>
+      <view class="hero-subtitle">房源、商机、服务、商品和日常资料都在这里。</view>
     </view>
     <view class="library-visual">库</view>
   </view>
 
   <view class="library-sort-bar">
-    <view>优先显示</view>
-    <text>有反馈和适合继续发的资料</text>
+    <view>默认全部</view>
+    <text>分类只是筛选，不再决定资料是否可见</text>
   </view>
 
   <view class="search-box">
     <input class="search-input" placeholder="搜索标题 / 标签 / 来源" bindinput="handleKeywordChange" confirm-type="search" bindconfirm="handleSearch" />
     <button class="search-btn" bindtap="handleSearch">搜索</button>
+  </view>
+
+  <view class="filter-title">资料类型</view>
+  <view class="chip-row type-filter-row">
+    <block wx:for="{{libraryTypeFilters}}" wx:key="key">
+      <view class="chip type-chip {{activeLibraryType === item.key ? 'active' : ''}}" data-key="{{item.key}}" bindtap="handleLibraryTypeFilter">{{item.label}}</view>
+    </block>
   </view>
 
   <view class="library-tool-head">

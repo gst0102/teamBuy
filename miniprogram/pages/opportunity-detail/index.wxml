@@ -1,0 +1,54 @@
+<view class="page-shell detail-page">
+  <custom-nav title="线索详情" show-back="{{true}}" />
+
+  <view class="detail-hero">
+    <view class="hero-badge">官方收录 · 可联系</view>
+    <view class="hero-title">{{lead.title}}</view>
+    <view class="hero-summary">{{lead.summary}}</view>
+  </view>
+
+  <view class="info-panel">
+    <view class="panel-title">结构化摘要</view>
+    <view class="field-grid">
+      <view wx:for="{{lead.fields}}" wx:key="label" class="field-item">
+        <text>{{item.label}}</text>
+        <strong>{{item.value}}</strong>
+      </view>
+    </view>
+    <view class="content-box">{{lead.content}}</view>
+  </view>
+
+  <view class="action-panel">
+    <view class="panel-title">行动建议</view>
+    <view class="action-copy">系统会从你的资料里挑选最适合发给对方的内容。</view>
+    <view class="fit-tags">
+      <text wx:for="{{lead.fits}}" wx:key="*this">{{item}}</text>
+    </view>
+    <view class="suggest-card">
+      <view>建议回应包</view>
+      <text>服务介绍页 + 成功案例 + 首次联系话术 + 可追踪链接</text>
+    </view>
+    <button class="main-action" bindtap="handleGeneratePackage">生成回应包</button>
+    <view class="secondary-actions">
+      <button bindtap="handleContact">查看联系方式</button>
+      <button bindtap="handleSave">保存到我的资源</button>
+    </view>
+  </view>
+
+  <view class="follow-panel">
+    <view class="panel-title">跟进状态</view>
+    <view wx:for="{{lead.followups}}" wx:key="status" class="follow-row">
+      <view class="follow-dot"></view>
+      <view>
+        <view class="follow-status">{{item.status}}</view>
+        <view class="follow-desc">{{item.desc}}</view>
+      </view>
+    </view>
+    <view class="follow-actions">
+      <button data-label="已标记联系" bindtap="handleFollowupAction">标记已联系</button>
+      <button data-label="已设置提醒" bindtap="handleFollowupAction">设置提醒</button>
+      <button data-label="已标记无效" bindtap="handleFollowupAction">标记无效</button>
+    </view>
+  </view>
+  <canvas canvas-id="universalShareCanvas" class="universal-share-canvas"></canvas>
+</view>

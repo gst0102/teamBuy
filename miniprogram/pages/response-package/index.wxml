@@ -1,0 +1,59 @@
+<view class="page-shell package-page">
+  <custom-nav title="回应包" show-back="{{true}}" />
+
+  <view class="package-hero">
+    <view>
+      <view class="hero-kicker">回应包</view>
+      <view class="hero-title">{{responsePackage.lead.title}}</view>
+      <view class="hero-sub">{{responsePackage.lead.summary}}</view>
+    </view>
+    <view class="price-pill">{{responsePackage.priceText}}</view>
+  </view>
+
+  <view class="summary-panel">
+    <view class="panel-title">需求摘要</view>
+    <view class="summary-grid">
+      <view><text>城市</text><strong>{{responsePackage.demandSummary.city || "不限"}}</strong></view>
+      <view><text>行业</text><strong>{{responsePackage.demandSummary.industry || "综合"}}</strong></view>
+      <view><text>类型</text><strong>{{responsePackage.demandSummary.demandType || "合作需求"}}</strong></view>
+      <view><text>联系</text><strong>{{responsePackage.demandSummary.contactStatus || "待核验"}}</strong></view>
+    </view>
+  </view>
+
+  <view class="asset-panel">
+    <view class="panel-head">
+      <view>
+        <view class="panel-title">可选资料</view>
+        <view class="panel-sub">最多选 3 条，生成前可替换。</view>
+      </view>
+      <text>{{responsePackage.selectedAssetIds.length}} / 3</text>
+    </view>
+    <view wx:if="{{responsePackage.assetOptions.length === 0}}" class="empty-box">还没有匹配到可发送资料，可以先补一张服务介绍或案例卡。</view>
+    <view wx:for="{{responsePackage.assetOptions}}" wx:key="assetId" class="asset-card {{item.selected ? 'selected' : ''}}" data-id="{{item.assetId}}" bindtap="handleAssetToggle">
+      <view class="asset-check">{{item.selected ? "已选" : "可选"}}</view>
+      <view class="asset-title">{{item.assetTitle}}</view>
+      <view class="asset-summary">{{item.assetSummary || "暂无摘要"}}</view>
+      <view class="asset-reason">{{item.recommendReason}}</view>
+    </view>
+    <button wx:if="{{!responsePackage.generated && responsePackage.assetOptions.length > 0}}" class="refresh-btn" bindtap="handleRefreshPreview">按所选资料刷新话术</button>
+  </view>
+
+  <view class="copy-panel">
+    <view class="panel-title">首次联系话术</view>
+    <view class="copy-box">{{responsePackage.openingText}}</view>
+    <view wx:if="{{responsePackage.trackingUrl}}" class="link-box">{{responsePackage.trackingUrl}}</view>
+  </view>
+
+  <view class="follow-panel">
+    <view class="panel-title">跟进建议</view>
+    <view class="follow-text">{{responsePackage.followupSuggestion}}</view>
+  </view>
+
+  <view class="bottom-actions">
+    <button wx:if="{{!responsePackage.generated}}" class="main-action" loading="{{creating}}" bindtap="handleCreate">生成回应包</button>
+    <button wx:else class="main-action" bindtap="handleCopyOpening">复制回应内容</button>
+    <button wx:if="{{responsePackage.generated}}" class="light-action" bindtap="handleOpenRadar">看反馈</button>
+    <button class="light-action" bindtap="handleOpenLead">返回线索</button>
+  </view>
+  <canvas canvas-id="universalShareCanvas" class="universal-share-canvas"></canvas>
+</view>

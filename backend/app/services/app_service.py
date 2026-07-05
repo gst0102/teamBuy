@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import base64
 import json
 import re
 import time
@@ -14,7 +15,7 @@ import httpx
 from fastapi import HTTPException, status
 
 from app.core.config import settings
-from app.models.domain import AppState, Card, CardMedia, Category, CustomerAction, ImportBatch, LeadFollowUpLog, LeadReminder, MediaAsset, MediaAssetRef, MessageRecord, MessageThread, MediaRetryJob, RawMessage, RelayConfig, RelayEntry, ShowcaseEvent, ShowcaseItem, ShowcasePage, SkillRun, SyncCursor, Topic, User, UserNote, ViewEvent, WecomArchiveCursor, WecomArchiveMessage, WecomIdentityBinding
+from app.models.domain import AppState, Card, CardMedia, Category, CustomerAction, ImportBatch, LeadFollowUpLog, LeadReminder, MediaAsset, MediaAssetRef, MessageRecord, MessageThread, MediaRetryJob, OpportunityLead, OpportunityLeadContact, OpportunityLeadFollowup, OpportunityLeadSave, OpportunityLeadSource, OpportunityPushDigest, OpportunitySubscription, RawMessage, RelayConfig, RelayEntry, ResourceFreeQuota, ResourcePointLedger, ResourceUnlockRecord, ResourceWallet, ResponsePackage, ResponsePackageEvent, ResponsePackageItem, ShowcaseEvent, ShowcaseItem, ShowcasePage, SkillRun, SupplyDemandApplication, SupplyDemandCard, SyncCursor, Topic, User, UserNote, ViewEvent, WecomArchiveCursor, WecomArchiveMessage, WecomIdentityBinding
 from app.schemas.auth import MockLoginRequest, UserProfileUpdateRequest, WechatLoginRequest
 from app.schemas.categories import CategoryCreateRequest
 from app.schemas.cards import CardCreateRequest, CardUpdateRequest, CreateRelayRequest, LeadReminderUpdateRequest, LeadReminderUpsertRequest, RecordViewRequest
@@ -36,6 +37,7 @@ from app.services.media_storage_service import MediaStorageService
 from app.services.media_processing_service import MediaProcessingService
 from app.services.message_aggregator import MessageAggregator
 from app.services.ocr_service import OcrService
+from app.services.property_table_ocr_service import PropertyTableOcrService
 from app.services.repository import AppRepository
 from app.services.skill_router_service import SkillRouterService
 from app.services.text_safety import strip_unicode_surrogates
@@ -77,8 +79,8 @@ PROPERTY_CONVERSION_DEFAULTS = {
 }
 GROUPBUY_CONVERSION_DEFAULTS = {
     "showContactPhone": True,
-    "enableLightScrm": False,
-    "collectLeads": False,
+    "enableLightScrm": True,
+    "collectLeads": True,
     "enableAppointment": False,
     "enablePrivateConsultation": False,
     "enableSharePoster": True,
@@ -153,6 +155,11 @@ VISITOR_IDENTITY_UPSTREAM = {
     "label": "疑似上游",
     "group": "upstream",
 }
+RESOURCE_WALLET_INITIAL_POINTS = 100
+RESOURCE_UNLOCK_IDEMPOTENCY_HOURS = 24
+RESPONSE_PACKAGE_COST_POINTS = 20
+RESPONSE_PACKAGE_FREE_QUOTA_LIMIT = 3
+OPPORTUNITY_CONTACT_UNLOCK_COST_POINTS = 10
 
 
 class AppService:
@@ -169,6 +176,7 @@ class AppService:
         skill_router_service: SkillRouterService | None = None,
         content_object_adapter: ContentObjectAdapter | None = None,
         ocr_service: OcrService | None = None,
+        property_table_ocr_service: PropertyTableOcrService | None = None,
     ):
         self.repo = repo
         self.wecom_mock_service = wecom_mock_service
@@ -186,12 +194,1285 @@ class AppService:
             tesseract_bin=settings.ocr_tesseract_bin,
             mock_text=settings.ocr_mock_text,
         )
+        self.property_table_ocr_service = property_table_ocr_service or PropertyTableOcrService()
 
     def _load(self) -> AppState:
         return self.repo.load()
 
     def _save(self, state: AppState) -> None:
         self.repo.save(state)
+
+    def get_resource_wallet(self, owner_user_id: str) -> dict:
+        wallet = self._ensure_resource_wallet(owner_user_id)
+        ledgers = self.repo.list_resource_point_ledgers(owner_user_id, limit=20)
+        return {
+            "wallet": wallet.model_dump(),
+            "recentLedgers": [item.model_dump() for item in ledgers],
+        }
+
+    def list_resource_point_ledgers(self, owner_user_id: str, limit: int = 100) -> list[dict]:
+        self._ensure_resource_wallet(owner_user_id)
+        safe_limit = min(max(int(limit or 100), 1), 200)
+        return [item.model_dump() for item in self.repo.list_resource_point_ledgers(owner_user_id, limit=safe_limit)]
+
+    def consume_resource_points(
+        self,
+        owner_user_id: str,
+        action_type: str,
+        target_type: str,
+        target_id: str,
+        points_cost: int,
+        reason: str | None = None,
+        quota_type: str | None = None,
+        free_quota_limit: int = 0,
+        period_key: str | None = None,
+        metadata: dict | None = None,
+    ) -> dict:
+        if points_cost < 0:
+            raise HTTPException(status_code=400, detail="积分消耗不能为负数")
+        if not action_type or not target_type or not target_id:
+            raise HTTPException(status_code=400, detail="缺少积分消费对象")
+        wallet = self._ensure_resource_wallet(owner_user_id)
+        now = now_iso()
+        existing = self.repo.find_resource_unlock_record(owner_user_id, action_type, target_type, target_id)
+        if existing and self._is_resource_unlock_active(existing, now):
+            return {
+                "wallet": wallet.model_dump(),
+                "ledger": None,
+                "unlockRecord": existing.model_dump(),
+                "freeQuota": None,
+                "charged": False,
+                "duplicate": True,
+                "usedFreeQuota": existing.usedFreeQuota,
+            }
+
+        free_quota = None
+        used_free_quota = False
+        if quota_type and free_quota_limit > 0:
+            quota_period = period_key or date_key(now)
+            free_quota = self.repo.get_resource_free_quota(owner_user_id, quota_type, quota_period)
+            if not free_quota:
+                free_quota = ResourceFreeQuota(
+                    id=f"quota_{owner_user_id}_{quota_type}_{quota_period}",
+                    ownerUserId=owner_user_id,
+                    quotaType=quota_type,
+                    periodKey=quota_period,
+                    limitCount=free_quota_limit,
+                    usedCount=0,
+                    createdAt=now,
+                    updatedAt=now,
+                )
+            if free_quota.usedCount < free_quota.limitCount:
+                free_quota.usedCount += 1
+                free_quota.updatedAt = now
+                used_free_quota = True
+                self.repo.save_resource_free_quota(free_quota)
+
+        if used_free_quota:
+            ledger_delta = 0
+            ledger_type = "free_quota"
+        else:
+            if wallet.balance < points_cost:
+                raise HTTPException(status_code=402, detail="积分余额不足")
+            wallet.balance -= points_cost
+            wallet.totalConsumed += points_cost
+            wallet.updatedAt = now
+            self.repo.save_resource_wallet(wallet)
+            ledger_delta = -points_cost
+            ledger_type = "consume"
+
+        unlock_record = ResourceUnlockRecord(
+            id=new_id("unlock"),
+            ownerUserId=owner_user_id,
+            actionType=action_type,
+            targetType=target_type,
+            targetId=target_id,
+            pointsCost=0 if used_free_quota else points_cost,
+            usedFreeQuota=used_free_quota,
+            quotaId=free_quota.id if free_quota else None,
+            ledgerId=None,
+            unlockedAt=now,
+            expiresAt=(parse_iso(now) + timedelta(hours=RESOURCE_UNLOCK_IDEMPOTENCY_HOURS)).isoformat(),
+            createdAt=now,
+            updatedAt=now,
+        )
+        ledger = ResourcePointLedger(
+            id=new_id("ledger"),
+            ownerUserId=owner_user_id,
+            walletId=wallet.id,
+            ledgerType=ledger_type,
+            actionType=action_type,
+            targetType=target_type,
+            targetId=target_id,
+            pointsDelta=ledger_delta,
+            balanceAfter=wallet.balance,
+            reason=reason,
+            relatedUnlockId=unlock_record.id,
+            metadata=metadata or {},
+            createdAt=now,
+        )
+        unlock_record.ledgerId = ledger.id
+        self.repo.save_resource_point_ledger(ledger)
+        self.repo.save_resource_unlock_record(unlock_record)
+        return {
+            "wallet": wallet.model_dump(),
+            "ledger": ledger.model_dump(),
+            "unlockRecord": unlock_record.model_dump(),
+            "freeQuota": free_quota.model_dump() if free_quota else None,
+            "charged": not used_free_quota and points_cost > 0,
+            "duplicate": False,
+            "usedFreeQuota": used_free_quota,
+        }
+
+    def adjust_resource_wallet(
+        self,
+        owner_user_id: str,
+        points_delta: int,
+        reason: str | None = None,
+        operator_id: str | None = None,
+    ) -> dict:
+        if points_delta == 0:
+            raise HTTPException(status_code=400, detail="调整积分不能为 0")
+        wallet = self._ensure_resource_wallet(owner_user_id)
+        now = now_iso()
+        new_balance = wallet.balance + points_delta
+        if new_balance < 0:
+            raise HTTPException(status_code=400, detail="调整后积分不能小于 0")
+        wallet.balance = new_balance
+        if points_delta > 0:
+            wallet.totalGranted += points_delta
+        else:
+            wallet.totalConsumed += abs(points_delta)
+        wallet.updatedAt = now
+        self.repo.save_resource_wallet(wallet)
+        ledger = ResourcePointLedger(
+            id=new_id("ledger"),
+            ownerUserId=owner_user_id,
+            walletId=wallet.id,
+            ledgerType="adjust",
+            actionType="ops_adjust",
+            pointsDelta=points_delta,
+            balanceAfter=wallet.balance,
+            reason=reason,
+            operatorId=operator_id,
+            createdAt=now,
+        )
+        self.repo.save_resource_point_ledger(ledger)
+        return {"wallet": wallet.model_dump(), "ledger": ledger.model_dump()}
+
+    def _ensure_resource_wallet(self, owner_user_id: str) -> ResourceWallet:
+        if not self.repo.get_user(owner_user_id):
+            raise HTTPException(status_code=404, detail="用户不存在")
+        wallet = self.repo.get_resource_wallet(owner_user_id)
+        if wallet:
+            return wallet
+        now = now_iso()
+        wallet = ResourceWallet(
+            id=f"wallet_{owner_user_id}",
+            ownerUserId=owner_user_id,
+            balance=RESOURCE_WALLET_INITIAL_POINTS,
+            totalGranted=RESOURCE_WALLET_INITIAL_POINTS,
+            totalConsumed=0,
+            createdAt=now,
+            updatedAt=now,
+        )
+        ledger = ResourcePointLedger(
+            id=new_id("ledger"),
+            ownerUserId=owner_user_id,
+            walletId=wallet.id,
+            ledgerType="grant",
+            actionType="initial_grant",
+            pointsDelta=RESOURCE_WALLET_INITIAL_POINTS,
+            balanceAfter=wallet.balance,
+            reason="初始资源工具积分",
+            createdAt=now,
+        )
+        self.repo.save_resource_wallet(wallet)
+        self.repo.save_resource_point_ledger(ledger)
+        return wallet
+
+    def _is_resource_unlock_active(self, record: ResourceUnlockRecord, now: str) -> bool:
+        if not record.expiresAt:
+            return True
+        try:
+            return parse_iso(record.expiresAt) > parse_iso(now)
+        except Exception:
+            return False
+
+    def upsert_opportunity_lead(self, payload) -> dict:
+        title = (payload.title or "").strip()
+        if not title:
+            raise HTTPException(status_code=400, detail="线索标题不能为空")
+        now = now_iso()
+        existing = self.repo.get_opportunity_lead(payload.id) if payload.id else None
+        status_value = payload.status if payload.status in {"draft", "published", "archived", "rejected"} else "draft"
+        published_at = existing.publishedAt if existing else None
+        if status_value == "published" and not published_at:
+            published_at = now
+        lead = OpportunityLead(
+            id=existing.id if existing else new_id("opp"),
+            title=title,
+            summary=(payload.summary or "").strip(),
+            city=(payload.city or "").strip() or None,
+            district=(payload.district or "").strip() or None,
+            industry=(payload.industry or "").strip() or None,
+            demandType=(payload.demandType or "需求").strip() or "需求",
+            content=(payload.content or "").strip(),
+            tags=[str(item).strip() for item in (payload.tags or []) if str(item).strip()][:12],
+            contactStatus=payload.contactStatus if payload.contactStatus in {"none", "available", "masked", "locked", "pending_verify"} else "pending_verify",
+            trustStatus=payload.trustStatus if payload.trustStatus in {"verified", "pending", "risk"} else "pending",
+            status=status_value,
+            priority=(payload.priority or "").strip() or None,
+            publishedAt=published_at,
+            expiresAt=payload.expiresAt,
+            createdAt=existing.createdAt if existing else now,
+            updatedAt=now,
+        )
+        self.repo.save_opportunity_lead(lead)
+        if payload.source:
+            existing_sources = self.repo.list_opportunity_lead_sources(lead.id)
+            source = OpportunityLeadSource(
+                id=existing_sources[0].id if existing_sources else new_id("opp_source"),
+                leadId=lead.id,
+                sourcePlatform=(payload.source.sourcePlatform or "").strip() or None,
+                sourceUrl=(payload.source.sourceUrl or "").strip() or None,
+                sourceAuthor=(payload.source.sourceAuthor or "").strip() or None,
+                sourcePublishedAt=payload.source.sourcePublishedAt,
+                sourceCapturedAt=existing_sources[0].sourceCapturedAt if existing_sources else now,
+                rawText=(payload.source.rawText or "").strip(),
+                rawImages=payload.source.rawImages or [],
+                createdAt=existing_sources[0].createdAt if existing_sources else now,
+                updatedAt=now,
+            )
+            self.repo.save_opportunity_lead_source(source)
+        for index, item in enumerate(payload.contacts or []):
+            contact_value = (item.contactValue or "").strip()
+            if not contact_value:
+                continue
+            contact = OpportunityLeadContact(
+                id=new_id("opp_contact"),
+                leadId=lead.id,
+                contactType=(item.contactType or "wechat").strip() or "wechat",
+                contactValueEncrypted=contact_value,
+                contactMasked=(item.contactMasked or "").strip() or self._mask_opportunity_contact(contact_value),
+                verifyStatus=(item.verifyStatus or "pending").strip() or "pending",
+                createdAt=now,
+                updatedAt=now,
+            )
+            self.repo.save_opportunity_lead_contact(contact)
+            if index == 0 and lead.contactStatus in {"none", "pending_verify"}:
+                lead.contactStatus = "masked"
+                lead.updatedAt = now
+                self.repo.save_opportunity_lead(lead)
+        return self.get_opportunity_lead_detail(lead.id, include_ops=True)
+
+    def list_opportunity_leads_public(
+        self,
+        keyword: str | None = None,
+        city: str | None = None,
+        industry: str | None = None,
+        demand_type: str | None = None,
+        contact_status: str | None = None,
+    ) -> list[dict]:
+        leads = self.repo.list_opportunity_leads(statuses={"published"}, keyword=keyword)
+        return [
+            self._opportunity_lead_public_payload(item)
+            for item in leads
+            if not self._opportunity_lead_expired(item)
+            and self._opportunity_lead_matches_filters(item, city, industry, demand_type, contact_status)
+        ]
+
+    def list_opportunity_leads_for_user(
+        self,
+        user_id: str,
+        keyword: str | None = None,
+        city: str | None = None,
+        industry: str | None = None,
+        demand_type: str | None = None,
+        contact_status: str | None = None,
+    ) -> dict:
+        if not self.repo.get_user(user_id):
+            raise HTTPException(status_code=404, detail="用户不存在")
+        subscriptions = [item for item in self.repo.list_opportunity_subscriptions(user_id) if item.status == "active"]
+        subscription = subscriptions[0] if subscriptions else None
+        leads = self.repo.list_opportunity_leads(statuses={"published"}, keyword=keyword)
+        rows = []
+        for index, lead in enumerate(leads):
+            if self._opportunity_lead_expired(lead):
+                continue
+            if not self._opportunity_lead_matches_filters(lead, city, industry, demand_type, contact_status):
+                continue
+            payload = self._opportunity_lead_public_payload(lead)
+            score, reasons = self._score_lead_for_subscription(lead, subscription)
+            payload["matchScore"] = score
+            payload["matchReasons"] = reasons
+            payload["recommendationReason"] = " / ".join(reasons[:3]) if reasons else "今日推荐"
+            payload["_sortIndex"] = index
+            rows.append(payload)
+        rows.sort(key=lambda item: (item.get("matchScore", 0), -item["_sortIndex"]), reverse=True)
+        if subscription:
+            rows = [item for item in rows if item.get("matchScore", 0) >= 62][:12]
+        else:
+            rows = rows[:12]
+        for item in rows:
+            item.pop("_sortIndex", None)
+        return {
+            "items": rows,
+            "subscription": subscription.model_dump() if subscription else None,
+            "recommendationTitle": "今日推荐机会",
+            "generatedAt": now_iso(),
+            "rule": "按订阅条件、联系方式、可信状态和时效排序生成",
+        }
+
+    def list_opportunity_leads_ops(self, keyword: str | None = None, status: str | None = None) -> list[dict]:
+        statuses = {status} if status else None
+        leads = self.repo.list_opportunity_leads(statuses=statuses, keyword=keyword)
+        return [self._opportunity_lead_ops_payload(item) for item in leads]
+
+    def get_opportunity_lead_detail(self, lead_id: str, include_ops: bool = False) -> dict:
+        lead = self.repo.get_opportunity_lead(lead_id)
+        if not lead:
+            raise HTTPException(status_code=404, detail="商机线索不存在")
+        if not include_ops and lead.status != "published":
+            raise HTTPException(status_code=404, detail="商机线索不存在")
+        return self._opportunity_lead_ops_payload(lead) if include_ops else self._opportunity_lead_public_payload(lead, detail=True)
+
+    def save_opportunity_lead_for_user(
+        self,
+        lead_id: str,
+        user_id: str,
+        save_status: str = "saved",
+        note: str | None = None,
+        reminder_at: str | None = None,
+    ) -> dict:
+        if not self.repo.get_user(user_id):
+            raise HTTPException(status_code=404, detail="用户不存在")
+        lead = self.repo.get_opportunity_lead(lead_id)
+        if not lead or lead.status != "published":
+            raise HTTPException(status_code=404, detail="商机线索不存在")
+        now = now_iso()
+        existing = self.repo.get_opportunity_lead_save(lead_id, user_id)
+        lead_save = OpportunityLeadSave(
+            id=existing.id if existing else new_id("opp_save"),
+            leadId=lead_id,
+            userId=user_id,
+            status=save_status if save_status in {"saved", "contacted", "following", "invalid", "archived"} else "saved",
+            note=note,
+            reminderAt=reminder_at,
+            createdAt=existing.createdAt if existing else now,
+            updatedAt=now,
+        )
+        self.repo.save_opportunity_lead_save(lead_save)
+        return {"lead": self._opportunity_lead_public_payload(lead), "save": lead_save.model_dump()}
+
+    def list_saved_opportunity_leads(
+        self,
+        user_id: str,
+        status: str | None = None,
+        keyword: str | None = None,
+        package_status: str | None = None,
+    ) -> list[dict]:
+        if not self.repo.get_user(user_id):
+            raise HTTPException(status_code=404, detail="用户不存在")
+        rows = []
+        for item in self.repo.list_opportunity_lead_saves_for_user(user_id):
+            if status and item.status != status:
+                continue
+            lead = self.repo.get_opportunity_lead(item.leadId)
+            if not lead:
+                continue
+            haystack = f"{lead.title} {lead.summary} {lead.city or ''} {lead.industry or ''} {lead.demandType} {item.note or ''}"
+            if keyword and keyword not in haystack:
+                continue
+            package = self.repo.get_response_package_for_lead_user(lead.id, user_id)
+            package_payload = self._build_response_package_payload(package) if package else None
+            if package_status == "generated" and not package:
+                continue
+            if package_status == "not_generated" and package:
+                continue
+            followups = self.repo.list_opportunity_lead_followups(lead.id, user_id=user_id)
+            latest_followup = sorted(followups, key=lambda row: row.createdAt, reverse=True)[0] if followups else None
+            rows.append(
+                {
+                    "lead": self._opportunity_lead_public_payload(lead),
+                    "save": item.model_dump(),
+                    "responsePackage": package_payload,
+                    "packageStatus": "generated" if package else "not_generated",
+                    "packageStatusText": "已生成" if package else "未生成",
+                    "latestFollowup": latest_followup.model_dump() if latest_followup else None,
+                    "followupCount": len(followups),
+                }
+            )
+        return rows
+
+    def list_opportunity_subscriptions(self, owner_user_id: str) -> list[dict]:
+        if not self.repo.get_user(owner_user_id):
+            raise HTTPException(status_code=404, detail="用户不存在")
+        return [item.model_dump() for item in self.repo.list_opportunity_subscriptions(owner_user_id)]
+
+    def upsert_opportunity_subscription(self, payload) -> dict:
+        if not self.repo.get_user(payload.userId):
+            raise HTTPException(status_code=404, detail="用户不存在")
+        now = now_iso()
+        existing = None
+        if payload.id:
+            existing = next((item for item in self.repo.list_opportunity_subscriptions(payload.userId) if item.id == payload.id), None)
+        if not existing:
+            existing = next(iter(self.repo.list_opportunity_subscriptions(payload.userId)), None)
+        status_value = payload.status if payload.status in {"active", "paused", "deleted"} else "active"
+        item = OpportunitySubscription(
+            id=existing.id if existing else new_id("opp_sub"),
+            ownerUserId=payload.userId,
+            direction=(payload.direction or "两边都看").strip() or "两边都看",
+            lookingFor=(payload.lookingFor or "").strip(),
+            providing=(payload.providing or "").strip(),
+            city=(payload.city or "").strip(),
+            contactRequirement=(payload.contactRequirement or "有电话").strip() or "有电话",
+            keywords=(payload.keywords or "").strip(),
+            reminderCadence=(payload.reminderCadence or "每天早上").strip() or "每天早上",
+            status=status_value,
+            createdAt=existing.createdAt if existing else now,
+            updatedAt=now,
+        )
+        self.repo.save_opportunity_subscription(item)
+        return item.model_dump()
+
+    def delete_opportunity_subscription(self, subscription_id: str, owner_user_id: str) -> dict:
+        if not self.repo.get_user(owner_user_id):
+            raise HTTPException(status_code=404, detail="用户不存在")
+        subscription = next((item for item in self.repo.list_opportunity_subscriptions(owner_user_id) if item.id == subscription_id), None)
+        if not subscription:
+            raise HTTPException(status_code=404, detail="订阅不存在")
+        subscription.status = "deleted"
+        subscription.updatedAt = now_iso()
+        self.repo.save_opportunity_subscription(subscription)
+        return subscription.model_dump()
+
+    def add_opportunity_followup(self, lead_id: str, user_id: str, action_type: str, note: str | None = None) -> dict:
+        if not self.repo.get_user(user_id):
+            raise HTTPException(status_code=404, detail="用户不存在")
+        lead = self.repo.get_opportunity_lead(lead_id)
+        if not lead:
+            raise HTTPException(status_code=404, detail="商机线索不存在")
+        now = now_iso()
+        followup = OpportunityLeadFollowup(
+            id=new_id("opp_follow"),
+            leadId=lead_id,
+            userId=user_id,
+            actionType=(action_type or "note").strip() or "note",
+            note=note,
+            createdAt=now,
+        )
+        self.repo.save_opportunity_lead_followup(followup)
+        existing = self.repo.get_opportunity_lead_save(lead_id, user_id)
+        if existing:
+            existing.status = "contacted" if followup.actionType == "contacted" else "following"
+            existing.updatedAt = now
+            self.repo.save_opportunity_lead_save(existing)
+        return {"followup": followup.model_dump(), "save": existing.model_dump() if existing else None}
+
+    def unlock_opportunity_contact(self, lead_id: str, user_id: str) -> dict:
+        if not self.repo.get_user(user_id):
+            raise HTTPException(status_code=404, detail="用户不存在")
+        lead = self.repo.get_opportunity_lead(lead_id)
+        if not lead or lead.status != "published":
+            raise HTTPException(status_code=404, detail="商机线索不存在")
+        contacts = self.repo.list_opportunity_lead_contacts(lead_id)
+        if not contacts:
+            raise HTTPException(status_code=404, detail="该线索暂无联系方式")
+        consume = self.consume_resource_points(
+            owner_user_id=user_id,
+            action_type="opportunity_contact_unlock",
+            target_type="opportunity_lead",
+            target_id=lead_id,
+            points_cost=OPPORTUNITY_CONTACT_UNLOCK_COST_POINTS,
+            reason="查看商机联系方式",
+            metadata={"leadTitle": lead.title},
+        )
+        followup = self.add_opportunity_followup(
+            lead_id=lead_id,
+            user_id=user_id,
+            action_type="contact_unlocked",
+            note="已查看联系方式",
+        )
+        return {
+            "lead": self._opportunity_lead_public_payload(lead, detail=True),
+            "contacts": [
+                {
+                    "contactType": item.contactType,
+                    "contactValue": item.contactValueEncrypted,
+                    "contactMasked": item.contactMasked,
+                    "verifyStatus": item.verifyStatus,
+                }
+                for item in contacts
+            ],
+            "wallet": consume["wallet"],
+            "charged": consume["charged"],
+            "duplicate": consume["duplicate"],
+            "followup": followup.get("followup"),
+        }
+
+    def preview_response_package(
+        self,
+        lead_id: str,
+        owner_user_id: str,
+        selected_asset_ids: list[str] | None = None,
+    ) -> dict:
+        if not self.repo.get_user(owner_user_id):
+            raise HTTPException(status_code=404, detail="用户不存在")
+        lead = self.repo.get_opportunity_lead(lead_id)
+        if not lead or lead.status != "published" or self._opportunity_lead_expired(lead):
+            raise HTTPException(status_code=404, detail="商机线索不存在")
+        existing = self.repo.get_response_package_for_lead_user(lead_id, owner_user_id)
+        preview = self._build_response_package_preview(lead, owner_user_id, selected_asset_ids=selected_asset_ids)
+        preview["existingPackageId"] = existing.id if existing else None
+        preview["costPoints"] = 0 if existing else RESPONSE_PACKAGE_COST_POINTS
+        preview["freeQuotaHint"] = "每月前 3 次生成回应包免费，之后每次 20 积分。"
+        return preview
+
+    def create_response_package(
+        self,
+        lead_id: str,
+        owner_user_id: str,
+        selected_asset_ids: list[str] | None = None,
+    ) -> dict:
+        if not self.repo.get_user(owner_user_id):
+            raise HTTPException(status_code=404, detail="用户不存在")
+        lead = self.repo.get_opportunity_lead(lead_id)
+        if not lead or lead.status != "published" or self._opportunity_lead_expired(lead):
+            raise HTTPException(status_code=404, detail="商机线索不存在")
+        existing = self.repo.get_response_package_for_lead_user(lead_id, owner_user_id)
+        if existing:
+            return self._build_response_package_payload(existing)
+
+        period_key = datetime.now(tz=SHANGHAI).strftime("%Y-%m")
+        consume_result = self.consume_resource_points(
+            owner_user_id=owner_user_id,
+            action_type="response_package_generate",
+            target_type="opportunity_lead",
+            target_id=lead_id,
+            points_cost=RESPONSE_PACKAGE_COST_POINTS,
+            reason="生成商机回应包",
+            quota_type="response_package_monthly",
+            free_quota_limit=RESPONSE_PACKAGE_FREE_QUOTA_LIMIT,
+            period_key=period_key,
+            metadata={"leadTitle": lead.title},
+        )
+        preview = self._build_response_package_preview(lead, owner_user_id, selected_asset_ids=selected_asset_ids)
+        now = now_iso()
+        package = ResponsePackage(
+            id=new_id("resp_pkg"),
+            ownerUserId=owner_user_id,
+            leadId=lead_id,
+            status="ready",
+            title=f"{lead.title} · 回应包",
+            demandSummary=preview["demandSummary"],
+            openingText=preview["openingText"],
+            trackingUrl="",
+            followupSuggestion=preview["followupSuggestion"],
+            costPoints=0 if consume_result.get("usedFreeQuota") else RESPONSE_PACKAGE_COST_POINTS,
+            usedFreeQuota=bool(consume_result.get("usedFreeQuota")),
+            createdAt=now,
+            updatedAt=now,
+        )
+        package.trackingUrl = self._response_tracking_url(package.id)
+        self.repo.save_response_package(package)
+        for index, asset in enumerate(preview["recommendedAssets"]):
+            item = ResponsePackageItem(
+                id=new_id("resp_item"),
+                responsePackageId=package.id,
+                assetType=asset["assetType"],
+                assetId=asset["assetId"],
+                assetTitle=asset["assetTitle"],
+                assetSummary=asset.get("assetSummary"),
+                recommendReason=asset.get("recommendReason"),
+                sortOrder=index + 1,
+                createdAt=now,
+            )
+            self.repo.save_response_package_item(item)
+        self.save_opportunity_lead_for_user(
+            lead_id=lead_id,
+            user_id=owner_user_id,
+            save_status="following",
+            note="已生成回应包",
+        )
+        self.add_opportunity_followup(
+            lead_id=lead_id,
+            user_id=owner_user_id,
+            action_type="response_package_generated",
+            note=f"已生成回应包：{package.title}",
+        )
+        return self._build_response_package_payload(package)
+
+    def get_response_package(self, package_id: str, owner_user_id: str | None = None) -> dict:
+        package = self.repo.get_response_package(package_id)
+        if not package:
+            raise HTTPException(status_code=404, detail="回应包不存在")
+        if owner_user_id and package.ownerUserId != owner_user_id:
+            raise HTTPException(status_code=403, detail="无权查看该回应包")
+        return self._build_response_package_payload(package)
+
+    def record_response_package_event(
+        self,
+        package_id: str,
+        event_type: str,
+        viewer_id: str | None = None,
+        anonymous_id: str | None = None,
+        metadata: dict | None = None,
+    ) -> dict:
+        package = self.repo.get_response_package(package_id)
+        if not package:
+            raise HTTPException(status_code=404, detail="回应包不存在")
+        now = now_iso()
+        event = ResponsePackageEvent(
+            id=new_id("resp_evt"),
+            responsePackageId=package_id,
+            eventType=(event_type or "view").strip() or "view",
+            viewerId=viewer_id,
+            anonymousId=anonymous_id,
+            metadata=metadata or {},
+            createdAt=now,
+        )
+        self.repo.save_response_package_event(event)
+        if event.eventType == "view":
+            package.lastViewedAt = now
+            package.updatedAt = now
+            self.repo.save_response_package(package)
+        return {"event": event.model_dump(), "package": self._build_response_package_payload(package)}
+
+    def get_response_package_radar(self, package_id: str, owner_user_id: str) -> dict:
+        package = self.repo.get_response_package(package_id)
+        if not package:
+            raise HTTPException(status_code=404, detail="回应包不存在")
+        if package.ownerUserId != owner_user_id:
+            raise HTTPException(status_code=403, detail="无权查看该回应包")
+        state = self.repo.load()
+        events = [item for item in state.response_package_events if item.responsePackageId == package_id]
+        event_counts = defaultdict(int)
+        latest_event_at = None
+        for event in events:
+            event_counts[event.eventType] += 1
+            if not latest_event_at or event.createdAt > latest_event_at:
+                latest_event_at = event.createdAt
+        opened = event_counts["view"] > 0 or bool(package.lastViewedAt)
+        suggestion = "对方已打开资料，可以优先电话或微信跟进。" if opened else "先复制回应内容发给对方，稍后再看是否打开。"
+        return {
+            "package": self._build_response_package_payload(package),
+            "opened": opened,
+            "lastOpenedAt": package.lastViewedAt,
+            "latestEventAt": latest_event_at,
+            "eventCounts": dict(event_counts),
+            "events": [item.model_dump() for item in sorted(events, key=lambda row: row.createdAt, reverse=True)[:50]],
+            "nextSuggestion": suggestion,
+        }
+
+    def list_supply_demand_cards_public(
+        self,
+        keyword: str | None = None,
+        city: str | None = None,
+        industry: str | None = None,
+        demand_type: str | None = None,
+        card_type: str | None = None,
+        contact_status: str | None = None,
+    ) -> list[dict]:
+        return [
+            self._supply_demand_card_payload(item)
+            for item in self.repo.list_supply_demand_cards(statuses={"published"}, keyword=keyword)
+            if self._supply_demand_card_matches_filters(item, city, industry, demand_type, card_type, contact_status)
+        ]
+
+    def list_my_supply_demand_cards(self, owner_user_id: str) -> list[dict]:
+        if not self.repo.get_user(owner_user_id):
+            raise HTTPException(status_code=404, detail="用户不存在")
+        return [self._supply_demand_card_payload(item, viewer_user_id=owner_user_id, include_applications=True) for item in self.repo.list_supply_demand_cards(owner_user_id=owner_user_id)]
+
+    def get_supply_demand_card_detail(self, card_id: str, viewer_user_id: str | None = None) -> dict:
+        card = self.repo.get_supply_demand_card(card_id)
+        if not card:
+            raise HTTPException(status_code=404, detail="供需卡不存在")
+        if card.status != "published" and card.ownerUserId != viewer_user_id:
+            raise HTTPException(status_code=404, detail="供需卡不存在")
+        return self._supply_demand_card_payload(card, viewer_user_id=viewer_user_id, include_detail=True)
+
+    def apply_supply_demand_card(self, card_id: str, applicant_user_id: str, message: str | None = None) -> dict:
+        applicant = self.repo.get_user(applicant_user_id)
+        if not applicant:
+            raise HTTPException(status_code=404, detail="用户不存在")
+        card = self.repo.get_supply_demand_card(card_id)
+        if not card or card.status != "published":
+            raise HTTPException(status_code=404, detail="供需卡不存在")
+        if card.ownerUserId == applicant_user_id:
+            raise HTTPException(status_code=400, detail="不能申请自己的供需卡")
+        now = now_iso()
+        existing = next(
+            (
+                item
+                for item in self.repo.list_supply_demand_applications(card_id=card_id, applicant_user_id=applicant_user_id)
+                if item.status in {"pending", "accepted"}
+            ),
+            None,
+        )
+        application = SupplyDemandApplication(
+            id=existing.id if existing else new_id("sd_apply"),
+            cardId=card_id,
+            applicantUserId=applicant_user_id,
+            ownerUserId=card.ownerUserId,
+            status=existing.status if existing else "pending",
+            message=(message or "").strip() or "我想进一步沟通这个合作机会。",
+            contactSnapshot={
+                "nickname": applicant.nickname,
+                "phone": applicant.phone,
+                "wechat": applicant.wechat,
+            },
+            createdAt=existing.createdAt if existing else now,
+            updatedAt=now,
+        )
+        self.repo.save_supply_demand_application(application)
+        return {
+            "application": application.model_dump(),
+            "card": self._supply_demand_card_payload(card, viewer_user_id=applicant_user_id),
+            "duplicate": bool(existing),
+        }
+
+    def list_supply_demand_applications_for_user(self, owner_user_id: str, role: str = "owner") -> list[dict]:
+        if not self.repo.get_user(owner_user_id):
+            raise HTTPException(status_code=404, detail="用户不存在")
+        if role == "applicant":
+            applications = self.repo.list_supply_demand_applications(applicant_user_id=owner_user_id)
+        else:
+            applications = self.repo.list_supply_demand_applications(owner_user_id=owner_user_id)
+        rows = []
+        for application in applications:
+            card = self.repo.get_supply_demand_card(application.cardId)
+            applicant = self.repo.get_user(application.applicantUserId)
+            rows.append(
+                {
+                    "application": application.model_dump(),
+                    "card": self._supply_demand_card_payload(card, viewer_user_id=owner_user_id) if card else None,
+                    "applicant": {
+                        "id": applicant.id,
+                        "nickname": applicant.nickname,
+                        "avatarUrl": applicant.avatarUrl,
+                    } if applicant else None,
+                }
+            )
+        return rows
+
+    def review_supply_demand_application(self, application_id: str, owner_user_id: str, status_value: str) -> dict:
+        application = self.repo.get_supply_demand_application(application_id)
+        if not application:
+            raise HTTPException(status_code=404, detail="申请不存在")
+        if application.ownerUserId != owner_user_id:
+            raise HTTPException(status_code=403, detail="无权处理该申请")
+        if status_value not in {"accepted", "rejected", "closed"}:
+            raise HTTPException(status_code=400, detail="申请状态不合法")
+        application.status = status_value
+        application.updatedAt = now_iso()
+        self.repo.save_supply_demand_application(application)
+        return {"application": application.model_dump()}
+
+    def list_opportunity_push_digests(self, owner_user_id: str) -> list[dict]:
+        if not self.repo.get_user(owner_user_id):
+            raise HTTPException(status_code=404, detail="用户不存在")
+        return [self._opportunity_push_digest_payload(item) for item in self.repo.list_opportunity_push_digests(owner_user_id)]
+
+    def generate_opportunity_push_digest(self, owner_user_id: str) -> dict:
+        if not self.repo.get_user(owner_user_id):
+            raise HTTPException(status_code=404, detail="用户不存在")
+        recommendations = self.list_opportunity_leads_for_user(owner_user_id)
+        lead_ids = [item["id"] for item in recommendations.get("items", [])[:5]]
+        supply_cards = self.list_supply_demand_cards_public(city=(recommendations.get("subscription") or {}).get("city") or None)[:5]
+        supply_ids = [item["id"] for item in supply_cards]
+        subscription = recommendations.get("subscription") or {}
+        now = now_iso()
+        digest = OpportunityPushDigest(
+            id=new_id("opp_push"),
+            ownerUserId=owner_user_id,
+            subscriptionId=subscription.get("id"),
+            title="今日推荐机会",
+            summary=f"为你找到 {len(lead_ids)} 条商机线索、{len(supply_ids)} 条供需广场内容。",
+            status="pending",
+            recommendedLeadIds=lead_ids,
+            recommendedSupplyDemandCardIds=supply_ids,
+            createdAt=now,
+            updatedAt=now,
+        )
+        self.repo.save_opportunity_push_digest(digest)
+        return self._opportunity_push_digest_payload(digest)
+
+    def generate_opportunity_push_digests_for_active_subscriptions(self) -> dict:
+        state = self.repo.load()
+        owner_ids = sorted({item.ownerUserId for item in state.opportunity_subscriptions if item.status == "active"})
+        rows = []
+        failed = []
+        for owner_id in owner_ids:
+            try:
+                rows.append(self.generate_opportunity_push_digest(owner_id))
+            except Exception as exc:  # noqa: BLE001 - ops endpoint should report per-user failures
+                failed.append({"ownerUserId": owner_id, "error": str(exc)})
+        return {"items": rows, "total": len(rows), "failed": failed}
+
+    def mark_opportunity_push_digest_read(self, digest_id: str, owner_user_id: str) -> dict:
+        digest = self.repo.get_opportunity_push_digest(digest_id)
+        if not digest:
+            raise HTTPException(status_code=404, detail="推荐摘要不存在")
+        if digest.ownerUserId != owner_user_id:
+            raise HTTPException(status_code=403, detail="无权操作该摘要")
+        digest.status = "read"
+        digest.readAt = now_iso()
+        digest.updatedAt = digest.readAt
+        self.repo.save_opportunity_push_digest(digest)
+        return self._opportunity_push_digest_payload(digest)
+
+    def upsert_supply_demand_card(self, payload) -> dict:
+        if not self.repo.get_user(payload.userId):
+            raise HTTPException(status_code=404, detail="用户不存在")
+        title = (payload.title or "").strip()
+        if not title:
+            raise HTTPException(status_code=400, detail="标题不能为空")
+        now = now_iso()
+        existing = self.repo.get_supply_demand_card(payload.id) if payload.id else None
+        if existing and existing.ownerUserId != payload.userId:
+            raise HTTPException(status_code=403, detail="无权编辑该发布")
+        status_value = payload.status if payload.status in {"draft", "pending_review", "published", "rejected", "archived"} else "draft"
+        if status_value == "published":
+            status_value = "pending_review"
+        card = SupplyDemandCard(
+            id=existing.id if existing else new_id("sd"),
+            ownerUserId=payload.userId,
+            cardType=payload.cardType if payload.cardType in {"demand", "supply"} else "supply",
+            status=status_value,
+            title=title,
+            summary=(payload.summary or "").strip(),
+            city=(payload.city or "").strip() or None,
+            industry=(payload.industry or "").strip() or None,
+            demandType=(payload.demandType or "合作").strip() or "合作",
+            contactRequirement=(payload.contactRequirement or "").strip() or None,
+            linkedNoteId=(payload.linkedNoteId or "").strip() or None,
+            linkedResourceType=(payload.linkedResourceType or "").strip() or None,
+            linkedResourceId=(payload.linkedResourceId or "").strip() or None,
+            tags=[str(item).strip() for item in (payload.tags or []) if str(item).strip()][:12],
+            reviewNote=existing.reviewNote if existing else None,
+            publishedAt=existing.publishedAt if existing else None,
+            reviewedAt=existing.reviewedAt if existing else None,
+            createdAt=existing.createdAt if existing else now,
+            updatedAt=now,
+        )
+        self.repo.save_supply_demand_card(card)
+        return self._supply_demand_card_payload(card)
+
+    def submit_supply_demand_card(self, card_id: str, owner_user_id: str) -> dict:
+        card = self.repo.get_supply_demand_card(card_id)
+        if not card:
+            raise HTTPException(status_code=404, detail="发布不存在")
+        if card.ownerUserId != owner_user_id:
+            raise HTTPException(status_code=403, detail="无权提交该发布")
+        card.status = "pending_review"
+        card.updatedAt = now_iso()
+        self.repo.save_supply_demand_card(card)
+        return self._supply_demand_card_payload(card)
+
+    def archive_supply_demand_card(self, card_id: str, owner_user_id: str) -> dict:
+        card = self.repo.get_supply_demand_card(card_id)
+        if not card:
+            raise HTTPException(status_code=404, detail="发布不存在")
+        if card.ownerUserId != owner_user_id:
+            raise HTTPException(status_code=403, detail="无权下架该发布")
+        card.status = "archived"
+        card.updatedAt = now_iso()
+        self.repo.save_supply_demand_card(card)
+        return self._supply_demand_card_payload(card)
+
+    def review_supply_demand_card(self, card_id: str, status_value: str, review_note: str | None = None) -> dict:
+        card = self.repo.get_supply_demand_card(card_id)
+        if not card:
+            raise HTTPException(status_code=404, detail="发布不存在")
+        if status_value not in {"published", "rejected", "archived"}:
+            raise HTTPException(status_code=400, detail="审核状态不合法")
+        now = now_iso()
+        card.status = status_value
+        card.reviewNote = review_note
+        card.reviewedAt = now
+        card.updatedAt = now
+        if status_value == "published" and not card.publishedAt:
+            card.publishedAt = now
+        self.repo.save_supply_demand_card(card)
+        return self._supply_demand_card_payload(card)
+
+    def _opportunity_lead_public_payload(self, lead: OpportunityLead, detail: bool = False) -> dict:
+        contacts = self.repo.list_opportunity_lead_contacts(lead.id)
+        payload = {
+            **lead.model_dump(),
+            "sourceLabel": "官方收录",
+            "contactList": [
+                {
+                    "contactType": item.contactType,
+                    "contactMasked": item.contactMasked,
+                    "verifyStatus": item.verifyStatus,
+                }
+                for item in contacts
+            ],
+            "hasContact": bool(contacts),
+        }
+        if not detail:
+            payload.pop("content", None)
+        return payload
+
+    def _opportunity_lead_ops_payload(self, lead: OpportunityLead) -> dict:
+        state = self.repo.load()
+        return {
+            **lead.model_dump(),
+            "sources": [item.model_dump() for item in self.repo.list_opportunity_lead_sources(lead.id)],
+            "contacts": [item.model_dump() for item in self.repo.list_opportunity_lead_contacts(lead.id)],
+            "saveCount": sum(1 for item in state.opportunity_lead_saves if item.leadId == lead.id),
+            "responsePackageCount": sum(1 for item in state.response_packages if item.leadId == lead.id),
+        }
+
+    def _score_lead_for_subscription(
+        self,
+        lead: OpportunityLead,
+        subscription: OpportunitySubscription | None,
+    ) -> tuple[int, list[str]]:
+        if not subscription:
+            return 70, [item for item in [lead.city, lead.industry, lead.demandType] if item][:3] or ["默认推荐"]
+        score = 55
+        reasons = []
+        lead_text = f"{lead.title} {lead.summary} {lead.content} {lead.city or ''} {lead.industry or ''} {lead.demandType} {' '.join(lead.tags or [])}"
+        for label, value, weight in [
+            ("城市", subscription.city, 14),
+            ("我在找", subscription.lookingFor, 12),
+            ("我能提供", subscription.providing, 10),
+            ("关键词", subscription.keywords, 12),
+        ]:
+            tokens = [item.strip() for item in re.split(r"[/,，\s]+", value or "") if item.strip()]
+            if any(token and token in lead_text for token in tokens):
+                score += weight
+                reasons.append(label)
+        if subscription.contactRequirement and subscription.contactRequirement != "待核验也看" and lead.contactStatus in {"available", "masked", "locked"}:
+            score += 8
+            reasons.append("联系方式")
+        if lead.trustStatus == "verified":
+            score += 6
+            reasons.append("可信")
+        return min(score, 98), reasons[:5] or ["订阅推荐"]
+
+    def _opportunity_lead_matches_filters(
+        self,
+        lead: OpportunityLead,
+        city: str | None = None,
+        industry: str | None = None,
+        demand_type: str | None = None,
+        contact_status: str | None = None,
+    ) -> bool:
+        if city and city != "全部" and city not in (lead.city or ""):
+            return False
+        if industry and industry != "全部" and industry not in (lead.industry or ""):
+            return False
+        if demand_type and demand_type != "全部" and demand_type not in (lead.demandType or ""):
+            return False
+        if contact_status and contact_status != "全部":
+            has_contact = bool(self.repo.list_opportunity_lead_contacts(lead.id))
+            if contact_status in {"有联系方式", "可联系", "有电话"} and not has_contact:
+                return False
+            if contact_status in {"待核验", "无联系方式"} and has_contact:
+                return False
+        return True
+
+    def _supply_demand_card_matches_filters(
+        self,
+        card: SupplyDemandCard,
+        city: str | None = None,
+        industry: str | None = None,
+        demand_type: str | None = None,
+        card_type: str | None = None,
+        contact_status: str | None = None,
+    ) -> bool:
+        if city and city != "全部" and city not in (card.city or ""):
+            return False
+        if industry and industry != "全部" and industry not in (card.industry or ""):
+            return False
+        if demand_type and demand_type != "全部" and demand_type not in (card.demandType or ""):
+            return False
+        if card_type and card_type != "全部" and card.cardType != card_type:
+            return False
+        if contact_status and contact_status != "全部":
+            has_contact_hint = bool(card.contactRequirement)
+            if contact_status in {"有联系方式", "可联系", "有电话"} and not has_contact_hint:
+                return False
+            if contact_status in {"待核验", "无联系方式"} and has_contact_hint:
+                return False
+        return True
+
+    def _opportunity_lead_expired(self, lead: OpportunityLead) -> bool:
+        if not lead.expiresAt:
+            return False
+        try:
+            return parse_iso(lead.expiresAt) < datetime.now(tz=SHANGHAI)
+        except Exception:
+            return False
+
+    def _mask_opportunity_contact(self, value: str) -> str:
+        clean = re.sub(r"\s+", "", value or "")
+        if re.fullmatch(r"1\d{10}", clean):
+            return f"{clean[:3]}****{clean[-4:]}"
+        if len(clean) <= 4:
+            return clean[:1] + "*"
+        return f"{clean[:2]}***{clean[-2:]}"
+
+    def _supply_demand_card_payload(
+        self,
+        card: SupplyDemandCard,
+        viewer_user_id: str | None = None,
+        include_detail: bool = False,
+        include_applications: bool = False,
+    ) -> dict:
+        owner = self.repo.get_user(card.ownerUserId)
+        note = self.repo.get_user_note(card.linkedNoteId) if card.linkedNoteId else None
+        linked_resource_type = card.linkedResourceType or ("note" if card.linkedNoteId else None)
+        linked_resource_id = card.linkedResourceId or card.linkedNoteId
+        linked_resource_title = None
+        if linked_resource_type == "showcase" and linked_resource_id:
+            showcase = self.repo.get_showcase_page(linked_resource_id)
+            linked_resource_title = showcase.name if showcase else None
+        elif linked_resource_type == "note" and linked_resource_id:
+            resource_note = self.repo.get_user_note(linked_resource_id)
+            linked_resource_title = resource_note.title if resource_note else None
+        applications = self.repo.list_supply_demand_applications(card_id=card.id)
+        my_application = next((item for item in applications if item.applicantUserId == viewer_user_id), None) if viewer_user_id else None
+        payload = {
+            **card.model_dump(),
+            "ownerNickname": owner.nickname if owner else card.ownerUserId,
+            "ownerAvatarUrl": owner.avatarUrl if owner else "",
+            "linkedNoteTitle": note.title if note else None,
+            "linkedResourceType": linked_resource_type,
+            "linkedResourceId": linked_resource_id,
+            "linkedResourceTitle": linked_resource_title or (note.title if note else None),
+            "badge": "我能提供" if card.cardType == "supply" else "我在找",
+            "applicationCount": len(applications),
+            "myApplicationStatus": my_application.status if my_application else None,
+            "isMine": bool(viewer_user_id and viewer_user_id == card.ownerUserId),
+        }
+        if include_detail and linked_resource_id:
+            linked_resource = None
+            if linked_resource_type == "showcase":
+                showcase = self.repo.get_showcase_page(linked_resource_id)
+                if showcase:
+                    linked_resource = {
+                        "id": showcase.id,
+                        "type": "showcase",
+                        "title": showcase.name,
+                        "summary": showcase.description,
+                    }
+            elif linked_resource_type == "note":
+                resource_note = self.repo.get_user_note(linked_resource_id)
+                if resource_note:
+                    linked_resource = {
+                        "id": resource_note.id,
+                        "type": "note",
+                        "title": resource_note.title,
+                        "summary": resource_note.summary,
+                        "cardType": (resource_note.visibilityConfig or {}).get("cardType") or (resource_note.visibilityConfig or {}).get("noteType"),
+                    }
+            if linked_resource:
+                payload["linkedResource"] = linked_resource
+        if include_detail and note:
+            payload["linkedNote"] = {
+                "id": note.id,
+                "title": note.title,
+                "summary": note.summary,
+                "cardType": (note.visibilityConfig or {}).get("cardType") or (note.visibilityConfig or {}).get("noteType"),
+            }
+        if include_applications:
+            payload["applications"] = [
+                {
+                    **item.model_dump(),
+                    "applicantNickname": (self.repo.get_user(item.applicantUserId).nickname if self.repo.get_user(item.applicantUserId) else item.applicantUserId),
+                }
+                for item in applications[:20]
+            ]
+        return payload
+
+    def _opportunity_push_digest_payload(self, digest: OpportunityPushDigest) -> dict:
+        leads = [
+            self._opportunity_lead_public_payload(lead)
+            for lead_id in digest.recommendedLeadIds
+            for lead in [self.repo.get_opportunity_lead(lead_id)]
+            if lead and lead.status == "published"
+        ]
+        supply_cards = [
+            self._supply_demand_card_payload(card)
+            for card_id in digest.recommendedSupplyDemandCardIds
+            for card in [self.repo.get_supply_demand_card(card_id)]
+            if card and card.status == "published"
+        ]
+        return {
+            **digest.model_dump(),
+            "leads": leads,
+            "supplyDemandCards": supply_cards,
+            "totalCount": len(leads) + len(supply_cards),
+        }
+
+    def _build_response_package_preview(
+        self,
+        lead: OpportunityLead,
+        owner_user_id: str,
+        selected_asset_ids: list[str] | None = None,
+    ) -> dict:
+        recommended_assets = self._recommend_response_assets(lead, owner_user_id, selected_asset_ids=selected_asset_ids)
+        asset_options = self._response_asset_options(lead, owner_user_id, selected_asset_ids=selected_asset_ids)
+        demand_summary = {
+            "title": lead.title,
+            "summary": lead.summary,
+            "city": lead.city,
+            "industry": lead.industry,
+            "demandType": lead.demandType,
+            "tags": lead.tags[:6],
+            "contactStatus": lead.contactStatus,
+            "trustStatus": lead.trustStatus,
+        }
+        return {
+            "lead": self._opportunity_lead_public_payload(lead, detail=True),
+            "demandSummary": demand_summary,
+            "recommendedAssets": recommended_assets,
+            "assetOptions": asset_options,
+            "selectedAssetIds": [item["assetId"] for item in recommended_assets],
+            "openingText": self._response_opening_text(lead, recommended_assets),
+            "trackingUrl": None,
+            "followupSuggestion": self._response_followup_suggestion(lead, recommended_assets),
+        }
+
+    def _build_response_package_payload(self, package: ResponsePackage) -> dict:
+        lead = self.repo.get_opportunity_lead(package.leadId)
+        items = self.repo.list_response_package_items(package.id)
+        return {
+            **package.model_dump(),
+            "lead": self._opportunity_lead_public_payload(lead, detail=True) if lead else None,
+            "items": [item.model_dump() for item in items],
+        }
+
+    def _recommend_response_assets(
+        self,
+        lead: OpportunityLead,
+        owner_user_id: str,
+        selected_asset_ids: list[str] | None = None,
+    ) -> list[dict]:
+        options = self._response_asset_options(lead, owner_user_id, selected_asset_ids=selected_asset_ids)
+        return [item for item in options if item.get("selected")][:3] or options[:3]
+
+    def _response_asset_options(
+        self,
+        lead: OpportunityLead,
+        owner_user_id: str,
+        selected_asset_ids: list[str] | None = None,
+    ) -> list[dict]:
+        selected_ids = {item for item in (selected_asset_ids or []) if item}
+        keywords = {
+            item
+            for item in [
+                lead.city,
+                lead.district,
+                lead.industry,
+                lead.demandType,
+                *(lead.tags or []),
+            ]
+            if item
+        }
+        notes = self.repo.list_user_notes(owner_user_id, include_deleted=False)
+        scored: list[tuple[int, UserNote]] = []
+        for note in notes:
+            if note.status not in {"active", "draft"}:
+                continue
+            visibility_config = note.visibilityConfig or {}
+            note_tags = [
+                str(item)
+                for item in [
+                    *(visibility_config.get("tags") or []),
+                    *(visibility_config.get("systemTags") or []),
+                    *(visibility_config.get("userTags") or []),
+                ]
+                if item
+            ]
+            note_type = visibility_config.get("cardType") or visibility_config.get("noteType") or ""
+            haystack = " ".join(
+                [
+                    note.title or "",
+                    note.summary or "",
+                    note.body or "",
+                    " ".join(note_tags),
+                    note_type,
+                ]
+            )
+            score = 30 if not selected_ids else 0
+            if note.id in selected_ids:
+                score += 100
+            for keyword in keywords:
+                if keyword and keyword in haystack:
+                    score += 18
+            if note_type in {"service_offer", "business_card"}:
+                score += 10
+            if note_type in {"property_listing", "groupbuy_product"} and lead.demandType in {"找货源", "找房源", "找资源"}:
+                score += 8
+            scored.append((score, note))
+        scored.sort(key=lambda item: (item[0], item[1].updatedAt), reverse=True)
+        assets = []
+        for score, note in scored[:10]:
+            if score <= 0 and note.id not in selected_ids:
+                continue
+            reason = self._response_asset_reason(lead, note)
+            assets.append(
+                {
+                    "assetType": "note",
+                    "assetId": note.id,
+                    "assetTitle": note.title,
+                    "assetSummary": note.summary,
+                    "recommendReason": reason,
+                    "score": score,
+                    "selected": note.id in selected_ids,
+                }
+            )
+        if not selected_ids:
+            for index, asset in enumerate(assets):
+                asset["selected"] = index < 3
+        return assets
+
+    def _response_asset_reason(self, lead: OpportunityLead, note: UserNote) -> str:
+        matched = []
+        visibility_config = note.visibilityConfig or {}
+        note_tags = [
+            str(item)
+            for item in [
+                *(visibility_config.get("tags") or []),
+                *(visibility_config.get("systemTags") or []),
+                *(visibility_config.get("userTags") or []),
+            ]
+            if item
+        ]
+        note_type = visibility_config.get("cardType") or visibility_config.get("noteType") or ""
+        haystack = f"{note.title} {note.summary} {' '.join(note_tags)}"
+        for keyword in [lead.city, lead.industry, lead.demandType, *(lead.tags or [])]:
+            if keyword and keyword in haystack and keyword not in matched:
+                matched.append(keyword)
+        if matched:
+            return f"匹配 {' / '.join(matched[:3])}"
+        if note_type in {"service_offer", "business_card"}:
+            return "适合作为首次介绍资料"
+        return "可作为补充资料发送"
+
+    def _response_opening_text(self, lead: OpportunityLead, assets: list[dict]) -> str:
+        asset_text = "，也整理了相关资料给你参考" if assets else "，可以先简单对齐需求"
+        city = f"{lead.city}这边" if lead.city else "这边"
+        industry = f"{lead.industry}方向" if lead.industry else "这个方向"
+        return f"你好，我看到你在找{city}{industry}的合作资源{asset_text}。如果方便，我先发一份简短介绍和案例，你看是否匹配。"
+
+    def _response_followup_suggestion(self, lead: OpportunityLead, assets: list[dict]) -> str:
+        if assets:
+            return "先发送回应包，30 分钟后根据对方是否打开资料决定电话/微信跟进。"
+        if lead.contactStatus in {"masked", "available", "locked"}:
+            return "先补一份可发送资料，再查看联系方式跟进。"
+        return "先保存线索，等联系方式核验后再生成正式跟进动作。"
+
+    def _response_tracking_url(self, package_id: str) -> str:
+        return f"/pages/response-package/index?id={package_id}"
 
     def _build_card_media(self, card_id: str, media_payload: list[dict] | None) -> list[CardMedia]:
         media_items: list[CardMedia] = []
@@ -272,6 +1553,70 @@ class AppService:
             session_data.get("unionid"),
             payload.wechat,
         )
+
+    def create_h5_session_ticket(self, user_id: str, entry: str = "resource-tools") -> dict:
+        user = self.repo.get_user(user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="用户不存在")
+        normalized_entry = re.sub(r"[^a-z0-9_-]", "", (entry or "resource-tools").lower()) or "resource-tools"
+        now_ts = int(time.time())
+        payload = {
+            "userId": user.id,
+            "openid": user.openid,
+            "entry": normalized_entry,
+            "iat": now_ts,
+            "exp": now_ts + max(60, settings.h5_auth_ticket_ttl_seconds),
+            "nonce": uuid4().hex,
+        }
+        body = self._h5_ticket_encode(payload)
+        signature = self._h5_ticket_signature(body)
+        return {
+            "ticket": f"{body}.{signature}",
+            "expiresAt": datetime.fromtimestamp(payload["exp"], tz=SHANGHAI).isoformat(),
+            "entry": normalized_entry,
+        }
+
+    def verify_h5_session_ticket(self, ticket: str) -> dict:
+        body, signature = self._split_h5_ticket(ticket)
+        expected_signature = self._h5_ticket_signature(body)
+        if not hmac.compare_digest(signature, expected_signature):
+            raise HTTPException(status_code=401, detail="H5 登录票据无效")
+        try:
+            payload = json.loads(base64.urlsafe_b64decode(self._pad_h5_ticket_body(body)).decode("utf-8"))
+        except Exception as exc:
+            raise HTTPException(status_code=401, detail="H5 登录票据无效") from exc
+        exp = int(payload.get("exp") or 0)
+        if exp < int(time.time()):
+            raise HTTPException(status_code=401, detail="H5 登录票据已过期")
+        user = self.repo.get_user(str(payload.get("userId") or ""))
+        if not user or user.openid != payload.get("openid"):
+            raise HTTPException(status_code=401, detail="H5 登录用户不存在")
+        return {
+            "user": user.model_dump(),
+            "entry": payload.get("entry") or "resource-tools",
+            "expiresAt": datetime.fromtimestamp(exp, tz=SHANGHAI).isoformat(),
+        }
+
+    def _h5_ticket_encode(self, payload: dict) -> str:
+        encoded = base64.urlsafe_b64encode(json.dumps(payload, ensure_ascii=True, separators=(",", ":")).encode("utf-8"))
+        return encoded.decode("ascii").rstrip("=")
+
+    def _h5_ticket_signature(self, body: str) -> str:
+        secret = (settings.h5_auth_secret or "teamBuy-h5-dev-secret").encode("utf-8")
+        return hmac.new(secret, body.encode("utf-8"), hashlib.sha256).hexdigest()
+
+    def _split_h5_ticket(self, ticket: str) -> tuple[str, str]:
+        text = (ticket or "").strip()
+        if "." not in text:
+            raise HTTPException(status_code=401, detail="H5 登录票据无效")
+        body, signature = text.rsplit(".", 1)
+        if not body or not signature:
+            raise HTTPException(status_code=401, detail="H5 登录票据无效")
+        return body, signature
+
+    def _pad_h5_ticket_body(self, body: str) -> bytes:
+        padding = "=" * (-len(body) % 4)
+        return f"{body}{padding}".encode("ascii")
 
     def update_user_profile(self, user_id: str, payload: UserProfileUpdateRequest) -> User:
         user = self.repo.get_user(user_id)
@@ -734,16 +2079,27 @@ class AppService:
         }
 
     def _parse_property_batch_text(self, raw_text: str) -> dict:
-        lines = [line.strip() for line in re.split(r"[\r\n]+", raw_text) if line.strip()]
+        normalized_text = self._normalize_property_batch_text(raw_text)
+        lines = [line.strip() for line in re.split(r"[\r\n]+", normalized_text) if line.strip()]
         common_private = self._property_batch_common_private_data(raw_text)
         public_tags = self._property_batch_public_tags(raw_text)
         private_tags = self._property_batch_private_tags(raw_text, common_private)
         candidates: list[dict] = []
         current_base = ""
+        current_area = ""
         current_features: list[str] = []
         for line in lines:
             clean = re.sub(r"^[0-9一二三四五六七八九十]+[）)、，,、.．]\s*", "", line).strip()
             if not clean or re.search(r"1[3-9]\d{9}", clean) and len(clean) < 40:
+                continue
+            if self._property_batch_is_area_header(clean):
+                current_area = clean
+                current_base = ""
+                current_features = self._property_features_from_text(clean)
+                continue
+            if self._property_batch_is_building_line(clean):
+                current_base = self._property_batch_base_from_area_and_building(current_area, clean)
+                current_features = self._unique_strings([*self._property_features_from_text(current_area), *self._property_features_from_text(clean)])
                 continue
             if not current_base or self._line_has_property_address_signal(clean):
                 direct = self._property_candidate_from_direct_line(clean, public_tags, private_tags, common_private, len(candidates))
@@ -760,6 +2116,17 @@ class AppService:
             if re.search(r"(苑|园|府|里|城|公寓|小区|花园).{0,12}(号|栋|幢|座|室|户|房)", clean) and not re.search(r"1[3-9]\d{9}", clean):
                 current_base = clean
                 current_features = self._property_features_from_text(clean)
+        extra_candidates = self._parse_property_batch_extra_candidates(
+            lines,
+            public_tags,
+            private_tags,
+            common_private,
+            len(candidates),
+        )
+        if len(extra_candidates) >= 2 and len(extra_candidates) > len(candidates):
+            candidates = extra_candidates
+        elif not candidates:
+            candidates = extra_candidates
         unique: list[dict] = []
         seen: set[str] = set()
         for item in candidates:
@@ -782,6 +2149,41 @@ class AppService:
             },
         }
 
+    def _normalize_property_batch_text(self, raw_text: str) -> str:
+        keycap_digits = {
+            "0️⃣": "0",
+            "1️⃣": "1",
+            "2️⃣": "2",
+            "3️⃣": "3",
+            "4️⃣": "4",
+            "5️⃣": "5",
+            "6️⃣": "6",
+            "7️⃣": "7",
+            "8️⃣": "8",
+            "9️⃣": "9",
+        }
+        text = raw_text or ""
+        for source, target in keycap_digits.items():
+            text = text.replace(source, target)
+        text = text.replace("\ufe0f", "").replace("\u20e3", "")
+        return text
+
+    def _property_batch_is_area_header(self, line: str) -> bool:
+        if re.search(r"\d{3,5}", line) or re.search(r"1[3-9]\d{9}", line):
+            return False
+        if len(line) > 80:
+            return False
+        has_location = bool(re.search(r"(广场|地铁|医院|国际|公寓|大厦|书院路|开福寺|碧沙湖|湘雅|华创|保利|蓝弯)", line))
+        has_multiple_places = len([item for item in re.split(r"[，,、\s]+", line) if item.strip()]) >= 2
+        return has_location and has_multiple_places
+
+    def _property_batch_is_building_line(self, line: str) -> bool:
+        return bool(re.fullmatch(r"\d{3,5}(?:[东西南北]栋|栋|幢|座|室|房)?", line.strip()))
+
+    def _property_batch_base_from_area_and_building(self, area: str, building: str) -> str:
+        primary_area = re.split(r"[，,、\s]+", area or "")[0].strip()
+        return " · ".join(item for item in [primary_area, building.strip()] if item).strip() or building.strip()
+
     def _line_has_property_address_signal(self, line: str) -> bool:
         return bool(
             re.search(r"\d{1,5}(?:弄|号|栋|幢|座|室|户|房|楼)", line)
@@ -792,13 +2194,22 @@ class AppService:
         phones = self._unique_strings(re.findall(r"1[3-9]\d{9}", raw_text))
         wechat_match = re.search(r"(?:微信|v|V|➕微信|加微信)[：:\s➕+]*([A-Za-z0-9_-]{5,30})", raw_text)
         v_match = re.search(r"\b(1[3-9]\d{9}v)\b", raw_text, re.IGNORECASE)
-        commission_match = re.search(r"(中介费\s*[%％]?\s*\d+%?|中介费\s*\d+[%％]|租高有红包|红包)", raw_text)
+        same_phone_wechat = bool(re.search(r"微信同号|微信号同手机号|手机同微信", raw_text))
+        commission_match = re.search(r"(中介费\s*[%％]?\s*\d+%?|中介费\s*\d+[%％]|佣金.{0,24}?\d+[%％]|租高有红包|红包)", raw_text)
         restrictions = []
         if re.search(r"带小孩|孕妇|老人", raw_text):
             restrictions.append("带小孩/孕妇/老人不租")
         return {
             "upstreamPhones": phones,
-            "upstreamWechat": (wechat_match.group(1) if wechat_match else v_match.group(1) if v_match else ""),
+            "upstreamWechat": (
+                wechat_match.group(1)
+                if wechat_match
+                else phones[0]
+                if same_phone_wechat and phones
+                else v_match.group(1)
+                if v_match
+                else ""
+            ),
             "commission": commission_match.group(0) if commission_match else "",
             "lockNote": "全部密码锁" if "密码锁" in raw_text else "",
             "bonusNote": "租高有红包" if "红包" in raw_text else "",
@@ -850,10 +2261,153 @@ class AppService:
         text = re.sub(r"(新装|燃气|洗澡|做饭|卫生间|干湿分离|带窗户|，|,).*", "", text).strip()
         return text or "未命名房源"
 
+    def _clean_property_batch_line(self, line: str) -> str:
+        clean = re.sub(r"^[^\w\u4e00-\u9fff\d]+", "", line).strip()
+        clean = re.sub(r"^[0-9一二三四五六七八九十]+[）)、，,、.．]\s*", "", clean).strip()
+        clean = re.sub(r"^(?:太阳|玫瑰|发财|红包)\]", "", clean).strip()
+        return re.sub(r"\s+", " ", clean).strip(" -—━")
+
+    def _parse_property_batch_extra_candidates(
+        self,
+        lines: list[str],
+        public_tags: list[str],
+        private_tags: list[str],
+        private_data: dict,
+        start_index: int,
+    ) -> list[dict]:
+        candidates: list[dict] = []
+        current_layout = ""
+        current_base = ""
+        pending: dict = {}
+
+        def append_candidate(base: str, unit: str, price: str, source_text: str = "") -> None:
+            base = self._property_base_title(base.strip(" ，,。"))
+            unit = (unit or current_layout or "房源").strip(" ，,。")
+            price = re.sub(r"[^\d]", "", price or "")
+            if not base or not price or re.search(r"1[3-9]\d{9}", base):
+                return
+            features = self._property_features_from_text(source_text or base)
+            candidates.append(
+                self._property_candidate_payload(
+                    base,
+                    unit,
+                    price,
+                    public_tags,
+                    private_tags,
+                    private_data,
+                    features,
+                    start_index + len(candidates),
+                )
+            )
+
+        def flush_pending() -> None:
+            if pending.get("base") and pending.get("price"):
+                append_candidate(
+                    pending.get("base", ""),
+                    pending.get("layout") or current_layout or "房源",
+                    pending.get("price", ""),
+                    pending.get("text", ""),
+                )
+            pending.clear()
+
+        layout_pattern = r"大南厅|朝南大平层一室一厅|正规一室一厅|复式一房|loft两房|loft一房|公寓一房|大厅一室户|[东西南北]?一室一厅|[东西南北]?一室户|[东西南北]?一室|[东西南北]?一房|[两二]房(?:1厅)?|三房|小复式一厅|朝阳大一室户|朝阳一室户|一室户"
+        for raw_line in lines:
+            line = self._clean_property_batch_line(raw_line)
+            if not line or re.search(r"1[3-9]\d{9}", line):
+                continue
+            if re.fullmatch(r"[🏠\s]*(一房|两房|二房|三房)[^\d]*", raw_line.strip()):
+                current_layout = re.sub(r"[^\u4e00-\u9fff]", "", raw_line)
+                continue
+
+            community_match = re.search(r"(?:小区|项目)[：:]\s*(.+)", line)
+            if community_match:
+                flush_pending()
+                value = community_match.group(1).strip()
+                pending["base"] = re.sub(rf"\s*({layout_pattern}).*", "", value).strip() or value
+                layout_match = re.search(layout_pattern, value)
+                if layout_match:
+                    pending["layout"] = layout_match.group(0)
+                pending["text"] = line
+                current_base = pending["base"]
+                continue
+
+            layout_field_match = re.search(r"户型[：:]\s*(.+)", line)
+            if layout_field_match and pending.get("base"):
+                layout_value = layout_field_match.group(1).strip()
+                pending["layout"] = layout_value
+                pending["text"] = f"{pending.get('text', '')} {line}".strip()
+                continue
+
+            price_field_match = re.search(r"(?:价格|💰)[：:\s]*[^\d]{0,4}(\d{3,5})(?:\s*-\s*(\d{3,5}))?", line)
+            if price_field_match and pending.get("base"):
+                pending["price"] = price_field_match.group(1)
+                pending["text"] = f"{pending.get('text', '')} {line}".strip()
+                flush_pending()
+                current_base = ""
+                continue
+
+            pending_plain_price_match = re.search(r"^(\d{3,5})(?:\s*-\s*(\d{3,5}))?", line)
+            if pending_plain_price_match and pending.get("base"):
+                pending["price"] = pending_plain_price_match.group(1)
+                pending["text"] = f"{pending.get('text', '')} {line}".strip()
+                flush_pending()
+                current_base = ""
+                continue
+
+            named_block_match = re.search(rf"^(.{{2,32}}?)\s+({layout_pattern})(?:\s|$)", line)
+            if named_block_match and not re.search(r"\d{3,5}", line):
+                flush_pending()
+                pending["base"] = named_block_match.group(1).strip()
+                pending["layout"] = named_block_match.group(2).strip()
+                pending["text"] = line
+                current_base = pending["base"]
+                continue
+
+            named_no_layout_match = re.search(r"^(.{2,24}?)(?:\s+(?:有网络|余\d+间)|\|)", line)
+            if named_no_layout_match and not re.search(r"\d{3,5}", line):
+                flush_pending()
+                pending["base"] = named_no_layout_match.group(1).strip()
+                pending["layout"] = current_layout or "房源"
+                pending["text"] = line
+                current_base = pending["base"]
+                continue
+
+            direct_layout_match = re.search(rf"(.{{2,50}}?)\s*({layout_pattern}).{{0,18}}?(\d{{3,5}})(?:元|/月|🈳|空|。|$)", line)
+            if direct_layout_match:
+                flush_pending()
+                append_candidate(direct_layout_match.group(1), direct_layout_match.group(2), direct_layout_match.group(3), line)
+                current_base = ""
+                continue
+
+            room_price_match = re.search(r"^(\d{1,4}室)(?:\s*)(\d{3,5})(.*)$", line)
+            if room_price_match and current_base:
+                append_candidate(current_base, room_price_match.group(1), room_price_match.group(2), line)
+                continue
+
+            plain_price_match = re.search(r"(.{2,50}?)(\d{3,5})(?:元/月|元|/月|🈳|空|$)", line)
+            if plain_price_match and re.search(r"(小区|苑|园|府|城|公寓|大厦|名门|瑞府|雅苑|新城|路|弄|村|宅|号|栋|房|室)", line):
+                flush_pending()
+                base = plain_price_match.group(1)
+                append_candidate(base, current_layout or "房源", plain_price_match.group(2), line)
+                current_base = ""
+                continue
+
+            price_only_match = re.fullmatch(r"(\d{3,5})", line)
+            if price_only_match and current_base:
+                append_candidate(current_base, current_layout or "房源", price_only_match.group(1), line)
+                current_base = ""
+                continue
+
+            if re.search(r"(小区|苑|园|府|城|公寓|大厦|路|弄|村|宅|号|栋)$", line) or re.search(r"(村|小区|新村).{0,12}\d+号$", line):
+                current_base = line
+
+        flush_pending()
+        return candidates
+
     def _property_candidate_from_unit_line(self, base: str, line: str, public_tags: list[str], private_tags: list[str], private_data: dict, base_features: list[str], index: int) -> dict | None:
         if re.search(r"1[3-9]\d{9}", line):
             return None
-        match = re.search(r"(.{1,24}?)[\s，,]*(\d{3,5})(?:元|/月)?(?:[，,。]|已空|以空|空置|$)", line)
+        match = re.search(r"(.{1,24}?)(?:[\s，,]*|[一\-—:：])(\d{3,5})(?:元|/月)?(?:[（(][^）)]*[）)])?(?:[，,。]|已空|以空|空置|$)", line)
         if not match:
             return None
         unit_name = match.group(1).strip(" ，,")
@@ -944,6 +2498,7 @@ class AppService:
             createdAt=now,
             updatedAt=now,
         )
+        self._apply_owner_public_contact_to_property_note(note)
         self.repo.save_user_note(note)
         return note
 
@@ -1196,7 +2751,7 @@ class AppService:
 
     def _build_user_note_from_note_draft(self, note_draft: UserNoteDraftPayload) -> UserNote:
         now = now_iso()
-        return UserNote(
+        note = UserNote(
             id=new_id("note"),
             ownerUserId=note_draft.ownerUserId or "unclaimed",
             importBatchId=None,
@@ -1215,6 +2770,41 @@ class AppService:
             createdAt=now,
             updatedAt=now,
         )
+        self._apply_owner_public_contact_to_property_note(note)
+        return note
+
+    def _apply_owner_public_contact_to_property_note(self, note: UserNote) -> None:
+        config = self._normalize_note_visibility_config(note.visibilityConfig)
+        if config.get("cardType") != "property_listing":
+            note.visibilityConfig = config
+            return
+        owner = self.repo.get_user(note.ownerUserId)
+        structured_data = dict(config.get("structuredData") or {})
+        conversion_config = self._normalize_conversion_config("property_listing", config.get("conversionConfig"))
+        phone = self._clean_optional_text(owner.phone if owner else "")
+        wechat = self._clean_optional_text(owner.wechat if owner else "")
+        if phone:
+            if not structured_data.get("phone"):
+                structured_data["phone"] = phone
+            if not structured_data.get("contact"):
+                structured_data["contact"] = phone
+            if not structured_data.get("contactPhone"):
+                structured_data["contactPhone"] = phone
+            note.phone = structured_data.get("phone") or phone
+            conversion_config["showContactPhone"] = True
+        else:
+            note.phone = None
+            conversion_config["showContactPhone"] = False
+        if wechat:
+            if not structured_data.get("wechat"):
+                structured_data["wechat"] = wechat
+            if not structured_data.get("contactWechat"):
+                structured_data["contactWechat"] = wechat
+            conversion_config["enablePrivateConsultation"] = True
+        config["structuredData"] = structured_data
+        config["conversionConfig"] = conversion_config
+        config["showPhone"] = bool(phone)
+        note.visibilityConfig = config
 
     def _apply_manual_selected_note_type(self, note: UserNote, card_type: str, input_mode: str) -> UserNote:
         current_config = self._normalize_note_visibility_config(note.visibilityConfig)
@@ -1254,6 +2844,7 @@ class AppService:
             "tags": self._unique_strings([*current_config.get("tags", []), *extra_tags]),
         }
         note.visibilityConfig = self._normalize_note_visibility_config(config)
+        self._apply_owner_public_contact_to_property_note(note)
         note.updatedAt = confirmed_at
         return note
 
@@ -1878,15 +3469,23 @@ class AppService:
         }
 
     def _looks_like_property_batch_text(self, raw_text: str) -> bool:
-        lines = [line.strip() for line in re.split(r"[\r\n]+", raw_text) if line.strip()]
+        normalized_text = self._normalize_property_batch_text(raw_text)
+        lines = [line.strip() for line in re.split(r"[\r\n]+", normalized_text) if line.strip()]
         numbered_count = sum(1 for line in lines if re.match(r"^[0-9一二三四五六七八九十]+[）)、，,、.．]", line))
         rent_line_count = sum(
             1
             for line in lines
-            if re.search(r"(次卧|主卧|次一室户|一室一厅|一室户|一房|两房|三房|阁楼|独卫|大厅).{0,16}\d{3,5}(?:元|/月|已空|以空|，|,|。|$)", line)
+            if re.search(r"(次卧|主卧|次一室户|一室一厅|一室户|一房|两房|三房|阁楼|独卫|大厅|号房).{0,16}\d{3,5}(?:元|/月|已空|以空|，|,|。|（|\(|$)", line)
         )
+        table_room_price_count = sum(1 for line in lines if re.search(r"^\d{1,3}号房[一\-—:：]?\d{3,5}", line))
+        building_line_count = sum(1 for line in lines if self._property_batch_is_building_line(line))
+        area_header_count = sum(1 for line in lines if self._property_batch_is_area_header(line))
+        table_style_count = min(table_room_price_count, building_line_count + area_header_count)
+        structured_field_count = sum(1 for line in lines if re.search(r"(小区|户型|价格)[：:]", line))
+        room_price_count = sum(1 for line in lines if re.search(r"^\D{0,8}\d{1,4}室\d{3,5}", self._clean_property_batch_line(line)))
+        address_group_count = sum(1 for line in lines if re.search(r"(村|小区|新村|路|弄|宅).{0,16}\d+号$", self._clean_property_batch_line(line)))
         has_contact = bool(re.search(r"1[3-9]\d{9}", raw_text))
-        has_property_context = bool(re.search(r"(挂牌|房源|看房|中介费|小区|苑|园|府|里|城|公寓|号|栋|幢|室|户)", raw_text))
+        has_property_context = bool(re.search(r"(挂牌|房源|直租|看房|中介费|佣金|小区|户型|民水民电|居住证|地铁|苑|园|府|里|城|公寓|大厦|广场|号|栋|幢|室|户|号房)", normalized_text))
         element_score = 0
         if has_property_context:
             element_score += 1
@@ -1896,11 +3495,21 @@ class AppService:
             element_score += 2
         elif rent_line_count == 1:
             element_score += 1
+        if table_style_count >= 2:
+            element_score += 3
+        elif table_style_count == 1:
+            element_score += 1
+        if structured_field_count >= 4:
+            element_score += 3
+        elif structured_field_count >= 2:
+            element_score += 1
+        if room_price_count >= 2 and address_group_count >= 2:
+            element_score += 3
         if has_contact:
             element_score += 1
-        if re.search(r"\d{2,5}(?:弄|号|栋|幢|室|户|房|楼)", raw_text):
+        if re.search(r"\d{2,5}(?:弄|号|栋|幢|室|户|房|楼)", normalized_text):
             element_score += 1
-        if re.search(r"(中介费|佣金|看房|搬空|已空|以空|空置|朋友圈.*视频|视频)", raw_text):
+        if re.search(r"(中介费|佣金|看房|搬空|已空|以空|空置|朋友圈.*视频|视频|禁.*宠|不养宠)", raw_text):
             element_score += 1
         return has_property_context and element_score >= 5
 
@@ -2603,9 +4212,44 @@ class AppService:
             },
         }
 
+    def mark_ocr_note_queued(self, note_id: str, owner_user_id: str, task_id: str | None = None) -> dict:
+        note = self.get_user_note(note_id, owner_user_id)
+        config = self._normalize_note_visibility_config(note.visibilityConfig)
+        structured = dict(config.get("structuredData") or {})
+        ocr_data = dict(structured.get("ocr") or {})
+        ocr_data.update(
+            {
+                "status": "queued",
+                "text": ocr_data.get("text") or "",
+                "provider": ocr_data.get("provider") or "",
+                "configured": bool(ocr_data.get("configured")),
+                "confidence": ocr_data.get("confidence"),
+                "details": {
+                    **(ocr_data.get("details") if isinstance(ocr_data.get("details"), dict) else {}),
+                    "reason": "图片已加入识别队列，后台正在处理。",
+                    "taskId": task_id,
+                },
+            }
+        )
+        structured["ocr"] = ocr_data
+        config["structuredData"] = structured
+        config["sourceType"] = "ocr"
+        config["cardType"] = "image_ocr"
+        note.visibilityConfig = config
+        note.summary = "图片已保存，正在识别文字。"
+        note.body = "图片已保存，后台正在识别文字。识别完成后会自动更新结果。"
+        note.updatedAt = now_iso()
+        self.repo.save_user_note(note)
+        return {
+            "note": note.model_dump(),
+            "ocr": self._ocr_response_payload_from_data(ocr_data),
+        }
+
     def recognize_ocr_note_image(self, note_id: str, owner_user_id: str) -> dict:
         note = self.get_user_note(note_id, owner_user_id)
         image_content, image_name = self._load_note_image_bytes(note)
+        if self.property_table_ocr_service.looks_like_property_table_image(image_content):
+            return self.recognize_property_table_ocr_note_image(note_id, owner_user_id)
         ocr_result = self.ocr_service.extract_text(image_content, image_name)
         recognized_text = ocr_result.text.strip()
         if not recognized_text:
@@ -2675,12 +4319,40 @@ class AppService:
             "ocr": self._ocr_response_payload(ocr_result, recognized_text),
         }
 
+    def recognize_property_table_ocr_note_image(self, note_id: str, owner_user_id: str) -> dict:
+        note = self.get_user_note(note_id, owner_user_id)
+        image_content, image_name = self._load_note_image_bytes(note)
+        ocr_result = self.property_table_ocr_service.extract_text(image_content, image_name)
+        recognized_text = ocr_result.text.strip()
+        if not recognized_text:
+            note.visibilityConfig = self._ocr_visibility_config(note.visibilityConfig, ocr_result, recognized_text)
+            note.updatedAt = now_iso()
+            self.repo.save_user_note(note)
+            return {
+                "note": note.model_dump(),
+                "ocr": self._ocr_response_payload(ocr_result, recognized_text),
+            }
+        property_batch_result = self._try_create_ocr_property_table_batch(note, owner_user_id, recognized_text, ocr_result)
+        if property_batch_result:
+            return property_batch_result
+        note.visibilityConfig = self._ocr_visibility_config(note.visibilityConfig, ocr_result, recognized_text)
+        note.summary = "图片表格已识别，但未达到自动拆分阈值。"
+        note.body = recognized_text
+        note.updatedAt = now_iso()
+        self.repo.save_user_note(note)
+        return {
+            "note": note.model_dump(),
+            "ocr": self._ocr_response_payload(ocr_result, recognized_text),
+        }
+
     def _try_create_ocr_property_batch(self, note: UserNote, owner_user_id: str, recognized_text: str, ocr_result) -> dict | None:
         if not recognized_text or not self._looks_like_property_batch_text(recognized_text):
             return None
         parsed = self._parse_property_batch_text(recognized_text)
         candidates = [item for item in parsed.get("candidates", []) if item.get("selected")]
         if len(candidates) < 2:
+            return None
+        if self._ocr_property_batch_needs_manual_review(recognized_text, candidates, ocr_result):
             return None
         now = now_iso()
         note.visibilityConfig = self._ocr_visibility_config(note.visibilityConfig, ocr_result, recognized_text)
@@ -2749,6 +4421,181 @@ class AppService:
                 "parseResult": parsed,
             },
         }
+
+    def _try_create_ocr_property_table_batch(self, note: UserNote, owner_user_id: str, recognized_text: str, ocr_result) -> dict | None:
+        parsed = self._parse_property_table_ocr_text(recognized_text)
+        candidates = [item for item in parsed.get("candidates", []) if item.get("selected")]
+        if len(candidates) < 8:
+            return None
+        now = now_iso()
+        note.visibilityConfig = self._ocr_visibility_config(note.visibilityConfig, ocr_result, recognized_text)
+        note.summary = f"图片表格已识别，并拆出 {len(candidates)} 套房源。"
+        note.body = recognized_text
+        note.status = "active"
+        note.updatedAt = now
+        self.repo.save_user_note(note)
+        notes = [self._create_property_note_from_batch_candidate(owner_user_id, recognized_text, candidate) for candidate in candidates]
+        source_refs = [note.id, *note.sourceRefs]
+        image_url = note.coverUrl or self._first_note_image_url(note)
+        for item in notes:
+            item.sourceRefs = self._unique_strings([*source_refs, *item.sourceRefs])
+            config = dict(item.visibilityConfig or {})
+            config["sourceType"] = "ocr_property_table"
+            config["ocrSourceNoteId"] = note.id
+            structured = dict(config.get("structuredData") or {})
+            if image_url:
+                structured["images"] = self._unique_strings([image_url, *(structured.get("images") or [])])
+            structured["ocrSourceNoteId"] = note.id
+            config["structuredData"] = structured
+            config["tags"] = self._unique_strings([*config.get("tags", []), "图片表格识别"])
+            item.visibilityConfig = self._normalize_note_visibility_config(config)
+            item.coverUrl = image_url or item.coverUrl
+            item.media = note.media or item.media
+            item.updatedAt = now_iso()
+            self.repo.save_user_note(item)
+        showcase = self._create_property_batch_showcase(
+            owner_user_id,
+            notes,
+            recognized_text,
+            source="ocr_property_table",
+            import_batch_id=None,
+        )
+        skill_run = SkillRun(
+            id=new_id("skill_run"),
+            skillId="ocr-property-table-import",
+            status="success",
+            inputSnapshot={
+                "sourceNoteId": note.id,
+                "recognizedTextLength": len(recognized_text),
+                "detectedCount": len(notes),
+                "showcaseId": showcase.id,
+                "ocr": {
+                    "provider": ocr_result.provider,
+                    "configured": ocr_result.configured,
+                    "confidence": ocr_result.confidence,
+                    "textLength": len(recognized_text),
+                    "details": ocr_result.details,
+                },
+            },
+            outputRef=showcase.id,
+            modelProvider="rule",
+            startedAt=now,
+            endedAt=now_iso(),
+        )
+        self.repo.save_skill_run(skill_run)
+        return {
+            "note": note.model_dump(),
+            "ocr": self._ocr_response_payload(ocr_result, recognized_text),
+            "propertyBatch": {
+                "createdCount": len(notes),
+                "noteIds": [item.id for item in notes],
+                "notes": [item.model_dump() for item in notes],
+                "showcaseId": showcase.id,
+                "showcase": self._showcase_owner_payload(showcase),
+                "parseResult": parsed,
+            },
+        }
+
+    def _parse_property_table_ocr_text(self, recognized_text: str) -> dict:
+        common_private = self._property_batch_common_private_data(recognized_text)
+        public_tags = self._property_batch_public_tags(recognized_text)
+        private_tags = self._property_batch_private_tags(recognized_text, common_private)
+        candidates: list[dict] = []
+        for raw_line in re.split(r"[\r\n]+", recognized_text or ""):
+            candidate = self._property_table_candidate_from_row(raw_line, public_tags, private_tags, common_private, len(candidates))
+            if candidate:
+                candidates.append(candidate)
+        unique: list[dict] = []
+        seen: set[str] = set()
+        for item in candidates:
+            key = f"{item.get('buildingRoom')}|{item.get('layout')}|{item.get('price')}"
+            if key in seen:
+                continue
+            seen.add(key)
+            item["candidateId"] = f"property_candidate_{len(unique) + 1}"
+            unique.append(item)
+        return {
+            "detectedCount": len(unique),
+            "candidates": unique,
+            "rawText": recognized_text,
+            "privacySummary": {
+                "publicTags": public_tags,
+                "privateTags": private_tags,
+                "upstreamPhones": common_private.get("upstreamPhones", []),
+                "upstreamWechat": common_private.get("upstreamWechat", ""),
+                "commission": common_private.get("commission", ""),
+            },
+        }
+
+    def _property_table_candidate_from_row(self, raw_line: str, public_tags: list[str], private_tags: list[str], private_data: dict, index: int) -> dict | None:
+        line = self._normalize_property_batch_text(raw_line or "")
+        line = re.sub(r"[|｜]+", " ", line)
+        line = re.sub(r"\s+", " ", line).strip()
+        if not line or re.search(r"(区域|商圈|房源地址|户型|月租|联系电话|房源更新|佣金)", line):
+            return None
+        price_match = re.search(r"(\d{1,2}\s*[,，]\s*\d{3}(?:\s*\.\s*\d{1,2})?|\d{3,5}(?:\s*\.\s*\d{1,2})?)\s*$", line)
+        if not price_match:
+            return None
+        price_raw = price_match.group(1).replace(",", "").replace("，", "").replace(" ", "")
+        price = re.sub(r"[^\d]", "", price_raw.split(".", 1)[0])
+        if not price or len(price) < 3:
+            return None
+        left = line[: price_match.start()].strip()
+        layout_match = re.search(r"(\d+\s*室\s*\d+\s*厅\s*\d+\s*卫|\d+\s*室\s*\d+\s*卫|\d+\s*室\s*\d+\s*厅|[一二三四五六七八九十]+室[一二三四五六七八九十]*厅?[一二三四五六七八九十]*卫?)", left)
+        if not layout_match:
+            return None
+        layout = re.sub(r"\s+", "", layout_match.group(1))
+        prefix = left[: layout_match.start()].strip()
+        prefix = re.sub(r"\s+", " ", prefix)
+        if not prefix:
+            return None
+        parts = [item for item in prefix.split(" ") if item]
+        area = ""
+        business_area = ""
+        address_parts: list[str] = []
+        if len(parts) >= 2 and re.search(r"(区|县|市)$", parts[1]) and not re.search(r"(区|县|市)$", parts[0]):
+            business_area = parts[0]
+            area = parts[1]
+            address_parts = parts[2:]
+        else:
+            if parts and (re.search(r"(区|县|市)$", parts[0]) or parts[0] in {"星沙", "经开区"}):
+                area = parts[0]
+                parts = parts[1:]
+            if parts and not re.search(r"(号|栋|幢|座|室|房|公寓|大厦|广场|花园|小区|城|府|苑|园|里)", parts[0]):
+                business_area = parts[0]
+                parts = parts[1:]
+            address_parts = parts
+        address = " ".join(address_parts).strip() or prefix
+        community = self._property_base_title(re.sub(r"\d{1,5}(?:号|栋|幢|座|室|房).*$", "", address).strip() or address)
+        title = f"{community} · {address}".strip(" ·")
+        features = self._property_features_from_text(line)
+        candidate = self._property_candidate_payload(
+            title,
+            layout,
+            price,
+            public_tags,
+            private_tags,
+            private_data,
+            features,
+            index,
+        )
+        candidate["community"] = community
+        candidate["buildingRoom"] = address
+        candidate["businessArea"] = business_area
+        candidate["area"] = area
+        candidate["summary"] = " / ".join(self._unique_strings([layout, area, business_area, *features, *public_tags]))
+        return candidate
+
+    def _ocr_property_batch_needs_manual_review(self, recognized_text: str, candidates: list[dict], ocr_result) -> bool:
+        details = getattr(ocr_result, "details", {}) if ocr_result else {}
+        provider = getattr(ocr_result, "provider", "") if ocr_result else ""
+        if provider == "mock":
+            return False
+        table_like = bool(re.search(r"(房源更新|区域|商圈|房源佣金|联系电话)", recognized_text or ""))
+        if not table_like:
+            return False
+        line_count = int(details.get("lineCount") or len([line for line in recognized_text.splitlines() if line.strip()]))
+        return line_count >= 12 and len(candidates) < 8
 
     def _ocr_visibility_config(self, config: dict, ocr_result, recognized_text: str) -> dict:
         normalized = self._normalize_note_visibility_config(config)
@@ -2873,6 +4720,16 @@ class AppService:
             "configured": ocr_result.configured,
             "confidence": ocr_result.confidence,
             "details": ocr_result.details,
+        }
+
+    def _ocr_response_payload_from_data(self, ocr_data: dict) -> dict:
+        return {
+            "status": ocr_data.get("status") or "pending",
+            "text": ocr_data.get("text") or "",
+            "provider": ocr_data.get("provider") or "",
+            "configured": bool(ocr_data.get("configured")),
+            "confidence": ocr_data.get("confidence"),
+            "details": ocr_data.get("details") if isinstance(ocr_data.get("details"), dict) else {},
         }
 
     def _ocr_status(self, ocr_result, recognized_text: str) -> str:
@@ -3227,6 +5084,8 @@ class AppService:
         note = self._get_active_note(note_id)
         payload = note.model_dump()
         payload["visibilityConfig"] = self._public_note_visibility_config(note.visibilityConfig)
+        self._attach_owner_contact_to_public_note(note, payload)
+        self._sanitize_public_property_note_text(payload)
         return payload
 
     def _public_note_visibility_config(self, config: dict | None) -> dict:
@@ -3236,6 +5095,47 @@ class AppService:
         structured = source.get("structuredData") if isinstance(source.get("structuredData"), dict) else {}
         source["structuredData"] = self._public_clone_structured_data(structured)
         return source
+
+    def _attach_owner_contact_to_public_note(self, note: UserNote, payload: dict) -> None:
+        config = payload.get("visibilityConfig") if isinstance(payload.get("visibilityConfig"), dict) else {}
+        if config.get("cardType") != "property_listing":
+            return
+        owner = self.repo.get_user(note.ownerUserId)
+        if not owner:
+            return
+        conversion = config.get("conversionConfig") if isinstance(config.get("conversionConfig"), dict) else {}
+        structured_data = dict(config.get("structuredData") or {})
+        phone = self._clean_optional_text(owner.phone)
+        wechat = self._clean_optional_text(owner.wechat)
+        if phone and conversion.get("showContactPhone", True):
+            structured_data["phone"] = phone
+            structured_data["contact"] = phone
+            structured_data["contactPhone"] = phone
+            payload["phone"] = phone
+        else:
+            payload["phone"] = None
+        if wechat and conversion.get("enablePrivateConsultation", True):
+            structured_data["wechat"] = wechat
+            structured_data["contactWechat"] = wechat
+        config["structuredData"] = structured_data
+        payload["visibilityConfig"] = config
+
+    def _sanitize_public_property_note_text(self, payload: dict) -> None:
+        config = payload.get("visibilityConfig") if isinstance(payload.get("visibilityConfig"), dict) else {}
+        if config.get("cardType") != "property_listing":
+            return
+        structured_data = config.get("structuredData") if isinstance(config.get("structuredData"), dict) else {}
+        safe_parts = [
+            structured_data.get("community") or payload.get("title"),
+            structured_data.get("layout"),
+            structured_data.get("area"),
+            structured_data.get("price"),
+            structured_data.get("utilities"),
+            structured_data.get("paymentMethod"),
+            structured_data.get("businessArea") or structured_data.get("address"),
+        ]
+        safe_text = " / ".join(str(item).strip() for item in safe_parts if str(item or "").strip())
+        payload["body"] = safe_text or payload.get("summary") or payload.get("title") or ""
 
     def list_showcases(self, owner_user_id: str) -> list[dict]:
         if not self.repo.get_user(owner_user_id):
@@ -5448,7 +7348,9 @@ class AppService:
             return dict(GROUPBUY_CONVERSION_DEFAULTS)
         if card_type in {"business_card", "service_offer"}:
             return dict(SERVICE_CONVERSION_DEFAULTS)
-        return {key: False for key in CONVERSION_CONFIG_KEYS}
+        defaults = {key: False for key in CONVERSION_CONFIG_KEYS}
+        defaults["enableLightScrm"] = True
+        return defaults
 
     def _unique_strings(self, values) -> list[str]:
         result: list[str] = []
@@ -5585,6 +7487,7 @@ class AppService:
             "tags": self._unique_strings([*current_config.get("tags", []), *extra_tags]),
         }
         note.visibilityConfig = self._normalize_note_visibility_config(config)
+        self._apply_owner_public_contact_to_property_note(note)
         note.updatedAt = now_iso()
         self.repo.save_user_note(note)
         return note
@@ -5595,6 +7498,15 @@ class AppService:
         preserved = {"miniapp": miniapp} if miniapp else {}
         images = self._note_image_urls(note)
         if card_type == "property_listing":
+            recognized = self._recognized_structured_data_for_type(note, card_type)
+            if recognized:
+                return {
+                    **preserved,
+                    **recognized,
+                    "propertyStatus": recognized.get("propertyStatus") or current.get("propertyStatus") or "active",
+                    "images": images or recognized.get("images", []),
+                    "rawText": recognized.get("rawText") or current.get("rawText") or note.body,
+                }
             return {
                 **preserved,
                 "community": current.get("community") or note.title,
@@ -5612,6 +7524,15 @@ class AppService:
                 "rawText": current.get("rawText") or note.body,
             }
         if card_type == "groupbuy_product":
+            recognized = self._recognized_structured_data_for_type(note, card_type)
+            if recognized:
+                return {
+                    **preserved,
+                    **recognized,
+                    "skuConfig": recognized.get("skuConfig") if isinstance(recognized.get("skuConfig"), dict) else {},
+                    "images": images or recognized.get("images", []),
+                    "rawText": recognized.get("rawText") or current.get("rawText") or note.body,
+                }
             sku_config = current.get("skuConfig") if isinstance(current.get("skuConfig"), dict) else {}
             return {
                 **preserved,
@@ -5666,6 +7587,29 @@ class AppService:
             "rawText": current.get("rawText") or note.body,
             "images": images,
         }
+
+    def _recognized_structured_data_for_type(self, note: UserNote, card_type: str) -> dict:
+        content_object = ContentObjectPayload(
+            sourceType="manual_text",
+            title=note.title or None,
+            textBlocks=[note.body or note.summary or note.title or ""],
+            media=[
+                ContentMediaPayload(type=str(item.get("type") or "image"), url=item.get("url"), title=item.get("title"))
+                for item in (note.media or [])
+                if isinstance(item, dict) and item.get("url")
+            ],
+            metadata={"entryMode": "confirm_type"},
+            sourceRefs=note.sourceRefs or [],
+        )
+        try:
+            note_result = self.skill_router_service.run_content_to_note(note.ownerUserId, content_object)
+        except Exception:
+            return {}
+        config = note_result.noteDraft.visibilityConfig or {}
+        if config.get("cardType") != card_type:
+            return {}
+        structured_data = config.get("structuredData")
+        return structured_data if isinstance(structured_data, dict) else {}
 
     def _confirmed_conversion_config(self, card_type: str, config: dict) -> dict:
         source_type = config.get("sourceType")

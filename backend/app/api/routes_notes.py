@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 
-from app.api.dependencies import get_app_service
+from app.api.dependencies import get_app_service, get_ops_console_store, get_sync_task_queue
 from app.schemas.cards import RecordViewRequest
 from app.schemas.common import ApiResponse
 from app.schemas.notes import CustomerActionSubmitRequest, ManualNoteDraftRequest, NoteTypeConfirmRequest, PropertyBatchCreateRequest, PropertyBatchParseRequest, PropertySameCloneRequest, QuickNoteCaptureRequest, TopicCreateRequest, TopicNoteRequest, UserNoteUpdateRequest
 from app.services.app_service import AppService
+from app.services.ops_console_store import OpsConsoleStore
+from app.services.sync_task_queue import SyncTaskQueue
 
 
 router = APIRouter(prefix="/api/notes", tags=["notes"])
@@ -75,6 +77,7 @@ async def create_image_note_capture(
     ownerUserId: str = Form(...),
     file: UploadFile = File(...),
     service: AppService = Depends(get_app_service),
+    sync_task_queue: SyncTaskQueue = Depends(get_sync_task_queue),
 ):
     if not file.content_type or not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="请上传图片文件")
@@ -85,7 +88,14 @@ async def create_image_note_capture(
         filename=file.filename,
         content_type=file.content_type,
     )
-    return ApiResponse(data=data, message="image note saved")
+    task = sync_task_queue.enqueue(
+        "ocr-recognize-note",
+        {"noteId": data["note"]["id"], "ownerUserId": ownerUserId},
+        max_attempts=2,
+    )
+    queued = service.mark_ocr_note_queued(data["note"]["id"], ownerUserId, task.id)
+    queued["syncTask"] = task.model_dump()
+    return ApiResponse(data=queued, message="image note queued for ocr")
 
 
 @router.get("/topics", response_model=ApiResponse[list[dict]])
@@ -164,8 +174,41 @@ def generate_note(note_id: str, ownerUserId: str = Query(...), service: AppServi
 
 
 @router.post("/{note_id}/confirm-type", response_model=ApiResponse[dict])
-def confirm_note_type(note_id: str, payload: NoteTypeConfirmRequest, service: AppService = Depends(get_app_service)):
-    return ApiResponse(data=service.confirm_note_type(note_id, payload).model_dump())
+def confirm_note_type(
+    note_id: str,
+    payload: NoteTypeConfirmRequest,
+    service: AppService = Depends(get_app_service),
+    store: OpsConsoleStore = Depends(get_ops_console_store),
+):
+    before = service.get_user_note(note_id, payload.ownerUserId)
+    before_config = before.visibilityConfig or {}
+    before_card_type = before_config.get("cardType")
+    note = service.confirm_note_type(note_id, payload)
+    if payload.cardType != before_card_type:
+        raw_text = (
+            ((before_config.get("structuredData") or {}).get("rawText") if isinstance(before_config.get("structuredData"), dict) else "")
+            or before.body
+            or before.summary
+            or before.title
+            or ""
+        )
+        store.create_rule_learning_sample(
+            note_id=note.id,
+            owner_user_id=note.ownerUserId,
+            title=before.title or note.title or "",
+            raw_text=raw_text,
+            previous_card_type=before_card_type,
+            selected_card_type=payload.cardType,
+            selected_label=service._card_type_label(payload.cardType),
+            source=payload.source or "note_confirm_type",
+            recognition={
+                "confidence": before_config.get("recognitionConfidence") or {},
+                "explanation": before_config.get("recognitionExplanation") or {},
+                "typeSuggestions": before_config.get("typeSuggestions") or [],
+            },
+            tags=before_config.get("tags") if isinstance(before_config.get("tags"), list) else [],
+        )
+    return ApiResponse(data=note.model_dump())
 
 
 @router.get("/{note_id}/customer-actions/config", response_model=ApiResponse[dict])

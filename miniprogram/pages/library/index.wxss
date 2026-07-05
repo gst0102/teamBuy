@@ -377,6 +377,17 @@
   margin-bottom: 24rpx;
 }
 
+.type-filter-row {
+  margin: 0 0 20rpx;
+}
+
+.type-chip {
+  min-width: 92rpx;
+  min-height: 48rpx;
+  padding: 0 18rpx;
+  font-size: 21rpx;
+}
+
 .advanced-filter-panel {
   margin: -4rpx 0 22rpx;
   padding: 18rpx;
@@ -534,11 +545,12 @@
 
 .filter-reset-btn {
   width: 100%;
-  height: 66rpx;
-  margin-top: 18rpx;
+  max-width: 520rpx;
+  height: 54rpx;
+  margin: 18rpx auto 0;
   background: #f6f8fb;
   color: #64748b;
-  font-size: 24rpx;
+  font-size: 21rpx;
   font-weight: 900;
 }
 
@@ -547,16 +559,18 @@
   align-items: center;
   justify-content: center;
   width: 100%;
-  height: 74rpx;
-  margin: 14rpx 0 0;
-  padding: 0;
-  border-radius: 8rpx;
+  max-width: 520rpx;
+  height: 54rpx;
+  margin: 14rpx auto 0;
+  padding: 0 20rpx;
+  border-radius: 999rpx;
   background: #1677ff;
   color: #ffffff;
-  font-size: 25rpx;
+  font-size: 21rpx;
   font-weight: 900;
   line-height: 1;
   box-sizing: border-box;
+  white-space: nowrap;
 }
 
 .property-filter-toggle::after,
@@ -1501,7 +1515,9 @@
 .empty-actions {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12rpx;
+  gap: 14rpx;
+  max-width: 520rpx;
+  margin: 0 auto;
 }
 
 .empty-primary,
@@ -1510,11 +1526,11 @@
   align-items: center;
   justify-content: center;
   min-width: 0;
-  height: 66rpx;
+  height: 52rpx;
   margin: 0;
-  padding: 0 12rpx;
-  border-radius: 8rpx;
-  font-size: 24rpx;
+  padding: 0 18rpx;
+  border-radius: 999rpx;
+  font-size: 21rpx;
   font-weight: 900;
   line-height: 1;
   box-sizing: border-box;

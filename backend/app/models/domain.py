@@ -31,6 +31,18 @@ CustomerActionKey = Literal[
 ]
 MessageThreadStatus = Literal["active", "archived"]
 ShowcaseStatus = Literal["draft", "published", "archived"]
+ResourceLedgerType = Literal["grant", "consume", "refund", "adjust", "free_quota"]
+OpportunityLeadStatus = Literal["draft", "published", "archived", "rejected"]
+OpportunityContactStatus = Literal["none", "available", "masked", "locked", "pending_verify"]
+OpportunityTrustStatus = Literal["verified", "pending", "risk"]
+OpportunityMatchStatus = Literal["new", "viewed", "saved", "dismissed", "contacted"]
+OpportunitySaveStatus = Literal["saved", "contacted", "following", "invalid", "archived"]
+ResponsePackageStatus = Literal["draft", "ready", "sent", "archived"]
+OpportunitySubscriptionStatus = Literal["active", "paused", "deleted"]
+SupplyDemandCardType = Literal["demand", "supply"]
+SupplyDemandCardStatus = Literal["draft", "pending_review", "published", "rejected", "archived"]
+SupplyDemandApplicationStatus = Literal["pending", "accepted", "rejected", "closed"]
+OpportunityPushDigestStatus = Literal["pending", "read", "dismissed"]
 
 
 class User(BaseModel):
@@ -475,6 +487,240 @@ class WecomArchiveMessage(BaseModel):
     createdAt: str
 
 
+class ResourceWallet(BaseModel):
+    id: str
+    ownerUserId: str
+    balance: int = 0
+    totalGranted: int = 0
+    totalConsumed: int = 0
+    status: Literal["active", "frozen"] = "active"
+    createdAt: str
+    updatedAt: str
+
+
+class ResourcePointLedger(BaseModel):
+    id: str
+    ownerUserId: str
+    walletId: str
+    ledgerType: ResourceLedgerType
+    actionType: str
+    targetType: str | None = None
+    targetId: str | None = None
+    pointsDelta: int
+    balanceAfter: int
+    reason: str | None = None
+    operatorId: str | None = None
+    relatedUnlockId: str | None = None
+    metadata: dict = Field(default_factory=dict)
+    createdAt: str
+
+
+class ResourceFreeQuota(BaseModel):
+    id: str
+    ownerUserId: str
+    quotaType: str
+    periodKey: str
+    limitCount: int
+    usedCount: int = 0
+    createdAt: str
+    updatedAt: str
+
+
+class ResourceUnlockRecord(BaseModel):
+    id: str
+    ownerUserId: str
+    actionType: str
+    targetType: str
+    targetId: str
+    pointsCost: int = 0
+    usedFreeQuota: bool = False
+    quotaId: str | None = None
+    ledgerId: str | None = None
+    unlockedAt: str
+    expiresAt: str | None = None
+    createdAt: str
+    updatedAt: str
+
+
+class OpportunityLead(BaseModel):
+    id: str
+    title: str
+    summary: str = ""
+    city: str | None = None
+    district: str | None = None
+    industry: str | None = None
+    demandType: str = "需求"
+    content: str = ""
+    tags: list[str] = Field(default_factory=list)
+    contactStatus: OpportunityContactStatus = "pending_verify"
+    trustStatus: OpportunityTrustStatus = "pending"
+    status: OpportunityLeadStatus = "draft"
+    priority: str | None = None
+    publishedAt: str | None = None
+    expiresAt: str | None = None
+    createdAt: str
+    updatedAt: str
+
+
+class OpportunityLeadSource(BaseModel):
+    id: str
+    leadId: str
+    sourcePlatform: str | None = None
+    sourceUrl: str | None = None
+    sourceAuthor: str | None = None
+    sourcePublishedAt: str | None = None
+    sourceCapturedAt: str
+    rawText: str = ""
+    rawImages: list[str] = Field(default_factory=list)
+    createdAt: str
+    updatedAt: str
+
+
+class OpportunityLeadContact(BaseModel):
+    id: str
+    leadId: str
+    contactType: str
+    contactValueEncrypted: str = ""
+    contactMasked: str = ""
+    verifyStatus: str = "pending"
+    createdAt: str
+    updatedAt: str
+
+
+class OpportunityLeadMatch(BaseModel):
+    id: str
+    leadId: str
+    userId: str
+    matchScore: int = 0
+    matchReasons: list[str] = Field(default_factory=list)
+    status: OpportunityMatchStatus = "new"
+    createdAt: str
+    updatedAt: str
+
+
+class OpportunityLeadSave(BaseModel):
+    id: str
+    leadId: str
+    userId: str
+    status: OpportunitySaveStatus = "saved"
+    note: str | None = None
+    reminderAt: str | None = None
+    createdAt: str
+    updatedAt: str
+
+
+class OpportunityLeadFollowup(BaseModel):
+    id: str
+    leadId: str
+    userId: str
+    actionType: str
+    note: str | None = None
+    createdAt: str
+
+
+class ResponsePackage(BaseModel):
+    id: str
+    ownerUserId: str
+    leadId: str
+    status: ResponsePackageStatus = "draft"
+    title: str
+    demandSummary: dict = Field(default_factory=dict)
+    openingText: str = ""
+    trackingUrl: str | None = None
+    followupSuggestion: str | None = None
+    costPoints: int = 0
+    usedFreeQuota: bool = False
+    createdAt: str
+    updatedAt: str
+    sentAt: str | None = None
+    lastViewedAt: str | None = None
+
+
+class ResponsePackageItem(BaseModel):
+    id: str
+    responsePackageId: str
+    assetType: str
+    assetId: str
+    assetTitle: str
+    assetSummary: str | None = None
+    recommendReason: str
+    sortOrder: int = 0
+    createdAt: str
+
+
+class ResponsePackageEvent(BaseModel):
+    id: str
+    responsePackageId: str
+    eventType: str
+    viewerId: str | None = None
+    anonymousId: str | None = None
+    metadata: dict = Field(default_factory=dict)
+    createdAt: str
+
+
+class OpportunitySubscription(BaseModel):
+    id: str
+    ownerUserId: str
+    direction: str = "两边都看"
+    lookingFor: str = ""
+    providing: str = ""
+    city: str = ""
+    contactRequirement: str = "有电话"
+    keywords: str = ""
+    reminderCadence: str = "每天早上"
+    status: OpportunitySubscriptionStatus = "active"
+    createdAt: str
+    updatedAt: str
+
+
+class SupplyDemandCard(BaseModel):
+    id: str
+    ownerUserId: str
+    cardType: SupplyDemandCardType = "supply"
+    status: SupplyDemandCardStatus = "draft"
+    title: str
+    summary: str = ""
+    city: str | None = None
+    industry: str | None = None
+    demandType: str = "合作"
+    contactRequirement: str | None = None
+    linkedNoteId: str | None = None
+    linkedResourceType: str | None = None
+    linkedResourceId: str | None = None
+    tags: list[str] = Field(default_factory=list)
+    reviewNote: str | None = None
+    publishedAt: str | None = None
+    reviewedAt: str | None = None
+    createdAt: str
+    updatedAt: str
+
+
+class SupplyDemandApplication(BaseModel):
+    id: str
+    cardId: str
+    applicantUserId: str
+    ownerUserId: str
+    status: SupplyDemandApplicationStatus = "pending"
+    message: str = ""
+    contactSnapshot: dict = Field(default_factory=dict)
+    createdAt: str
+    updatedAt: str
+
+
+class OpportunityPushDigest(BaseModel):
+    id: str
+    ownerUserId: str
+    subscriptionId: str | None = None
+    title: str
+    summary: str = ""
+    status: OpportunityPushDigestStatus = "pending"
+    recommendedLeadIds: list[str] = Field(default_factory=list)
+    recommendedSupplyDemandCardIds: list[str] = Field(default_factory=list)
+    createdAt: str
+    updatedAt: str
+    readAt: str | None = None
+
+
 class AppState(BaseModel):
     users: list[User] = Field(default_factory=list)
     wecom_identity_bindings: list[WecomIdentityBinding] = Field(default_factory=list)
@@ -502,3 +748,20 @@ class AppState(BaseModel):
     skill_runs: list[SkillRun] = Field(default_factory=list)
     wecom_archive_cursors: list[WecomArchiveCursor] = Field(default_factory=list)
     wecom_archive_messages: list[WecomArchiveMessage] = Field(default_factory=list)
+    resource_wallets: list[ResourceWallet] = Field(default_factory=list)
+    resource_point_ledgers: list[ResourcePointLedger] = Field(default_factory=list)
+    resource_free_quotas: list[ResourceFreeQuota] = Field(default_factory=list)
+    resource_unlock_records: list[ResourceUnlockRecord] = Field(default_factory=list)
+    opportunity_leads: list[OpportunityLead] = Field(default_factory=list)
+    opportunity_lead_sources: list[OpportunityLeadSource] = Field(default_factory=list)
+    opportunity_lead_contacts: list[OpportunityLeadContact] = Field(default_factory=list)
+    opportunity_lead_matches: list[OpportunityLeadMatch] = Field(default_factory=list)
+    opportunity_lead_saves: list[OpportunityLeadSave] = Field(default_factory=list)
+    opportunity_lead_followups: list[OpportunityLeadFollowup] = Field(default_factory=list)
+    response_packages: list[ResponsePackage] = Field(default_factory=list)
+    response_package_items: list[ResponsePackageItem] = Field(default_factory=list)
+    response_package_events: list[ResponsePackageEvent] = Field(default_factory=list)
+    opportunity_subscriptions: list[OpportunitySubscription] = Field(default_factory=list)
+    supply_demand_cards: list[SupplyDemandCard] = Field(default_factory=list)
+    supply_demand_applications: list[SupplyDemandApplication] = Field(default_factory=list)
+    opportunity_push_digests: list[OpportunityPushDigest] = Field(default_factory=list)

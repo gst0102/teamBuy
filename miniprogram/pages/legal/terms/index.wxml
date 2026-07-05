@@ -1,0 +1,51 @@
+<view class="legal-page">
+  <custom-nav title="用户服务协议" showBack="{{true}}" />
+
+  <view class="legal-card">
+    <view class="legal-title">资料整理助手用户服务协议</view>
+    <view class="legal-meta">生效日期：2026年7月3日</view>
+    <view class="legal-meta">服务提供方：湖南悦享互动科技有限公司</view>
+
+    <view class="section">
+      <view class="section-title">一、服务说明</view>
+      <view class="paragraph">资料整理助手为用户提供资料整理、资料卡生成、资料合集、客户线索记录、客户雷达、跟进管理、企业资源搜索等工具能力。你可以将房源、服务、商品、商机、日常资料等内容整理为可展示、可分享、可跟进的资料页。</view>
+    </view>
+
+    <view class="section">
+      <view class="section-title">二、账号与使用</view>
+      <view class="paragraph">你可以通过微信登录使用本服务。你应保证填写的昵称、头像、手机号、微信号、资料内容、客户线索等信息真实、合法，并对通过你的账号进行的操作负责。</view>
+      <view class="paragraph">你不得利用本服务发布违法违规、侵权、虚假、欺诈、骚扰、低俗或平台规则禁止的内容，不得冒用他人身份或侵犯他人隐私。</view>
+    </view>
+
+    <view class="section">
+      <view class="section-title">三、资料与客户线索</view>
+      <view class="paragraph">你生成、编辑、上传或分享的资料内容由你自行负责。本服务会根据你的操作保存资料、图片、联系方式、客户打开记录、咨询记录、留资信息和跟进状态，用于帮助你管理客户关系。</view>
+      <view class="paragraph">你应确保你有权处理并使用所上传的资料、图片和客户信息。对于上游联系方式、客户手机号、微信号等信息，请仅在合法、必要、授权的范围内使用。</view>
+    </view>
+
+    <view class="section">
+      <view class="section-title">四、分享与展示</view>
+      <view class="paragraph">你可以将资料页、合集页、名片或服务页分享给客户或同行。客户看到的内容以你保存、发布或分享时的资料配置为准。涉及公开联系方式、私密备注、上游电话等内容时，请在发布前自行检查。</view>
+    </view>
+
+    <view class="section">
+      <view class="section-title">五、服务变更与限制</view>
+      <view class="paragraph">我们会持续优化服务，也可能因微信平台规则、系统维护、合规要求、第三方接口变化等原因调整、暂停或限制部分功能。对于明显异常、违法违规或影响系统安全的使用行为，我们有权采取限制使用、删除内容、暂停账号等措施。</view>
+    </view>
+
+    <view class="section">
+      <view class="section-title">六、免责声明</view>
+      <view class="paragraph">本服务作为资料整理和客户管理工具，不对你发布资料的真实性、交易结果、客户成交、第三方合作结果作保证。你应自行判断资料准确性、客户意向和交易风险。</view>
+    </view>
+
+    <view class="section">
+      <view class="section-title">七、协议更新</view>
+      <view class="paragraph">我们可能根据业务和合规要求更新本协议。更新后会在小程序内展示。你继续使用本服务，即视为接受更新后的协议。</view>
+    </view>
+
+    <view class="section">
+      <view class="section-title">八、联系我们</view>
+      <view class="paragraph">如你对本协议或服务有疑问，可以通过小程序内的帮助与反馈入口联系我们。250667571@qq.com</view>
+    </view>
+  </view>
+</view>
