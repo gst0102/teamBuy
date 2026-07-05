@@ -10,6 +10,7 @@
 - 已新增文档：
   - [project-closeout-20260705.md](/Users/yiyi/Desktop/Desktop/myprojects/teamBuy/docs/project-closeout-20260705.md)
   - [config-migration-reference.md](/Users/yiyi/Desktop/Desktop/myprojects/teamBuy/docs/config-migration-reference.md)
+  - [new-project-migration-checklist.md](/Users/yiyi/Desktop/Desktop/myprojects/teamBuy/docs/new-project-migration-checklist.md)
 
 - 当前最重要的可复用配置：
   - 生产域名：`https://teambuy.lifelove.top`
