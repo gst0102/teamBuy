@@ -66,5 +66,5 @@
     <button class="light-action" loading="{{saving}}" bindtap="handleSaveDraft">保存草稿</button>
     <button class="main-action" loading="{{saving}}" bindtap="handleSubmit">提交审核</button>
   </view>
-  <canvas canvas-id="universalShareCanvas" class="universal-share-canvas"></canvas>
+  <canvas canvas-id="shareCardCanvas" class="share-card-canvas"></canvas>
 </view>

@@ -235,7 +235,7 @@ Page({
     wx.navigateTo({ url: "/pages/supply-demand-publish/index" });
   },
   onShareAppMessage() {
-    return buildUniversalShareMessage(this, {
+    return buildShareCardMessage(this, {
       title: "供需广场",
       summary: "查看可合作的需求和供给资源。",
       badge: "供需",
