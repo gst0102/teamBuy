@@ -50,5 +50,5 @@
       <button data-label="已标记无效" bindtap="handleFollowupAction">标记无效</button>
     </view>
   </view>
-  <canvas canvas-id="universalShareCanvas" class="universal-share-canvas"></canvas>
+<canvas canvas-id="shareCardCanvas" class="share-card-canvas"></canvas>
 </view>

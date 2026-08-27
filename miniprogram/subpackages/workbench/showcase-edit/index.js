@@ -1366,17 +1366,13 @@ Page({
     const { id, user, status, unpublishedChanges } = this.data;
     if (!id || status !== "published" || unpublishedChanges) {
       wx.showToast({ title: unpublishedChanges ? "先发布新版再分享" : (this.data.sceneTexts.isGroupbuy ? "发布后才能发群" : "发布后才能发给客户"), icon: "none" });
-      return {
-        title: this.data.name || "资料展示页",
-        path: "/pages/showcases/index"
-      };
+      setShareMenuEnabled(false);
+      return null;
     }
-    if (!this.data.shareImageUrl) {
+    if (!isShareImageUrl(this.data.shareImageUrl)) {
       wx.showToast({ title: "分享内容正在准备，请稍后再发", icon: "none" });
-      return {
-        title: this.data.shareTitle || this.data.name || "资料展示页",
-        path: `/pages/showcase-view/index?id=${encodeURIComponent(id)}&showcaseId=${encodeURIComponent(id)}`
-      };
+      setShareMenuEnabled(false);
+      return null;
     }
     const shareId = createShareId(id);
     api.recordShowcaseEvent(id, {
@@ -1389,7 +1385,7 @@ Page({
     return {
       title: this.data.shareTitle || this.data.name || "资料展示页",
       path: `/pages/showcase-view/index?id=${encodeURIComponent(id)}&showcaseId=${encodeURIComponent(id)}&sid=${encodeURIComponent(shareId)}&from=${encodeURIComponent(user ? user.id : "")}&src=showcase_edit_share`,
-      ...(this.data.shareImageUrl ? { imageUrl: this.data.shareImageUrl } : {})
+      imageUrl: this.data.shareImageUrl
     };
   }
 });

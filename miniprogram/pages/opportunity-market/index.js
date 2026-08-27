@@ -1,6 +1,6 @@
 const { fetchOpportunityLeads, fetchSupplyDemandCards, saveOpportunityLead } = require("../../services/api");
 const { getCurrentUser } = require("../../utils/dashboard");
-const { buildUniversalShareMessage, prepareUniversalShareImage } = require("../../utils/universal-share");
+const { buildShareCardMessage, prepareShareCardImage } = require("../../plugins/share-snapshot/index");
 
 const mockCards = [
   {
@@ -111,7 +111,7 @@ Page({
     cards: mockCards,
     loading: false,
     usingMock: true,
-    universalShareImage: ""
+    shareCardImage: ""
   },
   onLoad() {
     this.loadMarket();
@@ -119,7 +119,7 @@ Page({
   },
   prepareShareImage() {
     const first = (this.data.cards || [])[0] || mockCards[0];
-    return prepareUniversalShareImage(this, {
+    return prepareShareCardImage(this, {
       title: "供需广场",
       summary: first.summary || "查看可合作的需求和供给资源。",
       badge: "供需",

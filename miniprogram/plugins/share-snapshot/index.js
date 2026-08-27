@@ -22,6 +22,8 @@ const shareSnapshotFailures = {};
 const SHARE_MEMORY_TTL_MS = 10 * 60 * 1000;
 const SHARE_MEMORY_MAX_ENTRIES = 64;
 const SHARE_FAILURE_TTL_MS = 30 * 1000;
+const SHARE_CARD_CANVAS_ID = "shareCardCanvas";
+const DEFAULT_SHARE_PATH = "/pages/home/index";
 
 function isShareImageUrl(value) {
   const url = String(value || "").trim();
@@ -40,6 +42,96 @@ function setShareMenuEnabled(enabled) {
   const method = enabled ? wx.showShareMenu : wx.hideShareMenu;
   if (typeof method !== "function") return;
   method.call(wx, { withShareTicket: false });
+}
+
+function cleanShareText(value, fallback = "") {
+  return String(value || fallback || "").replace(/\s+/g, " ").trim();
+}
+
+function buildShareCardTitle(title, fallback = "资料整理助手") {
+  const cleanTitle = cleanShareText(title, fallback);
+  return cleanTitle.includes("｜") ? cleanTitle : `${cleanTitle}｜点开查看完整资料`;
+}
+
+function normalizeShareCardSource(source = {}) {
+  return {
+    title: cleanShareText(source.title, "资料整理助手"),
+    summary: cleanShareText(source.summary || source.subtitle, "打开小程序查看完整资料"),
+    badge: cleanShareText(source.badge || source.categoryName, "资料"),
+    coverUrl: cleanShareText(source.coverUrl || source.coverDisplayUrl || source.imageUrl, ""),
+    path: cleanShareText(source.path, DEFAULT_SHARE_PATH),
+    shareTargetLabel: cleanShareText(source.shareTargetLabel || source.badge, "资料")
+  };
+}
+
+async function prepareShareCardImage(page, source = {}) {
+  if (!page || !page.setData) return "";
+  const share = normalizeShareCardSource(source);
+  const generation = Number(page.__shareCardGeneration || 0) + 1;
+  page.__shareCardGeneration = generation;
+  setShareMenuEnabled(false);
+  page.setData({
+    shareCardImage: "",
+    shareCardSource: share,
+    shareCardReady: false
+  });
+  try {
+    const imageUrl = await renderShareCard({
+      page,
+      canvasId: SHARE_CARD_CANVAS_ID,
+      variant: "resource",
+      upload: true,
+      source: {
+        title: share.title,
+        summary: share.summary,
+        badge: share.badge,
+        coverUrl: isShareImageUrl(share.coverUrl) ? share.coverUrl : "",
+        hint: share.summary,
+        growthHint: "点击生成同款",
+        shareTargetLabel: share.shareTargetLabel
+      }
+    });
+    if (page.__shareCardGeneration !== generation) return "";
+    if (!isShareImageUrl(imageUrl)) throw new Error("share card image is unusable");
+    page.setData({
+      shareCardImage: imageUrl,
+      shareCardSource: share,
+      shareCardReady: true
+    });
+    setShareMenuEnabled(true);
+    return imageUrl;
+  } catch (error) {
+    if (page.__shareCardGeneration === generation) {
+      page.setData({
+        shareCardImage: "",
+        shareCardSource: share,
+        shareCardReady: false
+      });
+      setShareMenuEnabled(false);
+    }
+    return "";
+  }
+}
+
+function buildShareCardMessage(page, source = {}) {
+  const data = (page && page.data) || {};
+  const share = normalizeShareCardSource({
+    ...(data.shareCardSource || {}),
+    ...(source || {})
+  });
+  const directImage = isShareImageUrl(source.imageUrl) ? String(source.imageUrl).trim() : "";
+  const imageUrl = directImage || (data.shareCardReady && isShareImageUrl(data.shareCardImage)
+    ? String(data.shareCardImage).trim()
+    : "");
+  if (!imageUrl) {
+    setShareMenuEnabled(false);
+    return null;
+  }
+  return {
+    title: buildShareCardTitle(share.title),
+    path: share.path || DEFAULT_SHARE_PATH,
+    imageUrl
+  };
 }
 
 function stableValue(value) {
@@ -503,13 +595,14 @@ async function renderShareCard({ page, canvasId, source = {}, variant = "resourc
 }
 
 function buildShareMessage({ title, path, snapshot, sourceRevision, fingerprint, styleId, direct = false, imageUrl = "" }) {
+  if (direct && !isShareImageUrl(imageUrl)) return null;
   if (!direct && !isShareSnapshotReady(snapshot, sourceRevision, fingerprint)) return null;
   if (!direct && styleId && String(snapshot.styleId || "") !== String(styleId)) return null;
   const directImageUrl = direct && isShareImageUrl(imageUrl) ? String(imageUrl).trim() : "";
   return {
     title: title || "资料详情",
     path: path || "/pages/home/index",
-    ...((direct ? directImageUrl : snapshot.url) ? { imageUrl: direct ? directImageUrl : snapshot.url } : {})
+    imageUrl: direct ? directImageUrl : snapshot.url
   };
 }
 
@@ -613,7 +706,10 @@ async function ensureShareSnapshot({
 }
 
 module.exports = {
+  SHARE_CARD_CANVAS_ID,
   SHARE_CARD_STYLE_VERSION,
+  buildShareCardMessage,
+  buildShareCardTitle,
   buildShareMessage,
   buildNoteSharePlan,
   buildNoteShareTitle,
@@ -629,6 +725,8 @@ module.exports = {
   isCurrentNoteShareSnapshot,
   isShareSnapshotReady,
   noteShareRequestKey,
+  normalizeShareCardSource,
+  prepareShareCardImage,
   prepareNoteShareSnapshot,
   renderShareCard,
   setShareMenuEnabled,

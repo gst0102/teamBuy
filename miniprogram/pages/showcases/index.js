@@ -117,7 +117,7 @@ function hasCurrentShowcaseSnapshot(item = {}) {
   return Boolean(
     snapshot
       && snapshot.status === "ready"
-      && snapshot.url
+      && isShareImageUrl(snapshot.url)
       && String(snapshot.sourceRevision || "") === getShareSourceRevision("showcase", item)
       && String(snapshot.styleId || "") === SHARE_CARD_STYLE_VERSION
   );
@@ -133,10 +133,11 @@ function getLocalShowcaseShareImage(item = {}, shareImages = {}) {
       && snapshot.fingerprint === entry.fingerprint
       && String(snapshot.styleId || "") === SHARE_CARD_STYLE_VERSION
     );
-    return sameSource && sameSnapshot ? entry.url || "" : "";
+    return sameSource && sameSnapshot && isShareImageUrl(entry.url) ? entry.url : "";
   }
   return entry && snapshot && snapshot.url === entry
     && String(snapshot.sourceRevision || "") === getShareSourceRevision("showcase", item)
+    && isShareImageUrl(entry)
     ? entry
     : "";
 }
@@ -903,21 +904,16 @@ Page({
     const pendingImage = pending.sourceRevision === getShareSourceRevision("showcase", row) ? pending.imageUrl : "";
     const directImage = isDirectShowcaseShare(row) ? buildShowcaseShareSource(row).primaryImageUrl : "";
     const imageUrl = pendingImage || directImage || getLocalShowcaseShareImage(row, this.data.showcaseShareImages || {}) || (persistedSnapshot && persistedSnapshot.url) || "";
-    const directShareReady = Boolean((pending.direct || isDirectShowcaseShare(row)) && isShareImageUrl(imageUrl));
     const user = this.data.user || getCurrentUser();
     if (!id) {
       wx.showToast({ title: "请重新点击发给客户", icon: "none" });
-      return {
-        title: "合集",
-        path: "/pages/showcases/index"
-      };
+      setShareMenuEnabled(false);
+      return null;
     }
-    if (!imageUrl || (directShareReady && !isShareImageUrl(imageUrl))) {
+    if (!isShareImageUrl(imageUrl)) {
       wx.showToast({ title: "分享内容正在准备，请稍后再发", icon: "none" });
-      return {
-        title: buildCustomerShareTitle(title),
-        path: `/pages/showcase-view/index?id=${encodeURIComponent(id)}&showcaseId=${encodeURIComponent(id)}`
-      };
+      setShareMenuEnabled(false);
+      return null;
     }
     const shareId = createShareId(id);
     if (id && user) {
@@ -934,7 +930,7 @@ Page({
     return {
       title: buildCustomerShareTitle(title),
       path: `/pages/showcase-view/index?id=${encodeURIComponent(id)}&showcaseId=${encodeURIComponent(id)}&sid=${encodeURIComponent(shareId)}&from=${encodeURIComponent(user ? user.id : "")}&src=showcase_list_share`,
-      ...(imageUrl ? { imageUrl } : {})
+      imageUrl
     };
   }
 });

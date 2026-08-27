@@ -1,5 +1,12 @@
 # teamBuy 阶段性交接归档
 
+## 2026-08-28 最新清理：旧通用分享链路已全量迁移并删除
+
+- 10 个供需/商机/回应包页面已直接依赖 `miniprogram/plugins/share-snapshot/index.js` 的 `prepareShareCardImage` / `buildShareCardMessage`。
+- 旧 `miniprogram/utils/universal-share.js` 已删除；运行代码不再引用 `universalShare*`、`universalShareCanvas` 或 `.universal-share-canvas`。
+- 通用分享图未就绪时原生分享入口被隐藏；最终回调必须返回合法 `imageUrl` 和当前目标路径。异步 generation 保护已加入，避免旧页面数据覆盖新分享图。
+- 本轮只做本地代码清理与验证，未部署生产、未上传体验版。下一步人工验收需重新编译体验版，覆盖供需/商机/回应包的有图、无图、快速连续进入/退出和生成失败重试。
+
 ## 2026-08-28 最新排查：分享封面回退与雷达摘要冷启动瓶颈（本轮未开发）
 
 - 分享截图已定位到资料库最终回调的无图分支：`miniprogram/pages/library/index.js` 在分享图未就绪时返回 `/pages/library/index`，同时省略 `imageUrl`；截图中的“资料分享图准备中，请稍后再试”与该分支文案一致。

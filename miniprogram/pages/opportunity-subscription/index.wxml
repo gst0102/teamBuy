@@ -55,5 +55,5 @@
   </view>
 
   <button class="save-btn" bindtap="handleSave">保存雷达订阅</button>
-  <canvas canvas-id="universalShareCanvas" class="universal-share-canvas"></canvas>
+<canvas canvas-id="shareCardCanvas" class="share-card-canvas"></canvas>
 </view>

@@ -1,6 +1,6 @@
 const { fetchMySupplyDemandCards, fetchSupplyDemandApplications, reviewSupplyDemandApplication, submitSupplyDemandCard, updateSupplyDemandCard } = require("../../services/api");
 const { getCurrentUser } = require("../../utils/dashboard");
-const { buildUniversalShareMessage, prepareUniversalShareImage } = require("../../utils/universal-share");
+const { buildShareCardMessage, prepareShareCardImage } = require("../../plugins/share-snapshot/index");
 
 function statusText(value) {
   if (value === "published") return "展示中";
@@ -16,7 +16,7 @@ Page({
     applications: [],
     myApplications: [],
     loading: false,
-    universalShareImage: ""
+    shareCardImage: ""
   },
   onShow() {
     this.loadCards();
@@ -24,7 +24,7 @@ Page({
   },
   prepareShareImage() {
     const first = (this.data.cards || [])[0] || {};
-    return prepareUniversalShareImage(this, {
+    return prepareShareCardImage(this, {
       title: "我的发布",
       summary: first.summary || first.title || "查看我发布的供需卡和收到的合作申请。",
       badge: "供需",
@@ -116,7 +116,7 @@ Page({
     }
   },
   onShareAppMessage() {
-    return buildUniversalShareMessage(this, {
+    return buildShareCardMessage(this, {
       title: "我的发布",
       summary: "查看我发布的供需卡和收到的合作申请。",
       badge: "供需",

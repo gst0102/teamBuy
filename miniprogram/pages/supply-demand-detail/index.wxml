@@ -42,5 +42,5 @@
       <text>打开查看</text>
     </view>
   </view>
-  <canvas canvas-id="universalShareCanvas" class="universal-share-canvas"></canvas>
+<canvas canvas-id="shareCardCanvas" class="share-card-canvas"></canvas>
 </view>

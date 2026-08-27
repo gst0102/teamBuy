@@ -1,6 +1,6 @@
 const { fetchNotes, fetchShowcases, fetchSupplyDemandCard, saveSupplyDemandCard, submitSupplyDemandCard } = require("../../services/api");
 const { getCurrentUser } = require("../../utils/dashboard");
-const { buildUniversalShareMessage, prepareUniversalShareImage } = require("../../utils/universal-share");
+const { buildShareCardMessage, prepareShareCardImage } = require("../../plugins/share-snapshot/index");
 
 const cityOptions = ["长沙", "上海", "深圳", "广州", "杭州", "全国"];
 const industryOptions = ["本地生活", "团购", "企业服务", "推广渠道", "房源", "供应链"];
@@ -37,7 +37,7 @@ Page({
     cardId: "",
     isEdit: false,
     saving: false,
-    universalShareImage: ""
+    shareCardImage: ""
   },
   onLoad(options = {}) {
     this.cardId = options.id || "";
@@ -50,7 +50,7 @@ Page({
   },
   prepareShareImage() {
     const form = this.data.form || {};
-    return prepareUniversalShareImage(this, {
+    return prepareShareCardImage(this, {
       title: form.title || "发布需求 / 供给",
       summary: form.summary || "提交后进入审核，审核通过会展示到供需广场。",
       badge: form.cardType === "demand" ? "需求" : "供给",
@@ -193,7 +193,7 @@ Page({
   },
   onShareAppMessage() {
     const form = this.data.form || {};
-    return buildUniversalShareMessage(this, {
+    return buildShareCardMessage(this, {
       title: form.title || "发布需求 / 供给",
       summary: form.summary || "提交后进入审核，审核通过会展示到供需广场。",
       badge: form.cardType === "demand" ? "需求" : "供给",

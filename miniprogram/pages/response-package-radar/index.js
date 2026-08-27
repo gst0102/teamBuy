@@ -1,6 +1,6 @@
 const { fetchResponsePackageRadar } = require("../../services/api");
 const { getCurrentUser } = require("../../utils/dashboard");
-const { buildUniversalShareMessage, prepareUniversalShareImage } = require("../../utils/universal-share");
+const { buildShareCardMessage, prepareShareCardImage } = require("../../plugins/share-snapshot/index");
 
 const demoRadar = {
   opened: true,
@@ -16,7 +16,7 @@ Page({
     packageId: "",
     radar: demoRadar,
     loading: false,
-    universalShareImage: ""
+    shareCardImage: ""
   },
   onLoad(options = {}) {
     this.packageId = options.id || "";
@@ -47,7 +47,7 @@ Page({
   prepareShareImage() {
     const radar = this.data.radar || demoRadar;
     const pack = radar.package || {};
-    return prepareUniversalShareImage(this, {
+    return prepareShareCardImage(this, {
       title: pack.title || "回应包反馈",
       summary: radar.nextSuggestion || "打开查看回应包反馈和跟进建议。",
       badge: "反馈",
@@ -58,7 +58,7 @@ Page({
   onShareAppMessage() {
     const radar = this.data.radar || demoRadar;
     const pack = radar.package || {};
-    return buildUniversalShareMessage(this, {
+    return buildShareCardMessage(this, {
       title: pack.title || "回应包反馈",
       summary: radar.nextSuggestion || "打开查看回应包反馈和跟进建议。",
       badge: "反馈",

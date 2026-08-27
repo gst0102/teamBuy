@@ -71,5 +71,5 @@
   </view>
 
   <view wx:if="{{myApplications.length === 0}}" class="empty-panel">还没有发出合作申请。</view>
-  <canvas canvas-id="universalShareCanvas" class="universal-share-canvas"></canvas>
+<canvas canvas-id="shareCardCanvas" class="share-card-canvas"></canvas>
 </view>

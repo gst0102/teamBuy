@@ -55,5 +55,5 @@
     <button wx:if="{{responsePackage.generated}}" class="light-action" bindtap="handleOpenRadar">看反馈</button>
     <button class="light-action" bindtap="handleOpenLead">返回线索</button>
   </view>
-  <canvas canvas-id="universalShareCanvas" class="universal-share-canvas"></canvas>
+<canvas canvas-id="shareCardCanvas" class="share-card-canvas"></canvas>
 </view>

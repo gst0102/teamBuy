@@ -693,9 +693,10 @@ Page({
   onShareAppMessage() {
     const share = this.data.businessCardShare || {};
     const user = getCurrentUser();
-    if (!this.data.businessCardShareReady || !share.noteId || !this.data.businessCardShareImage) {
+    if (!this.data.businessCardShareReady || !share.noteId || !isShareImageUrl(this.data.businessCardShareImage)) {
       wx.showToast({ title: "名片还没准备好，请先完善", icon: "none" });
-      return { title: "电子名片", path: "/pages/profile/index" };
+      setShareMenuEnabled(false);
+      return null;
     }
     const shareId = createNoteShareId(share.noteId);
     const shareFromUserId = user ? user.id : "";

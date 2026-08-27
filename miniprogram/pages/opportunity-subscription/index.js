@@ -1,6 +1,6 @@
 const { fetchOpportunitySubscriptions, saveOpportunitySubscription } = require("../../services/api");
 const { getCurrentUser } = require("../../utils/dashboard");
-const { buildUniversalShareMessage, prepareUniversalShareImage } = require("../../utils/universal-share");
+const { buildShareCardMessage, prepareShareCardImage } = require("../../plugins/share-snapshot/index");
 
 const directionOptions = ["我在找机会", "我能提供资源", "两边都看"];
 const contactOptions = ["有电话", "有微信", "可私信", "待核验也看"];
@@ -50,7 +50,7 @@ Page({
     selected: initialSelected,
     keywords: "开业推广 / 商家合作",
     reminderCadence: "每天早上",
-    universalShareImage: ""
+    shareCardImage: ""
   },
   onShow() {
     this.loadSubscription();
@@ -58,7 +58,7 @@ Page({
   },
   prepareShareImage() {
     const selected = this.data.selected || initialSelected;
-    return prepareUniversalShareImage(this, {
+    return prepareShareCardImage(this, {
       title: "订阅雷达",
       summary: `${selected.city || "全国"} · ${selected.providing || "资源"} · ${selected.lookingFor || "机会"}`,
       badge: "雷达",
@@ -149,7 +149,7 @@ Page({
   },
   onShareAppMessage() {
     const selected = this.data.selected || initialSelected;
-    return buildUniversalShareMessage(this, {
+    return buildShareCardMessage(this, {
       title: "订阅雷达",
       summary: `${selected.city || "全国"} · ${selected.providing || "资源"} · ${selected.lookingFor || "机会"}`,
       badge: "雷达",

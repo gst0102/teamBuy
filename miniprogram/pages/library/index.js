@@ -1822,8 +1822,8 @@ Page({
     const persistedState = getNoteShareSnapshotState(card, (getCurrentUser() || {}).id, getCurrentUser() || {});
     const persistedImage = persistedState.status === "ready" && persistedState.snapshot ? persistedState.snapshot.url : "";
     const generatedImageUrl = getCardCoverShareImage(card, this.data.shareImages || {}) || persistedImage;
-    const directShareReady = Boolean(persistedState.direct);
     const imageUrl = generatedImageUrl;
+    const directShareReady = Boolean(persistedState.direct && isShareImageUrl(imageUrl));
     const pendingShare = {
       id: cardId,
       // The card list is the source of truth. Never trust a stale dataset
@@ -1876,23 +1876,18 @@ Page({
     const title = buildLibraryShareTitle(card, dataset.title || pendingShare.title || card.title);
     const persistedState = getNoteShareSnapshotState(card, (getCurrentUser() || {}).id, getCurrentUser() || {});
     const imageUrl = getShareImageUrlFromState(persistedState);
-    const directShareReady = Boolean(persistedState.direct);
+    const directShareReady = Boolean(persistedState.direct && isShareImageUrl(imageUrl));
     const user = getCurrentUser();
     if (!cardId || !cardNoteId || !canShare || (requestedNoteId && requestedNoteId !== cardNoteId)) {
       wx.showToast({ title: "资料状态已变化，请刷新后再发客户", icon: "none" });
-      return {
-        title,
-        path: `/pages/note-preview/index?id=${encodeURIComponent(cardNoteId || requestedNoteId || "")}`,
-        ...(imageUrl ? { imageUrl } : {})
-      };
+      setShareMenuEnabled(false);
+      return null;
     }
     if (!imageUrl && !directShareReady) {
       this.prepareLibraryShareImages([card]);
       wx.showToast({ title: "资料分享图正在准备，请稍后再发", icon: "none" });
-      return {
-        title: "资料分享图准备中，请稍后再试",
-        path: `/pages/note-preview/index?id=${encodeURIComponent(noteId)}`
-      };
+      setShareMenuEnabled(false);
+      return null;
     }
     const shareId = createNoteShareId(noteId);
     const shareFromUserId = user ? user.id : "";
@@ -1911,7 +1906,7 @@ Page({
     return {
       title: buildCustomerShareTitle(title),
       path: `/pages/note-preview/index?id=${encodeURIComponent(noteId)}&sid=${encodeURIComponent(shareId)}&from=${encodeURIComponent(shareFromUserId)}&src=library_send_customer`,
-      ...(imageUrl ? { imageUrl } : {})
+      imageUrl
     };
   }
 });

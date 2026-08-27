@@ -1,6 +1,6 @@
 const { addOpportunityFollowup, fetchOpportunityLead, saveOpportunityLead, unlockOpportunityContact } = require("../../services/api");
 const { getCurrentUser } = require("../../utils/dashboard");
-const { buildUniversalShareMessage, prepareUniversalShareImage } = require("../../utils/universal-share");
+const { buildShareCardMessage, prepareShareCardImage } = require("../../plugins/share-snapshot/index");
 
 const mockLead = {
   id: "opp_demo_1",
@@ -67,7 +67,7 @@ Page({
     lead: mockLead,
     loading: false,
     usingMock: true,
-    universalShareImage: ""
+    shareCardImage: ""
   },
   onLoad(options = {}) {
     this.leadId = options.id || "opp_demo_1";
@@ -91,7 +91,7 @@ Page({
   },
   prepareShareImage() {
     const lead = this.data.lead || mockLead;
-    return prepareUniversalShareImage(this, {
+    return prepareShareCardImage(this, {
       title: lead.title || "商机线索",
       summary: lead.summary || lead.content || "打开查看完整线索。",
       badge: "线索",
@@ -155,7 +155,7 @@ Page({
   },
   onShareAppMessage() {
     const lead = this.data.lead || mockLead;
-    return buildUniversalShareMessage(this, {
+    return buildShareCardMessage(this, {
       title: lead.title || "商机线索",
       summary: lead.summary || "打开查看完整线索。",
       badge: "线索",

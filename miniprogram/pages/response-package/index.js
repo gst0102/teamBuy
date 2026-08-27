@@ -5,7 +5,7 @@ const {
   recordResponsePackageEvent
 } = require("../../services/api");
 const { getCurrentUser } = require("../../utils/dashboard");
-const { buildUniversalShareMessage, prepareUniversalShareImage } = require("../../utils/universal-share");
+const { buildShareCardMessage, prepareShareCardImage } = require("../../plugins/share-snapshot/index");
 
 const emptyPackage = {
   lead: { title: "回应包", summary: "系统会根据线索和你的资料生成回应内容。" },
@@ -133,7 +133,7 @@ Page({
     responsePackage: emptyPackage,
     loading: false,
     creating: false,
-    universalShareImage: ""
+    shareCardImage: ""
   },
   onLoad(options = {}) {
     this.leadId = options.leadId || "";
@@ -157,6 +157,7 @@ Page({
           responsePackage: demoPackage(this.leadId),
           packageId: ""
         });
+        this.prepareShareImage();
         return;
       } else {
         res = await previewResponsePackage(this.leadId, {
@@ -186,6 +187,7 @@ Page({
         responsePackage: demoPackage(this.leadId, true),
         packageId: `demo_pkg_${this.leadId}`
       });
+      this.prepareShareImage();
       wx.showToast({ title: "示例回应包已生成", icon: "success" });
       return;
     }
@@ -266,7 +268,7 @@ Page({
     const pack = this.data.responsePackage || emptyPackage;
     const lead = pack.lead || {};
     const id = pack.id || this.data.packageId || this.packageId || "";
-    return prepareUniversalShareImage(this, {
+    return prepareShareCardImage(this, {
       title: lead.title || "回应包",
       summary: lead.summary || pack.openingText || "打开查看回应包资料和话术。",
       badge: "回应包",
@@ -278,7 +280,7 @@ Page({
     const pack = this.data.responsePackage || emptyPackage;
     const lead = pack.lead || {};
     const id = pack.id || this.data.packageId || this.packageId || "";
-    return buildUniversalShareMessage(this, {
+    return buildShareCardMessage(this, {
       title: lead.title || "回应包",
       summary: lead.summary || "打开查看回应包资料和话术。",
       badge: "回应包",

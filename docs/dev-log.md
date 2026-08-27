@@ -1,5 +1,12 @@
 # 2026-06-21
 
+## 2026-08-28：全量迁移旧通用分享链路并删除旧模块
+
+- 已将供需/商机/回应包 10 个页面从 `utils/universal-share.js` 迁移到 `plugins/share-snapshot/index.js` 的统一通用入口。
+- 统一入口现在负责固定 Canvas、文本归一化、无图信息卡生成、分享菜单就绪门控、合法 `imageUrl` 校验和异步 generation 防旧结果覆盖。
+- 旧 `miniprogram/utils/universal-share.js` 已删除；10 个页面的 canvas id/class 已统一为 `shareCardCanvas` / `.share-card-canvas`，回应包 demo 分支也补齐分享图准备。
+- 历史日志中的 `universal-share` 只保留为历史事实；当前运行代码已无该模块引用。未部署生产、未上传体验版。
+
 ## 2026-08-28：资料分享封面与雷达首屏性能排查（仅排查，未开发）
 
 - 用户截图中的分享标题“资料分享图准备中，请稍后再试”与 `miniprogram/pages/library/index.js` 的无图回调分支一致；该分支返回 `/pages/library/index` 且不返回 `imageUrl`，微信因此可能使用资料库页面截图作为小程序分享卡封面。

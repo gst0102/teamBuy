@@ -1,5 +1,11 @@
 # Pitfalls
 
+## 2026-08-28：旧通用分享封装必须先迁移再删除
+
+- 旧 `utils/universal-share.js` 曾被 10 个页面直接引用，不能只删文件；必须先把调用、状态字段、Canvas id/class 和 demo/异常分支迁到 `share-snapshot`，再用全仓引用扫描确认删除安全。
+- 通用页面没有显式分享按钮时，也必须在生成期间调用 `hideShareMenu`；否则 `onShareAppMessage` 可能在无图状态返回对象，微信会截图当前页面。
+- 通用分享回调只接受合法 HTTPS 或允许的小程序路径图片 URL；缺图、旧 generation 和生成失败都不能返回资料列表或首页作为分享兜底。
+
 ## 2026-08-28：分享回调无 imageUrl 会把资料库页面变成分享卡
 
 - `open-type="share"` 不是自动生成业务分享封面；微信只会使用回调返回的 `imageUrl`。回调返回对象但省略 `imageUrl` 时，微信可能截图当前页面，导致用户收到“资料列表”而不是资料卡。

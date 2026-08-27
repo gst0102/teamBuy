@@ -1,6 +1,6 @@
 const { applySupplyDemandCard, fetchSupplyDemandCard } = require("../../services/api");
 const { getCurrentUser } = require("../../utils/dashboard");
-const { buildUniversalShareMessage, prepareUniversalShareImage } = require("../../utils/universal-share");
+const { buildShareCardMessage, prepareShareCardImage } = require("../../plugins/share-snapshot/index");
 
 const emptyCard = {
   id: "",
@@ -32,7 +32,7 @@ Page({
     applicationText: "",
     loading: false,
     applying: false,
-    universalShareImage: ""
+    shareCardImage: ""
   },
   onLoad(options = {}) {
     this.cardId = options.id || "";
@@ -97,7 +97,7 @@ Page({
   prepareShareImage() {
     const card = this.data.card || emptyCard;
     const note = card.linkedNote || {};
-    return prepareUniversalShareImage(this, {
+    return prepareShareCardImage(this, {
       title: card.title || "供需详情",
       summary: card.summary || "打开查看供需合作详情。",
       badge: card.cardType === "demand" ? "需求" : "供给",
@@ -108,7 +108,7 @@ Page({
   },
   onShareAppMessage() {
     const card = this.data.card || emptyCard;
-    return buildUniversalShareMessage(this, {
+    return buildShareCardMessage(this, {
       title: card.title || "供需详情",
       summary: card.summary || "打开查看供需合作详情。",
       badge: card.cardType === "demand" ? "需求" : "供给",

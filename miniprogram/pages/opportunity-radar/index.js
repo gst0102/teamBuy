@@ -1,6 +1,6 @@
 const { fetchOpportunityLeads, fetchOpportunityPushDigests, generateOpportunityPushDigest, markOpportunityPushDigestRead, saveOpportunityLead } = require("../../services/api");
 const { getCurrentUser } = require("../../utils/dashboard");
-const { buildUniversalShareMessage, prepareUniversalShareImage } = require("../../utils/universal-share");
+const { buildShareCardMessage, prepareShareCardImage } = require("../../plugins/share-snapshot/index");
 
 const tabs = [
   { key: "mine", label: "我的机会" },
@@ -114,7 +114,7 @@ Page({
     generatingDigest: false,
     loading: false,
     usingMock: true,
-    universalShareImage: ""
+    shareCardImage: ""
   },
   onShow() {
     const user = getCurrentUser();
@@ -128,7 +128,7 @@ Page({
   },
   prepareShareImage() {
     const lead = this.data.topOpportunity || mockTopOpportunity;
-    return prepareUniversalShareImage(this, {
+    return prepareShareCardImage(this, {
       title: "我的机会",
       summary: lead.summary || "系统按你的资料和订阅条件推荐可跟进机会。",
       badge: "商机",
@@ -259,7 +259,7 @@ Page({
     wx.showToast({ title: "先生成回应包，再查看联系动作", icon: "none" });
   },
   onShareAppMessage() {
-    return buildUniversalShareMessage(this, {
+    return buildShareCardMessage(this, {
       title: "我的机会",
       summary: "系统按你的资料和订阅条件推荐可跟进机会。",
       badge: "商机",

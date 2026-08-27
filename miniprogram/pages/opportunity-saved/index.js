@@ -1,6 +1,6 @@
 const { addOpportunityFollowup, fetchSavedOpportunityLeads, saveOpportunityLead } = require("../../services/api");
 const { getCurrentUser } = require("../../utils/dashboard");
-const { buildUniversalShareMessage, prepareUniversalShareImage } = require("../../utils/universal-share");
+const { buildShareCardMessage, prepareShareCardImage } = require("../../plugins/share-snapshot/index");
 
 const statusConfig = [
   { key: "saved", label: "待联系" },
@@ -91,7 +91,7 @@ Page({
     savedCards: mockSavedCards,
     visibleCards: mockSavedCards.filter((item) => item.statusKey === "saved"),
     usingMock: true,
-    universalShareImage: ""
+    shareCardImage: ""
   },
   onShow() {
     this.loadSaved();
@@ -99,7 +99,7 @@ Page({
   },
   prepareShareImage() {
     const first = (this.data.visibleCards || [])[0] || mockSavedCards[0];
-    return prepareUniversalShareImage(this, {
+    return prepareShareCardImage(this, {
       title: "已保存线索",
       summary: first.note || first.title || "打开查看已保存的商机跟进台。",
       badge: "跟进",
@@ -258,7 +258,7 @@ Page({
     });
   },
   onShareAppMessage() {
-    return buildUniversalShareMessage(this, {
+    return buildShareCardMessage(this, {
       title: "已保存线索",
       summary: "打开查看已保存的商机跟进台。",
       badge: "跟进",

@@ -625,10 +625,10 @@ Page({
   onShareAppMessage(event) {
     const noteId = event && event.target && event.target.dataset && event.target.dataset.id;
     const note = (this.data.notes || []).find((item) => item.id === noteId) || {};
-    const detailPath = `/pages/note-preview/index?id=${encodeURIComponent(noteId || "")}`;
     if (!getNoteShareAction(note).canShare) {
       wx.showToast({ title: "请先点发客户准备资料", icon: "none" });
-      return { title: note.title || "资料详情", path: detailPath };
+      setShareMenuEnabled(false);
+      return null;
     }
     const persistedState = getNoteShareSnapshotState(note, (this.data.user || getCurrentUser() || {}).id, this.data.user || getCurrentUser() || {});
     const persistedImage = getShareImageUrlFromState(persistedState);
@@ -636,7 +636,8 @@ Page({
     if (!shareImage && !persistedState.direct) {
       wx.showToast({ title: "资料分享图正在准备，请稍后再发", icon: "none" });
       this.prepareNoteShareImages([note]);
-      return { title: note.title || "资料详情", path: detailPath };
+      setShareMenuEnabled(false);
+      return null;
     }
     const user = getCurrentUser();
     const shareFromUserId = user ? user.id : "";
@@ -649,7 +650,7 @@ Page({
     return {
       title,
       path: `/pages/note-preview/index?id=${encodeURIComponent(noteId || "")}&sid=${encodeURIComponent(shareId)}&from=${encodeURIComponent(shareFromUserId)}&src=notes_list_share`,
-      ...(shareImage ? { imageUrl: shareImage } : {})
+      imageUrl: shareImage
     };
   }
 });
