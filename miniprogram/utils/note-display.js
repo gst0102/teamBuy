@@ -75,6 +75,65 @@ function resolveCardType(config) {
   return config.cardType || (config.contentMode === "bookmark" ? "link" : "text_note");
 }
 
+const LEGACY_IMAGE_TRANSFER_NOTICE = "收到image素材，媒体稍后转存。";
+// Keep legacy image-note snapshot validation aligned with the single share
+// plugin version. Older v3 images are intentionally stale after the typed
+// fixed-layout templates were introduced.
+const SHARE_CARD_IMAGE_STYLE = "share_card_v7";
+
+function cleanImagePrimaryText(value) {
+  return String(value || "")
+    .split(/\r?\n/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .filter((item) => item !== LEGACY_IMAGE_TRANSFER_NOTICE)
+    .join("\n")
+    .trim();
+}
+
+function isImagePrimaryNote(note = {}) {
+  const config = note.visibilityConfig || {};
+  const cardType = resolveCardType(config);
+  const sourceType = config.sourceType || "";
+  const structuredData = config.structuredData || {};
+  const hasImage = Array.isArray(note.media)
+    && note.media.some((item) => item && item.type === "image" && item.url);
+  if (!hasImage) return false;
+  if (cardType === "image_ocr" || ["ocr", "image_ocr", "image_capture"].includes(sourceType)) return true;
+  // Backward compatibility for records created before image-primary classification.
+  if (cardType !== "text_note" || config.contentMode === "bookmark") return false;
+  if (Array.isArray(structuredData.images) && structuredData.images.some(Boolean)) return true;
+  // Private WeCom image + caption messages were historically stored as a
+  // manual text note with an image attachment. Keep those images in the body
+  // presentation while leaving links and mini-app cards on their own layouts.
+  return !["link", "article", "miniapp", "weapp"].includes(sourceType);
+}
+
+function getPrimaryImageUrl(note = {}) {
+  const mediaImage = Array.isArray(note.media)
+    ? note.media.find((item) => item && item.type === "image" && (item.url || item.displayUrl))
+    : null;
+  return (mediaImage && (mediaImage.url || mediaImage.displayUrl))
+    || note.coverUrl
+    || note.coverDisplayUrl
+    || ((note.visibilityConfig || {}).structuredData || {}).coverUrl
+    || "";
+}
+
+function isCurrentImageNoteShareSnapshot(note = {}, snapshot = {}) {
+  if (!isImagePrimaryNote(note)) return true;
+  return String(snapshot.styleId || "") === SHARE_CARD_IMAGE_STYLE;
+}
+
+function imagePrimaryTitle(note = {}, caption = "") {
+  const title = String(note.title || "").trim();
+  if (title && title !== LEGACY_IMAGE_TRANSFER_NOTICE) return title;
+  return String(caption || "")
+    .split(/\r?\n/)
+    .map((item) => item.trim())
+    .find(Boolean) || "图片资料";
+}
+
 function decorateNoteForList(note) {
   const config = note.visibilityConfig || {};
   const suggestions = Array.isArray(config.typeSuggestions) ? config.typeSuggestions : [];
@@ -82,11 +141,20 @@ function decorateNoteForList(note) {
   const userTags = Array.isArray(config.userTags) ? config.userTags.filter(isUsefulLabel) : [];
   const tags = filterContextualLabels(Array.isArray(config.tags) ? config.tags : [], userTags, cardType);
   const structuredData = config.structuredData || {};
+  const isImageNote = isImagePrimaryNote(note);
+  const imageCaption = isImageNote
+    ? cleanImagePrimaryText(note.body || structuredData.rawText || (structuredData.ocr || {}).text || note.summary || "")
+    : "";
   const migrationInfo = buildMigrationInfo(note, config, cardType, structuredData, suggestions);
   const confirmAction = buildConfirmAction(suggestions);
   return {
     ...note,
+    ...(isImageNote ? {
+      title: imagePrimaryTitle(note, imageCaption),
+      summary: imageCaption || cleanImagePrimaryText(note.summary)
+    } : {}),
     cardType,
+    isImageNote,
     structuredData,
     isBookmark: cardType === "link" && config.contentMode === "bookmark",
     isProperty: cardType === "property_listing",
@@ -135,10 +203,10 @@ function buildBusinessCardPreview(cardType, data, note, config = {}) {
   const wechat = data.wechat || data.contactWechat || "";
   return {
     name,
-    role: data.title || "个人顾问",
-    company: data.company || "个人服务",
+    role: data.title || "",
+    company: data.company || "",
     serviceScope: data.serviceScope || data.headline || note.summary || "",
-    contactLine: [phone, wechat].filter(Boolean).join(" · ") || "电话 / 微信",
+    contactLine: [phone, wechat].filter(Boolean).join(" · "),
     avatarUrl: data.avatarUrl || note.coverUrl || "",
     templateId: config.displayTemplate || "",
     tone: config.displayTemplateTone || "",
@@ -148,24 +216,17 @@ function buildBusinessCardPreview(cardType, data, note, config = {}) {
 
 function buildServiceOfferPreview(cardType, data, note, config = {}) {
   if (cardType !== "service_offer") return null;
-  const templateId = config.displayTemplate || data.displayTemplate || "service_consultation";
-  const template = getSalesPageTemplate(templateId) || {};
-  const preview = template.preview || {};
-  const serviceName = data.serviceName || note.title || template.title || "服务方案";
-  const headline = data.headline || note.summary || preview.headline || template.summary || "先了解服务价值，再预约沟通";
+  const serviceName = data.serviceName || note.title || "服务/合作";
+  const headline = data.headline || note.summary || "";
   return {
     serviceName,
     headline,
-    targetAudience: data.targetAudience || preview.bullets && preview.bullets[0] || "适合需要专业服务的客户",
-    pricingNote: data.pricingNote || "按需求沟通报价",
-    serviceArea: data.serviceArea || "",
-    coverUrl: data.coverUrl || note.coverUrl || preview.coverUrl || preview.avatarUrl || "",
-    templateId,
-    templateName: template.name || config.displayTemplateName || "服务方案",
-    templateScene: template.scene || "",
-    tone: template.tone || config.displayTemplateTone || "blue",
-    badge: template.badge || "服务方案",
-    actionText: preview.primaryAction || "咨询服务"
+    detailText: data.detailText || data.serviceContent || note.body || "",
+    pricingOrTerms: data.pricingOrTerms || data.cooperationTerms || data.pricingNote || "",
+    serviceScope: data.serviceScope || data.serviceArea || "",
+    coverUrl: data.coverUrl || note.coverUrl || ((note.media || []).find((item) => item.type === "image") || {}).url || "",
+    badge: "服务 / 合作",
+    actionText: "咨询详情"
   };
 }
 
@@ -267,7 +328,9 @@ function buildPropertyStatus(value) {
 
 function buildPrimaryValue(cardType, data, note) {
   if (cardType === "property_listing") {
-    return [data.price, data.layout].filter(Boolean).join(" · ") || note.summary || "房源信息";
+    const sale = ["sale", "sell", "出售"].includes(data.listingMode || data.dealType);
+    const price = data.price ? (/元|万|\/月|每月/.test(String(data.price)) ? String(data.price) : `${data.price}${sale ? "万元" : "元/月"}`) : "";
+    return [price, data.layout].filter(Boolean).join(" · ") || note.summary || "房源信息";
   }
   if (cardType === "groupbuy_product") {
     return [data.price, data.spec].filter(Boolean).join(" · ") || note.summary || "团购商品";
@@ -276,7 +339,7 @@ function buildPrimaryValue(cardType, data, note) {
     return [data.title, data.company, data.city].filter(Boolean).join(" · ") || note.summary || "个人顾问名片";
   }
   if (cardType === "service_offer") {
-    return [data.headline, data.pricingNote].filter(Boolean).join(" · ") || note.summary || "服务方案";
+    return [data.headline, data.pricingOrTerms || data.cooperationTerms || data.pricingNote].filter(Boolean).join(" · ") || note.summary || "服务/合作";
   }
   if (data.miniapp) {
     return [data.miniapp.displayName || data.miniapp.description, data.miniapp.houseCode ? `房源编码 ${data.miniapp.houseCode}` : ""].filter(Boolean).join(" · ") || note.summary || "";
@@ -295,7 +358,7 @@ function buildSecondaryValue(cardType, data, note) {
     return data.serviceScope || data.bio || note.body || "";
   }
   if (cardType === "service_offer") {
-    return [data.targetAudience, data.serviceArea, data.appointmentNote].filter(Boolean).join(" · ") || data.serviceContent || "";
+    return [data.serviceScope || data.serviceArea, data.pricingOrTerms || data.cooperationTerms || data.pricingNote].filter(Boolean).join(" · ") || data.detailText || data.serviceContent || "";
   }
   if (data.miniapp) {
     return data.miniapp.title || note.body || "";
@@ -322,7 +385,7 @@ function buildCardAction(cardType) {
   if (cardType === "property_listing") return "转发给好友";
   if (cardType === "groupbuy_product") return "转发给好友";
   if (cardType === "business_card") return "发名片";
-  if (cardType === "service_offer") return "发方案";
+  if (cardType === "service_offer") return "发客户";
   return "整理 / 编辑";
 }
 
@@ -337,7 +400,7 @@ function buildShowcasePrimaryText(cardType, data, note) {
     return [data.title, data.company, data.serviceScope].filter(Boolean).join(" · ") || note.summary || "";
   }
   if (cardType === "service_offer") {
-    return [data.headline, data.pricingNote, data.serviceArea].filter(Boolean).join(" · ") || note.summary || "";
+    return [data.headline, data.pricingOrTerms || data.cooperationTerms || data.pricingNote, data.serviceScope || data.serviceArea].filter(Boolean).join(" · ") || note.summary || "";
   }
   return note.summary || note.body || "";
 }
@@ -346,7 +409,7 @@ function buildGridTitle(cardType, data, note) {
   if (cardType === "property_listing") return data.community || note.title || "房源";
   if (cardType === "groupbuy_product") return data.productName || note.title || "商品";
   if (cardType === "business_card") return data.name || note.title || "电子名片";
-  if (cardType === "service_offer") return data.serviceName || note.title || "服务方案";
+  if (cardType === "service_offer") return data.serviceName || note.title || "服务/合作";
   return note.title || data.title || "资料";
 }
 
@@ -361,14 +424,19 @@ function buildGridSummary(cardType, data, note) {
     return [data.title, data.company, data.serviceScope].filter(Boolean).join(" | ") || note.summary || "";
   }
   if (cardType === "service_offer") {
-    return [data.targetAudience, data.serviceArea, data.pricingNote].filter(Boolean).join(" | ") || note.summary || "";
+    return [data.serviceScope || data.serviceArea, data.pricingOrTerms || data.cooperationTerms || data.pricingNote].filter(Boolean).join(" | ") || note.summary || "";
   }
   return note.summary || note.body || "";
 }
 
 function buildGridPrice(cardType, data) {
-  if (cardType === "property_listing" || cardType === "groupbuy_product") return data.price || "";
-  if (cardType === "service_offer") return data.pricingNote || "";
+  if (cardType === "property_listing") {
+    if (!data.price) return "";
+    if (/元|万|\/月|每月/.test(String(data.price))) return String(data.price);
+    return `${data.price}${["sale", "sell", "出售"].includes(data.listingMode || data.dealType) ? "万元" : "元/月"}`;
+  }
+  if (cardType === "groupbuy_product") return data.price || "";
+  if (cardType === "service_offer") return data.pricingOrTerms || data.cooperationTerms || data.pricingNote || "";
   return "";
 }
 
@@ -392,8 +460,13 @@ function buildNoteCategoryLabels(note, config) {
 
 module.exports = {
   cardTypeLabel,
+  cleanImagePrimaryText,
   decorateNoteForList,
   decorateNoteForShowcasePicker,
   decorateSelectedShowcaseItem,
+  getPrimaryImageUrl,
+  imagePrimaryTitle,
+  isImagePrimaryNote,
+  isCurrentImageNoteShareSnapshot,
   isUsefulLabel
 };

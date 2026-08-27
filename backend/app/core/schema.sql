@@ -18,6 +18,33 @@ create table if not exists wecom_identity_bindings (
     updated_at timestamptz not null default now()
 );
 
+create table if not exists wecom_bind_card_tokens (
+    id text primary key,
+    payload jsonb not null,
+    token_hash text,
+    welcome_code_hash text,
+    external_user_id text,
+    status text,
+    delivery_status text,
+    expires_at timestamptz,
+    used_at timestamptz,
+    owner_user_id text,
+    owner_openid text,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+create table if not exists wecom_bind_card_assets (
+    id text primary key,
+    payload jsonb not null,
+    source_sha256 text,
+    media_id text,
+    media_id_expires_at timestamptz,
+    status text,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
 create table if not exists import_batches (
     id text primary key,
     payload jsonb not null,
@@ -63,6 +90,11 @@ create table if not exists cards (
     updated_at timestamptz not null default now()
 );
 
+-- User notes are persisted through the repository's dynamic JSONB table in
+-- PostgreSQL. These columns are added by repository.init_schema() so existing
+-- databases receive the lifecycle/idempotency indexes without a destructive
+-- migration.
+
 create table if not exists view_events (
     id text primary key,
     payload jsonb not null,
@@ -70,6 +102,7 @@ create table if not exists view_events (
     viewer_user_id text,
     view_type text,
     anonymous_id text,
+    visitor_identity_id text,
     share_id text,
     share_from_user_id text,
     scene text,
@@ -119,10 +152,37 @@ create table if not exists customer_actions (
     source_card_id text,
     viewer_user_id text,
     anonymous_id text,
+    visitor_identity_id text,
     action_key text,
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now()
 );
+
+-- Rebuildable radar first-screen projection.  It stores counts only; no
+-- customer identity, contact details, lead history, or event payloads.
+create table if not exists customer_radar_summaries (
+    id text primary key,
+    payload jsonb not null,
+    owner_user_id text not null,
+    mode text not null default '',
+    pending_count integer not null default 0,
+    visitor_count integer not null default 0,
+    following_count integer not null default 0,
+    abandoned_count integer not null default 0,
+    high_intent_count integer not null default 0,
+    interaction_count integer not null default 0,
+    revival_count integer not null default 0,
+    filtered_count integer not null default 0,
+    is_dirty boolean not null default true,
+    refreshed_at timestamptz,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+create unique index if not exists uq_customer_radar_summaries_owner_mode
+    on customer_radar_summaries (owner_user_id, mode);
+create index if not exists idx_customer_radar_summaries_owner_dirty
+    on customer_radar_summaries (owner_user_id, is_dirty, updated_at);
 
 create table if not exists message_threads (
     id text primary key,
@@ -264,6 +324,51 @@ create table if not exists skill_runs (
     updated_at timestamptz not null default now()
 );
 
+create table if not exists automation_devices (
+    id text primary key,
+    payload jsonb not null,
+    name text,
+    platform text,
+    hid_device_id text,
+    status text,
+    active_wechat_account_id text,
+    last_heartbeat_at timestamptz,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+create table if not exists automation_tasks (
+    id text primary key,
+    payload jsonb not null,
+    function_id text,
+    device_id text,
+    target_wechat_account_id text,
+    status text,
+    attempts integer,
+    lease_token text,
+    lease_expires_at timestamptz,
+    idempotency_key text,
+    started_at timestamptz,
+    finished_at timestamptz,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+create table if not exists automation_group_candidates (
+    id text primary key,
+    payload jsonb not null,
+    device_id text,
+    wechat_account_id text,
+    group_qr_code text,
+    group_name text,
+    saved_at timestamptz,
+    join_status text,
+    can_send boolean,
+    idempotency_key text,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
 create table if not exists wecom_archive_cursors (
     id text primary key,
     payload jsonb not null,
@@ -295,6 +400,110 @@ create table if not exists wecom_archive_messages (
     updated_at timestamptz not null default now()
 );
 
+create table if not exists membership_orders (
+    id text primary key,
+    payload jsonb not null,
+    user_id text,
+    status text,
+    payment_transaction_id text,
+    paid_at timestamptz,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+create table if not exists membership_entitlements (
+    id text primary key,
+    payload jsonb not null,
+    user_id text,
+    entitlement_key text,
+    status text,
+    expires_at timestamptz,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+create table if not exists notification_preferences (
+    id text primary key,
+    payload jsonb not null,
+    user_id text,
+    important_customer_view_enabled boolean,
+    ordinary_anonymous_view_enabled boolean,
+    updated_at_source timestamptz,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+create table if not exists wechat_subscription_grants (
+    id text primary key,
+    payload jsonb not null,
+    user_id text,
+    template_id text,
+    request_id text,
+    status text,
+    source text,
+    authorized_at timestamptz,
+    reserved_at timestamptz,
+    consumed_at timestamptz,
+    invalid_at timestamptz,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+create table if not exists wechat_subscription_deliveries (
+    id text primary key,
+    payload jsonb not null,
+    owner_user_id text,
+    grant_id text,
+    template_id text,
+    resource_type text,
+    resource_id text,
+    viewer_type text,
+    dedupe_key text,
+    status text,
+    sent_at timestamptz,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+create table if not exists referral_relations (
+    id text primary key,
+    payload jsonb not null,
+    inviter_user_id text,
+    invitee_user_id text,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+create table if not exists referral_rewards (
+    id text primary key,
+    payload jsonb not null,
+    inviter_user_id text,
+    invitee_user_id text,
+    source_order_id text,
+    status text,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+create table if not exists referral_withdrawals (
+    id text primary key,
+    payload jsonb not null,
+    user_id text,
+    status text,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+create table if not exists same_style_generations (
+    id text primary key,
+    payload jsonb not null,
+    owner_user_id text,
+    idempotency_key text,
+    source_note_id text,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
 create index if not exists idx_import_batches_status on import_batches (status);
 create index if not exists idx_wecom_identity_bindings_source_external on wecom_identity_bindings (source_type, external_user_id);
 create index if not exists idx_wecom_identity_bindings_owner on wecom_identity_bindings (owner_user_id, updated_at);
@@ -315,6 +524,7 @@ create index if not exists idx_view_events_card_time on view_events (card_id, vi
 create index if not exists idx_view_events_card_date on view_events (card_id, date_key);
 create index if not exists idx_view_events_logged_viewer on view_events (card_id, viewer_user_id);
 create index if not exists idx_view_events_anonymous on view_events (card_id, anonymous_id);
+create index if not exists idx_view_events_visitor_identity on view_events (card_id, visitor_identity_id);
 create index if not exists idx_view_events_share on view_events (card_id, share_id, viewed_at);
 create index if not exists idx_showcase_events_showcase_time on showcase_events (showcase_id, created_at);
 create index if not exists idx_showcase_events_owner_time on showcase_events (owner_user_id, created_at);
@@ -322,6 +532,11 @@ create index if not exists idx_showcase_events_type on showcase_events (showcase
 create index if not exists idx_showcase_events_viewer on showcase_events (showcase_id, viewer_user_id);
 create index if not exists idx_showcase_events_anonymous on showcase_events (showcase_id, anonymous_id);
 create index if not exists idx_showcase_events_share on showcase_events (showcase_id, share_id, created_at);
+create unique index if not exists uq_notification_preferences_user on notification_preferences (user_id);
+create index if not exists idx_wechat_subscription_grants_user_status on wechat_subscription_grants (user_id, template_id, status, authorized_at);
+create unique index if not exists uq_wechat_subscription_deliveries_dedupe on wechat_subscription_deliveries (dedupe_key);
+create unique index if not exists uq_wechat_subscription_grants_request on wechat_subscription_grants (user_id, template_id, request_id) where request_id is not null and request_id <> '';
+create index if not exists idx_wechat_subscription_deliveries_owner_time on wechat_subscription_deliveries (owner_user_id, created_at);
 create index if not exists idx_relay_entries_card_status on relay_entries (card_id, status, created_at);
 create index if not exists idx_relay_entries_card_follow_up on relay_entries (card_id, follow_up_status);
 create index if not exists idx_relay_entries_user on relay_entries (user_id);
@@ -329,6 +544,18 @@ create index if not exists idx_customer_actions_note_time on customer_actions (n
 create index if not exists idx_customer_actions_owner_time on customer_actions (owner_user_id, created_at);
 create index if not exists idx_customer_actions_note_viewer on customer_actions (note_id, viewer_user_id, action_key);
 create index if not exists idx_customer_actions_note_anonymous on customer_actions (note_id, anonymous_id, action_key);
+
+-- Operational feature flags are deliberately kept outside the content
+-- tables.  The customer-information chain is read from this table in
+-- PostgreSQL; the legacy JSON fields are used only for the one-time seed.
+create table if not exists ops_feature_flags (
+    key text primary key,
+    enabled boolean not null,
+    payment_required boolean not null,
+    updated_at timestamptz not null default now(),
+    updated_by text
+);
+
 create index if not exists idx_message_threads_owner_time on message_threads (owner_user_id, last_message_at);
 create index if not exists idx_message_threads_buyer_time on message_threads (buyer_user_id, last_message_at);
 create index if not exists idx_message_threads_note on message_threads (note_id);
@@ -362,3 +589,13 @@ create index if not exists idx_wecom_archive_messages_msg_id on wecom_archive_me
 create index if not exists idx_wecom_archive_messages_type_time on wecom_archive_messages (msg_type, msg_time);
 create index if not exists idx_wecom_archive_messages_generated_note on wecom_archive_messages (generated_note_id);
 create unique index if not exists uq_wecom_archive_messages_msg_id on wecom_archive_messages (msg_id) where msg_id is not null;
+create index if not exists idx_membership_orders_user_status on membership_orders (user_id, status, updated_at);
+create unique index if not exists uq_membership_orders_transaction on membership_orders (payment_transaction_id) where payment_transaction_id is not null;
+create index if not exists idx_membership_entitlements_user_expiry on membership_entitlements (user_id, status, expires_at);
+create index if not exists idx_referral_relations_inviter on referral_relations (inviter_user_id, created_at);
+create unique index if not exists uq_referral_relations_invitee on referral_relations (invitee_user_id);
+create index if not exists idx_referral_rewards_inviter_status on referral_rewards (inviter_user_id, status, updated_at);
+create unique index if not exists uq_referral_rewards_order on referral_rewards (source_order_id);
+create index if not exists idx_referral_withdrawals_user_status on referral_withdrawals (user_id, status, updated_at);
+create index if not exists idx_same_style_owner_time on same_style_generations (owner_user_id, created_at);
+create unique index if not exists uq_same_style_owner_key on same_style_generations (owner_user_id, idempotency_key);

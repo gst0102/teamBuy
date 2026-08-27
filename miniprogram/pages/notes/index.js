@@ -2,9 +2,34 @@ const api = require("../../services/api");
 const messagePlugin = require("../../plugins/message-plugin/index");
 const { getCurrentUser } = require("../../utils/dashboard");
 const { decorateNoteForList, isUsefulLabel } = require("../../utils/note-display");
-const { buildBusinessCardShareTitle, buildServiceOfferShareTitle, generatePropertyShareImage, generateBusinessCardShareImage, generateServiceOfferShareImage, generateTitleShareImage } = require("../../utils/business-card-share");
+const { navigateToNoteEditor } = require("../../utils/resource-navigation");
+const { buildBusinessCardShareTitle, buildBusinessCardShareSource, buildServiceOfferShareTitle } = require("../../utils/business-card-share");
+const { buildNoteShareTitle, getNoteShareSnapshotState, getShareImageUrlFromState, prepareNoteShareSnapshot, setShareMenuEnabled } = require("../../plugins/share-snapshot/index");
+const subscription = require("../../services/subscription");
 
 const SALES_CARD_SHARE_CANVAS_ID = "salesCardListShareCanvas";
+const SYSTEM_PLACEHOLDER_TEXTS = new Set([
+  "未命名笔记",
+  "未命名资料",
+  "未命名房源",
+  "未命名商品",
+  "未命名服务方案",
+  "手动创建的普通笔记",
+  "手动创建，可继续补充内容。",
+  "手动创建，可继续补充内容"
+]);
+
+function getNoteShareAction(note = {}) {
+  const config = note.visibilityConfig || {};
+  const shareState = note.shareState || config.shareState || (note.sharePublished ? "published" : "private");
+  const title = String(note.title || "").trim();
+  const body = String(note.body || note.summary || "").trim();
+  const cover = String(note.coverUrl || note.coverDisplayUrl || "").trim();
+  const ready = Boolean(title && !SYSTEM_PLACEHOLDER_TEXTS.has(title) && (body || cover));
+  const canShare = shareState === "published";
+  const canPublish = shareState !== "revoked" && !canShare && ready;
+  return { shareState, canShare, canPublish, ready };
+}
 
 function scrmReadKey(userId, noteId) {
   return `note_scrm_read_${userId || "guest"}_${noteId || ""}`;
@@ -15,6 +40,12 @@ function hasUnreadCustomerAction(summary, userId, noteId) {
   const latest = new Date(summary.latestActionAt).getTime();
   const readAt = Number(wx.getStorageSync(scrmReadKey(userId, noteId)) || 0);
   return latest > readAt;
+}
+
+function getLocalNoteShareImage(note = {}, shareImages = {}) {
+  const user = getCurrentUser() || {};
+  const state = getNoteShareSnapshotState(note, user.id, user);
+  return getShareImageUrlFromState(state);
 }
 
 const SOURCE_FILTERS = [
@@ -70,11 +101,17 @@ function matchesUnifiedType(note, type) {
 
 function withInitialShareState(note) {
   if (!note || !note.id) return note;
+  const { shareState, canShare, canPublish, ready } = getNoteShareAction(note);
   return {
     ...note,
-    shareDisabled: true,
+    shareState,
+    canShare,
+    canPublish,
+    shareDisabled: false,
     shareImageReady: false,
-    shareStatusText: "封面准备中"
+    shareImageState: "missing",
+    shareImagePreparing: false,
+    shareStatusText: shareState === "revoked" ? "已停止分享" : canShare ? "准备分享图" : canPublish ? "发客户" : (ready ? "发客户" : "完善")
   };
 }
 
@@ -127,11 +164,13 @@ Page({
     });
   },
   onShow() {
+    setShareMenuEnabled(false);
     const user = getCurrentUser();
     if (!user) {
       wx.reLaunch({ url: "/pages/login/index" });
       return;
     }
+    subscription.preloadViewNotificationSubscriptionConfig(user.id);
     this.setData({ user });
     this.loadTopics();
     this.loadNotes();
@@ -150,8 +189,11 @@ Page({
       topicId: activeTopicId,
       sort
     };
-    const cachedNotes = api.getCachedNotes(params);
-    if (cachedNotes.length) {
+    // Paint an acceptable metadata snapshot first, including a stale snapshot,
+    // then let the network response revalidate it.  The cache is user-scoped
+    // by api.js and contains no customer identity/contact fields.
+    const cachedNotes = api.getCachedNotes(params, { allowStale: true });
+    if (api.hasCachedNotes(params, { allowStale: true })) {
       const cachedAll = cachedNotes.map(decorateNoteForList);
       const cachedVisible = this.applyLocalFilters(cachedAll).map(withInitialShareState);
       this.setData({
@@ -162,9 +204,9 @@ Page({
       });
       this.loadScrmSummaries(cachedVisible);
     }
-    this.setData({ loading: true });
+    this.setData({ loading: !api.hasCachedNotes(params, { allowStale: true }) });
     try {
-      const res = await api.fetchNotes(params);
+      const res = await api.fetchNotes(params, { metadataOnly: true });
       const allNotes = (res.data || []).map(decorateNoteForList);
       const notes = this.applyLocalFilters(allNotes).map(withInitialShareState);
       this.setData({ allNotes, notes, tagFilters: this.buildTagFilters(notes), migrationSummary: this.buildMigrationSummary(allNotes) });
@@ -197,72 +239,73 @@ Page({
     this.prepareNoteShareImages(notes);
   },
   async prepareNoteShareImages(notes) {
-    const shareableNotes = (notes || []).filter((note) => note && note.id);
+    const shareableNotes = (notes || [])
+      .filter((note) => note && note.id && getNoteShareAction(note).canShare)
+      .sort((left, right) => Number(Boolean(right.isBusinessCard)) - Number(Boolean(left.isBusinessCard)))
+      .slice(0, 1);
     if (!shareableNotes.length) {
       this.setData({ noteShareImages: {} });
       return;
     }
-    const nextImages = {};
+    if (!this.noteShareGenerating) this.noteShareGenerating = {};
+    const nextImages = { ...(this.data.noteShareImages || {}) };
     for (const note of shareableNotes) {
       if (!note.id) continue;
+      if (this.noteShareGenerating[note.id]) continue;
+      this.noteShareGenerating[note.id] = true;
+      this.updateShareState(note.id, false, true);
       try {
-        let imagePath = "";
-        if (note.isServiceOffer && note.serviceOfferPreview) {
-          imagePath = await generateServiceOfferShareImage(this, SALES_CARD_SHARE_CANVAS_ID, {
-            ...note.serviceOfferPreview,
-            structuredData: note.structuredData || {},
-            title: note.title,
-            summary: note.summary,
-            coverUrl: note.serviceOfferPreview.coverUrl || note.coverUrl
-          });
-        } else if (note.isBusinessCard && note.businessCardPreview) {
-          imagePath = await generateBusinessCardShareImage(this, SALES_CARD_SHARE_CANVAS_ID, {
-            ...note.businessCardPreview,
-            structuredData: note.structuredData || {},
-            title: note.title,
-            summary: note.summary,
-            coverUrl: note.coverUrl
-          });
-        } else if (note.isProperty) {
-          const data = note.structuredData || {};
-          imagePath = await generatePropertyShareImage(this, SALES_CARD_SHARE_CANVAS_ID, {
-            title: note.title || data.community || "房源资料",
-            price: data.price || note.primaryValue || "",
-            layout: data.layout || "",
-            area: data.area || "",
-            address: data.address || data.businessArea || note.secondaryValue || "",
-            coverUrl: note.coverDisplayUrl || note.coverUrl || ""
-          });
-        } else {
-          imagePath = await generateTitleShareImage(this, SALES_CARD_SHARE_CANVAS_ID, {
-            title: note.title || "资料详情",
-            summary: note.summary || note.gridSummary || note.secondaryValue || "",
-            badge: note.cardBadge || note.systemCategory || (note.isGroupbuy ? "商品" : "资料"),
-            coverUrl: note.coverDisplayUrl || note.coverUrl || "",
-            hint: note.isGroupbuy ? "打开小程序查看商品详情" : "打开小程序查看完整资料",
-            growthHint: "我也想做同款"
-          });
-        }
+        const ownerUserId = (this.data.user || getCurrentUser() || {}).id;
+        const result = await prepareNoteShareSnapshot({
+          page: this,
+          canvasId: SALES_CARD_SHARE_CANVAS_ID,
+          note,
+          ownerUserId,
+          user: this.data.user || getCurrentUser() || {}
+        });
+        const imagePath = result.snapshot && result.snapshot.url;
         if (imagePath) {
-          nextImages[note.id] = imagePath;
-          this.setData({ noteShareImages: { ...nextImages } });
+          nextImages[note.id] = {
+            url: imagePath,
+            sourceRevision: result.sourceRevision,
+            fingerprint: result.fingerprint
+          };
+          const savedConfig = result.entity && result.entity.visibilityConfig;
+          const updateNote = (item) => item && item.id === note.id
+            ? { ...item, visibilityConfig: savedConfig || item.visibilityConfig }
+            : item;
+          this.setData({
+            noteShareImages: { ...nextImages },
+            allNotes: (this.data.allNotes || []).map(updateNote),
+            notes: (this.data.notes || []).map(updateNote)
+          });
         }
-        this.updateShareState(note.id, Boolean(imagePath));
+        this.updateShareState(note.id, Boolean(imagePath || result.direct), false, !(imagePath || result.direct));
       } catch (error) {
         nextImages[note.id] = "";
-        this.updateShareState(note.id, false);
+        this.updateShareState(note.id, false, false, true);
+      } finally {
+        this.noteShareGenerating[note.id] = false;
       }
     }
   },
-  updateShareState(noteId, ready) {
+  updateShareState(noteId, ready, preparing = false, failed = false) {
+    const shareImageState = preparing ? "preparing" : ready ? "ready" : failed ? "failed" : "missing";
     this.setData({
       notes: (this.data.notes || []).map((note) => (
         note.id === noteId
           ? {
               ...note,
               shareImageReady: ready,
+              shareImageState,
+              shareImagePreparing: preparing,
               shareDisabled: false,
-              shareStatusText: note.cardAction
+              shareStatusText: (() => {
+                const action = getNoteShareAction(note);
+                if (action.shareState === "revoked") return "已停止分享";
+                if (action.canShare) return shareImageState === "failed" ? "重试分享图" : shareImageState === "preparing" ? "分享图生成中" : "准备分享图";
+                return action.canPublish ? "发客户" : (action.ready ? "发客户" : "完善");
+              })()
             }
           : note
       ))
@@ -409,7 +452,7 @@ Page({
   handleOpenFirstPending() {
     const summary = this.data.migrationSummary || {};
     if (!summary.firstPendingId) return;
-    wx.navigateTo({ url: `/pages/note-edit/index?id=${summary.firstPendingId}` });
+    navigateToNoteEditor(summary.firstPendingId);
   },
   handleSortToggle() {
     this.setData({ sort: this.data.sort === "collected" ? "updated" : "collected" });
@@ -424,10 +467,10 @@ Page({
       this.openSourceUrl(url, title);
       return;
     }
-    wx.navigateTo({ url: `/pages/note-edit/index?id=${id}` });
+    navigateToNoteEditor(id);
   },
   handleEdit(event) {
-    wx.navigateTo({ url: `/pages/note-edit/index?id=${event.currentTarget.dataset.id}` });
+    navigateToNoteEditor(event.currentTarget.dataset.id);
   },
   handleConfirmType(event) {
     const noteId = event.currentTarget.dataset.id;
@@ -452,7 +495,7 @@ Page({
           wx.showToast({ title: "已整理", icon: "success" });
           const note = res.data || {};
           if (note.id) {
-            wx.navigateTo({ url: `/pages/note-edit/index?id=${note.id}` });
+            navigateToNoteEditor(note);
           } else {
             this.loadNotes();
           }
@@ -503,7 +546,7 @@ Page({
     this.setData({
       notes: this.data.notes.map((note) => note.id === noteId ? { ...note, scrmHasUnread: false } : note)
     });
-    wx.navigateTo({ url: `/pages/note-actions/index?id=${noteId}` });
+    wx.navigateTo({ url: `/subpackages/workbench/note-actions/index?id=${noteId}` });
   },
   handleOpenMessages() {
     messagePlugin.openMessageCenter();
@@ -550,25 +593,63 @@ Page({
       }
     });
   },
+  async handleSendCustomer(event) {
+    const noteId = event.currentTarget.dataset.id;
+    const note = (this.data.allNotes || []).find((item) => item.id === noteId)
+      || (this.data.notes || []).find((item) => item.id === noteId);
+    if (!note) return;
+    const action = getNoteShareAction(note);
+    if (!action.canPublish) {
+      if (!action.ready || action.shareState === "revoked") this.handleEdit({ currentTarget: { dataset: { id: noteId } } });
+      return;
+    }
+    const user = getCurrentUser();
+    if (!user) return;
+    try {
+      await api.publishNote(noteId, user.id, note.revision);
+      wx.showToast({ title: "已准备好，点发客户即可发送", icon: "success" });
+      this.loadNotes();
+    } catch (error) {
+      wx.showToast({ title: error.detail || "发客户失败，请先完善资料", icon: "none" });
+    }
+  },
+  handleShareTap() {
+    subscription.requestViewNotificationSubscription("notes_share");
+  },
+  handlePrepareBusinessCardShare(event) {
+    const noteId = event && event.currentTarget && event.currentTarget.dataset && event.currentTarget.dataset.id;
+    const note = (this.data.allNotes || []).find((item) => item.id === noteId)
+      || (this.data.notes || []).find((item) => item.id === noteId);
+    if (note) this.prepareNoteShareImages([note]);
+  },
   onShareAppMessage(event) {
     const noteId = event && event.target && event.target.dataset && event.target.dataset.id;
     const note = (this.data.notes || []).find((item) => item.id === noteId) || {};
-    const shareImage = this.data.noteShareImages && this.data.noteShareImages[noteId];
-    if (!shareImage) {
-      wx.showToast({ title: "封面还在生成，请稍后再发", icon: "none" });
-      return {
-        title: "资料详情",
-        path: `/pages/note-preview/index?id=${noteId || ""}`
-      };
+    const detailPath = `/pages/note-preview/index?id=${encodeURIComponent(noteId || "")}`;
+    if (!getNoteShareAction(note).canShare) {
+      wx.showToast({ title: "请先点发客户准备资料", icon: "none" });
+      return { title: note.title || "资料详情", path: detailPath };
     }
+    const persistedState = getNoteShareSnapshotState(note, (this.data.user || getCurrentUser() || {}).id, this.data.user || getCurrentUser() || {});
+    const persistedImage = getShareImageUrlFromState(persistedState);
+    const shareImage = getLocalNoteShareImage(note, this.data.noteShareImages || {}) || persistedImage;
+    if (!shareImage && !persistedState.direct) {
+      wx.showToast({ title: "资料分享图正在准备，请稍后再发", icon: "none" });
+      this.prepareNoteShareImages([note]);
+      return { title: note.title || "资料详情", path: detailPath };
+    }
+    const user = getCurrentUser();
+    const shareFromUserId = user ? user.id : "";
+    const shareId = `share_${noteId || "note"}_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
+    const title = note.isBusinessCard
+      ? buildBusinessCardShareTitle(buildBusinessCardShareSource(note, this.data.user || getCurrentUser() || {}))
+      : note.isServiceOffer && note.serviceOfferPreview
+        ? buildServiceOfferShareTitle(note.serviceOfferPreview)
+        : buildNoteShareTitle(note, this.data.user || getCurrentUser() || {});
     return {
-      title: note.isBusinessCard && note.businessCardPreview
-        ? buildBusinessCardShareTitle(note.businessCardPreview)
-        : note.isServiceOffer && note.serviceOfferPreview
-          ? buildServiceOfferShareTitle(note.serviceOfferPreview)
-          : note.structuredData && (note.structuredData.community || note.structuredData.productName) || note.title || "资料详情",
-      path: `/pages/note-preview/index?id=${noteId || ""}`,
-      imageUrl: shareImage
+      title,
+      path: `/pages/note-preview/index?id=${encodeURIComponent(noteId || "")}&sid=${encodeURIComponent(shareId)}&from=${encodeURIComponent(shareFromUserId)}&src=notes_list_share`,
+      ...(shareImage ? { imageUrl: shareImage } : {})
     };
   }
 });

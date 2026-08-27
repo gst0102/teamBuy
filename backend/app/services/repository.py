@@ -17,6 +17,7 @@ from app.models.domain import (
     AutomationTask,
     Card,
     Category,
+    CustomerRadarSummary,
     CustomerAction,
     ImportBatch,
     ImportNotification,
@@ -341,6 +342,15 @@ class AppRepository(Protocol):
         ...
 
     def delete_lead_reminder(self, reminder_id: str) -> None:
+        ...
+
+    def get_customer_radar_summary(self, owner_user_id: str, mode: str = "") -> CustomerRadarSummary | None:
+        ...
+
+    def save_customer_radar_summary(self, summary: CustomerRadarSummary) -> None:
+        ...
+
+    def mark_customer_radar_summaries_dirty(self, owner_user_id: str | None = None) -> None:
         ...
 
     def save_customer_action(self, action: CustomerAction) -> None:
@@ -1236,6 +1246,37 @@ class JsonRepository:
         state.lead_reminders = [item for item in state.lead_reminders if item.id != reminder_id]
         self.save(state)
 
+    def get_customer_radar_summary(self, owner_user_id: str, mode: str = "") -> CustomerRadarSummary | None:
+        normalized_mode = str(mode or "")
+        return next(
+            (
+                item
+                for item in self.load().customer_radar_summaries
+                if item.ownerUserId == owner_user_id and item.mode == normalized_mode
+            ),
+            None,
+        )
+
+    def save_customer_radar_summary(self, summary: CustomerRadarSummary) -> None:
+        state = self.load()
+        state.customer_radar_summaries = [item for item in state.customer_radar_summaries if item.id != summary.id]
+        state.customer_radar_summaries.append(summary)
+        self.save(state)
+
+    def mark_customer_radar_summaries_dirty(self, owner_user_id: str | None = None) -> None:
+        state = self.load()
+        changed = False
+        summaries = []
+        for item in state.customer_radar_summaries:
+            if (owner_user_id is None or item.ownerUserId == owner_user_id) and not item.isDirty:
+                summaries.append(item.model_copy(update={"isDirty": True}))
+                changed = True
+            else:
+                summaries.append(item)
+        if changed:
+            state.customer_radar_summaries = summaries
+            self.save(state)
+
     def save_customer_action(self, action: CustomerAction) -> None:
         state = self.load()
         state.customer_actions = [item for item in state.customer_actions if item.id != action.id]
@@ -1992,6 +2033,7 @@ class PostgresRepository:
         "showcase_events": "showcase_events",
         "relay_entries": "relay_entries",
         "lead_reminders": "lead_reminders",
+        "customer_radar_summaries": "customer_radar_summaries",
         "customer_actions": "customer_actions",
         "message_threads": "message_threads",
         "message_records": "message_records",
@@ -2160,6 +2202,20 @@ class PostgresRepository:
             ("status", "text", "status"),
             ("contacted_at", "timestamptz", "contactedAt"),
             ("version", "integer", "version"),
+        ],
+        "customer_radar_summaries": [
+            ("owner_user_id", "text", "ownerUserId"),
+            ("mode", "text", "mode"),
+            ("pending_count", "integer", "pendingCount"),
+            ("visitor_count", "integer", "visitorCount"),
+            ("following_count", "integer", "followingCount"),
+            ("abandoned_count", "integer", "abandonedCount"),
+            ("high_intent_count", "integer", "highIntentCount"),
+            ("interaction_count", "integer", "interactionCount"),
+            ("revival_count", "integer", "revivalCount"),
+            ("filtered_count", "integer", "filteredCount"),
+            ("is_dirty", "boolean", "isDirty"),
+            ("refreshed_at", "timestamptz", "refreshedAt"),
         ],
         "customer_actions": [
             ("owner_user_id", "text", "ownerUserId"),
@@ -2541,6 +2597,9 @@ class PostgresRepository:
         "lead_reminders": [
             ("idx_lead_reminders_owner_status", "owner_user_id, status, updated_at"),
             ("idx_lead_reminders_card_viewer", "card_id, viewer_user_id"),
+        ],
+        "customer_radar_summaries": [
+            ("idx_customer_radar_summaries_owner_dirty", "owner_user_id, is_dirty, updated_at"),
         ],
         "customer_actions": [
             ("idx_customer_actions_note_time", "note_id, created_at"),
@@ -3382,6 +3441,32 @@ class PostgresRepository:
     def delete_lead_reminder(self, reminder_id: str) -> None:
         with psycopg.connect(self.database_url) as conn:
             conn.execute("delete from lead_reminders where id = %s", (reminder_id,))
+
+    def get_customer_radar_summary(self, owner_user_id: str, mode: str = "") -> CustomerRadarSummary | None:
+        rows = self._list_payloads(
+            "customer_radar_summaries",
+            "owner_user_id = %s and mode = %s",
+            (owner_user_id, str(mode or "")),
+            "updated_at desc, id desc",
+            limit_sql=" limit 1",
+        )
+        return CustomerRadarSummary.model_validate(rows[0]) if rows else None
+
+    def save_customer_radar_summary(self, summary: CustomerRadarSummary) -> None:
+        self._save_model("customer_radar_summaries", summary)
+
+    def mark_customer_radar_summaries_dirty(self, owner_user_id: str | None = None) -> None:
+        self._ensure_known_table("customer_radar_summaries")
+        where_sql = "" if not owner_user_id else " where owner_user_id = %s"
+        params = (owner_user_id,) if owner_user_id else ()
+        with psycopg.connect(self.database_url) as conn:
+            conn.execute(
+                f"update customer_radar_summaries "
+                "set is_dirty = true, payload = jsonb_set(payload, '{isDirty}', 'true'::jsonb, true), "
+                "updated_at = now()"
+                f"{where_sql}{' and is_dirty is distinct from true' if where_sql else ' where is_dirty is distinct from true'}",
+                params,
+            )
 
     def save_customer_action(self, action: CustomerAction) -> None:
         self._save_model("customer_actions", action)
@@ -4373,6 +4458,12 @@ class PostgresRepository:
                     """
                     create unique index if not exists uq_lead_reminders_card_viewer
                     on lead_reminders (card_id, viewer_user_id)
+                    """
+                )
+                conn.execute(
+                    """
+                    create unique index if not exists uq_customer_radar_summaries_owner_mode
+                    on customer_radar_summaries (owner_user_id, mode)
                     """
                 )
                 conn.execute(

@@ -8,16 +8,22 @@ from pydantic import BaseModel, Field
 ImportStatus = Literal["pending", "success", "failed", "claimed"]
 CardStatus = Literal["draft", "published", "archived"]
 UserNoteStatus = Literal["draft", "active", "deleted"]
+UserNoteShareState = Literal["private", "published", "revoked"]
 ViewType = Literal["logged_in", "anonymous", "share"]
 RelayStatus = Literal["active", "deleted"]
 FollowUpStatus = Literal["pending", "followed"]
-LeadReminderStatus = Literal["pending", "contacted", "invalid", "paused", "completed"]
+LeadReminderStatus = Literal["pending", "following", "contacted", "invalid", "paused", "completed", "deleted"]
 MessageType = Literal["text", "image", "link", "location", "video", "file", "weapp", "unknown"]
 SourceType = Literal["wechat_note", "miniapp_link", "mp_link", "web_link", "unknown"]
 SyncStatus = Literal["idle", "running", "success", "failed"]
 MediaRetryStatus = Literal["pending", "success", "failed"]
 SyncTaskStatus = Literal["queued", "running", "success", "failed", "retrying", "skipped"]
 SkillRunStatus = Literal["pending", "success", "failed", "needs_confirm"]
+AutomationDeviceStatus = Literal["offline", "ready", "busy", "paused", "degraded"]
+AutomationTaskStatus = Literal["pending", "running", "success", "failed", "cancelled"]
+AutomationJoinStatus = Literal["pending", "success", "failed", "unknown"]
+AutomationGroupSource = Literal["xiaohongshu", "wechat_native"]
+AutomationMembershipStatus = Literal["unknown", "active", "removed"]
 ArchiveCursorStatus = Literal["idle", "running", "success", "failed"]
 MediaAssetStatus = Literal["active", "deleted"]
 CustomerActionKey = Literal[
@@ -28,6 +34,15 @@ CustomerActionKey = Literal[
     "consult-click",
     "navigation-click",
     "external-open",
+    "image-open",
+    "pdf-open",
+    "link-open",
+    "source-open",
+    "contact-click",
+    "phone-click",
+    "wechat-qr-open",
+    "featured-note-open",
+    "map-open",
 ]
 MessageThreadStatus = Literal["active", "archived"]
 ShowcaseStatus = Literal["draft", "published", "archived"]
@@ -43,6 +58,22 @@ SupplyDemandCardType = Literal["demand", "supply"]
 SupplyDemandCardStatus = Literal["draft", "pending_review", "published", "rejected", "archived"]
 SupplyDemandApplicationStatus = Literal["pending", "accepted", "rejected", "closed"]
 OpportunityPushDigestStatus = Literal["pending", "read", "dismissed"]
+MembershipOrderStatus = Literal["pending", "paid", "refunded", "closed"]
+MembershipEntitlementStatus = Literal["active", "expired", "revoked"]
+ReferralRewardStatus = Literal["pending", "available", "reserved", "withdrawn", "revoked"]
+ReferralWithdrawalStatus = Literal[
+    "pending",
+    "approved",
+    "waiting_user_confirm",
+    "processing",
+    "paid",
+    "failed",
+    "cancelled",
+    "rejected",
+]
+WechatSubscriptionGrantStatus = Literal["available", "reserved", "consumed", "invalid", "rejected"]
+WechatSubscriptionDeliveryStatus = Literal["queued", "sending", "sent", "failed", "skipped"]
+WechatSubscriptionNotificationType = Literal["view", "message"]
 
 
 class User(BaseModel):
@@ -53,6 +84,7 @@ class User(BaseModel):
     avatarUrl: str
     wechat: str | None = None
     phone: str | None = None
+    salesProfile: dict = Field(default_factory=dict)
     createdAt: str
     updatedAt: str
 
@@ -66,6 +98,35 @@ class WecomIdentityBinding(BaseModel):
     bindSource: str = "claim_import"
     firstImportBatchId: str | None = None
     lastImportBatchId: str | None = None
+    createdAt: str
+    updatedAt: str
+
+
+class WecomBindCardToken(BaseModel):
+    id: str
+    tokenHash: str
+    welcomeCodeHash: str
+    externalUserId: str
+    status: Literal["issued", "consumed", "invalid"] = "issued"
+    deliveryStatus: Literal["pending", "sent", "failed"] = "pending"
+    expiresAt: str
+    usedAt: str | None = None
+    ownerUserId: str | None = None
+    ownerOpenid: str | None = None
+    createdAt: str
+    updatedAt: str
+
+
+class WecomBindCardAsset(BaseModel):
+    id: str
+    sourceContentBase64: str = ""
+    filename: str = "wecom-bind-card.png"
+    contentType: str = "image/png"
+    sourceSha256: str
+    mediaId: str = ""
+    mediaIdExpiresAt: str | None = None
+    status: Literal["active", "retired", "failed"] = "active"
+    errorMessage: str | None = None
     createdAt: str
     updatedAt: str
 
@@ -149,9 +210,18 @@ class UserNote(BaseModel):
     importBatchId: str | None = None
     sourceCardId: str | None = None
     status: UserNoteStatus = "draft"
+    # Legacy notes without an explicit lifecycle marker remain compatible.
+    # New intake paths override this to private before publishing.
+    shareState: UserNoteShareState = "published"
+    revision: int = 1
+    intakeId: str | None = None
+    idempotencyKey: str | None = None
     title: str
     summary: str
     body: str
+    # Canonical order for text and visible media in the customer-facing body.
+    # ``media`` remains the storage/reference registry for all media types.
+    contentBlocks: list[dict] = Field(default_factory=list)
     coverUrl: str | None = None
     media: list[dict] = Field(default_factory=list)
     categoryIds: list[str] = Field(default_factory=list)
@@ -179,7 +249,10 @@ class ShowcasePage(BaseModel):
     name: str
     description: str | None = None
     bannerUrl: str | None = None
+    sceneType: str = "notes"
     templateId: str = "featured_window"
+    intakeId: str | None = None
+    idempotencyKey: str | None = None
     shareTitle: str | None = None
     contactConfig: dict = Field(default_factory=dict)
     displayConfig: dict = Field(default_factory=dict)
@@ -187,6 +260,8 @@ class ShowcasePage(BaseModel):
     publicSnapshot: dict = Field(default_factory=dict)
     snapshotVersion: int = 0
     snapshotCreatedAt: str | None = None
+    shareSnapshot: dict = Field(default_factory=dict)
+    shareSnapshotHistory: list[dict] = Field(default_factory=list)
     publishedAt: str | None = None
     createdAt: str
     updatedAt: str
@@ -198,6 +273,7 @@ class ViewEvent(BaseModel):
     viewerUserId: str | None = None
     viewType: ViewType
     anonymousId: str | None = None
+    visitorIdentityId: str | None = None
     nickname: str | None = None
     avatarUrl: str | None = None
     shareId: str | None = None
@@ -225,6 +301,7 @@ class ShowcaseEvent(BaseModel):
     viewerUserId: str | None = None
     viewType: ViewType
     anonymousId: str | None = None
+    visitorIdentityId: str | None = None
     nickname: str | None = None
     avatarUrl: str | None = None
     sessionId: str | None = None
@@ -254,6 +331,14 @@ class LeadFollowUpLog(BaseModel):
     id: str
     content: str
     createdAt: str
+    # A follow-up record is one auditable unit: the operator's action, the
+    # selected tags, the note, and the next reminder time share one timestamp.
+    # These fields are optional so existing persisted logs remain readable.
+    action: str | None = None
+    actionLabel: str | None = None
+    tags: list[str] = Field(default_factory=list)
+    note: str | None = None
+    nextFollowUpAt: str | None = None
 
 
 class LeadReminder(BaseModel):
@@ -261,12 +346,14 @@ class LeadReminder(BaseModel):
     ownerUserId: str
     cardId: str
     viewerUserId: str
+    visitorIdentityId: str | None = None
     nickname: str
     avatarUrl: str | None = None
     status: LeadReminderStatus
     note: str | None = None
     customerPhone: str | None = None
     customerWechat: str | None = None
+    customerEmail: str | None = None
     budgetText: str | None = None
     intentLevel: str | None = None
     customerTags: list[str] = Field(default_factory=list)
@@ -277,6 +364,35 @@ class LeadReminder(BaseModel):
     conclusionReason: str | None = None
     nextFollowUpAt: str | None = None
     followUpLogs: list[LeadFollowUpLog] = Field(default_factory=list)
+    # Monotonic version and idempotency marker make radar actions durable and
+    # safe to retry after a client timeout.
+    version: int = 0
+    lastOperationId: str | None = None
+    createdAt: str
+    updatedAt: str
+
+
+class CustomerRadarSummary(BaseModel):
+    """Count-only projection used by the radar first screen.
+
+    This table intentionally contains no customer identity, contact details,
+    lead history, or event payloads.  It is a rebuildable aggregate keyed by
+    owner and workspace mode.
+    """
+
+    id: str
+    ownerUserId: str
+    mode: str = ""
+    pendingCount: int = 0
+    visitorCount: int = 0
+    followingCount: int = 0
+    abandonedCount: int = 0
+    highIntentCount: int = 0
+    interactionCount: int = 0
+    revivalCount: int = 0
+    filteredCount: int = 0
+    isDirty: bool = True
+    refreshedAt: str | None = None
     createdAt: str
     updatedAt: str
 
@@ -288,6 +404,7 @@ class CustomerAction(BaseModel):
     sourceCardId: str | None = None
     viewerUserId: str | None = None
     anonymousId: str | None = None
+    visitorIdentityId: str | None = None
     actionKey: CustomerActionKey
     actionLabel: str
     payload: dict = Field(default_factory=dict)
@@ -450,6 +567,64 @@ class SkillRun(BaseModel):
     cost: float = 0
     startedAt: str
     endedAt: str | None = None
+
+
+class AutomationDevice(BaseModel):
+    id: str
+    name: str = "Android 自动化设备"
+    platform: Literal["android"] = "android"
+    hidDeviceId: str | None = None
+    status: AutomationDeviceStatus = "offline"
+    activeWechatAccountId: str | None = None
+    capabilities: list[str] = Field(default_factory=list)
+    lastHeartbeatAt: str | None = None
+    metadata: dict = Field(default_factory=dict)
+    createdAt: str
+    updatedAt: str
+
+
+class AutomationTask(BaseModel):
+    id: str
+    functionId: str
+    deviceId: str
+    targetWechatAccountId: str | None = None
+    payload: dict = Field(default_factory=dict)
+    status: AutomationTaskStatus = "pending"
+    result: dict | None = None
+    errorMessage: str | None = None
+    attempts: int = 0
+    leaseToken: str | None = None
+    leaseExpiresAt: str | None = None
+    idempotencyKey: str | None = None
+    startedAt: str | None = None
+    finishedAt: str | None = None
+    createdAt: str
+    updatedAt: str
+
+
+class AutomationGroupCandidate(BaseModel):
+    id: str
+    deviceId: str
+    wechatAccountId: str
+    source: AutomationGroupSource = "xiaohongshu"
+    groupQRCode: str | None = None
+    groupName: str | None = None
+    wechatAccountName: str | None = None
+    savedAt: str
+    joinStatus: AutomationJoinStatus = "unknown"
+    canSend: bool | None = None
+    remark: str | None = None
+    topic: str | None = None
+    region: str | None = None
+    allowedContentTypes: list[str] = Field(default_factory=list)
+    membershipStatus: AutomationMembershipStatus = "unknown"
+    lastActivityAt: str | None = None
+    lastVerifiedAt: str | None = None
+    lastSeenAt: str | None = None
+    idempotencyKey: str | None = None
+    lastError: str | None = None
+    createdAt: str
+    updatedAt: str
 
 
 class WecomArchiveCursor(BaseModel):
@@ -721,9 +896,151 @@ class OpportunityPushDigest(BaseModel):
     readAt: str | None = None
 
 
+class MembershipOrder(BaseModel):
+    id: str
+    userId: str
+    planCode: str = "sales_scrm_monthly"
+    amountFen: int = 1990
+    status: MembershipOrderStatus = "pending"
+    paymentChannel: str = "test"
+    paymentTransactionId: str | None = None
+    referralRelationId: str | None = None
+    paidAt: str | None = None
+    refundedAt: str | None = None
+    createdAt: str
+    updatedAt: str
+
+
+class MembershipEntitlement(BaseModel):
+    id: str
+    userId: str
+    entitlementKey: str = "customer_intelligence"
+    status: MembershipEntitlementStatus = "active"
+    sourceOrderId: str
+    startsAt: str
+    expiresAt: str
+    revokedAt: str | None = None
+    createdAt: str
+    updatedAt: str
+
+
+class NotificationPreference(BaseModel):
+    id: str
+    userId: str
+    importantCustomerViewEnabled: bool = True
+    ordinaryAnonymousViewEnabled: bool = True
+    createdAt: str
+    updatedAt: str
+
+
+class WechatSubscriptionGrant(BaseModel):
+    id: str
+    userId: str
+    templateId: str
+    requestId: str = ""
+    status: WechatSubscriptionGrantStatus = "available"
+    source: str = "share"
+    authorizedAt: str
+    reservedAt: str | None = None
+    consumedAt: str | None = None
+    invalidAt: str | None = None
+    createdAt: str
+    updatedAt: str
+
+
+class WechatSubscriptionDelivery(BaseModel):
+    id: str
+    ownerUserId: str
+    grantId: str
+    templateId: str
+    notificationType: WechatSubscriptionNotificationType = "view"
+    resourceType: Literal["card", "note", "showcase"]
+    resourceId: str
+    resourceTitle: str
+    viewerType: Literal["important", "ordinary", "anonymous"]
+    viewerLabel: str
+    messageContent: str
+    threadId: str | None = None
+    messageId: str | None = None
+    eventAt: str
+    dedupeKey: str
+    page: str
+    data: dict = Field(default_factory=dict)
+    status: WechatSubscriptionDeliveryStatus = "queued"
+    attempts: int = 0
+    lastError: str | None = None
+    sentAt: str | None = None
+    createdAt: str
+    updatedAt: str
+
+
+class ReferralRelation(BaseModel):
+    id: str
+    inviterUserId: str
+    inviteeUserId: str
+    source: str = "invite_code"
+    createdAt: str
+    updatedAt: str
+
+
+class ReferralReward(BaseModel):
+    id: str
+    inviterUserId: str
+    inviteeUserId: str
+    sourceOrderId: str
+    ratioBasisPoints: int = 5000
+    amountFen: int
+    reservedFen: int = 0
+    withdrawnFen: int = 0
+    status: ReferralRewardStatus = "pending"
+    availableAt: str | None = None
+    withdrawnAt: str | None = None
+    revokedAt: str | None = None
+    createdAt: str
+    updatedAt: str
+
+
+class ReferralWithdrawal(BaseModel):
+    id: str
+    userId: str
+    amountFen: int
+    feeFen: int = 0
+    status: ReferralWithdrawalStatus = "pending"
+    rewardIds: list[str] = Field(default_factory=list)
+    rewardAllocations: dict[str, int] = Field(default_factory=dict)
+    reviewedAt: str | None = None
+    paidAt: str | None = None
+    outBillNo: str | None = None
+    transferBillNo: str | None = None
+    transferState: str | None = None
+    packageInfo: str | None = None
+    failureReason: str | None = None
+    settlementSource: str | None = None
+    settlementNote: str | None = None
+    createdAt: str
+    updatedAt: str
+
+
+class SameStyleGeneration(BaseModel):
+    id: str
+    ownerUserId: str
+    mode: Literal["reuse_content", "use_own_content"]
+    sourceNoteId: str | None = None
+    sourceShowcaseId: str | None = None
+    sourceTemplateId: str | None = None
+    generatedNoteId: str | None = None
+    generatedShowcaseId: str | None = None
+    referralRelationId: str | None = None
+    idempotencyKey: str
+    createdAt: str
+    updatedAt: str
+
+
 class AppState(BaseModel):
     users: list[User] = Field(default_factory=list)
     wecom_identity_bindings: list[WecomIdentityBinding] = Field(default_factory=list)
+    wecom_bind_card_tokens: list[WecomBindCardToken] = Field(default_factory=list)
+    wecom_bind_card_assets: list[WecomBindCardAsset] = Field(default_factory=list)
     import_batches: list[ImportBatch] = Field(default_factory=list)
     raw_messages: list[RawMessage] = Field(default_factory=list)
     cards: list[Card] = Field(default_factory=list)
@@ -733,6 +1050,7 @@ class AppState(BaseModel):
     showcase_events: list[ShowcaseEvent] = Field(default_factory=list)
     relay_entries: list[RelayEntry] = Field(default_factory=list)
     lead_reminders: list[LeadReminder] = Field(default_factory=list)
+    customer_radar_summaries: list[CustomerRadarSummary] = Field(default_factory=list)
     customer_actions: list[CustomerAction] = Field(default_factory=list)
     message_threads: list[MessageThread] = Field(default_factory=list)
     message_records: list[MessageRecord] = Field(default_factory=list)
@@ -746,6 +1064,9 @@ class AppState(BaseModel):
     sync_tasks: list[SyncTask] = Field(default_factory=list)
     sync_task_logs: list[SyncTaskLog] = Field(default_factory=list)
     skill_runs: list[SkillRun] = Field(default_factory=list)
+    automation_devices: list[AutomationDevice] = Field(default_factory=list)
+    automation_tasks: list[AutomationTask] = Field(default_factory=list)
+    automation_group_candidates: list[AutomationGroupCandidate] = Field(default_factory=list)
     wecom_archive_cursors: list[WecomArchiveCursor] = Field(default_factory=list)
     wecom_archive_messages: list[WecomArchiveMessage] = Field(default_factory=list)
     resource_wallets: list[ResourceWallet] = Field(default_factory=list)
@@ -765,3 +1086,12 @@ class AppState(BaseModel):
     supply_demand_cards: list[SupplyDemandCard] = Field(default_factory=list)
     supply_demand_applications: list[SupplyDemandApplication] = Field(default_factory=list)
     opportunity_push_digests: list[OpportunityPushDigest] = Field(default_factory=list)
+    membership_orders: list[MembershipOrder] = Field(default_factory=list)
+    membership_entitlements: list[MembershipEntitlement] = Field(default_factory=list)
+    notification_preferences: list[NotificationPreference] = Field(default_factory=list)
+    wechat_subscription_grants: list[WechatSubscriptionGrant] = Field(default_factory=list)
+    wechat_subscription_deliveries: list[WechatSubscriptionDelivery] = Field(default_factory=list)
+    referral_relations: list[ReferralRelation] = Field(default_factory=list)
+    referral_rewards: list[ReferralReward] = Field(default_factory=list)
+    referral_withdrawals: list[ReferralWithdrawal] = Field(default_factory=list)
+    same_style_generations: list[SameStyleGeneration] = Field(default_factory=list)

@@ -1,12 +1,13 @@
-const { buildTitleCoverData } = require("./title-cover");
-const { getSalesPageTemplate } = require("./sales-page-templates");
 const api = require("../services/api");
 
 const SHARE_CARD_WIDTH = 750;
 const SHARE_CARD_HEIGHT = 420;
+const SHARE_CARD_FOOTER = "资料整理助手 · 点击查看完整资料";
+const RESOURCE_DEFAULT_SHARE_WIDTH = 750;
+const RESOURCE_DEFAULT_SHARE_HEIGHT = 460;
 const BUSINESS_CARD_SHARE_WIDTH = 600;
 const BUSINESS_CARD_SHARE_HEIGHT = 480;
-const SHARE_CARD_FOOTER = "由资料整理助手生成 · 点击生成同款";
+const BUSINESS_CARD_SHARE_STYLE_VERSION = "share_card_v3";
 
 function getCanvasExportSize(baseWidth = SHARE_CARD_WIDTH, baseHeight = SHARE_CARD_HEIGHT) {
   let windowWidth = 375;
@@ -37,21 +38,20 @@ function getShareOwnerUserId() {
   }
 }
 
-async function uploadShareImage(filePath) {
+async function uploadShareImage(filePath, ownerUserId = "") {
   if (!filePath || /^https:\/\//i.test(filePath)) return filePath || "";
-  try {
-    const uploaded = await api.uploadAsset({
-      filePath,
-      mediaType: "image",
-      ownerUserId: getShareOwnerUserId()
-    });
-    return uploaded && uploaded.url ? uploaded.url : filePath;
-  } catch (error) {
-    return filePath;
+  const uploaded = await api.uploadAsset({
+    filePath,
+    mediaType: "image",
+    ownerUserId: ownerUserId || getShareOwnerUserId()
+  });
+  if (!uploaded || !uploaded.url || /^(wxfile|file):/i.test(uploaded.url)) {
+    throw new Error("分享图上传未返回可用地址");
   }
+  return uploaded.url;
 }
 
-function exportShareCanvas(page, canvasId, ctx, exportSize) {
+function exportShareCanvas(page, canvasId, ctx, exportSize, options = {}) {
   return new Promise((resolve, reject) => {
     ctx.draw(false, () => {
       wx.canvasToTempFilePath({
@@ -62,9 +62,10 @@ function exportShareCanvas(page, canvasId, ctx, exportSize) {
         destHeight: exportSize.destHeight,
         success: async (res) => {
           try {
-            resolve(await uploadShareImage(res.tempFilePath || ""));
+            const tempFilePath = res.tempFilePath || "";
+            resolve(options.upload === false ? tempFilePath : await uploadShareImage(tempFilePath, options.ownerUserId));
           } catch (error) {
-            resolve(res.tempFilePath || "");
+            reject(error);
           }
         },
         fail: reject
@@ -108,29 +109,6 @@ function drawOneLine(ctx, text, x, y, maxWidth) {
   ctx.fillText(`${next}...`, x, y);
 }
 
-function buildShareTitle(title, suffix = "") {
-  const value = String(title || "").trim();
-  if (!value) return suffix || "资料详情";
-  if (suffix && !value.includes(suffix)) return `${value}${suffix}`;
-  return value;
-}
-
-function drawNativeNoImageCover(ctx, source = {}, palette = {}) {
-  const cover = buildTitleCoverData(source.title || source.summary || "资料", source.badge || "资料");
-  const bg = ctx.createLinearGradient(0, 0, SHARE_CARD_WIDTH, SHARE_CARD_HEIGHT);
-  bg.addColorStop(0, palette.soft0 || "#f7fbff");
-  bg.addColorStop(1, palette.soft1 || "#e7f0ff");
-  ctx.setFillStyle(bg);
-  ctx.fillRect(0, 0, SHARE_CARD_WIDTH, SHARE_CARD_HEIGHT);
-
-  fillRoundRect(ctx, 154, 122, 442, 126, 28, "rgba(255,255,255,0.92)");
-  ctx.setFillStyle(palette.title || "#1f2937");
-  ctx.setTextAlign("center");
-  ctx.setFontSize(64);
-  drawOneLine(ctx, cover.focusText || "资料", 375, 204, 340);
-  ctx.setTextAlign("left");
-}
-
 function getLocalImageInfo(path) {
   return new Promise((resolve) => {
     if (!path) {
@@ -145,244 +123,368 @@ function getLocalImageInfo(path) {
   });
 }
 
-async function drawNativeImageCover(ctx, imagePath, palette = {}) {
-  if (!imagePath) return false;
-  const info = await getLocalImageInfo(imagePath);
-  const sourceWidth = Number(info && info.width) || SHARE_CARD_WIDTH;
-  const sourceHeight = Number(info && info.height) || SHARE_CARD_HEIGHT;
-  const targetRatio = SHARE_CARD_WIDTH / SHARE_CARD_HEIGHT;
-  const sourceRatio = sourceWidth / sourceHeight;
-  let sx = 0;
-  let sy = 0;
-  let sw = sourceWidth;
-  let sh = sourceHeight;
-  if (sourceRatio > targetRatio) {
-    sw = sourceHeight * targetRatio;
-    sx = (sourceWidth - sw) / 2;
-  } else if (sourceRatio < targetRatio) {
-    sh = sourceWidth / targetRatio;
-    sy = (sourceHeight - sh) / 2;
+function normalizeUnifiedShareCardModel(source = {}) {
+  const inferredLayout = source.primaryImageUrl || source.coverUrl ? "original_media" : "text_info";
+  const layoutId = String(source.layoutId || source.kind || inferredLayout).trim() || "text_info";
+  const templateKind = String(source.templateKind || {
+    text_info: "text_note",
+    image_info: "image_ocr",
+    link_info: "link",
+    property_info: "property",
+    product_info: "product",
+    service_info: "service_offer",
+    showcase_info: "showcase"
+  }[layoutId] || "text_note").trim();
+  const businessCard = layoutId === "business_card"
+    ? normalizeBusinessCardShareSource(source.businessCard || source)
+    : null;
+  const rawBlocks = Array.isArray(source.blocks)
+    ? source.blocks
+    : Array.isArray(source.contentBlocks)
+      ? source.contentBlocks
+      : [];
+  const blocks = rawBlocks
+    .filter((item) => item && ["text", "image"].includes(item.type))
+    .map((item, index) => ({
+      ...item,
+      type: item.type,
+      text: item.type === "text" ? String(item.text || "").trim() : "",
+      url: item.type === "image" ? String(item.url || item.displayUrl || "").trim() : "",
+      sortOrder: Number.isFinite(Number(item.sortOrder)) ? Number(item.sortOrder) : index
+    }))
+    .filter((item) => item.type === "image" ? Boolean(item.url) : Boolean(item.text))
+    .sort((left, right) => left.sortOrder - right.sortOrder);
+  const fallbackText = String(source.summary || source.headline || source.body || "").trim();
+  if (!blocks.some((item) => item.type === "text") && fallbackText) {
+    blocks.unshift({ id: "fallback_text", type: "text", text: fallbackText, sortOrder: -1 });
   }
-  ctx.drawImage(imagePath, sx, sy, sw, sh, 0, 0, SHARE_CARD_WIDTH, SHARE_CARD_HEIGHT);
-  return true;
-}
-
-function drawCoverFooterHook(ctx) {
-  ctx.setFillStyle("rgba(255,255,255,0.92)");
-  ctx.fillRect(0, 360, SHARE_CARD_WIDTH, 60);
-  ctx.setFillStyle("#667085");
-  ctx.setFontSize(28);
-  drawOneLine(ctx, SHARE_CARD_FOOTER, 34, 399, 690);
-}
-
-function businessCardPalette(templateId) {
-  if (templateId === "store_sales_card") {
-    return {
-      bg0: "#f3fbf6",
-      bg1: "#ffffff",
-      card0: "#eef9f1",
-      card1: "#ffffff",
-      text: "#123528",
-      subText: "#4b6659",
-      accent: "#128f4b",
-      chipBg: "#dff6e8",
-      chipText: "#0d7a3e",
-      qrBg: "#2f7d48",
-      qrText: "#ffffff",
-      border: "#bce8ce",
-      avatarBg: "#dff6e8"
-    };
+  const rawPrimaryImageUrl = String(
+    source.primaryImageUrl
+      || blocks.find((item) => item.type === "image")?.url
+      || source.coverUrl
+      || source.avatarUrl
+      || ""
+  ).trim();
+  const primaryImageUrl = rawPrimaryImageUrl && !/^(http:\/\/|blob:|data:|ftp:)/i.test(rawPrimaryImageUrl)
+    ? rawPrimaryImageUrl
+    : "";
+  if (primaryImageUrl && !blocks.some((item) => item.type === "image" && item.url === primaryImageUrl)) {
+    blocks.push({ id: "primary_image", type: "image", url: primaryImageUrl, sortOrder: -0.5 });
+    blocks.sort((left, right) => left.sortOrder - right.sortOrder);
   }
-  if (templateId === "expert_personal_brand") {
-    return {
-      bg0: "#fbf8ef",
-      bg1: "#ffffff",
-      card0: "#101216",
-      card1: "#2a2318",
-      text: "#ffffff",
-      subText: "#ead9ad",
-      accent: "#d5ad59",
-      chipBg: "rgba(213,173,89,0.18)",
-      chipText: "#f1d890",
-      qrBg: "#d5ad59",
-      qrText: "#111827",
-      border: "#ead9ad",
-      avatarBg: "#2f3440"
-    };
-  }
-  if (templateId === "wechat_simple_card") {
-    return {
-      bg0: "#f7f8fa",
-      bg1: "#ffffff",
-      card0: "#ffffff",
-      card1: "#ffffff",
-      text: "#172033",
-      subText: "#687281",
-      accent: "#1aad19",
-      chipBg: "#edf8ee",
-      chipText: "#168f2f",
-      qrBg: "#172033",
-      qrText: "#ffffff",
-      border: "#e5eaf0",
-      avatarBg: "#eef2f7"
-    };
-  }
+  const title = String(source.title || source.name || "资料详情").trim() || "资料详情";
+  const textBlocks = blocks
+    .filter((item) => item.type === "text")
+    .map((item) => item.text)
+    .filter((text) => text && text !== title);
+  const facts = (Array.isArray(source.facts) ? source.facts : [
+    source.price,
+    source.layout,
+    source.area,
+    source.address,
+    source.status,
+    source.tags
+  ])
+    .map((item) => String(item || "").trim())
+    .filter(Boolean)
+    .filter((item, index, list) => list.indexOf(item) === index)
+    .slice(0, 3);
   return {
-    bg0: "#eef6ff",
-    bg1: "#ffffff",
-    card0: "#0f3365",
-    card1: "#193f77",
-    text: "#ffffff",
-    subText: "#d8e7ff",
-    accent: "#f1cc6b",
-    chipBg: "rgba(241,204,107,0.2)",
-    chipText: "#ffe29a",
-    qrBg: "#f1cc6b",
-    qrText: "#152542",
-    border: "#d7e7ff",
-    avatarBg: "#dbeafe"
+    layoutId,
+    templateKind,
+    businessCard,
+    title,
+    badge: String(source.badge || source.typeLabel || "资料").trim() || "资料",
+    blocks,
+    textBlocks,
+    facts,
+    propertyData: source.propertyData || {},
+    productData: source.productData || {},
+    serviceData: source.serviceData || {},
+    linkData: source.linkData || {},
+    collectionData: source.collectionData || {},
+    primaryImageUrl,
+    imageCount: blocks.filter((item) => item.type === "image").length,
+    footer: String(source.footer || SHARE_CARD_FOOTER).trim() || SHARE_CARD_FOOTER
   };
 }
 
-function drawCircleAvatar(ctx, imagePath, card, x, y, size, palette) {
-  const cx = x + size / 2;
-  const cy = y + size / 2;
-  const imageInset = 9;
-  const imageSize = size - imageInset * 2;
+function businessCardPalette(templateId) {
+  return {
+    bg0: "#f4f7fb", bg1: "#ffffff", card0: "#f0f5fb", card1: "#fbfcfe",
+    text: "#101828", subText: "#667085", accent: "#1677ff", chipBg: "rgba(22,119,255,.09)",
+    chipText: "#166fe3", border: "#dfe7f2", avatarBg: "#dce8f8"
+  };
+}
+
+async function drawBusinessCardAvatar(ctx, imagePath, card, x, y, size, palette) {
+  const centerX = x + size / 2;
+  const centerY = y + size / 2;
+  const inset = 9;
+  const imageX = x + inset;
+  const imageY = y + inset;
+  const imageSize = size - inset * 2;
 
   ctx.setFillStyle("rgba(255,255,255,0.96)");
   ctx.beginPath();
-  ctx.arc(cx, cy, size / 2 + 8, 0, Math.PI * 2);
+  ctx.arc(centerX, centerY, size / 2 + 8, 0, Math.PI * 2);
   ctx.fill();
   ctx.setStrokeStyle(palette.accent || "#1677ff");
   ctx.setLineWidth(3);
   ctx.beginPath();
-  ctx.arc(cx, cy, size / 2 + 5, 0, Math.PI * 2);
+  ctx.arc(centerX, centerY, size / 2 + 5, 0, Math.PI * 2);
   ctx.stroke();
 
   ctx.save();
   ctx.beginPath();
-  ctx.arc(cx, cy, imageSize / 2, 0, Math.PI * 2);
+  ctx.arc(centerX, centerY, imageSize / 2, 0, Math.PI * 2);
   ctx.clip();
   if (imagePath) {
-    ctx.drawImage(imagePath, x + imageInset, y + imageInset, imageSize, imageSize);
+    const info = await getLocalImageInfo(imagePath);
+    const sourceWidth = Number(info && info.width) || imageSize;
+    const sourceHeight = Number(info && info.height) || imageSize;
+    const scale = Math.min(imageSize / sourceWidth, imageSize / sourceHeight);
+    const drawWidth = Math.max(1, Math.round(sourceWidth * scale));
+    const drawHeight = Math.max(1, Math.round(sourceHeight * scale));
+    ctx.drawImage(
+      (info && info.path) || imagePath,
+      Math.round(imageX + (imageSize - drawWidth) / 2),
+      Math.round(imageY + (imageSize - drawHeight) / 2),
+      drawWidth,
+      drawHeight
+    );
   } else {
-    ctx.setFillStyle("#f8fafc");
-    ctx.fillRect(x + imageInset, y + imageInset, imageSize, imageSize);
-    ctx.setFillStyle(palette.accent);
+    ctx.setFillStyle(palette.avatarBg || "#f8fafc");
+    ctx.fillRect(imageX, imageY, imageSize, imageSize);
+    ctx.setFillStyle(palette.accent || "#1677ff");
     ctx.setTextAlign("center");
     ctx.setFontSize(Math.round(imageSize * 0.42));
-    ctx.fillText(card.initial || "名", cx, y + imageInset + imageSize * 0.66);
+    ctx.fillText(card.initial || "名", centerX, imageY + imageSize * 0.66);
     ctx.setTextAlign("left");
   }
   ctx.restore();
   ctx.setStrokeStyle("rgba(255,255,255,0.95)");
   ctx.setLineWidth(2);
   ctx.beginPath();
-  ctx.arc(cx, cy, imageSize / 2, 0, Math.PI * 2);
+  ctx.arc(centerX, centerY, imageSize / 2, 0, Math.PI * 2);
   ctx.stroke();
 }
 
-function drawBusinessCardPreview(ctx, card, avatarPath) {
+async function drawBusinessCardLayout(ctx, card, avatarPath, footer) {
   const width = BUSINESS_CARD_SHARE_WIDTH;
   const height = BUSINESS_CARD_SHARE_HEIGHT;
   const palette = businessCardPalette(card.templateId);
-  const bg = ctx.createLinearGradient(0, 0, width, height);
-  bg.addColorStop(0, palette.bg0);
-  bg.addColorStop(1, palette.bg1);
-  ctx.setFillStyle(bg);
+  const background = ctx.createLinearGradient(0, 0, width, height);
+  background.addColorStop(0, palette.bg0);
+  background.addColorStop(1, palette.bg1);
+  ctx.setFillStyle(background);
   ctx.fillRect(0, 0, width, height);
 
-  const outerX = 42;
-  const outerY = 42;
-  const outerW = 516;
-  const outerH = 370;
-  const innerX = 68;
-  const innerY = 68;
-  const innerW = 464;
-  const innerH = 252;
-
+  const outerX = 36;
+  const outerY = 32;
+  const outerW = 528;
+  const outerH = 358;
+  const innerX = 56;
+  const innerY = 52;
+  const innerW = 488;
+  const innerH = 270;
   fillRoundRect(ctx, outerX, outerY, outerW, outerH, 26, "#ffffff");
   ctx.setStrokeStyle(palette.border);
   ctx.setLineWidth(2);
   drawRoundRect(ctx, outerX, outerY, outerW, outerH, 26);
   ctx.stroke();
 
-  const cardBg = ctx.createLinearGradient(innerX, innerY, innerX + innerW, innerY + innerH);
-  cardBg.addColorStop(0, palette.card0);
-  cardBg.addColorStop(1, palette.card1);
-  fillRoundRect(ctx, innerX, innerY, innerW, innerH, 22, palette.card0);
+  const cardBackground = ctx.createLinearGradient(innerX, innerY, innerX + innerW, innerY + innerH);
+  cardBackground.addColorStop(0, palette.card0);
+  cardBackground.addColorStop(1, palette.card1);
   drawRoundRect(ctx, innerX, innerY, innerW, innerH, 22);
-  ctx.setFillStyle(cardBg);
+  ctx.setFillStyle(cardBackground);
   ctx.fill();
-
-  ctx.setFillStyle("rgba(255,255,255,0.14)");
+  ctx.setFillStyle("rgba(22,119,255,0.08)");
   ctx.beginPath();
-  ctx.arc(innerX + innerW - 46, innerY + 42, 64, 0, Math.PI * 2);
+  ctx.arc(innerX + innerW - 34, innerY + 36, 72, 0, Math.PI * 2);
   ctx.fill();
 
-  drawCircleAvatar(ctx, avatarPath, card, innerX + 28, innerY + 46, 92, palette);
-
+  await drawBusinessCardAvatar(ctx, avatarPath, card, innerX + 28, innerY + 54, 100, palette);
   ctx.setFillStyle(palette.text);
-  ctx.setFontSize(46);
-  drawOneLine(ctx, card.name || "电子名片", innerX + 146, innerY + 74, 244);
-
+  ctx.setFontSize(42);
+  drawOneLine(ctx, card.name || "你的姓名", innerX + 158, innerY + 88, 292);
   ctx.setFillStyle(palette.subText);
   ctx.setFontSize(24);
-  drawOneLine(ctx, card.role || "个人顾问", innerX + 148, innerY + 112, 220);
-
-  fillRoundRect(ctx, innerX + 148, innerY + 128, 140, 34, 17, palette.chipBg);
-  ctx.setFillStyle(palette.chipText);
-  ctx.setFontSize(20);
-  drawOneLine(ctx, card.templateName || "电子名片", innerX + 170, innerY + 152, 96);
-
+  drawOneLine(ctx, card.role || "职位 / 身份", innerX + 160, innerY + 126, 276);
+  ctx.setStrokeStyle("#e5eaf1");
+  ctx.setLineWidth(2);
+  ctx.beginPath();
+  ctx.moveTo(innerX + 160, innerY + 148);
+  ctx.lineTo(innerX + innerW - 28, innerY + 148);
+  ctx.stroke();
   ctx.setFillStyle(palette.subText);
   ctx.setFontSize(23);
-  drawOneLine(ctx, card.company || "个人服务", innerX + 30, innerY + 196, 300);
-  drawOneLine(ctx, card.contactLine || "电话 / 微信", innerX + 30, innerY + 232, 332);
+  drawOneLine(ctx, card.company || "个人服务", innerX + 30, innerY + 196, innerW - 60);
+  drawOneLine(ctx, card.serviceScope || "用一句话告诉客户你能提供什么", innerX + 30, innerY + 228, innerW - 60);
+  drawOneLine(ctx, card.contactLine || "电话 / 微信", innerX + 30, innerY + 260, innerW - 60);
 
-  fillRoundRect(ctx, innerX + innerW - 72, innerY + 154, 52, 64, 10, palette.qrBg);
-  ctx.setFillStyle(palette.qrText);
-  ctx.setTextAlign("center");
-  ctx.setFontSize(22);
-  ctx.fillText("码", innerX + innerW - 46, innerY + 196);
-  ctx.setTextAlign("left");
-
-  ctx.setFillStyle("#111827");
-  ctx.setFontSize(34);
-  drawOneLine(ctx, card.templateName || "电子名片", outerX + 28, innerY + innerH + 52, 190);
-  ctx.setFillStyle("#667085");
-  ctx.setFontSize(23);
-  drawOneLine(ctx, card.serviceScope || card.role || "适合快速转发和客户沟通", outerX + 28, innerY + innerH + 88, 360);
-  fillRoundRect(ctx, outerX + outerW - 96, innerY + innerH + 42, 66, 40, 20, "#eef6ff");
   ctx.setFillStyle("#1677ff");
-  ctx.setFontSize(22);
-  drawOneLine(ctx, "查看", outerX + outerW - 78, innerY + innerH + 69, 40);
-
-  ctx.setFillStyle("#667085");
   ctx.setFontSize(24);
-  drawOneLine(ctx, SHARE_CARD_FOOTER, 62, 450, 476);
+  drawOneLine(ctx, footer || SHARE_CARD_FOOTER, 62, 448, 476);
 }
 
-async function generateNativeShareImage(page, canvasId, source = {}) {
-  const exportSize = getCanvasExportSize();
-  const ctx = wx.createCanvasContext(canvasId, page);
-  const coverPath = await downloadCanvasImage(source.coverUrl || source.avatarUrl || "");
-  const palette = source.palette || {};
+function drawWrappedText(ctx, text, x, y, maxWidth, lineHeight, maxLines = 2) {
+  const value = String(text || "").trim();
+  if (!value) return 0;
+  const lines = [];
+  const paragraphs = value.split(/\r?\n/);
+  paragraphs.forEach((paragraph) => {
+    let line = "";
+    for (const char of paragraph) {
+      const candidate = `${line}${char}`;
+      if (line && ctx.measureText(candidate).width > maxWidth) {
+        lines.push(line);
+        line = char;
+      } else {
+        line = candidate;
+      }
+    }
+    if (line) lines.push(line);
+  });
+  if (!lines.length) return 0;
+  if (lines.length > maxLines) {
+    lines.length = maxLines;
+    let last = lines[maxLines - 1];
+    while (last && ctx.measureText(`${last}...`).width > maxWidth) last = last.slice(0, -1);
+    lines[maxLines - 1] = `${last}...`;
+  }
+  lines.forEach((line, index) => ctx.fillText(line, x, y + index * lineHeight));
+  return lines.length * lineHeight;
+}
 
+function typedInfoPalette(layoutId) {
+  return {
+    text_info: { accent: "#1677ff", accentText: "#1769c2", soft: "#e8f2ff", bg0: "#eef7ff", bg1: "#f8fbff", icon: "文" },
+    image_info: { accent: "#7b61ff", accentText: "#5946bd", soft: "#f0edff", bg0: "#f3f1ff", bg1: "#fbfaff", icon: "图" },
+    link_info: { accent: "#168b9b", accentText: "#147381", soft: "#e4f7f7", bg0: "#effafa", bg1: "#f8fcfb", icon: "链" },
+    property_info: { accent: "#1b9b68", accentText: "#177b54", soft: "#e6f7ef", bg0: "#eefaf4", bg1: "#fbfefc", icon: "房" },
+    product_info: { accent: "#e58c28", accentText: "#aa6417", soft: "#fff1df", bg0: "#fff7eb", bg1: "#fffdf9", icon: "品" },
+    service_info: { accent: "#4775dc", accentText: "#3157a9", soft: "#eaf0ff", bg0: "#f0f5ff", bg1: "#fbfcff", icon: "服" },
+    showcase_info: { accent: "#168b76", accentText: "#14705f", soft: "#e4f7f1", bg0: "#effaf7", bg1: "#fbfefc", icon: "合" }
+  }[layoutId] || { accent: "#1677ff", accentText: "#1769c2", soft: "#e8f2ff", bg0: "#eef7ff", bg1: "#f8fbff", icon: "资" };
+}
+
+function drawInfoFactPills(ctx, facts, x, y, maxWidth, palette) {
+  let cursor = x;
+  (facts || []).filter(Boolean).slice(0, 3).forEach((fact) => {
+    const text = String(fact).trim();
+    if (!text || cursor >= x + maxWidth) return;
+    ctx.setFontSize(21);
+    const pillWidth = Math.min(206, Math.max(92, ctx.measureText(text).width + 32));
+    if (cursor + pillWidth > x + maxWidth) return;
+    fillRoundRect(ctx, cursor, y - 28, pillWidth, 42, 15, palette.soft);
+    ctx.setFillStyle(palette.accentText);
+    drawOneLine(ctx, text, cursor + 16, y, pillWidth - 32);
+    cursor += pillWidth + 12;
+  });
+}
+
+function drawTypedInfoLayout(ctx, model) {
+  const width = RESOURCE_DEFAULT_SHARE_WIDTH;
+  const height = RESOURCE_DEFAULT_SHARE_HEIGHT;
+  const layoutId = model.layoutId === "resource_default" ? "text_info" : model.layoutId;
+  const palette = typedInfoPalette(layoutId);
+  const background = ctx.createLinearGradient(0, 0, width, height);
+  background.addColorStop(0, palette.bg0);
+  background.addColorStop(1, palette.bg1);
+  ctx.setFillStyle(background);
+  ctx.fillRect(0, 0, width, height);
+
+  fillRoundRect(ctx, 32, 28, 686, 404, 30, "#ffffff");
+  ctx.setStrokeStyle("#dbe8e1");
+  ctx.setLineWidth(2);
+  drawRoundRect(ctx, 32, 28, 686, 404, 30);
+  ctx.stroke();
+
+  fillRoundRect(ctx, 64, 60, 12, 54, 6, palette.accent);
+  const badge = model.badge || "资料";
+  ctx.setFillStyle(palette.soft);
+  ctx.setFontSize(23);
+  const badgeWidth = Math.min(190, Math.max(92, ctx.measureText(badge).width + 34));
+  fillRoundRect(ctx, 92, 64, badgeWidth, 46, 16, palette.soft);
+  ctx.setFillStyle(palette.accentText);
+  ctx.fillText(badge, 109, 95);
+
+  ctx.setFillStyle("#667085");
+  ctx.setFontSize(21);
+  drawOneLine(ctx, "资料整理助手", 542, 94, 140);
+
+  fillRoundRect(ctx, 64, 142, 96, 96, 24, palette.soft);
+  ctx.setFillStyle(palette.accentText);
+  ctx.setTextAlign("center");
+  ctx.setFontSize(42);
+  ctx.fillText(palette.icon, 112, 202);
+  ctx.setTextAlign("left");
+
+  ctx.setFillStyle("#102a1d");
+  ctx.setFontSize(38);
+  drawWrappedText(ctx, model.title || "资料详情", 190, 176, 500, 48, 2);
+
+  const summary = (model.textBlocks || []).filter(Boolean).slice(0, 2).join(" ");
+  ctx.setFillStyle("#667085");
+  ctx.setFontSize(24);
+  let detail = summary || "打开小程序查看完整资料";
+  if (layoutId === "property_info") {
+    detail = model.propertyData.highlights || model.propertyData.address || detail;
+  } else if (layoutId === "product_info") {
+    detail = model.productData.headline || detail;
+  } else if (layoutId === "service_info") {
+    detail = model.serviceData.headline || detail;
+  } else if (layoutId === "link_info") {
+    detail = model.linkData.sourceDescription || model.linkData.sourceDomain || detail;
+  } else if (layoutId === "showcase_info") {
+    detail = model.collectionData.description || detail;
+  }
+  drawWrappedText(ctx, detail, 190, 270, 500, 36, 2);
+
+  const facts = (model.facts || []).filter(Boolean).slice(0, 3);
+  drawInfoFactPills(ctx, facts, 64, 352, 622, palette);
+
+  ctx.setStrokeStyle("#e5eee9");
+  ctx.setLineWidth(2);
+  ctx.beginPath();
+  ctx.moveTo(64, 378);
+  ctx.lineTo(686, 378);
+  ctx.stroke();
+  ctx.setFillStyle(palette.accentText);
+  ctx.setFontSize(22);
+  drawOneLine(ctx, model.footer || SHARE_CARD_FOOTER, 64, 410, 622);
+}
+
+async function generateUnifiedShareCardImage(page, canvasId, source = {}, options = {}) {
+  const model = normalizeUnifiedShareCardModel(source);
+  const isBusinessCard = model.layoutId === "business_card" && model.businessCard;
+  if (!isBusinessCard && model.primaryImageUrl) {
+    const originalUrl = String(model.primaryImageUrl || "").trim();
+    if (/^https:\/\//i.test(originalUrl)) return originalUrl;
+    const localPath = await downloadCanvasImage(originalUrl);
+    if (!localPath) throw new Error("主图读取失败，未生成分享图");
+    return uploadShareImage(localPath, options.ownerUserId);
+  }
+  const ctx = wx.createCanvasContext(canvasId, page);
+  const coverPath = isBusinessCard && model.primaryImageUrl ? await downloadCanvasImage(model.primaryImageUrl) : "";
+  if (isBusinessCard && model.primaryImageUrl && !coverPath) {
+    throw new Error("分享图图片下载失败，未生成不完整卡片");
+  }
+  const baseWidth = isBusinessCard ? BUSINESS_CARD_SHARE_WIDTH : RESOURCE_DEFAULT_SHARE_WIDTH;
+  const baseHeight = isBusinessCard ? BUSINESS_CARD_SHARE_HEIGHT : RESOURCE_DEFAULT_SHARE_HEIGHT;
+  const exportSize = getCanvasExportSize(baseWidth, baseHeight);
   ctx.save();
   ctx.scale(exportSize.scale, exportSize.scale);
 
-  ctx.setFillStyle("#ffffff");
-  ctx.fillRect(0, 0, SHARE_CARD_WIDTH, SHARE_CARD_HEIGHT);
-
-  if (!(await drawNativeImageCover(ctx, coverPath, palette))) {
-    drawNativeNoImageCover(ctx, source, palette);
+  if (isBusinessCard) {
+    await drawBusinessCardLayout(ctx, model.businessCard, coverPath, model.footer);
+  } else {
+    drawTypedInfoLayout(ctx, model);
   }
-  drawCoverFooterHook(ctx);
-
   ctx.restore();
-  return exportShareCanvas(page, canvasId, ctx, exportSize);
+  return exportShareCanvas(page, canvasId, ctx, exportSize, options);
 }
 
 function downloadCanvasImage(url) {
@@ -419,25 +521,86 @@ function normalizeBusinessCardShareSource(source = {}) {
   const data = source.structuredData || {};
   const preview = source.businessCardPreview || {};
   const name = source.name || preview.name || data.name || source.title || "电子名片";
-  const role = source.role || preview.role || data.title || "个人顾问";
-  const company = source.company || preview.company || data.company || "个人服务";
+  const role = source.role || preview.role || data.title || "";
+  const company = source.company || preview.company || data.company || "";
   const phone = source.phone || data.phone || source.contactPhone || "";
   const wechat = source.wechat || data.wechat || data.contactWechat || source.contactWechat || "";
-  const serviceScope = source.serviceScope || preview.serviceScope || data.serviceScope || data.headline || source.summary || "微信资料整理 / 私域效率工具";
+  const email = source.email || data.email || data.mail || "";
+  const serviceScope = source.serviceScope || preview.serviceScope || data.serviceScope || data.headline || source.summary || "";
   const templateId = source.templateId || source.displayTemplate || data.displayTemplate || "";
-  const template = getSalesPageTemplate(templateId);
-  const templatePreview = (template && template.preview) || {};
+  const explicitContactLine = String(source.contactLine || preview.contactLine || "").trim();
+  const contactValues = [phone, wechat, email].map((value) => String(value || "").trim()).filter(Boolean);
+  const uniqueContactValues = Array.from(new Set(contactValues));
+  const contactLine = uniqueContactValues.length
+    ? [
+        phone ? (wechat && phone === wechat ? `电话 / 微信 ${phone}` : `电话 ${phone}`) : "",
+        wechat && phone !== wechat ? `微信 ${wechat}` : "",
+        email ? `邮箱 ${email}` : ""
+      ].filter(Boolean).join(" · ")
+    : explicitContactLine;
   return {
+    layoutId: "business_card",
     name,
     role,
     company,
     serviceScope,
-    contactLine: source.contactLine || preview.contactLine || [phone, wechat].filter(Boolean).join(" · ") || "电话 / 微信",
-    avatarUrl: source.avatarUrl || preview.avatarUrl || data.avatarUrl || source.coverUrl || templatePreview.avatarUrl || "",
+    contactLine,
+    avatarUrl: source.avatarUrl || preview.avatarUrl || data.avatarUrl || source.coverUrl || "",
     initial: String(source.initial || preview.initial || name || "名").slice(0, 1),
     templateName: source.templateName || source.displayTemplateName || data.displayTemplateName || "电子名片",
     templateId,
-    tone: source.tone || data.tone || ""
+    tone: source.tone || data.tone || "",
+    shareRendererVersion: source.shareRendererVersion || BUSINESS_CARD_SHARE_STYLE_VERSION
+  };
+}
+
+function buildBusinessCardShareSource(card = {}, user = {}) {
+  const config = card.visibilityConfig || {};
+  const data = config.structuredData || {};
+  const preview = card.businessCardPreview || {};
+  const ownerProfile = card.ownerProfile || {};
+  const salesProfile = user.salesProfile || {};
+  const displayConfig = config.displayConfig || {};
+  const serviceKeywords = Array.isArray(data.serviceKeywords)
+    ? data.serviceKeywords.filter(Boolean).join(" · ")
+    : "";
+  const templateId = displayConfig.styleId
+    || preview.templateId
+    || config.displayTemplate
+    || data.displayTemplate
+    || "business_blue";
+  const templateNames = {
+    business_blue: "商务蓝",
+    clean_white: "简洁白",
+    warm_gold: "暖灰金",
+    fresh_green: "清新绿"
+  };
+  const avatarUrl = salesProfile.avatarUrl
+    || ownerProfile.avatarUrl
+    || preview.avatarUrl
+    || data.avatarUrl
+    || user.avatarUrl
+    || card.coverDisplayUrl
+    || card.coverUrl
+    || "";
+  const phone = salesProfile.phone || ownerProfile.phone || preview.phone || data.phone || card.phone || user.phone || "";
+  const wechat = salesProfile.wechat || ownerProfile.wechat || preview.wechat || data.wechat || data.contactWechat || user.wechat || "";
+  const email = salesProfile.email || ownerProfile.email || preview.email || data.email || data.mail || "";
+  return {
+    layoutId: "business_card",
+    name: salesProfile.displayName || ownerProfile.displayName || preview.name || data.name || user.nickname || card.title || "电子名片",
+    role: salesProfile.jobTitle || ownerProfile.jobTitle || preview.role || data.title || "",
+    company: salesProfile.company || ownerProfile.company || preview.company || data.company || "",
+    phone,
+    wechat,
+    email,
+    serviceScope: data.headline || preview.serviceScope || data.serviceScope || serviceKeywords || salesProfile.city || ownerProfile.city || data.city || "",
+    avatarUrl,
+    coverUrl: avatarUrl,
+    templateId,
+    templateName: displayConfig.styleName || config.displayTemplateName || preview.templateName || templateNames[templateId] || "电子名片",
+    structuredData: data,
+    shareRendererVersion: BUSINESS_CARD_SHARE_STYLE_VERSION
   };
 }
 
@@ -445,50 +608,6 @@ function buildBusinessCardShareTitle(card) {
   const normalized = normalizeBusinessCardShareSource(card);
   if (normalized.name && normalized.name !== "电子名片") return `${normalized.name}的电子名片`;
   return [normalized.role, normalized.company].filter(Boolean).join(" · ") || "电子名片";
-}
-
-function normalizePropertyShareSource(source = {}) {
-  const data = source.structuredData || {};
-  const title = source.title || data.title || data.community || "房源资料";
-  const price = source.price || data.price || "";
-  const layout = source.layout || data.layout || "";
-  const area = source.area || data.area || "";
-  const address = source.address || data.address || data.businessArea || "";
-  const coverUrl = source.coverUrl || data.coverUrl || "";
-  return {
-    title,
-    price: price && !String(price).startsWith("租金") ? `租金 ${price}` : price,
-    layout: layout && !String(layout).startsWith("户型") ? `户型 ${layout}` : layout,
-    area,
-    address,
-    coverUrl,
-    locationLine: [address, data.subway, data.businessArea].filter(Boolean).join(" · "),
-    contactLine: source.contactLine || data.contact || data.phone || data.contactPhone || ""
-  };
-}
-
-async function generatePropertyShareImage(page, canvasId, source) {
-  const property = normalizePropertyShareSource(source);
-  return generateNativeShareImage(page, canvasId, {
-    title: property.title || "房源资料",
-    coverUrl: property.coverUrl,
-    badge: "房源",
-    palette: { soft0: "#edf7ff", soft1: "#dbeafe", title: "#1765c2" }
-  });
-}
-
-async function generateBusinessCardShareImage(page, canvasId, source) {
-  const card = normalizeBusinessCardShareSource(source);
-  const exportSize = getCanvasExportSize(BUSINESS_CARD_SHARE_WIDTH, BUSINESS_CARD_SHARE_HEIGHT);
-  const ctx = wx.createCanvasContext(canvasId, page);
-  const downloadedAvatar = await downloadCanvasImage(card.avatarUrl || "");
-  const avatarInfo = await getLocalImageInfo(downloadedAvatar);
-  const drawableAvatar = avatarInfo ? (avatarInfo.path || downloadedAvatar) : "";
-  ctx.save();
-  ctx.scale(exportSize.scale, exportSize.scale);
-  drawBusinessCardPreview(ctx, card, drawableAvatar);
-  ctx.restore();
-  return exportShareCanvas(page, canvasId, ctx, exportSize);
 }
 
 function normalizeServiceOfferShareSource(source = {}) {
@@ -516,36 +635,14 @@ function buildServiceOfferShareTitle(source) {
   return [card.title, card.headline].filter(Boolean).join(" · ") || "服务方案";
 }
 
-async function generateServiceOfferShareImage(page, canvasId, source) {
-  const card = normalizeServiceOfferShareSource(source);
-  return generateNativeShareImage(page, canvasId, {
-    title: card.title || "服务方案",
-    coverUrl: card.coverUrl,
-    badge: "方案",
-    palette: { soft0: "#eef7ff", soft1: "#e8f2ff", title: "#1761a0" }
-  });
-}
-
-async function generateTitleShareImage(page, canvasId, source = {}) {
-  const shareTargetLabel = String(source.shareTargetLabel || source.badge || "").includes("合集") ? "合集" : "资料";
-  return generateNativeShareImage(page, canvasId, {
-    title: buildShareTitle(source.title || "资料详情", shareTargetLabel === "合集" ? "合集" : ""),
-    coverUrl: source.coverUrl || "",
-    badge: source.badge || shareTargetLabel,
-    palette: shareTargetLabel === "合集"
-      ? { soft0: "#fff8ef", soft1: "#ffedd5", title: "#9a3412" }
-      : { soft0: "#f7fbff", soft1: "#e7f0ff", title: "#1765c2" }
-  });
-}
-
 module.exports = {
   SHARE_CARD_WIDTH,
   SHARE_CARD_HEIGHT,
+  generateUnifiedShareCardImage,
+  normalizeUnifiedShareCardModel,
   buildBusinessCardShareTitle,
   buildServiceOfferShareTitle,
-  generatePropertyShareImage,
-  generateBusinessCardShareImage,
-  generateServiceOfferShareImage,
-  generateTitleShareImage,
-  normalizeBusinessCardShareSource
+  buildBusinessCardShareSource,
+  normalizeBusinessCardShareSource,
+  BUSINESS_CARD_SHARE_STYLE_VERSION
 };

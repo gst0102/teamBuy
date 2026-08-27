@@ -1882,7 +1882,7 @@ Page({
       wx.showToast({ title: "资料状态已变化，请刷新后再发客户", icon: "none" });
       return {
         title,
-        path: "/pages/library/index",
+        path: `/pages/note-preview/index?id=${encodeURIComponent(cardNoteId || requestedNoteId || "")}`,
         ...(imageUrl ? { imageUrl } : {})
       };
     }
@@ -1891,7 +1891,7 @@ Page({
       wx.showToast({ title: "资料分享图正在准备，请稍后再发", icon: "none" });
       return {
         title: "资料分享图准备中，请稍后再试",
-        path: "/pages/library/index"
+        path: `/pages/note-preview/index?id=${encodeURIComponent(noteId)}`
       };
     }
     const shareId = createNoteShareId(noteId);

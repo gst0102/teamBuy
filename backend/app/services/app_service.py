@@ -18,7 +18,7 @@ import httpx
 from fastapi import HTTPException, status
 
 from app.core.config import settings
-from app.models.domain import AppState, Card, CardMedia, Category, CustomerAction, ImportBatch, LeadFollowUpLog, LeadReminder, MediaAsset, MediaAssetRef, MembershipEntitlement, MembershipOrder, MessageRecord, MessageThread, MediaRetryJob, NotificationPreference, OpportunityLead, OpportunityLeadContact, OpportunityLeadFollowup, OpportunityLeadSave, OpportunityLeadSource, OpportunityPushDigest, OpportunitySubscription, RawMessage, ReferralRelation, ReferralReward, ReferralWithdrawal, RelayConfig, RelayEntry, ResourceFreeQuota, ResourcePointLedger, ResourceUnlockRecord, ResourceWallet, ResponsePackage, ResponsePackageEvent, ResponsePackageItem, SameStyleGeneration, ShowcaseEvent, ShowcaseItem, ShowcasePage, SkillRun, SupplyDemandApplication, SupplyDemandCard, SyncCursor, Topic, User, UserNote, ViewEvent, WechatSubscriptionDelivery, WechatSubscriptionGrant, WecomArchiveCursor, WecomArchiveMessage, WecomBindCardToken, WecomIdentityBinding
+from app.models.domain import AppState, Card, CardMedia, Category, CustomerAction, CustomerRadarSummary, ImportBatch, LeadFollowUpLog, LeadReminder, MediaAsset, MediaAssetRef, MembershipEntitlement, MembershipOrder, MessageRecord, MessageThread, MediaRetryJob, NotificationPreference, OpportunityLead, OpportunityLeadContact, OpportunityLeadFollowup, OpportunityLeadSave, OpportunityLeadSource, OpportunityPushDigest, OpportunitySubscription, RawMessage, ReferralRelation, ReferralReward, ReferralWithdrawal, RelayConfig, RelayEntry, ResourceFreeQuota, ResourcePointLedger, ResourceUnlockRecord, ResourceWallet, ResponsePackage, ResponsePackageEvent, ResponsePackageItem, SameStyleGeneration, ShowcaseEvent, ShowcaseItem, ShowcasePage, SkillRun, SupplyDemandApplication, SupplyDemandCard, SyncCursor, Topic, User, UserNote, ViewEvent, WechatSubscriptionDelivery, WechatSubscriptionGrant, WecomArchiveCursor, WecomArchiveMessage, WecomBindCardToken, WecomIdentityBinding
 from app.schemas.auth import MockLoginRequest, UserProfileUpdateRequest, WechatLoginRequest
 from app.schemas.categories import CategoryCreateRequest
 from app.schemas.cards import CardCreateRequest, CardUpdateRequest, CreateRelayRequest, LeadReminderUpdateRequest, LeadReminderUpsertRequest, RecordViewRequest
@@ -2686,7 +2686,8 @@ class AppService:
             }
         membership = self.get_membership_status(owner_user_id)
         payment_required = bool(membership.get("paymentRequired", True))
-        cache_key = (owner_user_id or "", requester_user_id or "", str(mode or ""))
+        mode_key = str(mode or "").strip()
+        cache_key = (owner_user_id or "", requester_user_id or "", mode_key)
         now = time.monotonic()
         cached = self._customer_intelligence_cache.get(cache_key)
         cached_matches_access = cached and bool(cached[1].get("locked", True)) == (payment_required and not membership["active"])
@@ -2776,7 +2777,8 @@ class AppService:
                 "summary": {},
             }
 
-        cache_key = (owner_user_id or "", requester_user_id or "", str(mode or ""))
+        mode_key = str(mode or "").strip()
+        cache_key = (owner_user_id or "", requester_user_id or "", mode_key)
         now = time.monotonic()
         cached = self._customer_intelligence_summary_cache.get(cache_key)
         cached_matches_access = cached and bool(cached[1].get("locked", True)) == (payment_required and not membership["active"])
@@ -2791,8 +2793,8 @@ class AppService:
         if cached:
             self._customer_intelligence_summary_cache.pop(cache_key, None)
 
-        all_leads = self.repo.list_lead_reminders(owner_user_id)
         if payment_required and not membership["active"]:
+            all_leads = self.repo.list_lead_reminders(owner_user_id)
             response = {
                 "featureEnabled": True,
                 "paymentRequired": True,
@@ -2807,12 +2809,25 @@ class AppService:
             self._remember_customer_intelligence_summary_cache(cache_key, response, now)
             return response
 
+        persisted_summary = None
+        if not force_refresh:
+            persisted_summary = self.repo.get_customer_radar_summary(owner_user_id, mode_key)
+            if persisted_summary and not persisted_summary.isDirty:
+                response = self._customer_radar_summary_response(
+                    persisted_summary,
+                    membership,
+                    payment_required,
+                )
+                self._remember_customer_intelligence_summary_cache(cache_key, response, now)
+                return response
+
+        all_leads = self.repo.list_lead_reminders(owner_user_id)
         notes = [item for item in self.repo.list_user_notes(owner_user_id, include_deleted=False) if item.status != "deleted"]
-        if mode == "property":
+        if mode_key == "property":
             notes = [item for item in notes if self._is_property_note(item)]
-        elif mode == "groupbuy":
+        elif mode_key == "groupbuy":
             notes = [item for item in notes if self._is_groupbuy_note(item)]
-        elif mode == "service":
+        elif mode_key == "service":
             notes = [item for item in notes if self._is_service_note(item)]
         note_ids = {item.id for item in notes}
         note_source_ids = note_ids | {item.sourceCardId for item in notes if item.sourceCardId}
@@ -2891,6 +2906,12 @@ class AppService:
             },
             "source": "lightweight_radar_projection",
         }
+        self._save_customer_radar_summary(
+            owner_user_id,
+            mode_key,
+            response,
+            existing=persisted_summary,
+        )
         self._remember_customer_intelligence_summary_cache(cache_key, response, now)
         return response
 
@@ -13580,6 +13601,7 @@ class AppService:
         if not owner_user_id:
             self._customer_intelligence_cache.clear()
             self._customer_intelligence_summary_cache.clear()
+            self.repo.mark_customer_radar_summaries_dirty()
             return
         self._customer_intelligence_cache = {
             key: value for key, value in self._customer_intelligence_cache.items()
@@ -13589,6 +13611,63 @@ class AppService:
             key: value for key, value in self._customer_intelligence_summary_cache.items()
             if key[0] != owner_user_id
         }
+        self.repo.mark_customer_radar_summaries_dirty(owner_user_id)
+
+    @staticmethod
+    def _customer_radar_summary_id(owner_user_id: str, mode: str) -> str:
+        return f"customer_radar_summary:{owner_user_id}:{mode or 'all'}"
+
+    @staticmethod
+    def _customer_radar_summary_response(
+        summary: CustomerRadarSummary,
+        membership: dict,
+        payment_required: bool,
+    ) -> dict:
+        return {
+            "featureEnabled": True,
+            "paymentRequired": payment_required,
+            "locked": False,
+            "membership": membership,
+            "summary": {
+                "pending": int(summary.pendingCount or 0),
+                "visitors": int(summary.visitorCount or 0),
+                "following": int(summary.followingCount or 0),
+                "abandoned": int(summary.abandonedCount or 0),
+                "highIntent": int(summary.highIntentCount or 0),
+                "interactions": int(summary.interactionCount or 0),
+                "revival": int(summary.revivalCount or 0),
+                "filtered": int(summary.filteredCount or 0),
+            },
+            "source": "customer_radar_summary",
+        }
+
+    def _save_customer_radar_summary(
+        self,
+        owner_user_id: str,
+        mode: str,
+        response: dict,
+        existing: CustomerRadarSummary | None = None,
+    ) -> None:
+        counts = response.get("summary") or {}
+        now = now_iso()
+        summary = CustomerRadarSummary(
+            id=self._customer_radar_summary_id(owner_user_id, mode),
+            ownerUserId=owner_user_id,
+            mode=mode,
+            pendingCount=int(counts.get("pending") or 0),
+            visitorCount=int(counts.get("visitors") or 0),
+            followingCount=int(counts.get("following") or 0),
+            abandonedCount=int(counts.get("abandoned") or 0),
+            highIntentCount=int(counts.get("highIntent") or 0),
+            interactionCount=int(counts.get("interactions") or 0),
+            revivalCount=int(counts.get("revival") or 0),
+            filteredCount=int(counts.get("filtered") or 0),
+            isDirty=False,
+            refreshedAt=now,
+            createdAt=existing.createdAt if existing else now,
+            updatedAt=now,
+        )
+        self.repo.save_customer_radar_summary(summary)
 
     def _remember_customer_intelligence_cache(
         self,

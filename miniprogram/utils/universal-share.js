@@ -1,4 +1,4 @@
-const { generateTitleShareImage } = require("./business-card-share");
+const { renderShareCard } = require("../plugins/share-snapshot/index");
 
 const UNIVERSAL_SHARE_CANVAS_ID = "universalShareCanvas";
 const DEFAULT_FALLBACK_PATH = "/pages/home/index";
@@ -27,14 +27,23 @@ async function prepareUniversalShareImage(page, source = {}) {
   if (!page || !page.setData) return "";
   const share = normalizeShareSource(source);
   try {
-    const imageUrl = await generateTitleShareImage(page, UNIVERSAL_SHARE_CANVAS_ID, {
-      title: share.title,
-      summary: share.summary,
-      badge: share.badge,
-      coverUrl: share.coverUrl,
-      hint: share.summary,
-      growthHint: "点击生成同款",
-      shareTargetLabel: share.shareTargetLabel
+    // The share plugin owns the no-cover information card as well.  Never
+    // leave imageUrl empty, because WeChat would then screenshot the current
+    // page as the message thumbnail.
+    const imageUrl = await renderShareCard({
+      page,
+      canvasId: UNIVERSAL_SHARE_CANVAS_ID,
+      variant: "resource",
+      upload: true,
+      source: {
+        title: share.title,
+        summary: share.summary,
+        badge: share.badge,
+        coverUrl: share.coverUrl,
+        hint: share.summary,
+        growthHint: "点击生成同款",
+        shareTargetLabel: share.shareTargetLabel
+      }
     });
     page.setData({
       universalShareImage: imageUrl || "",
