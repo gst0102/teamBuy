@@ -4,25 +4,31 @@ import hashlib
 import hmac
 import base64
 import json
+import secrets
+from math import ceil
 import re
+from threading import RLock
 import time
 from collections import defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
-from urllib.parse import parse_qs, unquote, urlparse
+from urllib.parse import parse_qs, quote, unquote, urlparse
 from uuid import uuid4
 import httpx
 from fastapi import HTTPException, status
 
 from app.core.config import settings
-from app.models.domain import AppState, Card, CardMedia, Category, CustomerAction, ImportBatch, LeadFollowUpLog, LeadReminder, MediaAsset, MediaAssetRef, MessageRecord, MessageThread, MediaRetryJob, OpportunityLead, OpportunityLeadContact, OpportunityLeadFollowup, OpportunityLeadSave, OpportunityLeadSource, OpportunityPushDigest, OpportunitySubscription, RawMessage, RelayConfig, RelayEntry, ResourceFreeQuota, ResourcePointLedger, ResourceUnlockRecord, ResourceWallet, ResponsePackage, ResponsePackageEvent, ResponsePackageItem, ShowcaseEvent, ShowcaseItem, ShowcasePage, SkillRun, SupplyDemandApplication, SupplyDemandCard, SyncCursor, Topic, User, UserNote, ViewEvent, WecomArchiveCursor, WecomArchiveMessage, WecomIdentityBinding
+from app.models.domain import AppState, Card, CardMedia, Category, CustomerAction, ImportBatch, LeadFollowUpLog, LeadReminder, MediaAsset, MediaAssetRef, MembershipEntitlement, MembershipOrder, MessageRecord, MessageThread, MediaRetryJob, NotificationPreference, OpportunityLead, OpportunityLeadContact, OpportunityLeadFollowup, OpportunityLeadSave, OpportunityLeadSource, OpportunityPushDigest, OpportunitySubscription, RawMessage, ReferralRelation, ReferralReward, ReferralWithdrawal, RelayConfig, RelayEntry, ResourceFreeQuota, ResourcePointLedger, ResourceUnlockRecord, ResourceWallet, ResponsePackage, ResponsePackageEvent, ResponsePackageItem, SameStyleGeneration, ShowcaseEvent, ShowcaseItem, ShowcasePage, SkillRun, SupplyDemandApplication, SupplyDemandCard, SyncCursor, Topic, User, UserNote, ViewEvent, WechatSubscriptionDelivery, WechatSubscriptionGrant, WecomArchiveCursor, WecomArchiveMessage, WecomBindCardToken, WecomIdentityBinding
 from app.schemas.auth import MockLoginRequest, UserProfileUpdateRequest, WechatLoginRequest
 from app.schemas.categories import CategoryCreateRequest
 from app.schemas.cards import CardCreateRequest, CardUpdateRequest, CreateRelayRequest, LeadReminderUpdateRequest, LeadReminderUpsertRequest, RecordViewRequest
-from app.schemas.notes import CustomerActionSubmitRequest, ManualNoteDraftRequest, NoteTypeConfirmRequest, PropertyBatchCreateRequest, PropertyBatchParseRequest, PropertySameCloneRequest, QuickNoteCaptureRequest, TopicCreateRequest, UserNoteUpdateRequest
+from app.schemas.notes import CustomerActionSubmitRequest, LinkCaptureRequest, ManualNoteDraftRequest, NoteInteractionEventRequest, NoteTypeConfirmRequest, PropertyBatchCreateRequest, PropertyBatchParseRequest, PropertySameCloneRequest, QuickNoteCaptureRequest, TopicCreateRequest, UserNoteUpdateRequest
+from app.schemas.share_snapshots import ShareSnapshotRequest
 from app.schemas.showcases import ShowcaseEventRequest, ShowcasePageRequest
+from app.schemas.scrm import SameStyleGenerateRequest
 from app.schemas.skills import (
     ContentMediaPayload,
+    ContentLinkPayload,
     ContentObjectPayload,
     IntentResultPayload,
     RunContentToNoteResponse,
@@ -33,25 +39,35 @@ from app.services.card_parser_service import CardParserService
 from app.services.content_object_adapter import ContentObjectAdapter
 from app.services.helpers import mask_nickname, new_id
 from app.services.import_notification_service import ImportNotificationService
+from app.services.link_preview_service import fetch_link_preview
 from app.services.media_storage_service import MediaStorageService
+from app.services.session_token import issue_user_session
 from app.services.media_processing_service import MediaProcessingService
-from app.services.message_aggregator import MessageAggregator
+from app.services.message_aggregator import MessageAggregator, WINDOW_SECONDS
+from app.services.ops_console_store import OpsConsoleStore
 from app.services.ocr_service import OcrService
 from app.services.property_table_ocr_service import PropertyTableOcrService
 from app.services.repository import AppRepository
 from app.services.skill_router_service import SkillRouterService
+from app.services.showcase_templates import allowed_template_ids, default_template_id, normalize_scene_type, normalize_template_id, note_scene_type, scene_accepts_note
 from app.services.text_safety import strip_unicode_surrogates
 from app.services.time_utils import SHANGHAI, date_key, now_iso, parse_iso
 from app.services.wecom_message_normalizer import WecomMessageNormalizer
 from app.services.wecom_mock_service import WecomMockService
+from app.services.wechat_miniapp_client import WechatMiniappClient, WechatMiniappClientError
+from app.services.wechat_pay import WechatPayClient, WechatPayError
+from app.services.sync_task_queue import SyncTaskQueue
 
 
-LEAD_REMINDER_STATUSES = {"pending", "contacted", "invalid", "paused", "completed"}
-LEAD_CLOSED_STATUSES = {"invalid", "paused", "completed"}
+LEAD_REMINDER_STATUSES = {"pending", "following", "contacted", "invalid", "paused", "completed", "deleted"}
+LEAD_CLOSED_STATUSES = {"invalid", "paused", "completed", "deleted"}
+LEAD_INBOX_RESOLVED_STATUSES = LEAD_CLOSED_STATUSES | {"contacted", "following"}
+FOLLOWUP_ACTION_LOCK = RLock()
 WECOM_EXTERNAL_BINDING_SOURCE = "wecom_external_user"
 WECOM_BIND_INTENT_SOURCE = "wecom_bind_intent"
 WECOM_BIND_INTENT_PENDING = "pending_assistant_bind"
 WECOM_BIND_INTENT_CONSUMED = "consumed_assistant_bind"
+WECOM_BIND_CARD_SOURCE = "contact_plugin_welcome"
 WECOM_BIND_CODE_PATTERN = re.compile(r"\bTB-[A-Z0-9]{6}\b", re.IGNORECASE)
 IMPORT_CLAIM_TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60
 CONVERSION_CONFIG_KEYS = {
@@ -67,6 +83,10 @@ CONVERSION_CONFIG_KEYS = {
 CONFIRMABLE_CARD_TYPES = {"property_listing", "groupbuy_product", "business_card", "service_offer", "text_note"}
 MANUAL_DRAFT_CARD_TYPES = {"property_listing", "groupbuy_product", "business_card", "service_offer", "text_note"}
 MANUAL_DRAFT_INPUT_MODES = {"paste_text", "blank"}
+PUBLIC_ATTACHMENT_TYPES = {"image", "pdf", "link"}
+NOTE_INTERACTION_TYPES = {"image_open", "pdf_open", "link_open", "source_open", "contact_click", "phone_click", "wechat_qr_open", "featured_note_open", "map_open"}
+CUSTOMER_INTELLIGENCE_SHOWCASE_EVENTS = {"phone_click", "wechat_copy"}
+CUSTOMER_INTELLIGENCE_NOTE_EVENTS = {"contact_click", "phone_click", "wechat_qr_open"}
 PROPERTY_CONVERSION_DEFAULTS = {
     "showContactPhone": True,
     "enableLightScrm": True,
@@ -82,7 +102,7 @@ GROUPBUY_CONVERSION_DEFAULTS = {
     "enableLightScrm": True,
     "collectLeads": True,
     "enableAppointment": False,
-    "enablePrivateConsultation": False,
+    "enablePrivateConsultation": True,
     "enableSharePoster": True,
     "enableGroupRelay": True,
     "enablePaymentPlaceholder": False,
@@ -91,7 +111,7 @@ SERVICE_CONVERSION_DEFAULTS = {
     "showContactPhone": True,
     "enableLightScrm": True,
     "collectLeads": True,
-    "enableAppointment": True,
+    "enableAppointment": False,
     "enablePrivateConsultation": True,
     "enableSharePoster": True,
     "enableGroupRelay": False,
@@ -113,6 +133,7 @@ CUSTOMER_ACTION_FIELDS = {
         {"key": "name", "label": "姓名", "type": "text", "required": False},
         {"key": "phone", "label": "电话", "type": "phone", "required": True},
         {"key": "wechat", "label": "微信号", "type": "text", "required": False},
+        {"key": "email", "label": "邮箱", "type": "text", "required": False},
         {"key": "remark", "label": "备注", "type": "textarea", "required": False},
     ],
     "appointment": [
@@ -160,6 +181,18 @@ RESOURCE_UNLOCK_IDEMPOTENCY_HOURS = 24
 RESPONSE_PACKAGE_COST_POINTS = 20
 RESPONSE_PACKAGE_FREE_QUOTA_LIMIT = 3
 OPPORTUNITY_CONTACT_UNLOCK_COST_POINTS = 10
+SALES_SCRM_PLAN_CODE = "sales_scrm_monthly"
+SALES_SCRM_MONTHLY_PRICE_FEN = 1990
+SALES_SCRM_REWARD_BASIS_POINTS = 5000
+SALES_SCRM_PERIOD_DAYS = 30
+MEMBERSHIP_PENDING_ORDER_TTL_SECONDS = 30 * 60
+MEMBERSHIP_PAYMENT_LOCK = RLock()
+SHARE_SNAPSHOT_RETENTION_DAYS = 30
+SUBSCRIBE_ACCEPT_STATUSES = {"accept", "acceptWithAudio"}
+SUBSCRIBE_DEDUPE_WINDOW_SECONDS = 30 * 60
+SUBSCRIBE_DELIVERY_MAX_ATTEMPTS = 3
+SUBSCRIBE_RESERVATION_TIMEOUT_SECONDS = 15 * 60
+SUBSCRIBE_FIELD_NAMES = ("messageName", "customerName", "projectName", "messageContent", "reminderTime")
 
 
 class AppService:
@@ -177,6 +210,8 @@ class AppService:
         content_object_adapter: ContentObjectAdapter | None = None,
         ocr_service: OcrService | None = None,
         property_table_ocr_service: PropertyTableOcrService | None = None,
+        wechat_miniapp_client: WechatMiniappClient | None = None,
+        ops_console_store: OpsConsoleStore | None = None,
     ):
         self.repo = repo
         self.wecom_mock_service = wecom_mock_service
@@ -186,8 +221,25 @@ class AppService:
         self.aggregator = aggregator
         self.notification_service = notification_service
         self.normalizer = normalizer
+        self.wechat_miniapp_client = wechat_miniapp_client
+        self.ops_console_store = ops_console_store
         self.skill_router_service = skill_router_service or SkillRouterService()
         self.content_object_adapter = content_object_adapter or ContentObjectAdapter()
+        self._card_list_cache: dict[tuple[str, str, str], tuple[float, list[dict]]] = {}
+        self._card_list_cache_ttl_seconds = 60
+        self._card_list_cache_max_entries = 256
+        self._note_list_cache: dict[tuple, tuple[float, list[dict]]] = {}
+        self._note_list_cache_ttl_seconds = 60
+        self._note_list_cache_max_entries = 256
+        self._showcase_list_cache: dict[str, tuple[float, list[dict]]] = {}
+        self._showcase_list_cache_ttl_seconds = 60
+        self._showcase_list_cache_max_entries = 128
+        self._customer_intelligence_cache: dict[tuple[str, str, str], tuple[float, dict]] = {}
+        self._customer_intelligence_cache_ttl_seconds = 2 * 60
+        self._customer_intelligence_cache_max_entries = 256
+        self._customer_intelligence_summary_cache: dict[tuple[str, str, str], tuple[float, dict]] = {}
+        self._customer_intelligence_summary_cache_ttl_seconds = 30
+        self._customer_intelligence_summary_cache_max_entries = 256
         self.ocr_service = ocr_service or OcrService(
             provider=settings.ocr_provider,
             language=settings.ocr_language,
@@ -201,6 +253,27 @@ class AppService:
 
     def _save(self, state: AppState) -> None:
         self.repo.save(state)
+
+    def customer_info_chain_enabled(self) -> bool:
+        """Return the server-authoritative customer feature state.
+
+        Test-only AppService instances may omit the ops store; preserving an
+        enabled default there keeps existing isolated service tests focused on
+        their business rule.  The production dependency always supplies the
+        persistent store, whose safe default is closed.
+        """
+        if self.ops_console_store is None:
+            return True
+        return bool(self.ops_console_store.get_customer_info_chain_config()["enabled"])
+
+    def customer_info_chain_payment_required(self) -> bool:
+        if self.ops_console_store is None:
+            return True
+        return bool(self.ops_console_store.get_customer_info_chain_config().get("paymentRequired", True))
+
+    def require_customer_info_chain_enabled(self) -> None:
+        if not self.customer_info_chain_enabled():
+            raise HTTPException(status_code=403, detail="客户信息链功能当前未开放")
 
     def get_resource_wallet(self, owner_user_id: str) -> dict:
         wallet = self._ensure_resource_wallet(owner_user_id)
@@ -1519,6 +1592,10 @@ class AppService:
             payload.wechat,
         )
 
+    def login_payload(self, user: User) -> dict:
+        """Return the public user profile plus a signed API session token."""
+        return {**user.model_dump(), **issue_user_session(user.id)}
+
     def wechat_login(self, payload: WechatLoginRequest) -> User:
         if not settings.wechat_miniapp_appid or not settings.wechat_miniapp_secret:
             raise HTTPException(status_code=503, detail="微信登录未配置，请先配置小程序 AppSecret")
@@ -1545,13 +1622,22 @@ class AppService:
         openid = session_data.get("openid")
         if not openid:
             raise HTTPException(status_code=400, detail="微信登录未返回 openid")
+        existing = self.repo.get_user_by_openid(openid)
+        nickname = (payload.nickname or "").strip()
+        if not nickname or nickname in {"微信用户", "未设置昵称"}:
+            nickname = existing.nickname if existing and existing.nickname else "微信用户"
+        requested_avatar_url = (payload.avatarUrl or "").strip()
+        cleaned_avatar_url = self._clean_user_avatar_url(requested_avatar_url, reject_invalid=False) if requested_avatar_url else ""
+        avatar_url = cleaned_avatar_url or (existing.avatarUrl if existing else "")
+        phone = payload.phone if payload.phone is not None else (existing.phone if existing else None)
+        wechat = payload.wechat if payload.wechat is not None else (existing.wechat if existing else None)
         return self._upsert_user_by_openid(
             openid,
-            payload.nickname or "微信用户",
-            payload.avatarUrl,
-            payload.phone,
+            nickname,
+            avatar_url,
+            phone,
             session_data.get("unionid"),
-            payload.wechat,
+            wechat,
         )
 
     def create_h5_session_ticket(self, user_id: str, entry: str = "resource-tools") -> dict:
@@ -1597,6 +1683,2546 @@ class AppService:
             "expiresAt": datetime.fromtimestamp(exp, tz=SHANGHAI).isoformat(),
         }
 
+    @staticmethod
+    def _membership_pending_expires_at(order: MembershipOrder):
+        return parse_iso(order.createdAt) + timedelta(seconds=MEMBERSHIP_PENDING_ORDER_TTL_SECONDS)
+
+    @classmethod
+    def _membership_pending_order_payload(cls, order: MembershipOrder, now) -> dict:
+        expires_at = cls._membership_pending_expires_at(order)
+        seconds_remaining = max(0, int(ceil((expires_at - now).total_seconds())))
+        return {
+            **order.model_dump(),
+            "expiresAt": expires_at.isoformat(),
+            "secondsRemaining": seconds_remaining,
+        }
+
+    @classmethod
+    def _close_expired_membership_orders(cls, state: AppState, now) -> bool:
+        changed = False
+        for order in state.membership_orders:
+            if order.status != "pending":
+                continue
+            try:
+                expired = cls._membership_pending_expires_at(order) <= now
+            except (TypeError, ValueError, OverflowError):
+                expired = True
+            if expired:
+                order.status = "closed"
+                order.updatedAt = now.isoformat()
+                changed = True
+        return changed
+
+    def _close_expired_membership_order(self, state: AppState, order: MembershipOrder, now) -> bool:
+        if order.status != "pending":
+            return False
+        try:
+            expired = self._membership_pending_expires_at(order) <= now
+        except (TypeError, ValueError, OverflowError):
+            expired = True
+        if not expired:
+            return False
+        order.status = "closed"
+        order.updatedAt = now.isoformat()
+        self._save(state)
+        return True
+
+    def get_membership_status(self, user_id: str) -> dict:
+        user = self.repo.get_user(user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="用户不存在")
+        if not self.customer_info_chain_enabled():
+            return {
+                "featureEnabled": False,
+                "paymentRequired": self.customer_info_chain_payment_required(),
+                "plan": {
+                    "code": SALES_SCRM_PLAN_CODE,
+                    "name": "客户信息链会员",
+                    "priceFen": SALES_SCRM_MONTHLY_PRICE_FEN,
+                    "billingCycle": "month",
+                    "benefits": ["客户身份与联系方式", "完整访问轨迹", "客户档案与跟进", "跨资料兴趣与提醒"],
+                },
+                "active": False,
+                "status": "disabled",
+                "expiresAt": None,
+                "latestOrder": None,
+            }
+        with MEMBERSHIP_PAYMENT_LOCK:
+            state = self._load()
+            now = parse_iso(now_iso())
+            if self._close_expired_membership_orders(state, now):
+                self._save(state)
+        entitlements = [
+            item for item in state.membership_entitlements
+            if item.userId == user_id and item.entitlementKey == "customer_intelligence"
+        ]
+        active = [
+            item for item in entitlements
+            if item.status == "active" and parse_iso(item.expiresAt) > now
+        ]
+        latest = max(active or entitlements, key=lambda item: item.expiresAt, default=None)
+        orders = sorted(
+            [item for item in state.membership_orders if item.userId == user_id],
+            key=lambda item: item.createdAt,
+            reverse=True,
+        )
+        pending_order = next((item for item in orders if item.status == "pending"), None)
+        return {
+            "featureEnabled": True,
+            "paymentRequired": self.customer_info_chain_payment_required(),
+            "plan": {
+                "code": SALES_SCRM_PLAN_CODE,
+                "name": "客户信息链会员",
+                "priceFen": SALES_SCRM_MONTHLY_PRICE_FEN,
+                "billingCycle": "month",
+                "benefits": ["客户身份与联系方式", "完整访问轨迹", "客户档案与跟进", "跨资料兴趣与提醒"],
+            },
+            "active": bool(active),
+            "status": "active" if active else "expired" if latest else "free",
+            "expiresAt": max((item.expiresAt for item in active), default=latest.expiresAt if latest else None),
+            "latestOrder": orders[0].model_dump() if orders else None,
+            "pendingOrder": self._membership_pending_order_payload(pending_order, now) if pending_order else None,
+        }
+
+    def _has_customer_intelligence(self, user_id: str) -> bool:
+        return self.customer_info_chain_enabled() and (
+            not self.customer_info_chain_payment_required() or self._has_active_customer_entitlement(user_id)
+        )
+
+    def _is_paid_customer_member(self, user_id: str) -> bool:
+        return self.customer_info_chain_enabled() and self.customer_info_chain_payment_required() and self._has_active_customer_entitlement(user_id)
+
+    def _has_active_customer_entitlement(self, user_id: str) -> bool:
+        now = parse_iso(now_iso())
+        state = self._load()
+        return any(
+            item.userId == user_id
+            and item.entitlementKey == "customer_intelligence"
+            and item.status == "active"
+            and parse_iso(item.expiresAt) > now
+            for item in state.membership_entitlements
+        )
+
+    def get_notification_config(self, user_id: str) -> dict:
+        if not self.repo.get_user(user_id):
+            raise HTTPException(status_code=404, detail="用户不存在")
+        if not self.customer_info_chain_enabled():
+            return {
+                "enabled": False,
+                "featureEnabled": False,
+                "templateId": settings.wechat_miniapp_subscribe_template_id,
+                "page": settings.wechat_miniapp_subscribe_page,
+                "member": False,
+                "preferences": {
+                    "importantCustomerViewEnabled": False,
+                    "ordinaryAnonymousViewEnabled": False,
+                    "isDefault": True,
+                },
+            }
+        member = self._is_paid_customer_member(user_id)
+        preference = self.repo.get_notification_preference(user_id)
+        return {
+            "enabled": bool(settings.wechat_miniapp_subscribe_template_id and settings.wechat_miniapp_subscribe_field_keys()),
+            "featureEnabled": True,
+            "templateId": settings.wechat_miniapp_subscribe_template_id,
+            "page": settings.wechat_miniapp_subscribe_page,
+            "member": member,
+            "preferences": self._notification_preference_payload(preference, member),
+        }
+
+    def _notification_preference_payload(self, preference: NotificationPreference | None, member: bool) -> dict:
+        return {
+            "importantCustomerViewEnabled": preference.importantCustomerViewEnabled if preference else True,
+            # An authorized owner has opted into subscription messages; keep
+            # anonymous view alerts enabled by default for members as well.
+            # An explicit preference still wins and can disable this channel.
+            "ordinaryAnonymousViewEnabled": preference.ordinaryAnonymousViewEnabled if preference else True,
+            "isDefault": preference is None,
+        }
+
+    def update_notification_preferences(self, user_id: str, important_enabled: bool, ordinary_enabled: bool) -> dict:
+        if not self.repo.get_user(user_id):
+            raise HTTPException(status_code=404, detail="用户不存在")
+        self.require_customer_info_chain_enabled()
+        now = now_iso()
+        preference = self.repo.get_notification_preference(user_id)
+        if not preference:
+            preference = NotificationPreference(
+                id=new_id("notification_preference"),
+                userId=user_id,
+                importantCustomerViewEnabled=bool(important_enabled),
+                ordinaryAnonymousViewEnabled=bool(ordinary_enabled),
+                createdAt=now,
+                updatedAt=now,
+            )
+        else:
+            preference.importantCustomerViewEnabled = bool(important_enabled)
+            preference.ordinaryAnonymousViewEnabled = bool(ordinary_enabled)
+            preference.updatedAt = now
+        self.repo.save_notification_preference(preference)
+        return self._notification_preference_payload(preference, self._is_paid_customer_member(user_id))
+
+    def record_notification_subscription(self, user_id: str, template_id: str, status_value: str, source: str, request_id: str | None = None) -> dict:
+        if not self.repo.get_user(user_id):
+            raise HTTPException(status_code=404, detail="用户不存在")
+        self.require_customer_info_chain_enabled()
+        expected_template_id = settings.wechat_miniapp_subscribe_template_id
+        if not expected_template_id or template_id != expected_template_id:
+            raise HTTPException(status_code=400, detail="订阅模板不匹配")
+        normalized_status = str(status_value or "").strip()
+        if normalized_status not in SUBSCRIBE_ACCEPT_STATUSES and normalized_status not in {"reject", "ban"}:
+            raise HTTPException(status_code=400, detail="订阅授权状态无效")
+        clean_request_id = self._clean_optional_text(request_id)
+        if clean_request_id:
+            existing = next(
+                (
+                    item for item in self.repo.list_wechat_subscription_grants(user_id, expected_template_id)
+                    if item.requestId == clean_request_id
+                ),
+                None,
+            )
+            if existing:
+                return {"recorded": False, "duplicate": True, "grant": existing.model_dump()}
+        if normalized_status not in SUBSCRIBE_ACCEPT_STATUSES:
+            return {"recorded": True, "accepted": False, "status": normalized_status}
+        now = now_iso()
+        grant_id = (
+            f"wechat_subscription_grant_{hashlib.sha256(f'{user_id}:{expected_template_id}:{clean_request_id}'.encode('utf-8')).hexdigest()[:32]}"
+            if clean_request_id
+            else new_id("wechat_subscription_grant")
+        )
+        if clean_request_id:
+            existing_by_id = self.repo.get_wechat_subscription_grant(grant_id)
+            if existing_by_id:
+                return {"recorded": False, "duplicate": True, "grant": existing_by_id.model_dump()}
+        grant = WechatSubscriptionGrant(
+            id=grant_id,
+            userId=user_id,
+            templateId=expected_template_id,
+            requestId=clean_request_id or new_id("subscription_request"),
+            status="available",
+            source=self._clean_optional_text(source) or "share",
+            authorizedAt=now,
+            createdAt=now,
+            updatedAt=now,
+        )
+        self.repo.save_wechat_subscription_grant(grant)
+        return {"recorded": True, "accepted": True, "grant": grant.model_dump()}
+
+    def _important_customer_view(self, owner_user_id: str, resource_id: str, viewer_user_id: str | None, note_id: str | None = None, showcase_id: str | None = None) -> bool:
+        viewer_id = self._clean_optional_text(viewer_user_id)
+        viewer = self.repo.get_user(viewer_id) if viewer_id else None
+        if not viewer or viewer.id == owner_user_id:
+            return False
+        lead_card_id = resource_id
+        lead = self.repo.get_lead_reminder_by_card_viewer(lead_card_id, viewer.id)
+        if lead and lead.status not in LEAD_CLOSED_STATUSES:
+            return True
+        if note_id:
+            actions = self.repo.list_customer_actions_for_note(note_id, viewer_user_id=viewer.id)
+            if any(item.actionKey in OPPORTUNITY_HIGH_ACTIONS for item in actions):
+                return True
+        if showcase_id:
+            events = self.repo.list_showcase_events(showcase_id)
+            if sum(1 for item in events if item.eventType == "view" and item.viewerUserId == viewer.id) >= 2:
+                return True
+        events = self.repo.list_view_events_for_card(resource_id)
+        return sum(1 for item in events if item.viewerUserId == viewer.id and item.viewType != "share") >= 2
+
+    def _subscription_event_viewer(self, owner_user_id: str, viewer_user_id: str | None, anonymous_id: str | None) -> tuple[str, str, str]:
+        viewer = self.repo.get_user(self._clean_optional_text(viewer_user_id)) if viewer_user_id else None
+        if viewer and viewer.id != owner_user_id:
+            return viewer.id, "known", (viewer.nickname or "微信客户")[:20]
+        if self._clean_optional_text(anonymous_id):
+            return self._clean_optional_text(anonymous_id) or "anonymous", "anonymous", "匿名访客"
+        return "anonymous", "anonymous", "匿名访客"
+
+    def recover_stale_subscription_grants(self) -> int:
+        now = now_iso()
+        cutoff = (parse_iso(now) - timedelta(seconds=SUBSCRIBE_RESERVATION_TIMEOUT_SECONDS)).isoformat()
+        return self.repo.release_stale_wechat_subscription_grants(cutoff, now)
+
+    def queue_note_view_notification(self, note_id: str, event: ViewEvent, queue: SyncTaskQueue) -> dict:
+        note = self.repo.get_user_note(note_id)
+        if not note or event.id.startswith("view_ignored") or event.viewType == "share":
+            return {"queued": False, "reason": "not_a_customer_view"}
+        return self._queue_view_notification(
+            queue=queue,
+            owner_user_id=note.ownerUserId,
+            resource_type="note",
+            resource_id=note.id,
+            resource_title=note.title,
+            note_id=note.id,
+            card_id=event.cardId,
+            event_at=event.viewedAt,
+            viewer_user_id=event.viewerUserId,
+            anonymous_id=event.anonymousId,
+        )
+
+    def queue_card_view_notification(self, card_id: str, event: ViewEvent, queue: SyncTaskQueue) -> dict:
+        card = self.repo.get_card(card_id)
+        if not card or event.id.startswith("view_ignored") or event.viewType == "share":
+            return {"queued": False, "reason": "not_a_customer_view"}
+        return self._queue_view_notification(
+            queue=queue,
+            owner_user_id=card.ownerUserId,
+            resource_type="card",
+            resource_id=card.id,
+            resource_title=card.title,
+            card_id=event.cardId,
+            event_at=event.viewedAt,
+            viewer_user_id=event.viewerUserId,
+            anonymous_id=event.anonymousId,
+        )
+
+    def queue_showcase_view_notification(self, showcase_id: str, event: ShowcaseEvent, queue: SyncTaskQueue) -> dict:
+        showcase = self.repo.get_showcase_page(showcase_id)
+        if not showcase or event.eventType != "view" or event.viewType == "share":
+            return {"queued": False, "reason": "not_a_customer_view"}
+        return self._queue_view_notification(
+            queue=queue,
+            owner_user_id=showcase.ownerUserId,
+            resource_type="showcase",
+            resource_id=showcase.id,
+            resource_title=showcase.shareTitle or showcase.name,
+            note_id=event.noteId,
+            showcase_id=showcase.id,
+            event_at=event.createdAt,
+            viewer_user_id=event.viewerUserId,
+            anonymous_id=event.anonymousId,
+        )
+
+    def _subscription_template_data(
+        self,
+        *,
+        message_name: str,
+        customer_name: str,
+        resource_title: str,
+        message_content: str,
+        event_at: str,
+    ) -> tuple[dict, dict]:
+        field_keys = settings.wechat_miniapp_subscribe_field_keys()
+        safe_message_content = self._safe_subscription_message_content(message_content)
+        data_values = {
+            "messageName": message_name,
+            "customerName": customer_name,
+            "projectName": resource_title or "资料",
+            "messageContent": safe_message_content,
+            "reminderTime": datetime.fromisoformat(event_at.replace("Z", "+00:00")).astimezone(SHANGHAI).strftime("%Y-%m-%d %H:%M"),
+        }
+        data = {
+            field_keys[name]: {"value": str(data_values[name])[:20]}
+            for name in SUBSCRIBE_FIELD_NAMES
+            if field_keys.get(name)
+        }
+        return data_values, data
+
+    @staticmethod
+    def _safe_subscription_message_content(value: str) -> str:
+        """Keep subscription previews useful without broadcasting contact details."""
+        text = strip_unicode_surrogates(str(value or ""))
+        text = re.sub(r"\s+", " ", text).strip()
+        text = re.sub(r"(?<!\d)1[3-9]\d{9}(?!\d)", "手机号", text)
+        text = re.sub(r"\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b", "邮箱", text)
+        text = re.sub(
+            r"(?i)(微信号|微信|wx|vx|v信)\s*[:：]?\s*[A-Za-z0-9_-]{3,}",
+            r"\1",
+            text,
+        )
+        return text[:80]
+
+    def _release_queued_view_notifications_for_message(
+        self,
+        owner_user_id: str,
+        now: str,
+    ) -> WechatSubscriptionDelivery | None:
+        # One message needs at most one grant. Preserve other queued view
+        # notifications instead of cancelling the owner's whole pending queue.
+        for delivery in self.repo.list_wechat_subscription_deliveries(owner_user_id, limit=100):
+            if delivery.notificationType != "view" or delivery.status != "queued":
+                continue
+            grant = self.repo.get_wechat_subscription_grant(delivery.grantId)
+            if not grant or grant.status != "reserved":
+                continue
+            delivery.status = "skipped"
+            delivery.lastError = "superseded_by_customer_message"
+            delivery.updatedAt = now
+            self.repo.save_wechat_subscription_delivery(delivery)
+            grant.status = "available"
+            grant.reservedAt = None
+            grant.updatedAt = now
+            self.repo.save_wechat_subscription_grant(grant)
+            return delivery
+        return None
+
+    def _restore_view_notification_after_message_failure(
+        self,
+        delivery: WechatSubscriptionDelivery | None,
+    ) -> None:
+        if not delivery:
+            return
+        now = now_iso()
+        grant = self.repo.get_wechat_subscription_grant(delivery.grantId)
+        if not grant or grant.status != "available":
+            return
+        grant.status = "reserved"
+        grant.reservedAt = now
+        grant.updatedAt = now
+        self.repo.save_wechat_subscription_grant(grant)
+        delivery.status = "queued"
+        delivery.lastError = None
+        delivery.updatedAt = now
+        self.repo.save_wechat_subscription_delivery(delivery)
+
+    def queue_message_notification(self, thread_id: str, message_id: str, queue: SyncTaskQueue) -> dict:
+        self.recover_stale_subscription_grants()
+        thread = self.repo.get_message_thread(thread_id)
+        if not thread or thread.status != "active":
+            return {"queued": False, "reason": "thread_not_found"}
+        message = next(
+            (item for item in self.repo.list_message_records_for_thread(thread.id) if item.id == message_id),
+            None,
+        )
+        if not message or message.senderUserId != thread.buyerUserId or message.senderUserId == thread.ownerUserId:
+            return {"queued": False, "reason": "not_a_customer_message"}
+        if not self.customer_info_chain_enabled():
+            return {"queued": False, "reason": "customer_info_chain_disabled"}
+        template_id = settings.wechat_miniapp_subscribe_template_id
+        if not template_id or not settings.wechat_miniapp_subscribe_field_keys():
+            return {"queued": False, "reason": "template_not_configured"}
+        member = self._is_paid_customer_member(thread.ownerUserId)
+        preference = self.repo.get_notification_preference(thread.ownerUserId)
+        preference_payload = self._notification_preference_payload(preference, member)
+        if not preference_payload["importantCustomerViewEnabled"]:
+            return {"queued": False, "reason": "important_disabled"}
+        try:
+            bucket = int(parse_iso(message.createdAt).timestamp() // SUBSCRIBE_DEDUPE_WINDOW_SECONDS)
+        except (TypeError, ValueError, OverflowError):
+            bucket = int(time.time() // SUBSCRIBE_DEDUPE_WINDOW_SECONDS)
+        dedupe_key = f"message:{thread.ownerUserId}:{thread.id}:{bucket}"
+        existing_delivery = self.repo.find_wechat_subscription_delivery_by_dedupe_key(dedupe_key)
+        if existing_delivery and not (
+            existing_delivery.status == "failed" and existing_delivery.lastError == "queue_unavailable"
+        ):
+            return {"queued": False, "reason": "duplicate"}
+        now = now_iso()
+        released_view_delivery = self._release_queued_view_notifications_for_message(thread.ownerUserId, now)
+        grant = self.repo.reserve_wechat_subscription_grant(thread.ownerUserId, template_id, now)
+        if not grant:
+            self._restore_view_notification_after_message_failure(released_view_delivery)
+            return {"queued": False, "reason": "no_subscription_quota"}
+        buyer = self.repo.get_user(thread.buyerUserId)
+        note = self.repo.get_user_note(thread.noteId)
+        customer_name = (buyer.nickname if buyer else "微信客户")[:20]
+        resource_title = (note.title if note else thread.title) or "资料"
+        data_values, data = self._subscription_template_data(
+            message_name="客户留言提醒",
+            customer_name=customer_name,
+            resource_title=resource_title,
+            message_content=f"客户留言：{message.content}",
+            event_at=message.createdAt,
+        )
+        if len(data) != len(SUBSCRIBE_FIELD_NAMES):
+            grant.status = "available"
+            grant.reservedAt = None
+            grant.updatedAt = now
+            self.repo.save_wechat_subscription_grant(grant)
+            self._restore_view_notification_after_message_failure(released_view_delivery)
+            return {"queued": False, "reason": "template_fields_incomplete"}
+        delivery = WechatSubscriptionDelivery(
+            id=new_id("wechat_subscription_delivery"),
+            ownerUserId=thread.ownerUserId,
+            grantId=grant.id,
+            templateId=template_id,
+            notificationType="message",
+            resourceType="note",
+            resourceId=thread.noteId,
+            resourceTitle=resource_title[:80],
+            viewerType="important",
+            viewerLabel=customer_name,
+            messageContent=data_values["messageContent"][:80],
+            threadId=thread.id,
+            messageId=message.id,
+            eventAt=message.createdAt,
+            dedupeKey=dedupe_key,
+            page=(
+                f"/pages/message-thread/index?id={quote(thread.id, safe='')}"
+                "&source=subscription&autoHome=1"
+            ),
+            data=data,
+            createdAt=now,
+            updatedAt=now,
+        )
+        try:
+            self.repo.save_wechat_subscription_delivery(delivery)
+            queue.enqueue(
+                "wechat-subscription-send",
+                {"deliveryId": delivery.id},
+                max_attempts=SUBSCRIBE_DELIVERY_MAX_ATTEMPTS,
+            )
+        except Exception:
+            delivery.status = "failed"
+            delivery.lastError = "queue_unavailable"
+            delivery.updatedAt = now_iso()
+            try:
+                self.repo.save_wechat_subscription_delivery(delivery)
+            except Exception:
+                pass
+            grant.status = "available"
+            grant.reservedAt = None
+            grant.updatedAt = now_iso()
+            self.repo.save_wechat_subscription_grant(grant)
+            self._restore_view_notification_after_message_failure(released_view_delivery)
+            return {"queued": False, "reason": "queue_unavailable"}
+        return {
+            "queued": True,
+            "deliveryId": delivery.id,
+            "notificationType": delivery.notificationType,
+            "threadId": delivery.threadId,
+            "messageContent": data_values["messageContent"][:20],
+        }
+
+    def _queue_view_notification(
+        self,
+        *,
+        queue: SyncTaskQueue,
+        owner_user_id: str,
+        resource_type: str,
+        resource_id: str,
+        resource_title: str,
+        event_at: str,
+        viewer_user_id: str | None,
+        anonymous_id: str | None,
+        note_id: str | None = None,
+        showcase_id: str | None = None,
+        card_id: str | None = None,
+    ) -> dict:
+        self.recover_stale_subscription_grants()
+        if not self.customer_info_chain_enabled():
+            return {"queued": False, "reason": "customer_info_chain_disabled"}
+        if not settings.wechat_miniapp_subscribe_template_id or not settings.wechat_miniapp_subscribe_field_keys():
+            return {"queued": False, "reason": "template_not_configured"}
+        viewer_key, viewer_kind, viewer_label = self._subscription_event_viewer(owner_user_id, viewer_user_id, anonymous_id)
+        important = viewer_kind == "known" and self._important_customer_view(owner_user_id, card_id or resource_id, viewer_key, note_id, showcase_id)
+        member = self._is_paid_customer_member(owner_user_id)
+        preference = self.repo.get_notification_preference(owner_user_id)
+        preference_payload = self._notification_preference_payload(preference, member)
+        if important:
+            if not preference_payload["importantCustomerViewEnabled"]:
+                return {"queued": False, "reason": "important_disabled"}
+            viewer_type = "important"
+        else:
+            if not preference_payload["ordinaryAnonymousViewEnabled"]:
+                return {"queued": False, "reason": "ordinary_disabled"}
+            viewer_type = "ordinary" if viewer_kind == "known" else "anonymous"
+        # Anonymous views are valuable signals too. Collapse all anonymous
+        # viewers into one dedupe bucket per owner/resource/time window so a
+        # rotating anonymous ID cannot consume one grant per device.
+        dedupe_viewer_key = "anonymous" if viewer_kind == "anonymous" else viewer_key
+        try:
+            bucket = int(parse_iso(event_at).timestamp() // SUBSCRIBE_DEDUPE_WINDOW_SECONDS)
+        except (TypeError, ValueError, OverflowError):
+            bucket = int(time.time() // SUBSCRIBE_DEDUPE_WINDOW_SECONDS)
+        dedupe_key = f"view:{owner_user_id}:{resource_type}:{resource_id}:{dedupe_viewer_key}:{bucket}"
+        existing_delivery = self.repo.find_wechat_subscription_delivery_by_dedupe_key(dedupe_key)
+        if existing_delivery and not (
+            existing_delivery.status == "failed" and existing_delivery.lastError == "queue_unavailable"
+        ):
+            return {"queued": False, "reason": "duplicate"}
+        now = now_iso()
+        grant = self.repo.reserve_wechat_subscription_grant(owner_user_id, settings.wechat_miniapp_subscribe_template_id, now)
+        if not grant:
+            return {"queued": False, "reason": "no_subscription_quota"}
+        data_values, data = self._subscription_template_data(
+            message_name="客户查看提醒",
+            customer_name=viewer_label,
+            resource_title=resource_title,
+            message_content=f"{viewer_label}打开了《{resource_title or '资料'}》",
+            event_at=event_at,
+        )
+        if len(data) != len(SUBSCRIBE_FIELD_NAMES):
+            grant.status = "available"
+            grant.reservedAt = None
+            grant.updatedAt = now
+            self.repo.save_wechat_subscription_grant(grant)
+            return {"queued": False, "reason": "template_fields_incomplete"}
+        delivery = existing_delivery or WechatSubscriptionDelivery(
+            id=new_id("wechat_subscription_delivery"),
+            ownerUserId=owner_user_id,
+            grantId=grant.id,
+            templateId=settings.wechat_miniapp_subscribe_template_id,
+            resourceType=resource_type if resource_type in {"card", "note", "showcase"} else "note",
+            resourceId=resource_id,
+            resourceTitle=(resource_title or "资料")[:80],
+            viewerType=viewer_type,
+            viewerLabel=viewer_label,
+            messageContent=data_values["messageContent"][:80],
+            eventAt=event_at,
+            dedupeKey=dedupe_key,
+            page=settings.wechat_miniapp_subscribe_page,
+            data=data,
+            createdAt=now,
+            updatedAt=now,
+        )
+        if existing_delivery:
+            old_grant = self.repo.get_wechat_subscription_grant(existing_delivery.grantId)
+            if old_grant and old_grant.id != grant.id and old_grant.status == "reserved":
+                old_grant.status = "available"
+                old_grant.reservedAt = None
+                old_grant.updatedAt = now
+                self.repo.save_wechat_subscription_grant(old_grant)
+            delivery.grantId = grant.id
+            delivery.status = "queued"
+            delivery.attempts = 0
+            delivery.lastError = None
+            delivery.sentAt = None
+            delivery.updatedAt = now
+        try:
+            self.repo.save_wechat_subscription_delivery(delivery)
+            queue.enqueue(
+                "wechat-subscription-send",
+                {"deliveryId": delivery.id},
+                max_attempts=SUBSCRIBE_DELIVERY_MAX_ATTEMPTS,
+            )
+        except Exception:
+            delivery.status = "failed"
+            delivery.lastError = "queue_unavailable"
+            delivery.updatedAt = now_iso()
+            try:
+                self.repo.save_wechat_subscription_delivery(delivery)
+            except Exception:
+                pass
+            grant.status = "available"
+            grant.reservedAt = None
+            grant.updatedAt = now_iso()
+            self.repo.save_wechat_subscription_grant(grant)
+            return {"queued": False, "reason": "queue_unavailable"}
+        return {"queued": True, "deliveryId": delivery.id, "viewerType": viewer_type}
+
+    async def send_wechat_subscription_task(self, payload: dict) -> dict:
+        self.recover_stale_subscription_grants()
+        delivery_id = str(payload.get("deliveryId") or "")
+        delivery = self.repo.get_wechat_subscription_delivery(delivery_id)
+        if not delivery:
+            return {"syncStatus": "skipped", "reason": "delivery_not_found"}
+        if delivery.status in {"sent", "failed", "skipped"}:
+            return {"syncStatus": "skipped", "reason": f"delivery_{delivery.status}"}
+        grant = self.repo.get_wechat_subscription_grant(delivery.grantId)
+        user = self.repo.get_user(delivery.ownerUserId)
+        if not self.customer_info_chain_enabled():
+            if grant and grant.status in {"reserved", "available"}:
+                grant.status = "available"
+                grant.reservedAt = None
+                grant.updatedAt = now_iso()
+                self.repo.save_wechat_subscription_grant(grant)
+            delivery.status = "skipped"
+            delivery.lastError = "customer_info_chain_disabled"
+            delivery.updatedAt = now_iso()
+            self.repo.save_wechat_subscription_delivery(delivery)
+            return {"syncStatus": "skipped", "reason": "customer_info_chain_disabled"}
+        if not grant or not user or grant.status not in {"reserved", "available"}:
+            delivery.status = "skipped"
+            delivery.lastError = "subscription_grant_unavailable"
+            delivery.updatedAt = now_iso()
+            self.repo.save_wechat_subscription_delivery(delivery)
+            return {"syncStatus": "skipped", "reason": "subscription_grant_unavailable"}
+        if not self.wechat_miniapp_client or not self.wechat_miniapp_client.is_configured():
+            delivery.status = "failed"
+            delivery.lastError = "wechat_miniapp_client_not_configured"
+            delivery.updatedAt = now_iso()
+            grant.status = "available"
+            grant.reservedAt = None
+            grant.updatedAt = delivery.updatedAt
+            self.repo.save_wechat_subscription_grant(grant)
+            self.repo.save_wechat_subscription_delivery(delivery)
+            return {"syncStatus": "skipped", "reason": "wechat_miniapp_client_not_configured"}
+        now = now_iso()
+        delivery.status = "sending"
+        delivery.attempts += 1
+        delivery.updatedAt = now
+        self.repo.save_wechat_subscription_delivery(delivery)
+        try:
+            result = await self.wechat_miniapp_client.send_subscribe_message(
+                openid=user.openid,
+                page=delivery.page,
+                data=delivery.data,
+            )
+        except WechatMiniappClientError as exc:
+            delivery.lastError = str(exc)
+            delivery.updatedAt = now_iso()
+            if exc.errcode == 43101:
+                grant.status = "invalid"
+                grant.invalidAt = delivery.updatedAt
+                grant.updatedAt = delivery.updatedAt
+                self.repo.save_wechat_subscription_grant(grant)
+                delivery.status = "skipped"
+            elif exc.retryable:
+                if delivery.attempts >= SUBSCRIBE_DELIVERY_MAX_ATTEMPTS:
+                    delivery.status = "failed"
+                    grant.status = "available"
+                    grant.reservedAt = None
+                    grant.updatedAt = delivery.updatedAt
+                    self.repo.save_wechat_subscription_grant(grant)
+                    self.repo.save_wechat_subscription_delivery(delivery)
+                    return {"syncStatus": "skipped", "reason": "retry_exhausted", "errcode": exc.errcode}
+                delivery.status = "queued"
+                self.repo.save_wechat_subscription_delivery(delivery)
+                raise
+            else:
+                delivery.status = "failed"
+                grant.status = "available"
+                grant.reservedAt = None
+                grant.updatedAt = delivery.updatedAt
+                self.repo.save_wechat_subscription_grant(grant)
+            self.repo.save_wechat_subscription_delivery(delivery)
+            return {"syncStatus": "skipped", "reason": "wechat_api_rejected", "errcode": exc.errcode}
+        except Exception:
+            delivery.lastError = "network_error"
+            delivery.updatedAt = now_iso()
+            if delivery.attempts >= SUBSCRIBE_DELIVERY_MAX_ATTEMPTS:
+                delivery.status = "failed"
+                grant.status = "available"
+                grant.reservedAt = None
+                grant.updatedAt = delivery.updatedAt
+                self.repo.save_wechat_subscription_grant(grant)
+                self.repo.save_wechat_subscription_delivery(delivery)
+                return {"syncStatus": "skipped", "reason": "retry_exhausted"}
+            delivery.status = "queued"
+            self.repo.save_wechat_subscription_delivery(delivery)
+            raise
+        grant.status = "consumed"
+        grant.consumedAt = now_iso()
+        grant.updatedAt = grant.consumedAt
+        self.repo.save_wechat_subscription_grant(grant)
+        delivery.status = "sent"
+        delivery.sentAt = grant.consumedAt
+        delivery.lastError = None
+        delivery.updatedAt = grant.consumedAt
+        self.repo.save_wechat_subscription_delivery(delivery)
+        return {"syncStatus": "success", "deliveryId": delivery.id, "response": result}
+
+    def require_customer_intelligence(self, user_id: str) -> None:
+        self.require_customer_info_chain_enabled()
+        if not self._has_customer_intelligence(user_id):
+            raise HTTPException(status_code=402, detail="开通客户信息链会员后可查看完整客户情报")
+
+    def create_membership_order(self, user_id: str, plan_code: str = SALES_SCRM_PLAN_CODE) -> dict:
+        self.require_customer_info_chain_enabled()
+        if not self.customer_info_chain_payment_required():
+            raise HTTPException(status_code=409, detail="当前为免支付模式，无需购买客户信息链会员")
+        if not self.repo.get_user(user_id):
+            raise HTTPException(status_code=404, detail="用户不存在")
+        if plan_code != SALES_SCRM_PLAN_CODE:
+            raise HTTPException(status_code=400, detail="会员方案不存在")
+        now = now_iso()
+        now_dt = parse_iso(now)
+        payment_mode = "wechat_pay" if settings.app_env == "production" or settings.wechat_pay_enabled else "test"
+        reused = False
+        with MEMBERSHIP_PAYMENT_LOCK:
+            state = self._load()
+            state_changed = self._close_expired_membership_orders(state, now_dt)
+            recent_pending = sorted(
+                (
+                    item
+                    for item in state.membership_orders
+                    if (
+                        item.userId == user_id
+                        and item.planCode == plan_code
+                        and item.status == "pending"
+                        and item.paymentChannel == payment_mode
+                    )
+                ),
+                key=lambda item: item.createdAt,
+                reverse=True,
+            )
+            if recent_pending:
+                order = recent_pending[0]
+                reused = True
+            else:
+                relation = next((item for item in state.referral_relations if item.inviteeUserId == user_id), None)
+                order = MembershipOrder(
+                    id=new_id("membership_order"),
+                    userId=user_id,
+                    planCode=plan_code,
+                    amountFen=SALES_SCRM_MONTHLY_PRICE_FEN,
+                    status="pending",
+                    paymentChannel=payment_mode,
+                    referralRelationId=relation.id if relation else None,
+                    createdAt=now,
+                    updatedAt=now,
+                )
+                state.membership_orders.append(order)
+                state_changed = True
+            if state_changed:
+                self._save(state)
+        self._invalidate_customer_intelligence_cache(user_id)
+        return {
+            "order": order.model_dump(),
+            "pendingOrder": self._membership_pending_order_payload(order, now_dt),
+            "paymentRequired": True,
+            "paymentMode": payment_mode,
+            "testMode": payment_mode == "test",
+            "reused": reused,
+        }
+
+    def create_wechat_membership_payment(self, order_id: str, user_id: str) -> dict:
+        self.require_customer_info_chain_enabled()
+        if not self.customer_info_chain_payment_required():
+            raise HTTPException(status_code=409, detail="当前为免支付模式，无需发起会员支付")
+        user = self.repo.get_user(user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="用户不存在")
+        with MEMBERSHIP_PAYMENT_LOCK:
+            state = self._load()
+            order = next((item for item in state.membership_orders if item.id == order_id), None)
+            if not order:
+                raise HTTPException(status_code=404, detail="会员订单不存在")
+            if order.userId != user_id:
+                raise HTTPException(status_code=403, detail="无权支付该订单")
+            if order.status == "paid":
+                return {"order": order.model_dump(), "paymentRequired": False, "membership": self.get_membership_status(user_id)}
+            if self._close_expired_membership_order(state, order, parse_iso(now_iso())):
+                raise HTTPException(status_code=409, detail="订单已超时关闭，请重新发起支付")
+            if order.status != "pending":
+                raise HTTPException(status_code=409, detail="订单状态不能发起支付")
+            if order.paymentChannel != "wechat_pay":
+                raise HTTPException(status_code=409, detail="当前订单不是微信支付订单")
+        try:
+            client = WechatPayClient()
+            prepay_id = client.create_jsapi_prepay(
+                openid=user.openid,
+                out_trade_no=order.id,
+                total_fen=order.amountFen,
+                description="客户信息链会员",
+            )
+            payment = client.build_jsapi_payment(prepay_id)
+        except WechatPayError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        return {
+            "order": order.model_dump(),
+            "pendingOrder": self._membership_pending_order_payload(order, parse_iso(now_iso())),
+            "paymentRequired": True,
+            "payment": payment,
+        }
+
+    def confirm_test_membership_payment(self, order_id: str, transaction_id: str) -> dict:
+        if settings.app_env == "production" or settings.wechat_pay_enabled:
+            raise HTTPException(status_code=403, detail="当前支付模式禁止测试确认付款")
+        transaction_id = str(transaction_id or "").strip()
+        if not transaction_id:
+            raise HTTPException(status_code=400, detail="支付流水不能为空")
+        with MEMBERSHIP_PAYMENT_LOCK:
+            state = self._load()
+            order = next((item for item in state.membership_orders if item.id == order_id), None)
+            if not order:
+                raise HTTPException(status_code=404, detail="会员订单不存在")
+            if self._close_expired_membership_order(state, order, parse_iso(now_iso())):
+                raise HTTPException(status_code=409, detail="订单已超时关闭，请重新发起支付")
+            return self._complete_membership_order(state, order, transaction_id)
+
+    def handle_wechat_pay_success(self, transaction: dict) -> dict:
+        if not isinstance(transaction, dict):
+            raise HTTPException(status_code=400, detail="支付回调交易数据无效")
+        out_trade_no = str(transaction.get("out_trade_no") or "").strip()
+        transaction_id = str(transaction.get("transaction_id") or "").strip()
+        if not out_trade_no or not transaction_id:
+            raise HTTPException(status_code=400, detail="支付回调缺少订单号或微信流水号")
+        if str(transaction.get("appid") or "") != settings.wechat_miniapp_appid:
+            raise HTTPException(status_code=400, detail="支付回调 AppID 不匹配")
+        if str(transaction.get("mchid") or "") != settings.wechat_pay_mch_id:
+            raise HTTPException(status_code=400, detail="支付回调商户号不匹配")
+        if str(transaction.get("trade_state") or "") != "SUCCESS":
+            raise HTTPException(status_code=400, detail="支付回调不是成功状态")
+        amount = transaction.get("amount") if isinstance(transaction.get("amount"), dict) else {}
+        try:
+            total_fen = int(amount.get("total"))
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail="支付回调金额无效") from exc
+        if str(amount.get("currency") or "") != "CNY":
+            raise HTTPException(status_code=400, detail="支付回调币种无效")
+        payer = transaction.get("payer") if isinstance(transaction.get("payer"), dict) else {}
+        openid = str(payer.get("openid") or "")
+        with MEMBERSHIP_PAYMENT_LOCK:
+            state = self._load()
+            order = next((item for item in state.membership_orders if item.id == out_trade_no), None)
+            if not order:
+                raise HTTPException(status_code=404, detail="会员订单不存在")
+            user = self.repo.get_user(order.userId)
+            if order.paymentChannel != "wechat_pay":
+                raise HTTPException(status_code=409, detail="订单支付渠道不匹配")
+            if not user or user.openid != openid:
+                raise HTTPException(status_code=400, detail="支付回调用户身份不匹配")
+            if order.amountFen != total_fen:
+                raise HTTPException(status_code=400, detail="支付回调金额与订单不一致")
+            return self._complete_membership_order(state, order, transaction_id)
+
+    def _complete_membership_order(self, state: AppState, order: MembershipOrder, transaction_id: str) -> dict:
+        duplicate = next(
+            (item for item in state.membership_orders if item.paymentTransactionId == transaction_id and item.id != order.id),
+            None,
+        )
+        if duplicate:
+            raise HTTPException(status_code=409, detail="支付流水已被使用")
+        if order.status == "paid":
+            if order.paymentTransactionId != transaction_id:
+                raise HTTPException(status_code=409, detail="订单已由其他支付流水确认")
+            return {"order": order.model_dump(), "membership": self.get_membership_status(order.userId), "duplicate": True}
+        if order.status not in {"pending", "closed"}:
+            raise HTTPException(status_code=409, detail="订单状态不能确认付款")
+        now_text = now_iso()
+        now_dt = parse_iso(now_text)
+        active_expiries = [
+            parse_iso(item.expiresAt) for item in state.membership_entitlements
+            if item.userId == order.userId and item.status == "active" and parse_iso(item.expiresAt) > now_dt
+        ]
+        starts_at = max(active_expiries, default=now_dt)
+        entitlement = MembershipEntitlement(
+            id=new_id("entitlement"),
+            userId=order.userId,
+            sourceOrderId=order.id,
+            startsAt=starts_at.isoformat(),
+            expiresAt=(starts_at + timedelta(days=SALES_SCRM_PERIOD_DAYS)).isoformat(),
+            createdAt=now_text,
+            updatedAt=now_text,
+        )
+        order.status = "paid"
+        order.paymentTransactionId = transaction_id
+        order.paidAt = now_text
+        order.updatedAt = now_text
+        state.membership_entitlements.append(entitlement)
+        relation = next((item for item in state.referral_relations if item.inviteeUserId == order.userId), None)
+        if relation and relation.inviterUserId != order.userId:
+            order.referralRelationId = relation.id
+            existing_reward = next((item for item in state.referral_rewards if item.sourceOrderId == order.id), None)
+            inviter_is_active = self._has_active_customer_entitlement(relation.inviterUserId)
+            if not existing_reward and inviter_is_active:
+                state.referral_rewards.append(
+                    ReferralReward(
+                        id=new_id("referral_reward"),
+                        inviterUserId=relation.inviterUserId,
+                        inviteeUserId=order.userId,
+                        sourceOrderId=order.id,
+                        ratioBasisPoints=SALES_SCRM_REWARD_BASIS_POINTS,
+                        amountFen=order.amountFen * SALES_SCRM_REWARD_BASIS_POINTS // 10000,
+                        status="available",
+                        availableAt=now_text,
+                        createdAt=now_text,
+                        updatedAt=now_text,
+                    )
+                )
+        self._save(state)
+        self._invalidate_customer_intelligence_cache(order.userId)
+        return {"order": order.model_dump(), "entitlement": entitlement.model_dump(), "duplicate": False}
+
+    def refund_test_membership_payment(self, order_id: str, operator_user_id: str) -> dict:
+        if settings.app_env == "production" or settings.wechat_pay_enabled:
+            raise HTTPException(status_code=403, detail="当前支付模式禁止测试退款")
+        if not operator_user_id:
+            raise HTTPException(status_code=400, detail="操作人不能为空")
+        state = self._load()
+        order = next((item for item in state.membership_orders if item.id == order_id), None)
+        if not order:
+            raise HTTPException(status_code=404, detail="会员订单不存在")
+        if order.status == "refunded":
+            return {"order": order.model_dump(), "duplicate": True}
+        if order.status != "paid":
+            raise HTTPException(status_code=409, detail="只有已付款订单可以退款")
+        now = now_iso()
+        order.status = "refunded"
+        order.refundedAt = now
+        order.updatedAt = now
+        for item in state.membership_entitlements:
+            if item.sourceOrderId == order.id and item.status == "active":
+                item.status = "revoked"
+                item.revokedAt = now
+                item.updatedAt = now
+        for item in state.referral_rewards:
+            if item.sourceOrderId == order.id and item.status != "revoked":
+                if self._referral_reward_withdrawn_fen(item) > 0:
+                    raise HTTPException(status_code=409, detail="奖励已提现，需人工处理退款")
+                if self._referral_reward_reserved_fen(item) > 0:
+                    withdrawal = next(
+                        (
+                            row for row in state.referral_withdrawals
+                            if item.id in row.rewardIds
+                            and self._referral_withdrawal_allocation(row, item.id, item.amountFen) > 0
+                        ),
+                        None,
+                    )
+                    if withdrawal:
+                        if withdrawal.status != "pending":
+                            raise HTTPException(status_code=409, detail="提现已进入微信转账，需先人工撤销后退款")
+                        withdrawal.status = "rejected"
+                        withdrawal.reviewedAt = now
+                        withdrawal.updatedAt = now
+                        self._release_referral_withdrawal_rewards(state, withdrawal, now)
+                item.status = "revoked"
+                item.reservedFen = 0
+                item.revokedAt = now
+                item.updatedAt = now
+        self._save(state)
+        self._invalidate_customer_intelligence_cache(order.userId)
+        return {"order": order.model_dump(), "duplicate": False}
+
+    def get_customer_intelligence(
+        self,
+        owner_user_id: str,
+        requester_user_id: str,
+        mode: str | None = None,
+        force_refresh: bool = False,
+    ) -> dict:
+        if not requester_user_id:
+            raise HTTPException(status_code=401, detail="请先登录后查看工作台")
+        if requester_user_id != owner_user_id:
+            raise HTTPException(status_code=403, detail="仅工作台拥有者可查看")
+        if not self.customer_info_chain_enabled():
+            return {
+                "featureEnabled": False,
+                "locked": True,
+                "membership": self.get_membership_status(owner_user_id),
+                "summary": {},
+                "signalPreview": [],
+                "upgradeMessage": "客户信息链功能当前未开放。",
+            }
+        membership = self.get_membership_status(owner_user_id)
+        payment_required = bool(membership.get("paymentRequired", True))
+        cache_key = (owner_user_id or "", requester_user_id or "", str(mode or ""))
+        now = time.monotonic()
+        cached = self._customer_intelligence_cache.get(cache_key)
+        cached_matches_access = cached and bool(cached[1].get("locked", True)) == (payment_required and not membership["active"])
+        cached_matches_payment_mode = cached and bool(cached[1].get("paymentRequired", True)) == payment_required
+        if (
+            not force_refresh
+            and cached_matches_access
+            and cached_matches_payment_mode
+            and now - cached[0] < self._customer_intelligence_cache_ttl_seconds
+        ):
+            return cached[1]
+        if cached:
+            self._customer_intelligence_cache.pop(cache_key, None)
+        dashboard = self._build_business_dashboard(owner_user_id, requester_user_id, mode)
+        # The SCRM response is the source for radar tab counts. Its visitor
+        # count must reflect the post-lead-decision active projection, while
+        # the general business dashboard keeps the raw event count for
+        # analytics compatibility.
+        radar_profiles = dashboard.get("radarProfiles") or []
+        dashboard_summary = dashboard.setdefault("summary", {})
+        dashboard_summary["visitorCount"] = len(radar_profiles)
+        dashboard_summary["loggedInVisitorCount"] = sum(
+            1 for item in radar_profiles if item.get("viewerUserId")
+        )
+        dashboard_summary["anonymousVisitorCount"] = sum(
+            1 for item in radar_profiles if not item.get("viewerUserId")
+        )
+        summary = dict(dashboard.get("summary") or {})
+        free_summary = {
+            "visitorCount": int(summary.get("visitorCount") or 0),
+            "anonymousVisitorCount": int(summary.get("anonymousVisitorCount") or 0),
+            "repeatVisitorCount": sum(1 for item in dashboard.get("visitorProfiles", []) if int(item.get("viewCount") or 0) >= 2),
+            "newInteractionCount": int(summary.get("todayActionCount") or 0) + int(summary.get("todayEventCount") or 0),
+            "feedbackResourceCount": sum(1 for item in dashboard.get("topNotes", []) if int(item.get("viewCount") or 0) > 0),
+            "pendingLeadCount": int(summary.get("pendingLeadCount") or 0),
+        }
+        if payment_required and not membership["active"]:
+            response = {
+                "featureEnabled": True,
+                "paymentRequired": True,
+                "locked": True,
+                "membership": membership,
+                "summary": free_summary,
+                "rangeSummaries": dashboard.get("rangeSummaries") or {},
+                "signalPreview": self._masked_signal_preview(dashboard),
+                "upgradeMessage": "已有客户信号，开通会员后查看身份、轨迹并持续跟进。",
+            }
+            self._remember_customer_intelligence_cache(cache_key, response, now)
+            return response
+        response = {
+            "featureEnabled": True,
+            "paymentRequired": payment_required,
+            "locked": False,
+            "membership": membership,
+            "summary": free_summary,
+            "dashboard": dashboard,
+            "customerTimelines": self._customer_timeline_rows(dashboard),
+        }
+        self._remember_customer_intelligence_cache(cache_key, response, now)
+        return response
+
+    def get_customer_intelligence_summary(
+        self,
+        owner_user_id: str,
+        requester_user_id: str,
+        mode: str | None = None,
+        force_refresh: bool = False,
+    ) -> dict:
+        """Return the radar's small, fast projection before the full dashboard.
+
+        This deliberately does not call ``_build_business_dashboard``. The
+        summary contains only counts and current-state cards; full history and
+        range analytics remain on the detail dashboard request.
+        """
+        if not requester_user_id:
+            raise HTTPException(status_code=401, detail="请先登录后查看工作台")
+        if requester_user_id != owner_user_id:
+            raise HTTPException(status_code=403, detail="仅工作台拥有者可查看")
+        membership = self.get_membership_status(owner_user_id)
+        payment_required = bool(membership.get("paymentRequired", True))
+        if not self.customer_info_chain_enabled():
+            return {
+                "featureEnabled": False,
+                "locked": True,
+                "paymentRequired": payment_required,
+                "membership": membership,
+                "summary": {},
+            }
+
+        cache_key = (owner_user_id or "", requester_user_id or "", str(mode or ""))
+        now = time.monotonic()
+        cached = self._customer_intelligence_summary_cache.get(cache_key)
+        cached_matches_access = cached and bool(cached[1].get("locked", True)) == (payment_required and not membership["active"])
+        cached_matches_payment_mode = cached and bool(cached[1].get("paymentRequired", True)) == payment_required
+        if (
+            not force_refresh
+            and cached_matches_access
+            and cached_matches_payment_mode
+            and now - cached[0] < self._customer_intelligence_summary_cache_ttl_seconds
+        ):
+            return cached[1]
+        if cached:
+            self._customer_intelligence_summary_cache.pop(cache_key, None)
+
+        all_leads = self.repo.list_lead_reminders(owner_user_id)
+        if payment_required and not membership["active"]:
+            response = {
+                "featureEnabled": True,
+                "paymentRequired": True,
+                "locked": True,
+                "membership": membership,
+                "summary": {
+                    "pendingLeadCount": sum(1 for item in all_leads if item.status == "pending"),
+                    "visitorCount": None,
+                    "newInteractionCount": None,
+                },
+            }
+            self._remember_customer_intelligence_summary_cache(cache_key, response, now)
+            return response
+
+        notes = [item for item in self.repo.list_user_notes(owner_user_id, include_deleted=False) if item.status != "deleted"]
+        if mode == "property":
+            notes = [item for item in notes if self._is_property_note(item)]
+        elif mode == "groupbuy":
+            notes = [item for item in notes if self._is_groupbuy_note(item)]
+        elif mode == "service":
+            notes = [item for item in notes if self._is_service_note(item)]
+        note_ids = {item.id for item in notes}
+        note_source_ids = note_ids | {item.sourceCardId for item in notes if item.sourceCardId}
+        actions_by_note = self.repo.list_customer_actions_for_notes(note_ids)
+        actions = [action for rows in actions_by_note.values() for action in rows if action.ownerUserId == owner_user_id]
+        projected_lead_ids = {
+            str((action.projectionRefs or {}).get("leadReminderId") or "")
+            for action in actions
+            if (action.projectionRefs or {}).get("leadReminderId")
+        }
+        leads = [item for item in all_leads if item.id in projected_lead_ids or item.cardId in note_source_ids]
+        note_event_rows = self.repo.list_view_events_for_cards(note_source_ids)
+        note_view_events = {
+            note.id: note_event_rows.get(note.sourceCardId or note.id, [])
+            for note in notes
+        }
+        showcases = [
+            showcase
+            for showcase in self.repo.list_showcase_pages(owner_user_id)
+            if any(item.noteId in note_ids for item in showcase.items)
+        ]
+        showcase_ids = {item.id for item in showcases}
+        showcase_event_rows = self.repo.list_showcase_events_for_showcases(showcase_ids)
+        showcase_events = [
+            event
+            for showcase_id in showcase_ids
+            for event in showcase_event_rows.get(showcase_id, [])
+            if event.ownerUserId == owner_user_id
+            and (event.eventType != "note_click" or event.noteId in note_ids)
+        ]
+        raw_summary = {
+            "propertyCount": len(notes),
+            "showcaseOpenCount": sum(1 for item in showcase_events if item.eventType == "view"),
+            "visitorCount": 0,
+            "loggedInVisitorCount": 0,
+            "anonymousVisitorCount": 0,
+            "noteClickCount": sum(1 for rows in note_view_events.values() for item in rows if item.viewType != "share") + sum(1 for item in showcase_events if item.eventType == "note_click"),
+            "consultCount": sum(1 for item in showcase_events if item.eventType in {"phone_click", "wechat_copy"}) + sum(1 for item in actions if item.actionKey in {"lead-contact", "appointment", "consult-click"}),
+            "shareCount": sum(1 for item in showcase_events if item.eventType == "share") + sum(1 for rows in note_view_events.values() for item in rows if item.viewType == "share"),
+            "pendingLeadCount": sum(1 for item in leads if item.status == "pending"),
+            "customerCount": len(leads),
+            "orderCount": 0,
+            "pendingOrderCount": 0,
+            "todayEventCount": 0,
+            "todayActionCount": 0,
+            "showcaseCount": len(showcases),
+            "publishedShowcaseCount": sum(1 for item in showcases if item.status == "published"),
+        }
+        dashboard = {"summary": raw_summary}
+        dashboard = self._attach_opportunity_radar(
+            owner_user_id,
+            dashboard,
+            notes,
+            showcase_events,
+            actions,
+            leads,
+            note_view_events,
+            suppression_leads=all_leads,
+            synchronize_summary_counts=True,
+        )
+        opportunity_summary = dashboard.get("opportunitySummary") or {}
+        response = {
+            "featureEnabled": True,
+            "paymentRequired": payment_required,
+            "locked": False,
+            "membership": membership,
+            "summary": {
+                "pending": sum(1 for item in leads if item.status == "pending"),
+                "visitors": len(dashboard.get("radarProfiles") or []),
+                "following": len(dashboard.get("followingProfiles") or []),
+                "abandoned": len(dashboard.get("abandonedProfiles") or []),
+                "highIntent": int(opportunity_summary.get("highIntentCount") or 0),
+                "interactions": int(raw_summary["noteClickCount"] + raw_summary["consultCount"]),
+                "revival": int(opportunity_summary.get("revivalCount") or 0),
+                "filtered": 0,
+            },
+            "source": "lightweight_radar_projection",
+        }
+        self._remember_customer_intelligence_summary_cache(cache_key, response, now)
+        return response
+
+    @staticmethod
+    def _customer_identity_aliases(value: object) -> set[str]:
+        text = str(value or "").strip()
+        if not text:
+            return set()
+        aliases = {text}
+        match = re.match(r"^(?:user|anon):(.*)$", text)
+        if match and match.group(1):
+            aliases.add(match.group(1))
+        else:
+            aliases.update({f"user:{text}", f"anon:{text}"})
+        return aliases
+
+    def _customer_identity_matches(self, item: dict, target: object) -> bool:
+        target_aliases = self._customer_identity_aliases(target)
+        if not target_aliases:
+            return False
+        values = [
+            item.get("id"),
+            item.get("customerId"),
+            item.get("viewerUserId"),
+            item.get("anonymousId"),
+            item.get("visitorIdentityId"),
+            item.get("leadReminderId"),
+        ]
+        return any(
+            target_aliases.intersection(self._customer_identity_aliases(value))
+            for value in values
+            if value
+        )
+
+    def _raw_customer_identity_matches(
+        self,
+        owner_user_id: str,
+        target: object,
+        *,
+        visitor_identity_id: str | None = None,
+        viewer_user_id: str | None = None,
+        anonymous_id: str | None = None,
+        fallback_id: str | None = None,
+    ) -> bool:
+        target_aliases = self._customer_identity_aliases(target)
+        if not target_aliases:
+            return False
+        values = [
+            visitor_identity_id,
+            self._stable_visitor_identity_id(owner_user_id, viewer_user_id, anonymous_id, fallback_id),
+            self._dashboard_identity_key(viewer_user_id, anonymous_id, fallback_id),
+            viewer_user_id,
+            anonymous_id,
+            fallback_id,
+        ]
+        return any(
+            target_aliases.intersection(self._customer_identity_aliases(value))
+            for value in values
+            if value
+        )
+
+    def _load_customer_detail_sources(self, owner_user_id: str, mode: str | None) -> dict:
+        notes = self.repo.list_user_notes(owner_user_id, include_deleted=False)
+        if mode == "property":
+            notes = [item for item in notes if self._is_property_note(item)]
+        elif mode == "groupbuy":
+            notes = [item for item in notes if self._is_groupbuy_note(item)]
+        elif mode == "service":
+            notes = [item for item in notes if self._is_service_note(item)]
+        note_by_id = {item.id: item for item in notes}
+        note_ids = set(note_by_id)
+        note_source_ids = note_ids | {item.sourceCardId for item in notes if item.sourceCardId}
+        note_view_events = {
+            note.id: self.repo.list_view_events_for_card(note.sourceCardId or note.id)
+            for note in notes
+        }
+        showcases = self.repo.list_showcase_pages(owner_user_id)
+        if mode == "property":
+            showcases = [item for item in showcases if any(showcase_item.noteId in note_ids for showcase_item in item.items)]
+        elif mode in {"groupbuy", "service"}:
+            showcases = [item for item in showcases if any(showcase_item.noteId in note_ids for showcase_item in item.items)]
+        showcase_ids = {item.id for item in showcases}
+        showcase_events = [
+            event
+            for showcase in showcases
+            for event in self.repo.list_showcase_events(showcase.id)
+            if event.ownerUserId == owner_user_id
+            and (mode not in {"groupbuy", "service"} or not event.noteId or event.noteId in note_ids)
+        ]
+        actions = [
+            action
+            for note in notes
+            for action in self.repo.list_customer_actions_for_note(note.id)
+            if action.ownerUserId == owner_user_id
+        ]
+        leads = self.repo.list_lead_reminders(owner_user_id)
+        if mode == "property":
+            projected_lead_ids = {
+                str((action.projectionRefs or {}).get("leadReminderId") or "")
+                for action in actions
+                if (action.projectionRefs or {}).get("leadReminderId")
+            }
+            leads = [item for item in leads if item.id in projected_lead_ids or item.cardId in note_source_ids]
+        elif mode in {"groupbuy", "service"}:
+            leads = [item for item in leads if item.cardId in note_source_ids]
+        return {
+            "notes": notes,
+            "noteById": note_by_id,
+            "noteViewEvents": note_view_events,
+            "showcaseById": {item.id: item for item in showcases},
+            "showcaseIds": showcase_ids,
+            "showcaseEvents": showcase_events,
+            "actions": actions,
+            "leads": leads,
+        }
+
+    def _resolve_customer_detail_direct(
+        self,
+        owner_user_id: str,
+        target_values: list[str],
+        mode: str | None,
+    ) -> dict | None:
+        sources = self._load_customer_detail_sources(owner_user_id, mode)
+        matched_showcase_events = [
+            event
+            for event in sources["showcaseEvents"]
+            if any(
+                self._raw_customer_identity_matches(
+                    owner_user_id,
+                    target,
+                    visitor_identity_id=event.visitorIdentityId,
+                    viewer_user_id=event.viewerUserId,
+                    anonymous_id=event.anonymousId,
+                    fallback_id=event.id,
+                )
+                for target in target_values
+            )
+        ]
+        matched_note_view_events: dict[str, list[ViewEvent]] = {}
+        for note_id, events in sources["noteViewEvents"].items():
+            matched = [
+                event
+                for event in events
+                if any(
+                    self._raw_customer_identity_matches(
+                        owner_user_id,
+                        target,
+                        visitor_identity_id=event.visitorIdentityId,
+                        viewer_user_id=event.viewerUserId,
+                        anonymous_id=event.anonymousId,
+                        fallback_id=event.id,
+                    )
+                    for target in target_values
+                )
+            ]
+            if matched:
+                matched_note_view_events[note_id] = matched
+        matched_actions = [
+            action
+            for action in sources["actions"]
+            if any(
+                self._raw_customer_identity_matches(
+                    owner_user_id,
+                    target,
+                    visitor_identity_id=action.visitorIdentityId,
+                    viewer_user_id=action.viewerUserId,
+                    anonymous_id=action.anonymousId,
+                    fallback_id=action.id,
+                )
+                for target in target_values
+            )
+        ]
+        matched_leads = []
+        for lead in sources["leads"]:
+            if any(str(target) == lead.id for target in target_values):
+                matched_leads.append(lead)
+                continue
+            if any(
+                self._raw_customer_identity_matches(
+                    owner_user_id,
+                    target,
+                    visitor_identity_id=lead.visitorIdentityId,
+                    viewer_user_id=lead.viewerUserId,
+                    fallback_id=lead.id,
+                )
+                for target in target_values
+            ):
+                matched_leads.append(lead)
+
+        if not matched_showcase_events and not matched_note_view_events and not matched_actions and not matched_leads:
+            return None
+
+        profiles = self._build_opportunity_profiles(
+            owner_user_id,
+            sources["noteById"],
+            {note.id: note for note in sources["notes"] if note.sourceCardId},
+            matched_showcase_events,
+            matched_actions,
+            matched_leads,
+            matched_note_view_events,
+        )
+        profile = next(
+            (
+                item
+                for item in profiles
+                if any(self._customer_identity_matches(item, target) for target in target_values)
+                or any(str(target) == item.get("visitorIdentityId") for target in target_values)
+            ),
+            None,
+        )
+        owner_lead = next((item for item in matched_leads if item.ownerUserId == owner_user_id), None)
+        if not owner_lead and profile and profile.get("leadReminderId"):
+            candidate = self.repo.get_lead_reminder(profile["leadReminderId"])
+            if candidate and candidate.ownerUserId == owner_user_id:
+                owner_lead = candidate
+        if not profile and not owner_lead:
+            return None
+        if not profile:
+            profile = {
+                "id": owner_lead.visitorIdentityId or self._stable_visitor_identity_id(owner_user_id, owner_lead.viewerUserId, None, owner_lead.id),
+                "visitorIdentityId": owner_lead.visitorIdentityId or self._stable_visitor_identity_id(owner_user_id, owner_lead.viewerUserId, None, owner_lead.id),
+                "viewerUserId": owner_lead.viewerUserId,
+                "anonymousId": "",
+                "anonymous": False,
+                "nickname": owner_lead.nickname,
+                "avatarUrl": owner_lead.avatarUrl or "",
+                "phone": owner_lead.customerPhone or "",
+                "wechat": owner_lead.customerWechat or "",
+                "email": owner_lead.customerEmail or "",
+                "budgetText": owner_lead.budgetText or "",
+                "customerTags": owner_lead.customerTags or [],
+                "leadReminderId": owner_lead.id,
+                "viewCount": owner_lead.viewCount,
+                "noteIds": [],
+                "noteTitles": [],
+                "lastActivityAt": owner_lead.updatedAt or owner_lead.createdAt,
+                "visitorIdentityType": "customer",
+                "visitorIdentityLabel": "微信客户",
+                "visitorIdentityGroup": "customer",
+                "intentLevel": owner_lead.intentLevel or "待判断",
+                "intentLabel": f"{owner_lead.intentLevel}意向" if owner_lead.intentLevel else "待判断",
+                "intentExplanation": "已有客户跟进记录",
+                "suggestedAction": "查看详情并决定是否跟进",
+                "followupWindow": "可稍后跟进",
+                "followupScript": "您好，我来跟进一下之前的资料。",
+            }
+
+        # A showcase-level view may not carry noteId because the visitor
+        # opened the published page rather than a single material. Resolve
+        # the page snapshot back to its owner-scoped notes so the detail page
+        # can show the real source and ensure a follow-up record safely.
+        matched_source_note_ids: list[str] = []
+
+        def add_source_note_id(value: object) -> None:
+            note_id = str(value or "").strip()
+            if note_id and note_id not in matched_source_note_ids:
+                matched_source_note_ids.append(note_id)
+
+        for note_id in matched_note_view_events:
+            add_source_note_id(note_id)
+        for action in matched_actions:
+            add_source_note_id(action.noteId)
+        for lead in matched_leads:
+            add_source_note_id(lead.cardId)
+        for event in matched_showcase_events:
+            add_source_note_id(event.noteId)
+            if not event.noteId:
+                showcase = sources["showcaseById"].get(event.showcaseId)
+                for item in (showcase.items if showcase else []):
+                    add_source_note_id(item.noteId)
+
+        profile.setdefault("noteIds", [])
+        profile.setdefault("noteTitles", [])
+        for raw_note_id in matched_source_note_ids:
+            note = sources["noteById"].get(raw_note_id) or self._find_note_by_lead_source(raw_note_id)
+            if not note or note.ownerUserId != owner_user_id or note.status == "deleted":
+                continue
+            if note.id not in profile["noteIds"]:
+                profile["noteIds"].append(note.id)
+            if note.title and note.title not in profile["noteTitles"]:
+                profile["noteTitles"].append(note.title)
+
+        timeline_events = []
+        for event in [*matched_showcase_events, *[item for rows in matched_note_view_events.values() for item in rows]]:
+            timeline_events.append({"type": "view", "title": "查看资料", "createdAt": getattr(event, "createdAt", None) or getattr(event, "viewedAt", None)})
+        for action in matched_actions:
+            timeline_events.append({"type": "action", "title": action.actionLabel, "createdAt": action.createdAt})
+        timeline_events = sorted(timeline_events, key=lambda item: item.get("createdAt") or "", reverse=True)[:12]
+        return {
+            "customer": profile,
+            "timeline": {
+                "customerId": profile.get("visitorIdentityId") or profile.get("id"),
+                "displayName": profile.get("nickname") or "匿名访客",
+                "identityType": profile.get("visitorIdentityType") or "customer",
+                "phone": profile.get("phone") or "",
+                "wechat": profile.get("wechat") or "",
+                "email": profile.get("email") or "",
+                "reason": profile.get("intentExplanation") or "有新的资料行为",
+                "nextAction": profile.get("suggestedAction") or "查看详情并决定是否跟进",
+                "events": timeline_events,
+            },
+            "lead": owner_lead,
+        }
+
+    def _resolve_customer_detail_from_lead(
+        self,
+        owner_user_id: str,
+        customer_id: str,
+        lead_id: str,
+    ) -> dict | None:
+        """Build a lead detail from one row without rebuilding the radar.
+
+        Radar cards already carry the owner-scoped lead ID. Reading that row
+        and its source note is the hot path for opening detail; the complete
+        intelligence projection is reserved for legacy/no-lead routes.
+        """
+        lead = self.repo.get_lead_reminder(lead_id)
+        if not lead or lead.ownerUserId != owner_user_id:
+            return None
+        target_aliases = self._customer_identity_aliases(customer_id)
+        lead_aliases = set()
+        for value in (lead.id, lead.viewerUserId, lead.visitorIdentityId):
+            lead_aliases.update(self._customer_identity_aliases(value))
+        if customer_id and not target_aliases.intersection(lead_aliases):
+            return None
+
+        note = self.repo.get_user_note(lead.cardId) or self._find_note_by_lead_source(lead.cardId)
+        note_id = note.id if note else ""
+        source_id = (note.sourceCardId if note else None) or note_id or lead.cardId
+        known_viewer = self.repo.get_user(lead.viewerUserId) if lead.viewerUserId else None
+        viewer_contacts = self._viewer_contact_fields(lead.viewerUserId) if known_viewer else {"phone": "", "wechat": "", "email": ""}
+        identity_type = "customer" if known_viewer else "anonymous"
+        visitor_identity_id = lead.visitorIdentityId or self._stable_visitor_identity_id(
+            owner_user_id,
+            lead.viewerUserId if known_viewer else None,
+            None if known_viewer else lead.viewerUserId,
+            lead.id,
+        )
+        display_name = lead.nickname or (known_viewer.nickname if known_viewer else "匿名访客")
+        events = self.repo.list_view_events_for_card(
+            source_id,
+            viewer_user_id=lead.viewerUserId if known_viewer else None,
+            anonymous_id=None if known_viewer else lead.viewerUserId,
+            visitor_identity_id=lead.visitorIdentityId,
+            limit=50,
+        ) if source_id else []
+        identity_targets = [lead.id, lead.viewerUserId, lead.visitorIdentityId]
+        matched_events = [
+            event for event in events
+            if any(
+                self._raw_customer_identity_matches(
+                    owner_user_id,
+                    target,
+                    visitor_identity_id=event.visitorIdentityId,
+                    viewer_user_id=event.viewerUserId,
+                    anonymous_id=event.anonymousId,
+                    fallback_id=event.id,
+                )
+                for target in identity_targets
+                if target
+            )
+        ]
+        actions = self.repo.list_customer_actions_for_note(
+            note_id,
+            viewer_user_id=lead.viewerUserId if known_viewer else None,
+            anonymous_id=None if known_viewer else lead.viewerUserId,
+            visitor_identity_id=lead.visitorIdentityId,
+            limit=50,
+        ) if note_id else []
+        matched_actions = [
+            action for action in actions
+            if any(
+                self._raw_customer_identity_matches(
+                    owner_user_id,
+                    target,
+                    visitor_identity_id=action.visitorIdentityId,
+                    viewer_user_id=action.viewerUserId,
+                    anonymous_id=action.anonymousId,
+                    fallback_id=action.id,
+                )
+                for target in identity_targets
+                if target
+            )
+        ]
+        note_ids = [note_id] if note_id else []
+        note_titles = [note.title] if note and note.title else []
+        timeline_events = [
+            {"type": "view", "title": "查看资料", "createdAt": event.viewedAt}
+            for event in matched_events
+        ] + [
+            {"type": "action", "title": action.actionLabel, "createdAt": action.createdAt}
+            for action in matched_actions
+        ]
+        timeline_events.sort(key=lambda item: item.get("createdAt") or "", reverse=True)
+        profile = {
+            "id": visitor_identity_id,
+            "visitorIdentityId": visitor_identity_id,
+            "viewerUserId": lead.viewerUserId if known_viewer else "",
+            "anonymousId": "" if known_viewer else lead.viewerUserId,
+            "anonymous": not bool(known_viewer),
+            "nickname": display_name,
+            "avatarUrl": lead.avatarUrl or (known_viewer.avatarUrl if known_viewer else "") or "",
+            "phone": lead.customerPhone or viewer_contacts["phone"] or "",
+            "wechat": lead.customerWechat or viewer_contacts["wechat"] or "",
+            "email": lead.customerEmail or viewer_contacts["email"] or "",
+            "budgetText": lead.budgetText or "",
+            "customerTags": lead.customerTags or [],
+            "leadReminderId": lead.id,
+            "viewCount": max(int(lead.viewCount or 0), len(matched_events)),
+            "noteClickCount": sum(1 for action in matched_actions if action.actionKey == "note-click"),
+            "noteIds": note_ids,
+            "noteTitles": note_titles,
+            "noteCoverUrls": [note.coverUrl] if note and note.coverUrl else [],
+            "lastActivityAt": lead.lastViewedAt or lead.updatedAt or lead.createdAt,
+            "visitorIdentityType": identity_type,
+            "visitorIdentityLabel": "微信客户" if known_viewer else "匿名访客",
+            "visitorIdentityGroup": "customer" if known_viewer else "anonymous",
+            "intentLevel": lead.intentLevel or "待判断",
+            "intentLabel": f"{lead.intentLevel}意向" if lead.intentLevel else "待判断",
+            "intentExplanation": "已有客户跟进记录",
+            "suggestedAction": "查看详情并决定下一步",
+            "followupWindow": "可立即跟进",
+            "followupScript": "您好，我来跟进一下之前的资料。",
+        }
+        return {
+            "customer": profile,
+            "timeline": {
+                "customerId": visitor_identity_id,
+                "displayName": display_name,
+                "identityType": identity_type,
+                "phone": profile["phone"],
+                "wechat": profile["wechat"],
+                "email": profile["email"],
+                "reason": profile["intentExplanation"],
+                "nextAction": profile["suggestedAction"],
+                "events": timeline_events[:12],
+            },
+            "lead": lead,
+        }
+
+    def get_customer_detail(
+        self,
+        owner_user_id: str,
+        requester_user_id: str,
+        customer_id: str,
+        mode: str | None = None,
+        lead_id: str | None = None,
+    ) -> dict:
+        """Return one owner-scoped customer projection for the detail page."""
+        if not requester_user_id:
+            raise HTTPException(status_code=401, detail="请先登录后查看客户详情")
+        if requester_user_id != owner_user_id:
+            raise HTTPException(status_code=403, detail="仅工作台拥有者可查看客户详情")
+        # Older mini-program builds encoded the route once and the API helper
+        # encoded it again. FastAPI removes only the outer query encoding, so
+        # normalize the remaining layer before matching owner-scoped IDs.
+        target_id = unquote(str(customer_id or "").strip())
+        requested_lead_id = unquote(str(lead_id or "").strip())
+        if not target_id and not requested_lead_id:
+            raise HTTPException(status_code=400, detail="客户身份不能为空")
+        target_values = [value for value in (target_id, requested_lead_id) if value]
+
+        if requested_lead_id:
+            # A radar card already carries a concrete lead row. Resolve the
+            # access decision and this row directly; do not rebuild every
+            # note/event/showcase projection just to open one customer.
+            membership = self.get_membership_status(owner_user_id)
+            payment_required = bool(membership.get("paymentRequired", True))
+            if membership.get("featureEnabled") is False:
+                return {
+                    "featureEnabled": False,
+                    "paymentRequired": payment_required,
+                    "locked": True,
+                    "membership": membership,
+                    "messageSummary": {"hasMessages": False, "unreadCount": 0, "threadCount": 0, "latestThreadId": "", "latestMessage": None, "messages": []},
+                }
+            if payment_required and membership.get("active") is not True:
+                return {
+                    "featureEnabled": True,
+                    "paymentRequired": True,
+                    "locked": True,
+                    "membership": membership,
+                    "messageSummary": {"hasMessages": False, "unreadCount": 0, "threadCount": 0, "latestThreadId": "", "latestMessage": None, "messages": []},
+                }
+            lead_candidate = self.repo.get_lead_reminder(requested_lead_id)
+            if lead_candidate and lead_candidate.ownerUserId == owner_user_id:
+                candidate_aliases = set()
+                for value in (lead_candidate.id, lead_candidate.viewerUserId, lead_candidate.visitorIdentityId):
+                    candidate_aliases.update(self._customer_identity_aliases(value))
+                if target_id and not self._customer_identity_aliases(target_id).intersection(candidate_aliases):
+                    raise HTTPException(status_code=404, detail="客户详情不存在")
+                direct_lead = self._resolve_customer_detail_from_lead(owner_user_id, target_id, requested_lead_id)
+                if direct_lead:
+                    return {
+                        "featureEnabled": True,
+                        "paymentRequired": payment_required,
+                        "locked": False,
+                        "membership": membership,
+                        "customer": direct_lead["customer"],
+                        "timeline": direct_lead["timeline"],
+                        "lead": direct_lead["lead"].model_dump(),
+                        "messageSummary": self._build_customer_message_summary(owner_user_id, direct_lead["customer"]),
+                    }
+
+        intelligence = self.get_customer_intelligence(owner_user_id, requester_user_id, mode)
+        if intelligence.get("locked") is not False:
+            return intelligence
+
+        direct = self._resolve_customer_detail_direct(owner_user_id, target_values, mode)
+        if direct:
+            message_summary = self._build_customer_message_summary(owner_user_id, direct["customer"])
+            return {
+                "featureEnabled": True,
+                "paymentRequired": bool(intelligence.get("paymentRequired", True)),
+                "locked": False,
+                "membership": intelligence.get("membership") or {},
+                "customer": direct["customer"],
+                "timeline": direct["timeline"],
+                "lead": direct["lead"].model_dump() if direct.get("lead") else None,
+                "messageSummary": message_summary,
+            }
+
+        dashboard = intelligence.get("dashboard") or {}
+        timelines = intelligence.get("customerTimelines") or []
+        target_values = [value for value in (target_id, requested_lead_id) if value]
+        profile = None
+        for source in ("radarProfiles", "visitorProfiles", "followingProfiles", "abandonedProfiles", "opportunityAlerts"):
+            for item in dashboard.get(source) or []:
+                if any(self._customer_identity_matches(item, value) for value in target_values):
+                    profile = item
+                    break
+            if profile:
+                break
+
+        owner_lead = None
+        if requested_lead_id:
+            candidate = self.repo.get_lead_reminder(requested_lead_id)
+            candidate_aliases = self._customer_identity_aliases(candidate.viewerUserId) if candidate else set()
+            candidate_aliases.update(self._customer_identity_aliases(candidate.id) if candidate else set())
+            target_aliases = self._customer_identity_aliases(target_id)
+            if candidate and candidate.ownerUserId == owner_user_id and (not target_id or target_aliases.intersection(candidate_aliases)):
+                owner_lead = candidate
+        if not owner_lead and profile and profile.get("leadReminderId"):
+            candidate = self.repo.get_lead_reminder(profile.get("leadReminderId"))
+            if candidate and candidate.ownerUserId == owner_user_id:
+                owner_lead = candidate
+
+        timeline = next(
+            (
+                item
+                for item in timelines
+                if any(self._customer_identity_matches(item, value) for value in target_values)
+            ),
+            {},
+        )
+        if not timeline and profile:
+            timeline = next(
+                (
+                    item
+                    for item in timelines
+                    if any(
+                        self._customer_identity_matches(item, value)
+                        for value in (
+                            profile.get("id"),
+                            profile.get("viewerUserId"),
+                            profile.get("anonymousId"),
+                        )
+                        if value
+                    )
+                ),
+                {},
+            )
+
+        if not profile and not owner_lead:
+            raise HTTPException(status_code=404, detail="客户详情不存在")
+
+        if not profile:
+            profile = {
+                "id": self._dashboard_identity_key(owner_lead.viewerUserId),
+                "visitorIdentityId": owner_lead.visitorIdentityId or self._stable_visitor_identity_id(owner_user_id, owner_lead.viewerUserId, None, owner_lead.id),
+                "viewerUserId": owner_lead.viewerUserId,
+                "anonymousId": "",
+                "anonymous": False,
+                "nickname": owner_lead.nickname,
+                "avatarUrl": owner_lead.avatarUrl or "",
+                "phone": owner_lead.customerPhone or "",
+                "wechat": owner_lead.customerWechat or "",
+                "email": owner_lead.customerEmail or "",
+                "budgetText": owner_lead.budgetText or "",
+                "customerTags": owner_lead.customerTags or [],
+                "leadReminderId": owner_lead.id,
+                "viewCount": owner_lead.viewCount,
+                "noteIds": [],
+                "noteTitles": [],
+                "lastActivityAt": owner_lead.updatedAt or owner_lead.createdAt,
+                "visitorIdentityType": "customer",
+                "visitorIdentityLabel": "微信客户",
+                "visitorIdentityGroup": "customer",
+                "intentLevel": owner_lead.intentLevel or "待判断",
+                "intentLabel": f"{owner_lead.intentLevel}意向" if owner_lead.intentLevel else "待判断",
+                "intentExplanation": "已有客户跟进记录",
+                "suggestedAction": "查看详情并决定是否跟进",
+                "followupWindow": "可稍后跟进",
+                "followupScript": "您好，我来跟进一下之前的资料。",
+            }
+
+        message_summary = self._build_customer_message_summary(owner_user_id, profile)
+        return {
+            "featureEnabled": True,
+            "paymentRequired": bool(intelligence.get("paymentRequired", True)),
+            "locked": False,
+            "membership": intelligence.get("membership") or {},
+            "customer": profile,
+            "timeline": timeline,
+            "lead": owner_lead.model_dump() if owner_lead else None,
+            "messageSummary": message_summary,
+        }
+
+    def _build_customer_message_summary(self, owner_user_id: str, profile: dict) -> dict:
+        """Attach only securely attributable owner/buyer messages to detail.
+
+        Anonymous radar identities have no stable buyer account and must not
+        be matched to a message by nickname, phone, text, or similar guesses.
+        """
+        if str(profile.get("visitorIdentityType") or "").strip() != "customer":
+            return {"hasMessages": False, "unreadCount": 0, "threadCount": 0, "latestThreadId": "", "latestMessage": None, "messages": []}
+        viewer_user_id = str(profile.get("viewerUserId") or "").strip()
+        if not viewer_user_id or viewer_user_id == owner_user_id or not self.repo.get_user(viewer_user_id):
+            return {"hasMessages": False, "unreadCount": 0, "threadCount": 0, "latestThreadId": "", "latestMessage": None, "messages": []}
+
+        summaries: list[dict] = []
+        unread_count = 0
+        threads = [
+            thread
+            for thread in self.repo.list_message_threads_for_user(owner_user_id)
+            if thread.status == "active"
+            and thread.ownerUserId == owner_user_id
+            and thread.buyerUserId == viewer_user_id
+        ]
+        for thread in threads:
+            unread_count += int((thread.unreadByUser or {}).get(owner_user_id, 0))
+            note = self.repo.get_user_note(thread.noteId)
+            for record in self.repo.list_message_records_for_thread(thread.id)[-3:]:
+                summaries.append({
+                    "id": record.id,
+                    "threadId": thread.id,
+                    "content": record.content,
+                    "createdAt": record.createdAt,
+                    "senderUserId": record.senderUserId,
+                    "senderRole": "owner" if record.senderUserId == owner_user_id else "customer",
+                    "noteTitle": note.title if note else thread.title,
+                })
+        summaries.sort(key=lambda item: item.get("createdAt") or "", reverse=True)
+        latest = summaries[0] if summaries else None
+        return {
+            "hasMessages": bool(summaries),
+            "unreadCount": unread_count,
+            "threadCount": len(threads),
+            "latestThreadId": latest.get("threadId", "") if latest else "",
+            "latestMessage": latest,
+            "messages": summaries[:3],
+        }
+
+    def _masked_signal_preview(self, dashboard: dict) -> list[dict]:
+        rows = []
+        for item in (dashboard.get("visitorProfiles") or [])[:3]:
+            rows.append({
+                "identityLabel": "某位访客",
+                "signal": item.get("intentExplanation") or item.get("reasonText") or "查看了你的资料",
+                "viewCount": int(item.get("viewCount") or 0),
+                "noteCount": len(item.get("noteIds") or []),
+                "hasContact": bool(item.get("displayPhone") or item.get("displayWechat")),
+            })
+        return rows
+
+    def _customer_timeline_rows(self, dashboard: dict) -> list[dict]:
+        rows = []
+        timeline_sources = (
+            (dashboard.get("visitorProfiles") or [])
+            + (dashboard.get("followingProfiles") or [])
+            + (dashboard.get("abandonedProfiles") or [])
+        )
+        for item in timeline_sources:
+            events = []
+            if item.get("lastViewedAt"):
+                events.append({"type": "view", "title": "最近查看资料", "createdAt": item.get("lastViewedAt")})
+            rows.append({
+                "customerId": item.get("visitorIdentityId") or item.get("id") or item.get("viewerUserId") or item.get("anonymousId"),
+                "displayName": item.get("nickname") or "匿名访客",
+                "identityType": item.get("visitorIdentityType") or "customer",
+                "phone": item.get("phone") or item.get("displayPhone"),
+                "wechat": item.get("wechat") or item.get("displayWechat"),
+                "email": item.get("email") or item.get("displayEmail"),
+                "reason": item.get("intentExplanation") or item.get("reasonText") or "有新的资料行为",
+                "nextAction": item.get("suggestedAction") or "查看详情并决定是否跟进",
+                "events": sorted(events, key=lambda row: row.get("createdAt") or "", reverse=True),
+            })
+        return rows
+
+    def _invite_code_for_user(self, user_id: str) -> str:
+        signature = hmac.new(
+            (settings.h5_auth_secret or "teamBuy-h5-dev-secret").encode("utf-8"),
+            user_id.encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()[:12]
+        body = base64.urlsafe_b64encode(user_id.encode("utf-8")).decode("ascii").rstrip("=")
+        return f"REF-{body}-{signature}"
+
+    def _user_id_from_invite_code(self, invite_code: str) -> str:
+        text = str(invite_code or "").strip()
+        parts = text.split("-")
+        if len(parts) != 3 or parts[0] != "REF":
+            raise HTTPException(status_code=400, detail="邀请码无效")
+        try:
+            user_id = base64.urlsafe_b64decode(self._pad_h5_ticket_body(parts[1])).decode("utf-8")
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail="邀请码无效") from exc
+        if not hmac.compare_digest(self._invite_code_for_user(user_id), text):
+            raise HTTPException(status_code=400, detail="邀请码无效")
+        return user_id
+
+    def bind_referral(self, invitee_user_id: str, invite_code: str) -> dict:
+        invitee = self.repo.get_user(invitee_user_id)
+        if not invitee:
+            raise HTTPException(status_code=404, detail="被邀请用户不存在")
+        inviter_user_id = self._user_id_from_invite_code(invite_code)
+        if inviter_user_id == invitee_user_id:
+            raise HTTPException(status_code=400, detail="不能邀请自己")
+        if not self.repo.get_user(inviter_user_id):
+            raise HTTPException(status_code=404, detail="邀请人不存在")
+        state = self._load()
+        existing = next((item for item in state.referral_relations if item.inviteeUserId == invitee_user_id), None)
+        if existing:
+            if existing.inviterUserId != inviter_user_id:
+                raise HTTPException(status_code=409, detail="邀请关系已经绑定")
+            return {"relation": existing.model_dump(), "duplicate": True}
+        self._assert_referral_has_no_cycle(state, inviter_user_id, invitee_user_id)
+        now = now_iso()
+        relation = ReferralRelation(
+            id=new_id("referral"),
+            inviterUserId=inviter_user_id,
+            inviteeUserId=invitee_user_id,
+            createdAt=now,
+            updatedAt=now,
+        )
+        state.referral_relations.append(relation)
+        self._save(state)
+        return {"relation": relation.model_dump(), "duplicate": False}
+
+    def _ensure_share_referral(
+        self,
+        state: AppState,
+        invitee_user_id: str,
+        inviter_user_id: str,
+        source: str = "share_link",
+    ) -> tuple[ReferralRelation, bool, bool]:
+        """Create a first-touch share attribution without blocking an existing one.
+
+        The relation is deliberately recorded even when the inviter is not a paid
+        member yet. Membership is checked when the invitee's payment is confirmed,
+        so a later inviter renewal can qualify later payments without retroactive
+        rewards.
+        """
+        existing = next((item for item in state.referral_relations if item.inviteeUserId == invitee_user_id), None)
+        if existing:
+            return existing, True, existing.inviterUserId != inviter_user_id
+        self._assert_referral_has_no_cycle(state, inviter_user_id, invitee_user_id)
+        now = now_iso()
+        relation = ReferralRelation(
+            id=new_id("referral_relation"),
+            inviterUserId=inviter_user_id,
+            inviteeUserId=invitee_user_id,
+            source=source,
+            createdAt=now,
+            updatedAt=now,
+        )
+        state.referral_relations.append(relation)
+        return relation, False, False
+
+    def bind_referral_from_share(
+        self,
+        invitee_user_id: str,
+        inviter_user_id: str,
+        source: str = "share_link",
+    ) -> dict:
+        invitee_user_id = str(invitee_user_id or "").strip()
+        inviter_user_id = str(inviter_user_id or "").strip()
+        if not invitee_user_id or not inviter_user_id:
+            raise HTTPException(status_code=400, detail="分享归因缺少用户信息")
+        if invitee_user_id == inviter_user_id:
+            raise HTTPException(status_code=400, detail="不能归因给自己")
+        if not self.repo.get_user(invitee_user_id):
+            raise HTTPException(status_code=404, detail="被分享用户不存在")
+        if not self.repo.get_user(inviter_user_id):
+            raise HTTPException(status_code=404, detail="分享者不存在")
+        state = self._load()
+        relation, duplicate, locked = self._ensure_share_referral(
+            state,
+            invitee_user_id,
+            inviter_user_id,
+            "share_link" if source != "same_style" else "same_style",
+        )
+        if not duplicate:
+            self._save(state)
+        return {"relation": relation.model_dump(), "duplicate": duplicate, "locked": locked}
+
+    def _assert_referral_has_no_cycle(self, state: AppState, inviter_user_id: str, invitee_user_id: str) -> None:
+        parent_by_invitee = {item.inviteeUserId: item.inviterUserId for item in state.referral_relations}
+        current = inviter_user_id
+        visited: set[str] = set()
+        while current and current not in visited:
+            if current == invitee_user_id:
+                raise HTTPException(status_code=400, detail="不能形成循环邀请")
+            visited.add(current)
+            current = parent_by_invitee.get(current, "")
+
+    def referral_withdrawal_min_amount_fen(self) -> int:
+        configured = (
+            settings.wechat_transfer_min_amount_fen
+            if settings.app_env.lower() == "production"
+            else settings.wechat_transfer_test_min_amount_fen
+        )
+        return max(1, int(configured))
+
+    @staticmethod
+    def referral_withdrawal_daily_limit() -> int:
+        return max(1, int(settings.wechat_transfer_daily_withdrawal_limit))
+
+    def referral_withdrawal_rules(self) -> dict:
+        return {
+            "minimumWithdrawalFen": self.referral_withdrawal_min_amount_fen(),
+            "dailyWithdrawalLimit": self.referral_withdrawal_daily_limit(),
+            "withdrawalWindowText": "每日 00:00–24:00 均可提交提现申请",
+            "reviewTimeText": "提交后进入平台审核，审核通过后发起微信转账",
+            "arrivalTimeText": "以微信实际到账时间为准，用户确认后基本秒到",
+            "feeText": "当前提现手续费为 0 元",
+            "failureText": "转账失败或撤销成功后，冻结佣金会退回可提现余额",
+        }
+
+    @staticmethod
+    def _referral_reward_breakdown(reward: ReferralReward) -> dict[str, int]:
+        """Return ledger portions while remaining compatible with old rows."""
+        amount = max(0, int(reward.amountFen or 0))
+        withdrawn = max(0, int(reward.withdrawnFen or 0))
+        reserved = max(0, int(reward.reservedFen or 0))
+        if reward.status == "withdrawn" and withdrawn == 0:
+            withdrawn = amount
+        elif reward.status == "reserved" and reserved == 0:
+            reserved = max(0, amount - withdrawn)
+        reserved = min(reserved, max(0, amount - withdrawn))
+        available = max(0, amount - withdrawn - reserved) if reward.status in {"available", "reserved"} else 0
+        return {
+            "available": available,
+            "reserved": reserved,
+            "withdrawn": withdrawn,
+            "total": amount,
+        }
+
+    @classmethod
+    def _referral_reward_available_fen(cls, reward: ReferralReward) -> int:
+        return cls._referral_reward_breakdown(reward)["available"]
+
+    @classmethod
+    def _referral_reward_reserved_fen(cls, reward: ReferralReward) -> int:
+        return cls._referral_reward_breakdown(reward)["reserved"]
+
+    @classmethod
+    def _referral_reward_withdrawn_fen(cls, reward: ReferralReward) -> int:
+        return cls._referral_reward_breakdown(reward)["withdrawn"]
+
+    @staticmethod
+    def _referral_withdrawal_allocation(withdrawal: ReferralWithdrawal, reward_id: str, reward_amount_fen: int) -> int:
+        if withdrawal.rewardAllocations:
+            return max(0, int(withdrawal.rewardAllocations.get(reward_id, 0)))
+        return max(0, int(reward_amount_fen)) if reward_id in withdrawal.rewardIds else 0
+
+    @classmethod
+    def _release_referral_withdrawal_rewards(
+        cls,
+        state: AppState,
+        withdrawal: ReferralWithdrawal,
+        now: str,
+    ) -> None:
+        for reward in state.referral_rewards:
+            allocation = cls._referral_withdrawal_allocation(withdrawal, reward.id, reward.amountFen)
+            if not allocation:
+                continue
+            reserved = cls._referral_reward_reserved_fen(reward)
+            reward.reservedFen = max(0, reserved - allocation)
+            breakdown = cls._referral_reward_breakdown(reward)
+            if reward.status != "revoked":
+                reward.status = "reserved" if reward.reservedFen else (
+                    "withdrawn" if breakdown["withdrawn"] >= breakdown["total"] else "available"
+                )
+            reward.updatedAt = now
+
+    def _referral_withdrawals_today(self, state: AppState, user_id: str) -> int:
+        today = datetime.now(tz=SHANGHAI).date().isoformat()
+        counted_statuses = {"pending", "approved", "waiting_user_confirm", "processing", "paid"}
+        count = 0
+        for item in state.referral_withdrawals:
+            if item.userId != user_id or item.status not in counted_statuses:
+                continue
+            try:
+                if date_key(item.createdAt) == today:
+                    count += 1
+            except (TypeError, ValueError, OverflowError):
+                continue
+        return count
+
+    @staticmethod
+    def _referral_withdrawal_out_bill_no(withdrawal_id: str) -> str:
+        # WeChat only accepts alphanumeric merchant bill numbers.  Keeping this
+        # deterministic gives retries/query operations one stable idempotency key.
+        return f"wd{hashlib.sha256(withdrawal_id.encode('utf-8')).hexdigest()[:30]}"
+
+    def get_referral_center(self, user_id: str) -> dict:
+        self.require_customer_info_chain_enabled()
+        if not self.repo.get_user(user_id):
+            raise HTTPException(status_code=404, detail="用户不存在")
+        state = self._load()
+        relations = [item for item in state.referral_relations if item.inviterUserId == user_id]
+        rewards = sorted([item for item in state.referral_rewards if item.inviterUserId == user_id], key=lambda item: item.createdAt, reverse=True)
+        totals = {status: 0 for status in ["pending", "available", "reserved", "withdrawn", "revoked"]}
+        for item in rewards:
+            if item.status in {"pending", "revoked"}:
+                totals[item.status] += item.amountFen
+                continue
+            breakdown = self._referral_reward_breakdown(item)
+            totals["available"] += breakdown["available"]
+            totals["reserved"] += breakdown["reserved"]
+            totals["withdrawn"] += breakdown["withdrawn"]
+        paid_user_ids = {
+            item.inviteeUserId for item in rewards if item.status in {"available", "reserved", "withdrawn"}
+        }
+        return {
+            "inviteCode": self._invite_code_for_user(user_id),
+            "attributionMode": "share_link",
+            "membershipRequired": True,
+            "eligibleForRewards": self._is_paid_customer_member(user_id),
+            "rewardEligibilityText": "好友付费时，你必须仍是有效会员；会员到期期间不产生该笔奖励。",
+            "inviteeCount": len(relations),
+            "paidInviteeCount": len(paid_user_ids),
+            "rewardRatio": 0.5,
+            "feeFen": 0,
+            "minimumWithdrawalFen": self.referral_withdrawal_min_amount_fen(),
+            "dailyWithdrawalLimit": self.referral_withdrawal_daily_limit(),
+            "withdrawalRules": self.referral_withdrawal_rules(),
+            "merchantTransferMchId": settings.wechat_pay_mch_id,
+            "totals": totals,
+            "rewards": [item.model_dump() for item in rewards],
+            "withdrawals": sorted(
+                [item.model_dump() for item in state.referral_withdrawals if item.userId == user_id],
+                key=lambda item: (item.get("createdAt") or "", item.get("id") or ""),
+                reverse=True,
+            ),
+            "secondLevelRewardEnabled": False,
+        }
+
+    def create_referral_withdrawal(self, user_id: str, amount_fen: int) -> dict:
+        state = self._load()
+        minimum_amount_fen = self.referral_withdrawal_min_amount_fen()
+        if amount_fen < minimum_amount_fen:
+            raise HTTPException(
+                status_code=400,
+                detail=f"最低提现金额为 {minimum_amount_fen / 100:.2f} 元",
+            )
+        daily_limit = self.referral_withdrawal_daily_limit()
+        if self._referral_withdrawals_today(state, user_id) >= daily_limit:
+            raise HTTPException(status_code=400, detail=f"每日最多提现 {daily_limit} 次，请次日再试")
+        available = sorted(
+            [
+                item for item in state.referral_rewards
+                if item.inviterUserId == user_id
+                and self._referral_reward_available_fen(item) > 0
+            ],
+            key=lambda item: item.createdAt,
+        )
+        if amount_fen <= 0 or sum(self._referral_reward_available_fen(item) for item in available) < amount_fen:
+            raise HTTPException(status_code=400, detail="可提现金额不足")
+        selected = []
+        allocations: dict[str, int] = {}
+        selected_total = 0
+        for item in available:
+            if selected_total >= amount_fen:
+                break
+            allocation = min(self._referral_reward_available_fen(item), amount_fen - selected_total)
+            selected.append(item)
+            allocations[item.id] = allocation
+            selected_total += allocation
+        now = now_iso()
+        withdrawal = ReferralWithdrawal(
+            id=new_id("withdrawal"),
+            userId=user_id,
+            amountFen=amount_fen,
+            rewardIds=[item.id for item in selected],
+            rewardAllocations=allocations,
+            createdAt=now,
+            updatedAt=now,
+        )
+        for item in selected:
+            item.reservedFen = self._referral_reward_reserved_fen(item) + allocations[item.id]
+            item.status = "reserved"
+            item.updatedAt = now
+        state.referral_withdrawals.append(withdrawal)
+        self._save(state)
+        return withdrawal.model_dump()
+
+    def list_referral_withdrawals(self, status: str | None = None) -> list[dict]:
+        state = self._load()
+        user_labels = {item.id: item.nickname or item.id for item in state.users}
+        rows = [
+            item for item in state.referral_withdrawals
+            if not status or item.status == status
+        ]
+        rows.sort(key=lambda item: (item.createdAt, item.id), reverse=True)
+        return [
+            {
+                **item.model_dump(),
+                "userNickname": user_labels.get(item.userId, item.userId),
+            }
+            for item in rows
+        ]
+
+    def _mark_referral_withdrawal_paid(
+        self,
+        state: AppState,
+        withdrawal: ReferralWithdrawal,
+        transfer: dict,
+        now: str,
+    ) -> None:
+        withdrawal.status = "paid"
+        withdrawal.paidAt = now
+        withdrawal.transferState = "SUCCESS"
+        withdrawal.transferBillNo = str(transfer.get("transfer_bill_no") or "").strip() or withdrawal.transferBillNo
+        withdrawal.failureReason = None
+        withdrawal.updatedAt = now
+        for reward in state.referral_rewards:
+            allocation = self._referral_withdrawal_allocation(withdrawal, reward.id, reward.amountFen)
+            if not allocation:
+                continue
+            reserved = self._referral_reward_reserved_fen(reward)
+            reward.reservedFen = max(0, reserved - allocation)
+            reward.withdrawnFen = self._referral_reward_withdrawn_fen(reward) + allocation
+            breakdown = self._referral_reward_breakdown(reward)
+            reward.status = "withdrawn" if breakdown["withdrawn"] >= breakdown["total"] else (
+                "reserved" if reward.reservedFen else "available"
+            )
+            if reward.status == "withdrawn":
+                reward.withdrawnAt = now
+            reward.updatedAt = now
+
+    def approve_referral_withdrawal(self, withdrawal_id: str) -> dict:
+        state = self._load()
+        withdrawal = next((item for item in state.referral_withdrawals if item.id == withdrawal_id), None)
+        if not withdrawal:
+            raise HTTPException(status_code=404, detail="提现记录不存在")
+        if withdrawal.status in {"paid", "waiting_user_confirm", "processing"}:
+            return withdrawal.model_dump()
+        if withdrawal.status != "pending":
+            raise HTTPException(status_code=409, detail="当前提现记录不能审核发起")
+        if withdrawal.amountFen < self.referral_withdrawal_min_amount_fen():
+            raise HTTPException(status_code=400, detail="提现金额低于当前环境最低提现金额")
+        user = self.repo.get_user(withdrawal.userId)
+        if not user:
+            raise HTTPException(status_code=404, detail="提现用户不存在")
+        rewards = [item for item in state.referral_rewards if item.id in withdrawal.rewardIds]
+        if len(rewards) != len(withdrawal.rewardIds) or any(item.status != "reserved" for item in rewards):
+            raise HTTPException(status_code=409, detail="提现奖励已失效或未完成预占")
+
+        out_bill_no = withdrawal.outBillNo or self._referral_withdrawal_out_bill_no(withdrawal.id)
+        transfer = WechatPayClient().create_merchant_transfer(
+            openid=user.openid,
+            out_bill_no=out_bill_no,
+            amount_fen=withdrawal.amountFen,
+            transfer_remark="推广佣金",
+            job_type="推广用户",
+            reward_description="会员推广佣金",
+        )
+        transfer_state = str(transfer.get("state") or "").strip().upper()
+        if not transfer_state:
+            raise WechatPayError("微信商家转账未返回单据状态")
+        now = now_iso()
+        withdrawal.reviewedAt = now
+        withdrawal.outBillNo = out_bill_no
+        withdrawal.transferBillNo = str(transfer.get("transfer_bill_no") or "").strip() or None
+        withdrawal.transferState = transfer_state
+        withdrawal.packageInfo = str(transfer.get("package_info") or "").strip() or None
+        withdrawal.updatedAt = now
+        if transfer_state == "SUCCESS":
+            self._mark_referral_withdrawal_paid(state, withdrawal, transfer, now)
+        elif transfer_state in {"FAIL", "CANCELLED"}:
+            withdrawal.status = "cancelled" if transfer_state == "CANCELLED" else "failed"
+            withdrawal.failureReason = str(transfer.get("fail_reason") or "微信转账未成功")
+            self._release_referral_withdrawal_rewards(state, withdrawal, now)
+        elif transfer_state == "WAIT_USER_CONFIRM":
+            withdrawal.status = "waiting_user_confirm"
+        else:
+            withdrawal.status = "processing"
+        self._save(state)
+        return withdrawal.model_dump()
+
+    def query_referral_withdrawal(self, withdrawal_id: str) -> dict:
+        state = self._load()
+        withdrawal = next((item for item in state.referral_withdrawals if item.id == withdrawal_id), None)
+        if not withdrawal:
+            raise HTTPException(status_code=404, detail="提现记录不存在")
+        if not withdrawal.outBillNo:
+            raise HTTPException(status_code=409, detail="提现尚未发起微信转账，无需查单")
+        transfer = WechatPayClient().query_merchant_transfer(out_bill_no=withdrawal.outBillNo)
+        result = self.handle_wechat_transfer_notification(transfer)
+        result["source"] = "wechat_query"
+        return result
+
+    def settle_referral_withdrawal_manually(
+        self,
+        withdrawal_id: str,
+        note: str = "已核实微信到账",
+    ) -> dict:
+        """Close a legacy withdrawal only after an operator verifies arrival.
+
+        Older production rows may have been paid before the merchant-transfer
+        bill number/state machine was deployed. They cannot be reconciled by
+        WeChat query, so this is an explicit, audited operator path rather
+        than an automatic status guess.
+        """
+        state = self._load()
+        withdrawal = next((item for item in state.referral_withdrawals if item.id == withdrawal_id), None)
+        if not withdrawal:
+            raise HTTPException(status_code=404, detail="提现记录不存在")
+        if withdrawal.status == "paid":
+            return {"withdrawal": withdrawal.model_dump(), "duplicate": True, "source": "manual"}
+        if withdrawal.status in {"failed", "cancelled", "rejected"}:
+            raise HTTPException(status_code=409, detail="失败、撤销或拒绝的提现不能人工标记到账")
+        now = now_iso()
+        withdrawal.reviewedAt = withdrawal.reviewedAt or now
+        withdrawal.settlementSource = "manual"
+        withdrawal.settlementNote = str(note or "已核实微信到账")[:200]
+        self._mark_referral_withdrawal_paid(
+            state,
+            withdrawal,
+            {"transfer_bill_no": withdrawal.transferBillNo},
+            now,
+        )
+        self._save(state)
+        return {"withdrawal": withdrawal.model_dump(), "duplicate": False, "source": "manual"}
+
+    def cancel_referral_withdrawal(self, withdrawal_id: str, reason: str = "运营人工撤销") -> dict:
+        state = self._load()
+        withdrawal = next((item for item in state.referral_withdrawals if item.id == withdrawal_id), None)
+        if not withdrawal:
+            raise HTTPException(status_code=404, detail="提现记录不存在")
+        if withdrawal.status in {"paid", "failed", "cancelled", "rejected"}:
+            return {"withdrawal": withdrawal.model_dump(), "duplicate": True}
+        now = now_iso()
+        if withdrawal.status == "pending":
+            withdrawal.status = "cancelled"
+            withdrawal.transferState = "CANCELLED"
+            withdrawal.failureReason = str(reason or "运营人工撤销")[:200]
+            withdrawal.updatedAt = now
+            self._release_referral_withdrawal_rewards(state, withdrawal, now)
+            self._save(state)
+            return {"withdrawal": withdrawal.model_dump(), "duplicate": False, "source": "local_cancel"}
+        if not withdrawal.outBillNo:
+            raise HTTPException(status_code=409, detail="提现缺少微信商户单号，不能撤销")
+        if withdrawal.transferState in {"SUCCESS", "FAIL", "CANCELLED"}:
+            return {"withdrawal": withdrawal.model_dump(), "duplicate": True}
+        if withdrawal.transferState == "CANCELING":
+            return {"withdrawal": withdrawal.model_dump(), "duplicate": True}
+        if withdrawal.transferState == "TRANSFERING":
+            raise HTTPException(status_code=409, detail="用户已确认收款，当前不能撤销")
+        transfer = WechatPayClient().cancel_merchant_transfer(out_bill_no=withdrawal.outBillNo)
+        if reason:
+            transfer = {**transfer, "fail_reason": str(reason)[:200]}
+        result = self.handle_wechat_transfer_notification(transfer)
+        result["source"] = "wechat_cancel"
+        return result
+
+    def handle_wechat_transfer_notification(self, transfer: dict) -> dict:
+        out_bill_no = str(transfer.get("out_bill_no") or "").strip()
+        if not out_bill_no:
+            raise HTTPException(status_code=400, detail="微信转账回调缺少商户单号")
+        state = self._load()
+        withdrawal = next(
+            (item for item in state.referral_withdrawals if item.outBillNo == out_bill_no),
+            None,
+        )
+        if not withdrawal:
+            return {"ignored": True, "outBillNo": out_bill_no}
+        transfer_amount = transfer.get("transfer_amount")
+        if transfer_amount is not None and int(transfer_amount) != withdrawal.amountFen:
+            raise HTTPException(status_code=409, detail="微信转账回调金额不一致")
+        user = self.repo.get_user(withdrawal.userId)
+        callback_openid = str(transfer.get("openid") or "").strip()
+        if user and callback_openid and callback_openid != user.openid:
+            raise HTTPException(status_code=409, detail="微信转账回调用户不一致")
+        transfer_state = str(transfer.get("state") or "").strip().upper()
+        now = now_iso()
+        withdrawal.transferState = transfer_state or withdrawal.transferState
+        withdrawal.transferBillNo = str(transfer.get("transfer_bill_no") or "").strip() or withdrawal.transferBillNo
+        if withdrawal.status in {"paid", "failed", "cancelled", "rejected"}:
+            return {"withdrawal": withdrawal.model_dump(), "duplicate": True}
+        if transfer_state == "SUCCESS":
+            self._mark_referral_withdrawal_paid(state, withdrawal, transfer, now)
+        elif transfer_state in {"FAIL", "CANCELLED"}:
+            withdrawal.status = "cancelled" if transfer_state == "CANCELLED" else "failed"
+            withdrawal.failureReason = str(transfer.get("fail_reason") or "微信转账未成功")
+            withdrawal.updatedAt = now
+            self._release_referral_withdrawal_rewards(state, withdrawal, now)
+        elif transfer_state == "WAIT_USER_CONFIRM":
+            withdrawal.status = "waiting_user_confirm"
+            withdrawal.updatedAt = now
+        else:
+            withdrawal.status = "processing"
+            withdrawal.updatedAt = now
+        self._save(state)
+        return {"withdrawal": withdrawal.model_dump(), "duplicate": False}
+
+    def generate_same_style(self, payload: SameStyleGenerateRequest) -> dict:
+        owner = self.repo.get_user(payload.ownerUserId)
+        if not owner:
+            raise HTTPException(status_code=404, detail="用户不存在")
+        if payload.mode not in {"reuse_content", "use_own_content"}:
+            raise HTTPException(status_code=400, detail="生成方式不合法")
+        existing = self.repo.find_same_style_generation(owner.id, payload.idempotencyKey)
+        if existing:
+            return {"generation": existing.model_dump(), "duplicate": True, "reused": False}
+        if payload.mode == "reuse_content" and (payload.sourceNoteId or payload.sourceShowcaseId):
+            reusable = self.repo.find_latest_same_style_generation(
+                owner.id,
+                payload.mode,
+                source_note_id=payload.sourceNoteId,
+                source_showcase_id=payload.sourceShowcaseId,
+            )
+            if reusable and self._same_style_generation_target_available(reusable, owner.id):
+                return {"generation": reusable.model_dump(), "duplicate": True, "reused": True}
+        generated_note_id = None
+        generated_showcase_id = None
+        template_id = None
+        source_owner_user_id = None
+        if payload.mode == "reuse_content":
+            if not payload.sourceNoteId and not payload.sourceShowcaseId:
+                raise HTTPException(status_code=400, detail="请选择要复用的公开资料或合集")
+            source_note = self.repo.get_user_note(payload.sourceNoteId) if payload.sourceNoteId else None
+            source_showcase = self.repo.get_showcase_page(payload.sourceShowcaseId) if payload.sourceShowcaseId else None
+            if payload.sourceNoteId and (not source_note or source_note.status == "deleted"):
+                raise HTTPException(status_code=404, detail="公开资料不存在")
+            if payload.sourceShowcaseId and (not source_showcase or source_showcase.status != "published"):
+                raise HTTPException(status_code=404, detail="公开合集不存在")
+            source_owner_user_id = source_note.ownerUserId if source_note else source_showcase.ownerUserId
+            result = self.clone_property_same(
+                PropertySameCloneRequest(
+                    ownerUserId=owner.id,
+                    sourceType="note" if source_note else "showcase",
+                    sourceId=payload.sourceNoteId or payload.sourceShowcaseId,
+                    phone=owner.phone,
+                    wechat=owner.wechat,
+                    ownerName=owner.nickname,
+                )
+            )
+            generated_note_id = result.get("note", {}).get("id")
+            generated_showcase_id = result.get("showcase", {}).get("id")
+        else:
+            if not payload.ownNoteIds:
+                raise HTTPException(status_code=400, detail="请选择自己的资料")
+            notes = []
+            for note_id in payload.ownNoteIds:
+                note = self.repo.get_user_note(note_id)
+                if not note or note.ownerUserId != owner.id or note.status == "deleted":
+                    raise HTTPException(status_code=403, detail="只能选择自己的有效资料")
+                notes.append(note)
+            source_showcase = self.repo.get_showcase_page(payload.sourceShowcaseId) if payload.sourceShowcaseId else None
+            if source_showcase and source_showcase.status != "published":
+                raise HTTPException(status_code=404, detail="来源模板不存在")
+            source_owner_user_id = source_showcase.ownerUserId if source_showcase else None
+            template_id = source_showcase.templateId if source_showcase else "featured_window"
+            now = now_iso()
+            showcase = ShowcasePage(
+                id=new_id("showcase"),
+                ownerUserId=owner.id,
+                status="draft",
+                name=f"{owner.nickname}的精选资料",
+                description="多条资料，一页发客户。",
+                templateId=template_id,
+                contactConfig={"phone": owner.phone, "wechat": owner.wechat},
+                items=[ShowcaseItem(noteId=item.id, sortOrder=index) for index, item in enumerate(notes)],
+                createdAt=now,
+                updatedAt=now,
+            )
+            self.repo.save_showcase_page(showcase)
+            self._invalidate_showcase_list_cache(owner.id)
+            generated_showcase_id = showcase.id
+        now = now_iso()
+        relation = None
+        relation_duplicate = False
+        if source_owner_user_id and source_owner_user_id != owner.id:
+            referral_state = AppState(referral_relations=self.repo.list_referral_relations())
+            relation, relation_duplicate, _ = self._ensure_share_referral(
+                referral_state,
+                owner.id,
+                source_owner_user_id,
+                "same_style",
+            )
+        generation = SameStyleGeneration(
+            id=new_id("same_style"),
+            ownerUserId=owner.id,
+            mode=payload.mode,
+            sourceNoteId=payload.sourceNoteId,
+            sourceShowcaseId=payload.sourceShowcaseId,
+            sourceTemplateId=template_id,
+            generatedNoteId=generated_note_id,
+            generatedShowcaseId=generated_showcase_id,
+            referralRelationId=relation.id if relation else None,
+            idempotencyKey=payload.idempotencyKey,
+            createdAt=now,
+            updatedAt=now,
+        )
+        self.repo.save_same_style_generation(
+            generation,
+            referral_relation=relation if relation and not relation_duplicate else None,
+        )
+        return {"generation": generation.model_dump(), "duplicate": False}
+
+    def _same_style_generation_target_available(self, generation: SameStyleGeneration, owner_user_id: str) -> bool:
+        if generation.generatedNoteId:
+            note = self.repo.get_user_note(generation.generatedNoteId)
+            return bool(note and note.ownerUserId == owner_user_id and note.status != "deleted")
+        if generation.generatedShowcaseId:
+            showcase = self.repo.get_showcase_page(generation.generatedShowcaseId)
+            return bool(showcase and showcase.ownerUserId == owner_user_id)
+        return False
+
     def _h5_ticket_encode(self, payload: dict) -> str:
         encoded = base64.urlsafe_b64encode(json.dumps(payload, ensure_ascii=True, separators=(",", ":")).encode("utf-8"))
         return encoded.decode("ascii").rstrip("=")
@@ -1638,9 +4264,58 @@ class AppService:
             wechat = strip_unicode_surrogates(payload.wechat).strip()
             user.wechat = wechat[:40] if wechat else None
 
+        sales_profile = dict(user.salesProfile or {})
+        profile_fields = {
+            "displayName": payload.displayName,
+            "jobTitle": payload.jobTitle,
+            "company": payload.company,
+            "city": payload.city,
+            "wechatQrUrl": payload.wechatQrUrl,
+            "email": payload.email,
+            "website": payload.website,
+        }
+        for key, value in profile_fields.items():
+            if value is not None:
+                cleaned = strip_unicode_surrogates(value).strip()[:240]
+                if key in {"website", "wechatQrUrl"} and cleaned:
+                    parsed = urlparse(cleaned)
+                    if parsed.scheme != "https" or not parsed.netloc:
+                        raise HTTPException(status_code=400, detail="个人资料中的网址和二维码必须使用HTTPS")
+                sales_profile[key] = cleaned
+        sales_profile.update(
+            {
+                "displayName": sales_profile.get("displayName") or user.nickname,
+                "avatarUrl": user.avatarUrl,
+                "phone": user.phone or "",
+                "wechat": user.wechat or "",
+            }
+        )
+        user.salesProfile = sales_profile
+
         user.updatedAt = now_iso()
         self.repo.save_user(user)
         return user
+
+    def get_wecom_bind_status(self, user_id: str) -> dict:
+        user = self.repo.get_user(user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="用户不存在")
+        existing_binding = self._find_wecom_external_binding_for_owner(user.id, user.openid)
+        if not existing_binding:
+            return {
+                "status": "unbound",
+                "bound": False,
+                "ownerUserId": user.id,
+                "ownerOpenid": user.openid,
+            }
+        return {
+            "status": "bound",
+            "bound": True,
+            "ownerUserId": user.id,
+            "ownerOpenid": user.openid,
+            "externalUserId": existing_binding.externalUserId,
+            "bindSource": existing_binding.bindSource,
+        }
 
     def create_wecom_bind_intent(self, user_id: str) -> dict:
         user = self.repo.get_user(user_id)
@@ -1667,7 +4342,7 @@ class AppService:
                     "bound": False,
                     "intentId": existing_intent.id,
                     "bindCode": bind_code,
-                    "bindMessage": f"绑定资料助手 {bind_code}",
+                    "bindMessage": self._wecom_bind_message(bind_code),
                     "ownerUserId": user.id,
                     "ownerOpenid": user.openid,
                     "expiresAt": expires_at.isoformat(),
@@ -1695,12 +4370,127 @@ class AppService:
             "bound": False,
             "intentId": intent.id,
             "bindCode": bind_code,
-            "bindMessage": f"绑定资料助手 {bind_code}",
+            "bindMessage": self._wecom_bind_message(bind_code),
             "ownerUserId": user.id,
             "ownerOpenid": user.openid,
             "expiresAt": expires_at.isoformat(),
             "ttlSeconds": max(60, settings.wecom_bind_intent_ttl_seconds),
             "reused": False,
+        }
+
+    def issue_wecom_bind_card_token(self, external_user_id: str, welcome_code: str) -> dict:
+        """Create a short-lived bearer token for the welcome mini-program card.
+
+        The add-contact callback has no mini-program openid.  The card click is
+        therefore the explicit user action that supplies the openid, while the
+        token keeps the external contact identity bound to this exact welcome
+        event.  Only the hash is persisted; the raw token is sent to WeCom and
+        is never stored or logged.
+        """
+        external_user_id = str(external_user_id or "").strip()
+        welcome_code = str(welcome_code or "").strip()
+        if not external_user_id or not welcome_code:
+            raise HTTPException(status_code=400, detail="添加客户事件缺少绑定字段")
+
+        existing_binding = self.repo.get_wecom_identity_binding(WECOM_EXTERNAL_BINDING_SOURCE, external_user_id)
+        if existing_binding and self.repo.get_user(existing_binding.ownerUserId):
+            return {"status": "already_bound", "externalUserId": external_user_id}
+
+        welcome_code_hash = hashlib.sha256(welcome_code.encode("utf-8")).hexdigest()
+        existing_token = self.repo.get_pending_wecom_bind_card_token(welcome_code_hash)
+        if existing_token:
+            return {
+                "status": "issued",
+                "tokenId": existing_token.id,
+                "token": None,
+                "externalUserId": external_user_id,
+                "page": None,
+                "alreadyIssued": True,
+            }
+
+        raw_token = secrets.token_urlsafe(32)
+        now = datetime.now(tz=SHANGHAI)
+        expires_at = now + timedelta(seconds=max(60, settings.wecom_bind_card_ttl_seconds))
+        token = WecomBindCardToken(
+            id=f"wecom_bind_card_{new_id('token')}",
+            tokenHash=hashlib.sha256(raw_token.encode("utf-8")).hexdigest(),
+            welcomeCodeHash=welcome_code_hash,
+            externalUserId=external_user_id,
+            status="issued",
+            deliveryStatus="pending",
+            expiresAt=expires_at.isoformat(),
+            createdAt=now.isoformat(),
+            updatedAt=now.isoformat(),
+        )
+        self.repo.save_wecom_bind_card_token(token)
+        page = f"/pages/wecom-bind/index?token={quote(raw_token, safe='')}"
+        return {
+            "status": "issued",
+            "tokenId": token.id,
+            "token": raw_token,
+            "externalUserId": external_user_id,
+            "page": page,
+            "expiresAt": token.expiresAt,
+            "alreadyIssued": False,
+        }
+
+    def mark_wecom_bind_card_delivery(self, token_id: str, status: str) -> dict | None:
+        token = next((item for item in self.repo.load().wecom_bind_card_tokens if item.id == token_id), None)
+        if not token:
+            return None
+        now = now_iso()
+        updated = token.model_copy(
+            update={
+                "deliveryStatus": status if status in {"sent", "failed"} else token.deliveryStatus,
+                "status": "invalid" if status == "failed" else token.status,
+                "updatedAt": now,
+            }
+        )
+        self.repo.save_wecom_bind_card_token(updated)
+        return updated.model_dump(mode="json")
+
+    def bind_wecom_contact_card(self, raw_token: str, user_id: str) -> dict:
+        raw_token = str(raw_token or "").strip()
+        if len(raw_token) < 20 or len(raw_token) > 200:
+            raise HTTPException(status_code=400, detail="绑定卡片无效")
+        user = self.repo.get_user(user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="用户不存在")
+
+        token_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+        token = self.repo.get_wecom_bind_card_token(token_hash)
+        if not token:
+            raise HTTPException(status_code=410, detail="绑定卡片已失效")
+        existing_binding = self.repo.get_wecom_identity_binding(WECOM_EXTERNAL_BINDING_SOURCE, token.externalUserId)
+        if existing_binding:
+            if existing_binding.ownerUserId == user.id or existing_binding.ownerOpenid == user.openid:
+                return {
+                    "status": "already_bound",
+                    "ownerUserId": user.id,
+                    "ownerOpenid": user.openid,
+                    "externalUserId": token.externalUserId,
+                }
+            raise HTTPException(status_code=409, detail="该资料助手已绑定其他账号")
+
+        consumed = self.repo.consume_wecom_bind_card_token(
+            token_hash,
+            owner_user_id=user.id,
+            owner_openid=user.openid,
+            now=now_iso(),
+        )
+        if not consumed:
+            raise HTTPException(status_code=410, detail="绑定卡片已使用或已失效")
+        self._save_wecom_identity_binding(
+            external_user_id=consumed.externalUserId,
+            owner_user_id=user.id,
+            import_batch_id=None,
+            bind_source=WECOM_BIND_CARD_SOURCE,
+        )
+        return {
+            "status": "bound",
+            "ownerUserId": user.id,
+            "ownerOpenid": user.openid,
+            "externalUserId": consumed.externalUserId,
         }
 
     def _upsert_user_by_openid(
@@ -2019,9 +4809,16 @@ class AppService:
             importBatchId=batch.id,
             sourceCardId=source_card_id,
             status="draft",
+            shareState="private",
+            revision=1,
             title=note_draft.title,
             summary=note_draft.summary,
             body=note_draft.body,
+            contentBlocks=self._normalize_note_content_blocks(
+                getattr(note_draft, "contentBlocks", None),
+                body=note_draft.body,
+                media=[item.model_dump() for item in note_draft.media],
+            ),
             coverUrl=note_draft.coverUrl,
             media=[item.model_dump() for item in note_draft.media],
             categoryIds=note_draft.categoryIds,
@@ -2032,6 +4829,76 @@ class AppService:
             createdAt=now,
             updatedAt=now,
         )
+
+    def _find_note_by_idempotency(self, owner_user_id: str, idempotency_key: str | None) -> UserNote | None:
+        key = self._clean_optional_text(idempotency_key)
+        if not key:
+            return None
+        existing = next(
+            (
+                item
+                for item in self.repo.list_user_notes(owner_user_id, include_deleted=True)
+                if item.idempotencyKey == key
+            ),
+            None,
+        )
+        if existing and existing.status == "deleted":
+            raise HTTPException(status_code=409, detail="幂等键已用于已删除资料，请生成新的幂等键")
+        return existing
+
+    def _find_notes_by_idempotency(self, owner_user_id: str, idempotency_key: str | None) -> list[UserNote]:
+        key = self._clean_optional_text(idempotency_key)
+        if not key:
+            return []
+        return [
+            item
+            for item in self.repo.list_user_notes(owner_user_id, include_deleted=True)
+            if item.idempotencyKey == key and item.status != "deleted"
+        ]
+
+    def _mark_new_intake(
+        self,
+        note: UserNote,
+        intake_id: str | None,
+        idempotency_key: str | None,
+        intake_state: str,
+    ) -> UserNote:
+        note.shareState = "private"
+        # Creation establishes the first revision; edits and publishing are the
+        # operations that advance it. This keeps idempotent retries stable.
+        note.revision = max(int(note.revision or 0), 1)
+        note.intakeId = self._clean_optional_text(intake_id)
+        note.idempotencyKey = self._clean_optional_text(idempotency_key)
+        config = dict(note.visibilityConfig or {})
+        config["intakeState"] = intake_state
+        config["shareState"] = note.shareState
+        config["revision"] = note.revision
+        note.visibilityConfig = self._normalize_note_visibility_config(config)
+        return note
+
+    def _mark_note_content_edit(self, note: UserNote, intake_state: str = "editing") -> UserNote:
+        """Move any edited note back behind the publication boundary.
+
+        Not every edit comes through PUT /notes/{id}; OCR, type confirmation,
+        organizing and scenario generation also mutate the public projection.
+        Keeping this transition in one helper prevents a side route from
+        leaving a newly changed version publicly visible.
+        """
+        # A claimed/imported note may still carry the legacy ``draft``
+        # lifecycle value even after the owner has edited it.  Editing is the
+        # transition into the usable owner-owned state; publication remains a
+        # separate shareState boundary below.
+        if note.status == "draft":
+            note.status = "active"
+        note.revision = max(int(note.revision or 0), 0) + 1
+        if note.shareState == "published":
+            note.shareState = "private"
+        config = dict(note.visibilityConfig or {})
+        config["revision"] = note.revision
+        config["shareState"] = note.shareState
+        config["intakeState"] = intake_state
+        note.visibilityConfig = self._normalize_note_visibility_config(config)
+        return note
 
     def create_manual_note_draft(self, payload: ManualNoteDraftRequest) -> UserNote:
         owner_user_id = payload.ownerUserId.strip()
@@ -2045,11 +4912,18 @@ class AppService:
             raise HTTPException(status_code=400, detail="不支持的创建方式")
         if not self.repo.get_user(owner_user_id):
             raise HTTPException(status_code=404, detail="用户不存在")
+        existing = self._find_note_by_idempotency(owner_user_id, payload.idempotencyKey)
+        if existing:
+            return existing
         if input_mode == "paste_text" and not raw_text:
             raise HTTPException(status_code=400, detail="请先粘贴资料文案")
-        if input_mode == "paste_text":
-            return self._create_manual_note_from_text(owner_user_id, card_type, raw_text, title)
-        return self._create_blank_manual_note(owner_user_id, card_type, title)
+        note = (
+            self._create_manual_note_from_text(owner_user_id, card_type, raw_text, title, payload.intakeId, payload.idempotencyKey)
+            if input_mode == "paste_text"
+            else self._create_blank_manual_note(owner_user_id, card_type, title, payload.intakeId, payload.idempotencyKey)
+        )
+        self._invalidate_card_list_cache(owner_user_id)
+        return note
 
     def parse_property_batch(self, payload: PropertyBatchParseRequest) -> dict:
         owner_user_id = payload.ownerUserId.strip()
@@ -2064,12 +4938,82 @@ class AppService:
         owner_user_id = payload.ownerUserId.strip()
         if not self.repo.get_user(owner_user_id):
             raise HTTPException(status_code=404, detail="用户不存在")
+        existing_showcase = next(
+            (
+                item
+                for item in self.repo.list_showcase_pages(owner_user_id)
+                if payload.idempotencyKey
+                and item.idempotencyKey == self._clean_optional_text(payload.idempotencyKey)
+            ),
+            None,
+        )
+        if existing_showcase:
+            existing_notes = [
+                note
+                for item in existing_showcase.items
+                if (note := self.repo.get_user_note(item.noteId)) and note.status != "deleted"
+            ]
+            return {
+                "noteIds": [item.id for item in existing_notes],
+                "notes": [item.model_dump() for item in existing_notes],
+                "createdCount": len(existing_notes),
+                "showcaseId": existing_showcase.id,
+                "showcase": self._showcase_owner_payload(existing_showcase),
+            }
+        batch_key = self._clean_optional_text(payload.idempotencyKey)
+        existing = [
+            note
+            for note in self.repo.list_user_notes(owner_user_id, include_deleted=True)
+            if batch_key
+            and note.status != "deleted"
+            and (note.idempotencyKey == batch_key or note.idempotencyKey.startswith(f"{batch_key}:"))
+        ]
+        if existing:
+            showcase = self._create_property_batch_showcase(
+                owner_user_id,
+                existing,
+                raw_text=payload.rawText,
+                source="manual_property_batch_retry",
+                intake_id=payload.intakeId,
+                idempotency_key=payload.idempotencyKey,
+            )
+            showcase = next(
+                (
+                    item for item in self.repo.list_showcase_pages(owner_user_id)
+                    if str((item.displayConfig or {}).get("idempotencyKey") or "") == str(payload.idempotencyKey or "")
+                ),
+                None,
+            )
+            return {
+                "noteIds": [item.id for item in existing],
+                "notes": [item.model_dump() for item in existing],
+                "createdCount": len(existing),
+                "showcaseId": showcase.id if showcase else None,
+                "showcase": self._showcase_owner_payload(showcase) if showcase else None,
+            }
         raw_text = strip_unicode_surrogates(payload.rawText or "").strip()
         candidates = [item for item in payload.candidates if item.selected]
         if not candidates:
             raise HTTPException(status_code=400, detail="请至少选择一套房源")
-        notes = [self._create_property_note_from_batch_candidate(owner_user_id, raw_text, item.model_dump()) for item in candidates]
-        showcase = self._create_property_batch_showcase(owner_user_id, notes, raw_text, source="manual_property_batch")
+        notes = [
+            self._create_property_note_from_batch_candidate(
+                owner_user_id,
+                raw_text,
+                item.model_dump(),
+                intake_id=payload.intakeId,
+                idempotency_key=payload.idempotencyKey,
+            )
+            for item in candidates
+        ]
+        showcase = self._create_property_batch_showcase(
+            owner_user_id,
+            notes,
+            raw_text,
+            source="manual_property_batch",
+            intake_id=payload.intakeId,
+            idempotency_key=payload.idempotencyKey,
+        )
+        self._invalidate_card_list_cache(owner_user_id)
         return {
             "noteIds": [item.id for item in notes],
             "notes": [item.model_dump() for item in notes],
@@ -2448,7 +5392,14 @@ class AppService:
             "selected": True,
         }
 
-    def _create_property_note_from_batch_candidate(self, owner_user_id: str, raw_text: str, candidate: dict) -> UserNote:
+    def _create_property_note_from_batch_candidate(
+        self,
+        owner_user_id: str,
+        raw_text: str,
+        candidate: dict,
+        intake_id: str | None = None,
+        idempotency_key: str | None = None,
+    ) -> UserNote:
         now = now_iso()
         structured_data = {
             "community": candidate.get("community") or "",
@@ -2479,12 +5430,18 @@ class AppService:
                 "batchImport": {"candidateId": candidate.get("candidateId"), "rawTextLength": len(raw_text)},
             }
         )
+        candidate_key = self._clean_optional_text(idempotency_key)
+        if candidate_key:
+            candidate_key = f"{candidate_key}:{candidate.get('candidateId') or 'item'}"
         note = UserNote(
             id=new_id("note"),
             ownerUserId=owner_user_id,
             importBatchId=None,
             sourceCardId=None,
             status="active",
+            shareState="private",
+            intakeId=intake_id,
+            idempotencyKey=candidate_key,
             title=candidate.get("title") or "未命名房源",
             summary=candidate.get("summary") or candidate.get("price") or "房源信息",
             body="批量拆分自房东房源文本，可继续补图和完善字段。",
@@ -2499,6 +5456,7 @@ class AppService:
             updatedAt=now,
         )
         self._apply_owner_public_contact_to_property_note(note)
+        self._mark_new_intake(note, intake_id, candidate_key, "captured")
         self.repo.save_user_note(note)
         return note
 
@@ -2509,6 +5467,8 @@ class AppService:
         raw_text: str,
         source: str,
         import_batch_id: str | None = None,
+        intake_id: str | None = None,
+        idempotency_key: str | None = None,
     ) -> ShowcasePage:
         now = now_iso()
         valid_notes = [note for note in notes if note.ownerUserId == owner_user_id and note.status != "deleted"]
@@ -2523,7 +5483,10 @@ class AppService:
             name=name,
             description=f"从本次批量房源导入自动生成，已整理 {len(valid_notes)} 套房源，可继续编辑后发客户。",
             bannerUrl=next((note.coverUrl for note in valid_notes if note.coverUrl), None),
+            sceneType="property",
             templateId="property_batch_collection",
+            intakeId=intake_id,
+            idempotencyKey=self._clean_optional_text(idempotency_key),
             shareTitle=name,
             contactConfig=self._normalize_showcase_contact_config(
                 {
@@ -2542,6 +5505,8 @@ class AppService:
                     "propertyFilters": self._property_batch_showcase_filters(valid_notes),
                     "source": source,
                     "importBatchId": import_batch_id,
+                    "intakeId": intake_id,
+                    "idempotencyKey": idempotency_key,
                     "rawTextLength": len(raw_text or ""),
                 }
             ),
@@ -2563,6 +5528,7 @@ class AppService:
         showcase.displayConfig["importBatchId"] = import_batch_id
         showcase.displayConfig["rawTextLength"] = len(raw_text or "")
         self.repo.save_showcase_page(showcase)
+        self._invalidate_showcase_list_cache(owner_user_id)
         return showcase
 
     def _property_batch_showcase_location(self, notes: list[UserNote]) -> str:
@@ -2643,6 +5609,9 @@ class AppService:
             raise HTTPException(status_code=404, detail="用户不存在")
         if not raw_text:
             raise HTTPException(status_code=400, detail="请先输入内容")
+        existing = self._find_note_by_idempotency(owner_user_id, payload.idempotencyKey)
+        if existing:
+            return existing
         content_object = ContentObjectPayload(
             sourceType="manual_text",
             title=title or None,
@@ -2654,6 +5623,7 @@ class AppService:
         note = self._build_user_note_from_note_draft(note_result.noteDraft)
         note.status = "active"
         note.visibilityConfig = self._quick_capture_visibility_config(note.visibilityConfig)
+        self._mark_new_intake(note, payload.intakeId, payload.idempotencyKey, "captured")
         skill_run = SkillRun.model_validate(note_result.skillRun.model_dump())
         skill_run.outputRef = note.id
         skill_run.inputSnapshot = {
@@ -2662,6 +5632,94 @@ class AppService:
         }
         self.repo.save_user_note(note)
         self.repo.save_skill_run(skill_run)
+        self._invalidate_card_list_cache(owner_user_id)
+        return note
+
+    def create_link_note_capture(self, payload: LinkCaptureRequest) -> UserNote:
+        owner_user_id = payload.ownerUserId.strip()
+        source_url = strip_unicode_surrogates(payload.url or "").strip()
+        manual_title = strip_unicode_surrogates(payload.title or "").strip()
+        if not self.repo.get_user(owner_user_id):
+            raise HTTPException(status_code=404, detail="用户不存在")
+        existing = self._find_note_by_idempotency(owner_user_id, payload.idempotencyKey)
+        if existing:
+            return existing
+        try:
+            preview = fetch_link_preview(source_url)
+        except ValueError as exc:
+            message = str(exc)
+            if message in {"只支持公开的 https:// 网页链接", "链接域名无法访问", "不支持内网或本机链接"}:
+                raise HTTPException(status_code=400, detail=message) from exc
+            parsed = urlparse(source_url)
+            preview = {
+                "url": source_url,
+                "title": "",
+                "description": "",
+                "coverUrl": "",
+                "sourceName": parsed.hostname or "网页链接",
+                "sourceLabel": "公众号文章" if parsed.hostname == "mp.weixin.qq.com" else "网页链接",
+                "parseStatus": "fetch_failed",
+            }
+        except httpx.HTTPError:
+            parsed = urlparse(source_url)
+            preview = {
+                "url": source_url,
+                "title": "",
+                "description": "",
+                "coverUrl": "",
+                "sourceName": parsed.hostname or "网页链接",
+                "sourceLabel": "公众号文章" if parsed.hostname == "mp.weixin.qq.com" else "网页链接",
+                "parseStatus": "fetch_failed",
+            }
+
+        title = manual_title or preview["title"] or preview["sourceName"] or "已收藏链接"
+        media = [ContentMediaPayload(
+            id=new_id("link"),
+            type="link",
+            url=preview["url"],
+            title=title,
+            description=preview["description"] or None,
+            coverUrl=preview["coverUrl"] or None,
+            source="manual",
+            status="ready",
+        )]
+        content_object = ContentObjectPayload(
+            sourceType="web_link",
+            title=title,
+            links=[ContentLinkPayload(
+                url=preview["url"],
+                title=title,
+                description=preview["description"] or None,
+                coverUrl=preview["coverUrl"] or None,
+            )],
+            media=media,
+            metadata={"entryMode": "link_capture", "linkPreview": preview},
+            sourceRefs=[new_id("manual_link")],
+        )
+        note_result = self.skill_router_service.run_link_bookmark(owner_user_id, content_object)
+        note = self._build_user_note_from_note_draft(note_result.noteDraft)
+        note.status = "active"
+        note.title = title
+        note.summary = preview["description"] or "已收藏，待整理。"
+        note.body = "\n".join(item for item in [preview["description"], preview["url"]] if item)
+        note.coverUrl = preview["coverUrl"] or None
+        config = dict(note.visibilityConfig or {})
+        structured_data = dict(config.get("structuredData") or {})
+        structured_data["parseStatus"] = preview["parseStatus"]
+        config.update({
+            "entryMode": "link_capture",
+            "sourceUrl": preview["url"],
+            "sourceName": preview["sourceName"],
+            "sourceLabel": preview["sourceLabel"],
+            "structuredData": structured_data,
+        })
+        note.visibilityConfig = config
+        self._mark_new_intake(note, payload.intakeId, payload.idempotencyKey, "captured")
+        skill_run = SkillRun.model_validate(note_result.skillRun.model_dump())
+        skill_run.outputRef = note.id
+        self.repo.save_user_note(note)
+        self.repo.save_skill_run(skill_run)
+        self._invalidate_card_list_cache(owner_user_id)
         return note
 
     def _quick_capture_visibility_config(self, config: dict) -> dict:
@@ -2675,7 +5733,15 @@ class AppService:
         normalized["structuredData"] = structured_data
         return normalized
 
-    def _create_manual_note_from_text(self, owner_user_id: str, card_type: str, raw_text: str, title: str) -> UserNote:
+    def _create_manual_note_from_text(
+        self,
+        owner_user_id: str,
+        card_type: str,
+        raw_text: str,
+        title: str,
+        intake_id: str | None = None,
+        idempotency_key: str | None = None,
+    ) -> UserNote:
         content_object = ContentObjectPayload(
             sourceType="manual_text",
             title=title or None,
@@ -2686,6 +5752,7 @@ class AppService:
         note_result = self.skill_router_service.run_content_to_note(owner_user_id, content_object)
         note = self._build_user_note_from_note_draft(note_result.noteDraft)
         note = self._apply_manual_selected_note_type(note, card_type, input_mode="paste_text")
+        self._mark_new_intake(note, intake_id, idempotency_key, "captured")
         skill_run = SkillRun.model_validate(note_result.skillRun.model_dump())
         skill_run.outputRef = note.id
         skill_run.inputSnapshot = {
@@ -2697,48 +5764,40 @@ class AppService:
         self.repo.save_skill_run(skill_run)
         return note
 
-    def _create_blank_manual_note(self, owner_user_id: str, card_type: str, title: str) -> UserNote:
+    def _create_blank_manual_note(
+        self,
+        owner_user_id: str,
+        card_type: str,
+        title: str,
+        intake_id: str | None = None,
+        idempotency_key: str | None = None,
+    ) -> UserNote:
         now = now_iso()
         defaults = {
             "property_listing": ("未命名房源", "补充房源字段后即可发给客户"),
-            "groupbuy_product": ("未命名商品", "补充商品信息后即可发给客户"),
-            "business_card": ("我的电子名片", "补充个人介绍和服务范围后即可发给客户"),
-            "service_offer": ("未命名服务方案", "补充服务内容和预约方式后即可发给客户"),
-            "text_note": ("未命名笔记", "手动创建的普通笔记"),
+            "groupbuy_product": ("", ""),
+            "business_card": ("我的电子名片", ""),
+            "service_offer": ("", ""),
+            "text_note": ("", ""),
         }
         default_title, default_summary = defaults[card_type]
         user = self.repo.get_user(owner_user_id)
-        seed_config = {}
-        if card_type == "business_card" and user:
-            seed_config = {
-                "structuredData": {
-                    "name": user.nickname,
-                    "title": "",
-                    "company": "",
-                    "serviceScope": "",
-                    "headline": f"你好，我是{user.nickname}",
-                    "bio": "",
-                    "phone": user.phone or "",
-                    "wechat": "",
-                    "city": "",
-                    "avatarUrl": user.avatarUrl,
-                    "qrCodeUrl": "",
-                    "images": [user.avatarUrl] if user.avatarUrl else [],
-                }
-            }
+        seed_config = {"structuredData": {"headline": "", "serviceKeywords": [], "bio": "", "featuredNoteIds": []}} if card_type == "business_card" else {}
         note = UserNote(
             id=new_id("note"),
             ownerUserId=owner_user_id,
             importBatchId=None,
             sourceCardId=None,
             status="active",
+            shareState="private",
+            revision=0,
             title=title or default_title,
             summary=default_summary,
-            body="手动创建，可继续补充内容。",
+            body="" if card_type in {"text_note", "groupbuy_product", "service_offer", "business_card"} else "手动创建，可继续补充内容。",
             coverUrl=user.avatarUrl if card_type == "business_card" and user and user.avatarUrl else None,
             media=[],
             categoryIds=[],
-            phone=user.phone if card_type == "business_card" and user and user.phone else None,
+            phone=None,
             locationText=None,
             sourceRefs=[],
             visibilityConfig=seed_config,
@@ -2746,6 +5805,7 @@ class AppService:
             updatedAt=now,
         )
         note = self._apply_manual_selected_note_type(note, card_type, input_mode="blank")
+        self._mark_new_intake(note, intake_id, idempotency_key, "editing")
         self.repo.save_user_note(note)
         return note
 
@@ -2760,12 +5820,19 @@ class AppService:
             title=note_draft.title,
             summary=note_draft.summary,
             body=note_draft.body,
+            contentBlocks=self._normalize_note_content_blocks(
+                getattr(note_draft, "contentBlocks", None),
+                body=note_draft.body,
+                media=[item.model_dump() for item in note_draft.media],
+            ),
             coverUrl=note_draft.coverUrl,
             media=[item.model_dump() for item in note_draft.media],
             categoryIds=note_draft.categoryIds,
             phone=note_draft.phone,
             locationText=note_draft.locationText,
             sourceRefs=note_draft.sourceRefs,
+            shareState="private",
+            revision=0,
             visibilityConfig=note_draft.visibilityConfig,
             createdAt=now,
             updatedAt=now,
@@ -2905,7 +5972,14 @@ class AppService:
         self.repo.save_wecom_archive_cursor(cursor)
         return cursor
 
-    def save_wecom_archive_messages(self, corp_id: str, messages: list[dict]) -> dict:
+    def save_wecom_archive_messages(
+        self,
+        corp_id: str,
+        messages: list[dict],
+        *,
+        advance_cursor: bool = True,
+        refresh_media_on_duplicate: bool = False,
+    ) -> dict:
         existing_msg_ids = self.repo.existing_wecom_archive_msg_ids(
             {item.get("msgid") or item.get("msgId") for item in messages if item.get("msgid") or item.get("msgId")}
         )
@@ -2913,9 +5987,20 @@ class AppService:
         archive_messages: list[WecomArchiveMessage] = []
         max_seq = 0
         skipped = 0
+        refreshed = 0
         for index, item in enumerate(messages):
             msg_id = item.get("msgid") or item.get("msgId")
             if msg_id and msg_id in existing_msg_ids:
+                if refresh_media_on_duplicate and item.get("mediaRefs"):
+                    existing = self.repo.get_wecom_archive_message_by_msg_id(msg_id)
+                    decrypted_payload = item.get("decryptedPayload")
+                    if existing and isinstance(decrypted_payload, dict):
+                        existing.rawPayload = item
+                        existing.decryptedPayload = decrypted_payload
+                        existing.mediaRefs = item.get("mediaRefs") or []
+                        existing.processError = None
+                        self.repo.save_wecom_archive_messages([existing])
+                        refreshed += 1
                 skipped += 1
                 continue
             seq = int(item.get("seq") or item.get("Seq") or index + 1)
@@ -2943,11 +6028,13 @@ class AppService:
             )
         if archive_messages:
             self.repo.save_wecom_archive_messages(archive_messages)
-            self.advance_wecom_archive_cursor(corp_id, max_seq, {"savedCount": len(archive_messages)}, status="success")
+            if advance_cursor:
+                self.advance_wecom_archive_cursor(corp_id, max_seq, {"savedCount": len(archive_messages)}, status="success")
         cursor = self.repo.get_wecom_archive_cursor(corp_id)
         return {
             "savedCount": len(archive_messages),
             "skippedDuplicateCount": skipped,
+            "refreshedMediaCount": refreshed,
             "cursor": cursor.model_dump() if cursor else None,
         }
 
@@ -3047,6 +6134,7 @@ class AppService:
                         note.sourceRefs = [item.id for item in group_messages]
                         note.updatedAt = now_iso()
                         self.repo.save_user_note(note)
+                    self._invalidate_card_list_cache(owner_user_id)
                     showcase = self._create_property_batch_showcase(
                         owner_user_id,
                         notes,
@@ -3130,6 +6218,7 @@ class AppService:
                 self.repo.save_import_batch(batch)
                 self.repo.save_card(card)
                 self.repo.save_user_note(note)
+                self._invalidate_card_list_cache(owner_user_id)
                 self.repo.save_skill_run(skill_run)
                 self.repo.save_wecom_archive_messages(group_messages)
                 notification = self.notification_service.build_notification(
@@ -3203,6 +6292,7 @@ class AppService:
             "failedCount": 0,
             "skippedCount": 0,
             "remainingCount": 0,
+            "remappedCount": 0,
             "notes": [],
         }
         handled_media = 0
@@ -3213,11 +6303,27 @@ class AppService:
             result["checkedNoteCount"] += 1
             note_changed = False
             note_media_updates: list[dict] = []
+            fresh_media_by_source_ref: dict[str, str] = {}
+            archive_messages = self.repo.list_wecom_archive_messages_by_generated_note_id(note.id)
+            archive_messages = [item for item in archive_messages if item.decryptedPayload]
+            if archive_messages:
+                fresh_content = self._build_archive_content_object(archive_messages)
+                fresh_media_by_source_ref = {
+                    item.sourceRef: item.mediaId
+                    for item in fresh_content.media
+                    if item.sourceRef and item.mediaId
+                }
             for item in note.media:
                 if not isinstance(item, dict):
                     continue
                 media_id = item.get("mediaId")
                 media_type = item.get("type") if item.get("type") in {"image", "video", "file"} else "file"
+                fresh_media_id = fresh_media_by_source_ref.get(str(item.get("sourceRef") or ""))
+                if fresh_media_id and fresh_media_id != media_id:
+                    item["mediaId"] = fresh_media_id
+                    media_id = fresh_media_id
+                    note_changed = True
+                    result["remappedCount"] += 1
                 if not media_id or item.get("url"):
                     result["skippedCount"] += 1
                     continue
@@ -3236,8 +6342,10 @@ class AppService:
                 note_media_updates.append({"mediaId": media_id, "type": media_type, "url": url})
             if not note_changed:
                 continue
+            self._mark_note_content_edit(note, "editing")
             note.updatedAt = now_iso()
             self.repo.save_user_note(note)
+            self._invalidate_card_list_cache(note.ownerUserId)
             result["updatedNoteCount"] += 1
             card_updated = self._backfill_card_media_from_note(note)
             if card_updated:
@@ -3350,20 +6458,20 @@ class AppService:
             if message.msgType == "note":
                 groups.append([message])
                 continue
-            if not groups or not self._can_merge_archive_message(groups[-1][-1], message):
+            if not groups or not self._can_merge_archive_message(groups[-1][0], message):
                 groups.append([message])
                 continue
             groups[-1].append(message)
         return groups
 
-    def _can_merge_archive_message(self, previous: WecomArchiveMessage, current: WecomArchiveMessage) -> bool:
-        if previous.msgType == "note" or current.msgType == "note":
+    def _can_merge_archive_message(self, first: WecomArchiveMessage, current: WecomArchiveMessage) -> bool:
+        if first.msgType == "note" or current.msgType == "note":
             return False
-        if previous.fromUser != current.fromUser:
+        if first.fromUser != current.fromUser:
             return False
-        if self._archive_conversation_key(previous) != self._archive_conversation_key(current):
+        if self._archive_conversation_key(first) != self._archive_conversation_key(current):
             return False
-        return self._archive_message_timestamp(current) - self._archive_message_timestamp(previous) <= 5
+        return self._archive_message_timestamp(current) - self._archive_message_timestamp(first) <= WINDOW_SECONDS
 
     def _archive_conversation_key(self, message: WecomArchiveMessage) -> str:
         if message.roomId:
@@ -3568,7 +6676,7 @@ class AppService:
     def _internal_note_source(self, note: UserNote) -> dict:
         config = note.visibilityConfig if isinstance(note.visibilityConfig, dict) else {}
         structured = config.get("structuredData") if isinstance(config.get("structuredData"), dict) else {}
-        public_data = self._public_clone_structured_data(structured)
+        public_data = self._sanitize_public_config_value(self._public_clone_structured_data(structured))
         media_urls = self._note_image_urls(note)
         text_blocks = [
             "来源：资料整理助手自有小程序房源卡",
@@ -3624,23 +6732,35 @@ class AppService:
         }
 
     def _public_clone_structured_data(self, data: dict) -> dict:
-        blocked_fragments = ["contact", "phone", "wechat", "微信", "电话", "landlord", "房东", "upstream", "上游", "channel", "渠道", "rawtext"]
-        public_data: dict = {}
-        for key, value in data.items():
-            key_text = str(key)
-            key_match_text = key_text.lower()
-            if any(fragment in key_match_text for fragment in blocked_fragments):
-                continue
-            value_match_text = value.lower() if isinstance(value, str) else ""
-            if isinstance(value, str) and any(fragment in value_match_text for fragment in blocked_fragments):
-                continue
-            if isinstance(value, (str, int, float, bool)) or value is None:
-                public_data[key] = value
-            elif key == "images" and isinstance(value, list):
-                public_data[key] = [item for item in value if isinstance(item, str)]
-            elif key == "miniapp" and isinstance(value, dict):
-                public_data[key] = {k: v for k, v in value.items() if k not in {"contact", "phone", "wechat"}}
-        return public_data
+        blocked_fragments = {
+            "contact", "phone", "wechat", "landlord", "upstream", "channel", "supplier", "cost", "profit",
+            "internal", "inventory", "purchase", "commission", "password", "lockpassword", "rawtext",
+            "customer", "visitor", "analytics", "followup", "relayentries", "orderrecords",
+            "微信", "电话", "房东", "上游", "渠道", "供应商", "成本", "利润", "库存", "采购", "佣金", "密码", "客户", "访客", "跟进",
+        }
+
+        def clean(value, key=""):
+            lowered = str(key).replace("_", "").lower()
+            if any(fragment in lowered for fragment in blocked_fragments):
+                return None, False
+            if isinstance(value, dict):
+                result = {}
+                for child_key, child_value in value.items():
+                    cleaned, keep = clean(child_value, child_key)
+                    if keep:
+                        result[child_key] = cleaned
+                return result, True
+            if isinstance(value, list):
+                result = []
+                for child in value:
+                    cleaned, keep = clean(child)
+                    if keep:
+                        result.append(cleaned)
+                return result, True
+            return value, isinstance(value, (str, int, float, bool)) or value is None
+
+        cleaned, _ = clean(data)
+        return cleaned if isinstance(cleaned, dict) else {}
 
     def _public_property_field_pairs(self, data: dict) -> list[tuple[str, str]]:
         labels = {
@@ -3659,17 +6779,9 @@ class AppService:
         return [(label, str(data.get(key) or "").strip()) for key, label in labels.items() if str(data.get(key) or "").strip()]
 
     def _should_save_import_as_image_note(self, content_object: ContentObjectPayload) -> bool:
-        has_text = any(self._is_meaningful_import_text(block) for block in content_object.textBlocks)
-        has_links = any(str(link.url or "").strip() for link in content_object.links)
-        if has_text or has_links or not content_object.media:
-            return False
-        if any(item.type != "image" for item in content_object.media):
-            return False
-        return any(item.url for item in content_object.media)
-
-    def _is_meaningful_import_text(self, text: str | None) -> bool:
-        normalized = str(text or "").strip()
-        return bool(normalized) and normalized not in {"收到image素材，媒体稍后转存。"}
+        return self.skill_router_service.is_image_primary_import(content_object) and any(
+            item.url for item in content_object.media
+        )
 
     def _build_image_import_note_result(
         self,
@@ -3679,15 +6791,21 @@ class AppService:
         first_image = next(item for item in content_object.media if item.type == "image" and item.url)
         visibility_config = self._image_note_visibility_config(first_image.url or "", first_image.title)
         structured_data = dict(visibility_config.get("structuredData") or {})
+        caption = "\n".join(self.skill_router_service.meaningful_import_text_blocks(content_object)).strip()
         structured_data["images"] = [item.url for item in content_object.media if item.type == "image" and item.url]
+        structured_data["rawText"] = caption
+        if caption:
+            structured_data["caption"] = caption
         structured_data["sourceRefs"] = content_object.sourceRefs or content_object.rawMessageIds
         visibility_config["structuredData"] = structured_data
         now = now_iso()
+        body = caption or "图片已保存。你可以直接手动补充正文和字段，也可以点击识别图片文字后再整理。"
+        summary = caption[:120] if caption else "图片已保存，可按需识别文字。"
         note = UserNoteDraftPayload(
             ownerUserId=owner_user_id,
             title=self._image_import_title(content_object, first_image),
-            summary="图片已保存，可按需识别文字。",
-            body="图片已保存。你可以直接手动补充正文和字段，也可以点击识别图片文字后再整理。",
+            summary=summary,
+            body=body,
             coverUrl=first_image.url,
             media=content_object.media,
             categoryIds=[],
@@ -3719,11 +6837,14 @@ class AppService:
         return RunContentToNoteResponse(intent=intent, skillRun=run, noteDraft=note)
 
     def _image_import_title(self, content_object: ContentObjectPayload, first_image: ContentMediaPayload) -> str:
+        caption = "\n".join(self.skill_router_service.meaningful_import_text_blocks(content_object)).strip()
+        if caption:
+            return self.skill_router_service._truncate(caption, 40)
         image_title = str(first_image.title or "").strip()
         if image_title:
             return image_title
         title = str(content_object.title or "").strip()
-        if title and title not in {"未命名素材", "企业微信image归档"}:
+        if title and title not in {"未命名素材", "企业微信image归档", "收到image素材，媒体稍后转存。"}:
             return title
         return "图片资料"
 
@@ -3744,6 +6865,13 @@ class AppService:
             if code not in active_codes:
                 return code
         return f"TB-{uuid4().hex[:6].upper()}"
+
+    def _wecom_bind_message(self, bind_code: str) -> str:
+        return (
+            "你好，我刚添加了“资料整理助手”，请帮我把我的微信账号和资料库绑定起来。\n\n"
+            f"绑定口令：{bind_code}\n\n"
+            "绑定完成后，我发给你的图片、文件和链接会自动整理到我的小程序资料库。"
+        )
 
     def _find_wecom_bind_code(self, text: str | None) -> str | None:
         match = WECOM_BIND_CODE_PATTERN.search(text or "")
@@ -3874,6 +7002,11 @@ class AppService:
         return binding.ownerUserId
 
     def _consume_wecom_bind_intent(self, external_user_id: str) -> str:
+        # The historical intent fallback is retained for local low-concurrency
+        # tests only.  Production must never infer an identity from a pending
+        # mini-program screen; the contact welcome card is the explicit proof.
+        if str(settings.app_env or "").lower() == "production":
+            return "unclaimed"
         active_intents = self._active_wecom_bind_intents()
         if len(active_intents) != 1:
             return "unclaimed"
@@ -4081,6 +7214,7 @@ class AppService:
         ref_type: str = "media",
         ref_id: str | None = None,
         usage: str = "media",
+        storage_service: MediaStorageService | None = None,
     ) -> str:
         if not content:
             raise HTTPException(status_code=400, detail="媒体内容不能为空")
@@ -4101,12 +7235,19 @@ class AppService:
         if existing:
             self._save_media_asset_ref(existing, owner_user_id, ref_type, ref_id or media_id, usage)
             return existing.url
-        url = self.media_storage_service.store_bytes(
-            media_id=media_id,
+        target_storage = storage_service or self.media_storage_service
+        # The content hash, rather than the caller's temporary media id, is the
+        # object key. This makes concurrent uploads of the same processed bytes
+        # converge on one physical object as well as one MediaAsset row.
+        storage_media_id = f"asset_{normalized_type}_{storage_sha256}"
+        url = target_storage.store_bytes(
+            media_id=storage_media_id,
             media_type=normalized_type,
             content=processed.content,
             content_type=processed.content_type,
-            filename=processed.filename,
+            # The hash is the full identity; do not let the user's filename
+            # create a second extension/path for the same processed bytes.
+            filename=None,
         )
         now = now_iso()
         asset = MediaAsset(
@@ -4123,7 +7264,19 @@ class AppService:
             createdAt=now,
             updatedAt=now,
         )
-        self.repo.save_media_asset(asset)
+        saved = self.repo.save_media_asset(asset)
+        if not saved:
+            # A second process may have passed the pre-check before the first
+            # process committed. The database unique indexes are the final
+            # arbiter; reuse the winner and never create a second asset row.
+            existing = self.repo.get_media_asset_by_original_hash(normalized_type, original_sha256)
+            existing = existing or self.repo.get_media_asset_by_storage_hash(normalized_type, storage_sha256)
+            if existing:
+                if url != existing.url:
+                    target_storage.delete_url(url)
+                self._save_media_asset_ref(existing, owner_user_id, ref_type, ref_id or media_id, usage)
+                return existing.url
+            raise RuntimeError("媒体资产去重冲突后未找到已保存的资产")
         self._save_media_asset_ref(asset, owner_user_id, ref_type, ref_id or media_id, usage)
         return url
 
@@ -4137,18 +7290,34 @@ class AppService:
     ) -> None:
         if not ref_id:
             return
+        normalized_owner = self._clean_optional_text(owner_user_id)
+        normalized_type = self._clean_optional_text(ref_type) or "media"
+        normalized_usage = self._clean_optional_text(usage) or "media"
+        if any(
+            ref.ownerUserId == normalized_owner
+            and ref.refType == normalized_type
+            and ref.usage == normalized_usage
+            for ref in self.repo.list_media_asset_refs(asset_id=asset.id, ref_type=normalized_type, ref_id=ref_id)
+        ):
+            return
         now = now_iso()
         ref = MediaAssetRef(
             id=new_id("media_ref"),
             assetId=asset.id,
-            ownerUserId=self._clean_optional_text(owner_user_id),
-            refType=self._clean_optional_text(ref_type) or "media",
+            ownerUserId=normalized_owner,
+            refType=normalized_type,
             refId=ref_id,
-            usage=self._clean_optional_text(usage) or "media",
+            usage=normalized_usage,
             createdAt=now,
             updatedAt=now,
         )
         self.repo.save_media_asset_ref(ref)
+
+    def _sync_share_snapshot_media_ref(self, url: str, owner_user_id: str, entity_id: str) -> None:
+        asset = self.repo.get_media_asset_by_url(url)
+        if not asset:
+            return
+        self._save_media_asset_ref(asset, owner_user_id, "share_snapshot", entity_id, "current")
 
     def create_ocr_note_from_image(
         self,
@@ -4172,9 +7341,19 @@ class AppService:
         content: bytes,
         filename: str | None = None,
         content_type: str | None = None,
+        intake_id: str | None = None,
+        idempotency_key: str | None = None,
     ) -> dict:
         if not self.repo.get_user(owner_user_id):
             raise HTTPException(status_code=404, detail="用户不存在")
+        existing = self._find_note_by_idempotency(owner_user_id, idempotency_key)
+        if existing:
+            return {
+                "note": existing.model_dump(),
+                "ocr": self._ocr_response_payload_from_data(
+                    ((existing.visibilityConfig or {}).get("structuredData") or {}).get("ocr") or {}
+                ),
+            }
         if not content:
             raise HTTPException(status_code=400, detail="图片不能为空")
         stored_url = self._store_uploaded_ocr_image(content, filename, content_type)
@@ -4189,17 +7368,32 @@ class AppService:
             title="图片资料",
             summary="图片已保存，可按需识别文字。",
             body="图片已保存。你可以直接手动补充正文和字段，也可以点击识别图片文字后再整理。",
+            contentBlocks=[
+                {
+                    "id": media[0].get("id") or new_id("content_block"),
+                    "type": "image",
+                    "mediaId": media[0].get("id"),
+                    "url": stored_url,
+                    "sortOrder": 0,
+                }
+            ],
             coverUrl=stored_url,
             media=media,
             categoryIds=[],
             phone=None,
             locationText=None,
             sourceRefs=[],
+            shareState="private",
+            revision=0,
+            intakeId=self._clean_optional_text(intake_id),
+            idempotencyKey=self._clean_optional_text(idempotency_key),
             visibilityConfig=self._image_note_visibility_config(stored_url, filename),
             createdAt=now,
             updatedAt=now,
         )
+        self._mark_new_intake(note, intake_id, idempotency_key, "captured")
         self.repo.save_user_note(note)
+        self._invalidate_card_list_cache(owner_user_id)
         return {
             "note": note.model_dump(),
             "ocr": {
@@ -4238,6 +7432,7 @@ class AppService:
         note.visibilityConfig = config
         note.summary = "图片已保存，正在识别文字。"
         note.body = "图片已保存，后台正在识别文字。识别完成后会自动更新结果。"
+        self._mark_note_content_edit(note, "editing")
         note.updatedAt = now_iso()
         self.repo.save_user_note(note)
         return {
@@ -4254,6 +7449,7 @@ class AppService:
         recognized_text = ocr_result.text.strip()
         if not recognized_text:
             note.visibilityConfig = self._ocr_visibility_config(note.visibilityConfig, ocr_result, recognized_text)
+            self._mark_note_content_edit(note, "editing")
             note.updatedAt = now_iso()
             self.repo.save_user_note(note)
             return {
@@ -4300,6 +7496,7 @@ class AppService:
         draft_config = self._preserve_ocr_image_refs(note_result.noteDraft.visibilityConfig, note.visibilityConfig)
         note.visibilityConfig = self._ocr_visibility_config(draft_config, ocr_result, recognized_text)
         note.status = "active"
+        self._mark_note_content_edit(note, "editing")
         note.updatedAt = now
         skill_run = SkillRun.model_validate(note_result.skillRun.model_dump())
         skill_run.outputRef = note.id
@@ -4326,6 +7523,7 @@ class AppService:
         recognized_text = ocr_result.text.strip()
         if not recognized_text:
             note.visibilityConfig = self._ocr_visibility_config(note.visibilityConfig, ocr_result, recognized_text)
+            self._mark_note_content_edit(note, "editing")
             note.updatedAt = now_iso()
             self.repo.save_user_note(note)
             return {
@@ -4338,6 +7536,7 @@ class AppService:
         note.visibilityConfig = self._ocr_visibility_config(note.visibilityConfig, ocr_result, recognized_text)
         note.summary = "图片表格已识别，但未达到自动拆分阈值。"
         note.body = recognized_text
+        self._mark_note_content_edit(note, "editing")
         note.updatedAt = now_iso()
         self.repo.save_user_note(note)
         return {
@@ -4359,6 +7558,7 @@ class AppService:
         note.summary = f"图片已识别，并拆出 {len(candidates)} 套房源。"
         note.body = recognized_text
         note.status = "active"
+        self._mark_note_content_edit(note, "editing")
         note.updatedAt = now
         self.repo.save_user_note(note)
         notes = [self._create_property_note_from_batch_candidate(owner_user_id, recognized_text, candidate) for candidate in candidates]
@@ -4432,6 +7632,7 @@ class AppService:
         note.summary = f"图片表格已识别，并拆出 {len(candidates)} 套房源。"
         note.body = recognized_text
         note.status = "active"
+        self._mark_note_content_edit(note, "editing")
         note.updatedAt = now
         self.repo.save_user_note(note)
         notes = [self._create_property_note_from_batch_candidate(owner_user_id, recognized_text, candidate) for candidate in candidates]
@@ -4625,6 +7826,7 @@ class AppService:
                 storage_mode="local",
                 storage_dir=settings.media_storage_dir,
                 public_url_prefix=settings.media_public_url_prefix,
+                public_base_url=settings.public_base_url,
             )
         original_sha256 = hashlib.sha256(content).hexdigest()
         existing = self.repo.get_media_asset_by_original_hash("image", original_sha256)
@@ -4670,11 +7872,21 @@ class AppService:
         return url
 
     def _image_media_payload(self, url: str, filename: str | None = None) -> dict:
-        return {
+        payload = {
             "type": "image",
             "url": url,
             "title": filename or "图片资料",
         }
+        asset = self.repo.get_media_asset_by_url(url)
+        if asset:
+            payload.update(
+                {
+                    "mediaAssetId": asset.id,
+                    "originalSha256": asset.originalSha256,
+                    "storageSha256": asset.storageSha256,
+                }
+            )
+        return payload
 
     def _image_note_visibility_config(self, stored_url: str, filename: str | None = None) -> dict:
         normalized = self._normalize_note_visibility_config(
@@ -4881,6 +8093,13 @@ class AppService:
             if note:
                 note.ownerUserId = user_id
                 note.status = "active"
+                # Claiming changes ownership only; the imported draft remains
+                # private until the new owner explicitly publishes it.
+                note.shareState = "private"
+                config = dict(note.visibilityConfig or {})
+                config["shareState"] = note.shareState
+                config["intakeState"] = config.get("intakeState") or "captured"
+                note.visibilityConfig = self._normalize_note_visibility_config(config)
                 note.updatedAt = now
                 self.repo.save_user_note(note)
         binding = self._save_wecom_identity_binding(
@@ -4920,7 +8139,7 @@ class AppService:
         return (
             settings.admin_token
             or settings.wecom_archive_secret
-            or settings.wecom_callback_token
+            or settings.wecom_kf_callback_token
             or settings.wechat_miniapp_secret
             or "teamBuy-import-claim-dev-secret"
         )
@@ -4971,6 +8190,21 @@ class AppService:
     ) -> list[dict]:
         if not self.repo.get_user(owner_user_id):
             raise HTTPException(status_code=404, detail="用户不存在")
+        cache_key = (
+            owner_user_id,
+            keyword or "",
+            category_id or "",
+            source_type or "",
+            system_category or "",
+            tag or "",
+            topic_id or "",
+            sort or "updated",
+            bool(include_deleted),
+        )
+        cached = self._note_list_cache.get(cache_key)
+        now = time.monotonic()
+        if cached and now - cached[0] < self._note_list_cache_ttl_seconds:
+            return cached[1]
         notes = self.repo.list_user_notes(
             owner_user_id=owner_user_id,
             keyword=None,
@@ -4978,18 +8212,138 @@ class AppService:
             include_deleted=include_deleted,
         )
         filtered = self._filter_user_notes(notes, keyword, source_type, system_category, tag, topic_id)
+        same_style_by_note_id = {}
+        for generation in self.repo.list_same_style_generations(owner_user_id):
+            if generation.generatedNoteId and generation.generatedNoteId not in same_style_by_note_id:
+                same_style_by_note_id[generation.generatedNoteId] = generation
         if sort == "collected":
-            filtered = sorted(filtered, key=lambda item: item.createdAt, reverse=True)
+            base_sort = lambda item: item.createdAt
         else:
-            filtered = sorted(filtered, key=lambda item: item.updatedAt, reverse=True)
-        return [self._user_note_list_payload(item) for item in filtered]
-
-    def _user_note_list_payload(self, note: UserNote) -> dict:
-        return {
-            **note.model_dump(),
-            "stats": self._build_note_stats(note),
-            "customerSummary": self._build_note_customer_summary(note),
+            base_sort = lambda item: item.updatedAt
+        filtered = sorted(
+            filtered,
+            key=lambda item: (
+                bool(same_style_by_note_id.get(item.id)),
+                same_style_by_note_id.get(item.id).createdAt if same_style_by_note_id.get(item.id) else base_sort(item),
+            ),
+            reverse=True,
+        )
+        note_ids = {item.id for item in filtered}
+        stats_ids = {item.sourceCardId or item.id for item in filtered}
+        view_events_by_card = self.repo.list_view_events_for_cards(stats_ids)
+        relays_by_card = self.repo.list_relay_entries_for_cards(stats_ids, relay_status="active")
+        actions_by_note = self.repo.list_customer_actions_for_notes(note_ids)
+        leads_by_owner = {
+            owner_id: self.repo.list_lead_reminders(owner_id)
+            for owner_id in {item.ownerUserId for item in filtered}
         }
+        payload = [
+            self._user_note_list_payload(
+                item,
+                view_events_by_card=view_events_by_card,
+                relays_by_card=relays_by_card,
+                actions_by_note=actions_by_note,
+                leads_by_owner=leads_by_owner,
+                same_style_generation=same_style_by_note_id.get(item.id),
+            )
+            for item in filtered
+        ]
+        self._note_list_cache[cache_key] = (now, payload)
+        if len(self._note_list_cache) > self._note_list_cache_max_entries:
+            expired_before = now - self._note_list_cache_ttl_seconds
+            self._note_list_cache = {
+                key: value
+                for key, value in self._note_list_cache.items()
+                if value[0] >= expired_before
+            }
+            if len(self._note_list_cache) > self._note_list_cache_max_entries:
+                oldest_keys = sorted(self._note_list_cache, key=lambda key: self._note_list_cache[key][0])
+                for old_key in oldest_keys[:len(self._note_list_cache) - self._note_list_cache_max_entries]:
+                    self._note_list_cache.pop(old_key, None)
+        return payload
+
+    def get_business_card_summary(self, owner_user_id: str) -> dict:
+        if not self.repo.get_user(owner_user_id):
+            raise HTTPException(status_code=404, detail="用户不存在")
+        notes = self.repo.list_user_notes(owner_user_id=owner_user_id, include_deleted=False)
+        business_cards = [
+            note for note in notes
+            if ((note.visibilityConfig or {}).get("cardType") == "business_card")
+        ]
+        business_card = max(
+            business_cards,
+            key=lambda item: item.updatedAt or item.createdAt or "",
+            default=None,
+        )
+        legacy_cards = self.repo.list_cards(owner_user_id=owner_user_id)
+        legacy_card_ids = {card.id for card in legacy_cards}
+        total_resources = len(legacy_cards) + sum(
+            1 for note in notes if not note.sourceCardId or note.sourceCardId not in legacy_card_ids
+        )
+        payload = None
+        if business_card:
+            config = dict(business_card.visibilityConfig or {})
+            config.pop("marketingRoute", None)
+            payload = {
+                "id": business_card.id,
+                "sourceNoteId": business_card.id,
+                "title": business_card.title,
+                "coverUrl": business_card.coverUrl or "",
+                "createdAt": business_card.createdAt,
+                "updatedAt": business_card.updatedAt,
+                "revision": business_card.revision,
+                "status": business_card.status,
+                "sourceNoteStatus": business_card.status,
+                "shareState": business_card.shareState,
+                "sourceNoteShareState": business_card.shareState,
+                "cardType": config.get("cardType") or "business_card",
+                "visibilityConfig": config,
+            }
+        return {
+            "totalResources": total_resources,
+            "businessCard": payload,
+        }
+
+    def _user_note_list_payload(
+        self,
+        note: UserNote,
+        *,
+        view_events_by_card: dict[str, list[ViewEvent]] | None = None,
+        relays_by_card: dict[str, list[RelayEntry]] | None = None,
+        actions_by_note: dict[str, list[CustomerAction]] | None = None,
+        leads_by_owner: dict[str, list[LeadReminder]] | None = None,
+        same_style_generation: SameStyleGeneration | None = None,
+    ) -> dict:
+        stats_id = note.sourceCardId or note.id
+        payload = {
+            **note.model_dump(),
+            "isSameStyle": bool(same_style_generation),
+            "sameStyleLabel": "同款" if same_style_generation else "",
+            "sameStyleGeneratedAt": same_style_generation.createdAt if same_style_generation else None,
+            "sameStyleSourceId": (
+                same_style_generation.sourceNoteId or same_style_generation.sourceShowcaseId
+                if same_style_generation
+                else None
+            ),
+            "stats": (
+                self._build_stats_from_events(
+                    stats_id,
+                    (view_events_by_card or {}).get(stats_id, []),
+                    (relays_by_card or {}).get(stats_id, []),
+                )
+                if view_events_by_card is not None and relays_by_card is not None
+                else self._build_note_stats(note)
+            ),
+            "customerSummary": self._build_note_customer_summary(
+                note,
+                actions_by_note=actions_by_note,
+                leads_by_owner=leads_by_owner,
+            ),
+        }
+        visibility_config = dict(payload.get("visibilityConfig") or {})
+        visibility_config.pop("marketingRoute", None)
+        payload["visibilityConfig"] = visibility_config
+        return payload
 
     def _filter_user_notes(
         self,
@@ -5080,21 +8434,427 @@ class AppService:
             raise HTTPException(status_code=403, detail="仅笔记拥有者可查看")
         return note
 
+    def _validate_share_snapshot_url(self, url: str) -> str:
+        value = self._clean_optional_text(url)
+        if not value or not self.media_storage_service.is_managed_url(value):
+            raise HTTPException(status_code=400, detail="分享图地址不是本系统媒体地址")
+        return value
+
+    def _share_snapshot_delete_after(self, generated_at: str) -> str:
+        try:
+            created = parse_iso(generated_at)
+        except (TypeError, ValueError):
+            created = parse_iso(now_iso())
+        return (created + timedelta(days=SHARE_SNAPSHOT_RETENTION_DAYS)).isoformat()
+
+    def _build_share_snapshot(
+        self,
+        current: dict | None,
+        history: list[dict] | None,
+        *,
+        entity_type: str,
+        source_revision: str,
+        fingerprint: str,
+        url: str,
+        style_id: str,
+        generated_at: str,
+    ) -> tuple[dict, list[dict]]:
+        current_snapshot = current if isinstance(current, dict) else {}
+        next_history = [item for item in (history or []) if isinstance(item, dict)]
+        if current_snapshot.get("url") and current_snapshot.get("url") != url:
+            retired = {
+                **current_snapshot,
+                "status": "retired",
+                "retiredAt": generated_at,
+                "deleteAfter": self._share_snapshot_delete_after(generated_at),
+            }
+            if not any(item.get("url") == retired.get("url") for item in next_history):
+                next_history.append(retired)
+        snapshot = {
+            "version": 1,
+            "entityType": entity_type,
+            "url": url,
+            "sourceRevision": str(source_revision or ""),
+            "fingerprint": str(fingerprint or "")[:512],
+            "styleId": str(style_id or "default")[:80],
+            "generatedAt": generated_at,
+            "status": "ready",
+        }
+        return snapshot, next_history
+
+    def save_note_share_snapshot(self, note_id: str, payload: ShareSnapshotRequest) -> UserNote:
+        note = self.get_user_note(note_id, payload.ownerUserId)
+        if note.shareState != "published":
+            raise HTTPException(status_code=409, detail="资料尚未发布，不能保存客户分享图")
+        if str(payload.sourceRevision or "") != str(note.revision or 0):
+            raise HTTPException(status_code=409, detail="资料版本已变化，请重新生成分享图")
+        generated_at = self._clean_optional_text(payload.generatedAt) or now_iso()
+        url = self._validate_share_snapshot_url(payload.url)
+        config = dict(note.visibilityConfig or {})
+        previous_url = str((config.get("shareSnapshot") or {}).get("url") or "")
+        snapshot, history = self._build_share_snapshot(
+            config.get("shareSnapshot"),
+            config.get("shareSnapshotHistory"),
+            entity_type="note",
+            source_revision=str(note.revision or 0),
+            fingerprint=payload.fingerprint,
+            url=url,
+            style_id=payload.styleId,
+            generated_at=generated_at,
+        )
+        config["shareSnapshot"] = snapshot
+        config["shareSnapshotHistory"] = history
+        note.visibilityConfig = self._normalize_note_visibility_config(config)
+        self.repo.save_user_note(note)
+        if previous_url and previous_url != url:
+            previous_asset = self.repo.get_media_asset_by_url(previous_url)
+            if previous_asset:
+                self.repo.delete_media_asset_refs(previous_asset.id, "share_snapshot", note_id, "current")
+        self._sync_share_snapshot_media_ref(url, payload.ownerUserId, note_id)
+        self._invalidate_card_list_cache(note.ownerUserId)
+        return note
+
+    def save_showcase_share_snapshot(self, showcase_id: str, payload: ShareSnapshotRequest) -> ShowcasePage:
+        showcase = self.get_showcase_for_owner(showcase_id, payload.ownerUserId)
+        if showcase.status != "published":
+            raise HTTPException(status_code=409, detail="合集尚未发布，不能保存客户分享图")
+        source_revision = f"{showcase.snapshotVersion or 0}:{showcase.updatedAt}"
+        if str(payload.sourceRevision or "") != source_revision:
+            raise HTTPException(status_code=409, detail="合集版本已变化，请重新生成分享图")
+        generated_at = self._clean_optional_text(payload.generatedAt) or now_iso()
+        url = self._validate_share_snapshot_url(payload.url)
+        previous_url = str((showcase.shareSnapshot or {}).get("url") or "")
+        snapshot, history = self._build_share_snapshot(
+            showcase.shareSnapshot,
+            showcase.shareSnapshotHistory,
+            entity_type="showcase",
+            source_revision=source_revision,
+            fingerprint=payload.fingerprint,
+            url=url,
+            style_id=payload.styleId,
+            generated_at=generated_at,
+        )
+        showcase.shareSnapshot = snapshot
+        showcase.shareSnapshotHistory = history
+        if isinstance(showcase.publicSnapshot, dict):
+            public_snapshot = dict(showcase.publicSnapshot)
+            public_snapshot["shareSnapshotUrl"] = snapshot["url"]
+            showcase.publicSnapshot = public_snapshot
+        self.repo.save_showcase_page(showcase)
+        if previous_url and previous_url != url:
+            previous_asset = self.repo.get_media_asset_by_url(previous_url)
+            if previous_asset:
+                self.repo.delete_media_asset_refs(previous_asset.id, "share_snapshot", showcase_id, "current")
+        self._sync_share_snapshot_media_ref(url, payload.ownerUserId, showcase_id)
+        self._invalidate_showcase_list_cache(showcase.ownerUserId)
+        return showcase
+
+    def cleanup_expired_share_snapshots(self) -> dict:
+        now = parse_iso(now_iso())
+        state = self.repo.load()
+        current_urls: set[str] = set()
+        for note in self.repo.list_all_user_notes(include_deleted=True):
+            snapshot = (note.visibilityConfig or {}).get("shareSnapshot")
+            if isinstance(snapshot, dict) and snapshot.get("url"):
+                current_urls.add(str(snapshot["url"]))
+        for showcase in getattr(state, "showcase_pages", []) or []:
+            snapshot = showcase.shareSnapshot if isinstance(showcase.shareSnapshot, dict) else {}
+            if snapshot.get("url"):
+                current_urls.add(str(snapshot["url"]))
+
+        result = {"notes": 0, "showcases": 0, "deletedFiles": 0, "failedFiles": 0}
+
+        def clean_history(history: list[dict] | None) -> tuple[list[dict], bool, int, int]:
+            kept: list[dict] = []
+            changed = False
+            deleted = 0
+            failed = 0
+            for item in history or []:
+                if not isinstance(item, dict):
+                    changed = True
+                    continue
+                url = str(item.get("url") or "")
+                try:
+                    expired = bool(item.get("deleteAfter")) and parse_iso(str(item["deleteAfter"])) <= now
+                except (TypeError, ValueError):
+                    expired = False
+                if not expired or not url or url in current_urls:
+                    kept.append(item)
+                    continue
+                asset = self.repo.get_media_asset_by_url(url)
+                if asset and self.repo.list_media_asset_refs(asset_id=asset.id):
+                    # Another current attachment/entity still owns the same
+                    # content. Remove only the expired history pointer.
+                    changed = True
+                    continue
+                if self.media_storage_service.delete_url(url):
+                    if asset:
+                        asset.status = "deleted"
+                        asset.updatedAt = now_iso()
+                        self.repo.save_media_asset(asset)
+                    changed = True
+                    deleted += 1
+                else:
+                    kept.append(item)
+                    failed += 1
+            return kept, changed, deleted, failed
+
+        for note in self.repo.list_all_user_notes(include_deleted=True):
+            config = dict(note.visibilityConfig or {})
+            history, changed, deleted, failed = clean_history(config.get("shareSnapshotHistory"))
+            if not changed:
+                result["failedFiles"] += failed
+                continue
+            config["shareSnapshotHistory"] = history
+            note.visibilityConfig = self._normalize_note_visibility_config(config)
+            self.repo.save_user_note(note)
+            self._invalidate_card_list_cache(note.ownerUserId)
+            result["notes"] += 1
+            result["deletedFiles"] += deleted
+            result["failedFiles"] += failed
+
+        for showcase in getattr(state, "showcase_pages", []) or []:
+            history, changed, deleted, failed = clean_history(showcase.shareSnapshotHistory)
+            if not changed:
+                result["failedFiles"] += failed
+                continue
+            showcase.shareSnapshotHistory = history
+            self.repo.save_showcase_page(showcase)
+            self._invalidate_showcase_list_cache(showcase.ownerUserId)
+            result["showcases"] += 1
+            result["deletedFiles"] += deleted
+            result["failedFiles"] += failed
+        return result
+
     def get_public_note(self, note_id: str) -> dict:
-        note = self._get_active_note(note_id)
+        note = self.repo.get_user_note(note_id)
+        if not note:
+            # Public links historically used card IDs. The old card page is
+            # removed, so resolve those links to their canonical note before
+            # applying the normal publication and privacy checks.
+            card = self.repo.get_card(note_id)
+            source_note_id = self._find_note_id_by_source_card(card.id) if card else None
+            note = self.repo.get_user_note(source_note_id) if source_note_id else None
+        if not note or note.status == "deleted":
+            raise HTTPException(status_code=404, detail="笔记不存在")
+        if note.shareState != "published":
+            raise HTTPException(status_code=404, detail="资料尚未发布")
         payload = note.model_dump()
-        payload["visibilityConfig"] = self._public_note_visibility_config(note.visibilityConfig)
-        self._attach_owner_contact_to_public_note(note, payload)
+        # Public pages must use the same normalized communication defaults as
+        # newly saved notes. This also keeps older notes with a sparse config
+        # from silently losing their customer-page actions.
+        payload["visibilityConfig"] = self._normalize_note_visibility_config(
+            self._public_note_visibility_config(note.visibilityConfig)
+        )
+        payload["media"] = self._normalize_note_media(note.media, public_only=True)
+        payload["phone"] = None
+        payload["sourceRefs"] = []
+        payload["importBatchId"] = None
+        payload["sourceCardId"] = None
+        public_snapshot = payload["visibilityConfig"].get("shareSnapshot")
+        if not (
+            isinstance(public_snapshot, dict)
+            and public_snapshot.get("status") == "ready"
+            and public_snapshot.get("url")
+            and str(public_snapshot.get("sourceRevision") or "") == str(note.revision or "")
+        ):
+            payload["visibilityConfig"].pop("shareSnapshot", None)
+        self._attach_owner_sales_profile_to_public_note(note, payload)
+        self._attach_business_card_featured_resources(note, payload)
         self._sanitize_public_property_note_text(payload)
+        public_blocks = self._public_note_content_blocks(note, payload["media"], body=payload.get("body"))
+        if payload["visibilityConfig"].get("cardType") == "property_listing":
+            # Property notes have a structured public body. Never reuse the raw
+            # capture text blocks here: they may contain upstream/private data.
+            public_blocks = [block for block in public_blocks if block.get("type") != "text"]
+            safe_body = str(payload.get("body") or "").strip()
+            if safe_body:
+                public_blocks.insert(0, {
+                    "id": "public_text",
+                    "type": "text",
+                    "text": safe_body,
+                    "sortOrder": 0,
+                })
+        for index, block in enumerate(public_blocks):
+            block["sortOrder"] = index
+        payload["contentBlocks"] = public_blocks
         return payload
+
+    def publish_user_note(
+        self,
+        note_id: str,
+        owner_user_id: str,
+        expected_revision: int | None = None,
+    ) -> UserNote:
+        note = self.get_user_note(note_id, owner_user_id)
+        if note.status == "deleted":
+            raise HTTPException(status_code=404, detail="资料不存在")
+        if expected_revision is not None and int(expected_revision) != int(note.revision or 0):
+            raise HTTPException(status_code=409, detail="资料已被其他页面更新，请刷新后再发布")
+        # Older imported notes can remain ``draft`` after capture.  Do not
+        # reject a complete, owner-owned note solely because of that stale
+        # lifecycle value; the public-safety gate below is authoritative.
+        # Incomplete notes still fail with the same explicit safety error.
+        if note.status not in {"draft", "active"}:
+            raise HTTPException(status_code=400, detail="资料尚未完成，不能发布")
+        if note.shareState == "published":
+            return note
+        self._assert_note_public_safe(note)
+        if note.status == "draft":
+            note.status = "active"
+        note.shareState = "published"
+        note.revision = max(int(note.revision or 0), 0) + 1
+        config = dict(note.visibilityConfig or {})
+        config["shareState"] = note.shareState
+        config["revision"] = note.revision
+        config["intakeState"] = "ready"
+        note.visibilityConfig = self._normalize_note_visibility_config(config)
+        note.updatedAt = now_iso()
+        self.repo.save_user_note(note)
+        self._invalidate_card_list_cache(owner_user_id)
+        return note
+
+    def revoke_user_note(self, note_id: str, owner_user_id: str) -> UserNote:
+        note = self.get_user_note(note_id, owner_user_id)
+        if note.shareState != "published":
+            note.shareState = "revoked"
+        else:
+            note.shareState = "revoked"
+        note.revision = max(int(note.revision or 0), 0) + 1
+        config = dict(note.visibilityConfig or {})
+        config["shareState"] = note.shareState
+        config["revision"] = note.revision
+        note.visibilityConfig = self._normalize_note_visibility_config(config)
+        note.updatedAt = now_iso()
+        self.repo.save_user_note(note)
+        self._invalidate_showcase_snapshots_for_note(note.id, owner_user_id)
+        self._invalidate_card_list_cache(owner_user_id)
+        return note
+
+    def _invalidate_showcase_snapshots_for_note(self, note_id: str, owner_user_id: str) -> None:
+        for showcase in self.repo.list_showcase_pages(owner_user_id):
+            if showcase.status != "published" or not any(item.noteId == note_id for item in showcase.items):
+                continue
+            showcase.publicSnapshot = {}
+            showcase.snapshotCreatedAt = None
+            showcase.updatedAt = now_iso()
+            self.repo.save_showcase_page(showcase)
+        self._invalidate_showcase_list_cache(owner_user_id)
+
+    def _assert_note_public_safe(self, note: UserNote) -> None:
+        config = note.visibilityConfig if isinstance(note.visibilityConfig, dict) else {}
+        sensitive = re.compile(r"上游|二房东|供应商|成本|佣金|进货|密码锁|门锁密码")
+        structured = config.get("structuredData") if isinstance(config.get("structuredData"), dict) else {}
+        if config.get("cardType") == "property_listing":
+            text = "\n".join(
+                str(value or "")
+                for value in (
+                    note.title,
+                    note.summary,
+                    structured.get("community"),
+                    structured.get("layout"),
+                    structured.get("area"),
+                    structured.get("price"),
+                    structured.get("utilities"),
+                    structured.get("paymentMethod"),
+                    structured.get("businessArea") or structured.get("address"),
+                )
+            )
+        else:
+            block_text = "\n".join(
+                str(item.get("text") or "")
+                for item in self._normalize_note_content_blocks(note.contentBlocks, body=note.body, media=note.media)
+                if item.get("type") == "text"
+            )
+            text = "\n".join([note.title or "", note.summary or "", note.body or "", block_text])
+        if sensitive.search(text):
+            raise HTTPException(status_code=400, detail="资料正文含有疑似私密信息，请先处理")
+        for match in re.findall(r"(?<!\d)1[3-9]\d{9}(?!\d)", text):
+            if match not in {str(note.phone or "").strip()}:
+                raise HTTPException(status_code=400, detail="资料正文含有未确认的手机号，请先处理")
+
+    def _attach_business_card_featured_resources(self, note: UserNote, payload: dict) -> None:
+        config = payload.get("visibilityConfig") if isinstance(payload.get("visibilityConfig"), dict) else {}
+        if config.get("cardType") != "business_card":
+            return
+        structured = config.get("structuredData") if isinstance(config.get("structuredData"), dict) else {}
+        featured_ids = self._unique_strings(structured.get("featuredNoteIds") or [])[:3]
+        featured: list[dict] = []
+        for featured_id in featured_ids:
+            item = self.repo.get_user_note(featured_id)
+            if (
+                not item
+                or item.status != "active"
+                or item.shareState != "published"
+                or item.ownerUserId != note.ownerUserId
+                or item.id == note.id
+            ):
+                continue
+            item_config = self._public_note_visibility_config(item.visibilityConfig)
+            item_type = str(item_config.get("cardType") or "text_note")
+            public_media = self._normalize_note_media(item.media, public_only=True)
+            cover_url = item.coverUrl or self._first_media_url(public_media)
+            featured.append({
+                "id": item.id,
+                "title": item.title,
+                "summary": item.summary or item.body[:120],
+                "coverUrl": cover_url,
+                "cardType": item_type,
+            })
+        payload["featuredResources"] = featured
 
     def _public_note_visibility_config(self, config: dict | None) -> dict:
         source = dict(config or {})
-        for key in ("privateData", "privateTags", "analyticsData", "opportunityAlerts", "radarProfiles", "internalNotes"):
+        for key in (
+            "privateData",
+            "privateTags",
+            "analyticsData",
+            "opportunityAlerts",
+            "radarProfiles",
+            "internalNotes",
+            "shareSnapshotHistory",
+            "marketingRoute",
+        ):
             source.pop(key, None)
         structured = source.get("structuredData") if isinstance(source.get("structuredData"), dict) else {}
         source["structuredData"] = self._public_clone_structured_data(structured)
-        return source
+        return self._sanitize_public_config_value(source)
+
+    def _sanitize_public_config_value(self, value):
+        if isinstance(value, dict):
+            return {key: self._sanitize_public_config_value(child) for key, child in value.items()}
+        if isinstance(value, list):
+            return [self._sanitize_public_config_value(child) for child in value]
+        if not isinstance(value, str):
+            return value
+        private_markers = re.compile(r"上游|二房东|房东|渠道|供应商|成本|佣金|进货|密码锁|门锁密码")
+        lines = []
+        for line in value.splitlines():
+            if private_markers.search(line):
+                continue
+            lines.append(re.sub(r"(?<!\d)1[3-9]\d{9}(?!\d)", "[联系方式已移除]", line))
+        return "\n".join(lines)
+
+    def _attach_owner_sales_profile_to_public_note(self, note: UserNote, payload: dict) -> None:
+        owner = self.repo.get_user(note.ownerUserId)
+        if not owner:
+            return
+        profile = dict(owner.salesProfile or {})
+        profile.update({
+            "displayName": profile.get("displayName") or owner.nickname,
+            "avatarUrl": profile.get("avatarUrl") or owner.avatarUrl,
+            "phone": profile.get("phone") or owner.phone or "",
+            "wechat": profile.get("wechat") or owner.wechat or "",
+        })
+        config = payload.get("visibilityConfig") if isinstance(payload.get("visibilityConfig"), dict) else {}
+        conversion = config.get("conversionConfig") if isinstance(config.get("conversionConfig"), dict) else {}
+        if conversion.get("showContactPhone") is False:
+            profile["phone"] = ""
+        if conversion.get("enablePrivateConsultation") is False:
+            profile["wechat"] = ""
+            profile["wechatQrUrl"] = ""
+        payload["ownerProfile"] = profile
+        self._attach_owner_contact_to_public_note(note, payload)
 
     def _attach_owner_contact_to_public_note(self, note: UserNote, payload: dict) -> None:
         config = payload.get("visibilityConfig") if isinstance(payload.get("visibilityConfig"), dict) else {}
@@ -5138,13 +8898,56 @@ class AppService:
         payload["body"] = safe_text or payload.get("summary") or payload.get("title") or ""
 
     def list_showcases(self, owner_user_id: str) -> list[dict]:
+        now = time.monotonic()
+        cached = self._showcase_list_cache.get(owner_user_id)
+        if cached and now - cached[0] < self._showcase_list_cache_ttl_seconds:
+            return list(cached[1])
         if not self.repo.get_user(owner_user_id):
             raise HTTPException(status_code=404, detail="用户不存在")
-        return [self._showcase_owner_payload(item) for item in self.repo.list_showcase_pages(owner_user_id)]
+        same_style_by_showcase_id = {}
+        for generation in self.repo.list_same_style_generations(owner_user_id):
+            if generation.generatedShowcaseId and generation.generatedShowcaseId not in same_style_by_showcase_id:
+                same_style_by_showcase_id[generation.generatedShowcaseId] = generation
+        rows = []
+        for item in self.repo.list_showcase_pages(owner_user_id):
+            generation = same_style_by_showcase_id.get(item.id)
+            row = self._showcase_owner_payload(item)
+            row.update({
+                "isSameStyle": bool(generation),
+                "sameStyleLabel": "同款" if generation else "",
+                "sameStyleGeneratedAt": generation.createdAt if generation else None,
+                "sameStyleSourceId": (
+                    generation.sourceNoteId or generation.sourceShowcaseId
+                    if generation
+                    else None
+                ),
+            })
+            rows.append(row)
+        rows.sort(
+            key=lambda item: (
+                bool(item.get("isSameStyle")),
+                item.get("sameStyleGeneratedAt") or item.get("updatedAt") or item.get("createdAt") or "",
+            ),
+            reverse=True,
+        )
+        self._showcase_list_cache[owner_user_id] = (now, rows)
+        if len(self._showcase_list_cache) > self._showcase_list_cache_max_entries:
+            expired_before = now - self._showcase_list_cache_ttl_seconds
+            self._showcase_list_cache = {
+                key: value for key, value in self._showcase_list_cache.items()
+                if value[0] >= expired_before
+            }
+            if len(self._showcase_list_cache) > self._showcase_list_cache_max_entries:
+                oldest_keys = sorted(self._showcase_list_cache, key=lambda key: self._showcase_list_cache[key][0])
+                for old_key in oldest_keys[:len(self._showcase_list_cache) - self._showcase_list_cache_max_entries]:
+                    self._showcase_list_cache.pop(old_key, None)
+        return list(rows)
 
     def create_showcase(self, payload: ShowcasePageRequest) -> ShowcasePage:
         self._ensure_showcase_owner(payload.ownerUserId)
         now = now_iso()
+        scene_type = self._resolve_showcase_scene(payload.ownerUserId, payload)
+        template_id = normalize_template_id(scene_type, payload.templateId)
         showcase = ShowcasePage(
             id=new_id("showcase"),
             ownerUserId=payload.ownerUserId,
@@ -5152,16 +8955,19 @@ class AppService:
             name=self._clean_showcase_name(payload.name),
             description=self._clean_optional_text(payload.description),
             bannerUrl=self._clean_optional_text(payload.bannerUrl),
-            templateId=self._clean_optional_text(payload.templateId) or "featured_window",
+            sceneType=scene_type,
+            templateId=template_id,
             shareTitle=self._clean_optional_text(payload.shareTitle),
             contactConfig=self._normalize_showcase_contact_config(payload.contactConfig),
-            displayConfig=self._normalize_showcase_display_config(payload.displayConfig),
-            items=self._normalize_showcase_items(payload.ownerUserId, payload.items),
+            displayConfig={**self._normalize_showcase_display_config(payload.displayConfig), "sceneType": scene_type},
+            items=self._normalize_showcase_items(payload.ownerUserId, payload.items, scene_type),
             publishedAt=None,
             createdAt=now,
             updatedAt=now,
         )
         self.repo.save_showcase_page(showcase)
+        self._invalidate_showcase_list_cache(payload.ownerUserId)
+        self._invalidate_customer_intelligence_cache(payload.ownerUserId)
         return showcase
 
     def get_showcase_for_owner(self, showcase_id: str, owner_user_id: str) -> ShowcasePage:
@@ -5174,16 +8980,20 @@ class AppService:
 
     def update_showcase(self, showcase_id: str, payload: ShowcasePageRequest) -> ShowcasePage:
         showcase = self.get_showcase_for_owner(showcase_id, payload.ownerUserId)
+        scene_type = self._resolve_showcase_scene(payload.ownerUserId, payload)
         showcase.name = self._clean_showcase_name(payload.name)
         showcase.description = self._clean_optional_text(payload.description)
         showcase.bannerUrl = self._clean_optional_text(payload.bannerUrl)
-        showcase.templateId = self._clean_optional_text(payload.templateId) or "featured_window"
+        showcase.sceneType = scene_type
+        showcase.templateId = normalize_template_id(scene_type, payload.templateId)
         showcase.shareTitle = self._clean_optional_text(payload.shareTitle)
         showcase.contactConfig = self._normalize_showcase_contact_config(payload.contactConfig)
-        showcase.displayConfig = self._normalize_showcase_display_config(payload.displayConfig)
-        showcase.items = self._normalize_showcase_items(payload.ownerUserId, payload.items)
+        showcase.displayConfig = {**self._normalize_showcase_display_config(payload.displayConfig), "sceneType": scene_type}
+        showcase.items = self._normalize_showcase_items(payload.ownerUserId, payload.items, scene_type)
         showcase.updatedAt = now_iso()
         self.repo.save_showcase_page(showcase)
+        self._invalidate_showcase_list_cache(payload.ownerUserId)
+        self._invalidate_customer_intelligence_cache(payload.ownerUserId)
         return showcase
 
     def publish_showcase(self, showcase_id: str, owner_user_id: str) -> ShowcasePage:
@@ -5194,6 +9004,24 @@ class AppService:
         if not valid_items:
             raise HTTPException(status_code=400, detail="请至少选择一条有效资料后再发布")
         now = now_iso()
+        for item in valid_items:
+            note = self.repo.get_user_note(item.noteId)
+            if not note or note.status == "deleted":
+                continue
+            if note.shareState != "published":
+                self._assert_note_public_safe(note)
+                note.shareState = "published"
+                note.revision = max(int(note.revision or 0), 0) + 1
+                note.visibilityConfig = self._normalize_note_visibility_config(
+                    {
+                        **(note.visibilityConfig or {}),
+                        "shareState": note.shareState,
+                        "revision": note.revision,
+                        "intakeState": "ready",
+                    }
+                )
+                note.updatedAt = now
+                self.repo.save_user_note(note)
         showcase.status = "published"
         showcase.items = valid_items
         showcase.publishedAt = showcase.publishedAt or now
@@ -5203,6 +9031,8 @@ class AppService:
         showcase.snapshotVersion = next_version
         showcase.snapshotCreatedAt = now
         self.repo.save_showcase_page(showcase)
+        self._invalidate_showcase_list_cache(owner_user_id)
+        self._invalidate_customer_intelligence_cache(owner_user_id)
         return showcase
 
     def archive_showcase(self, showcase_id: str, owner_user_id: str) -> ShowcasePage:
@@ -5210,20 +9040,30 @@ class AppService:
         showcase.status = "archived"
         showcase.updatedAt = now_iso()
         self.repo.save_showcase_page(showcase)
+        self._invalidate_showcase_list_cache(owner_user_id)
+        self._invalidate_customer_intelligence_cache(owner_user_id)
         return showcase
 
     def delete_showcase(self, showcase_id: str, owner_user_id: str) -> dict:
         self.get_showcase_for_owner(showcase_id, owner_user_id)
         self.repo.delete_showcase_page(showcase_id)
+        self._invalidate_showcase_list_cache(owner_user_id)
+        self._invalidate_customer_intelligence_cache(owner_user_id)
         return {"deletedShowcaseId": showcase_id}
 
-    def record_showcase_event(self, showcase_id: str, payload: ShowcaseEventRequest) -> dict:
+    def record_showcase_event(
+        self,
+        showcase_id: str,
+        payload: ShowcaseEventRequest,
+        authenticated_user_id: str | None = None,
+    ) -> dict:
         showcase = self.repo.get_showcase_page(showcase_id)
         if not showcase or showcase.status != "published":
             raise HTTPException(status_code=404, detail="展示页不存在或未发布")
         event_type = str(payload.eventType or "").strip()
         if event_type not in {"view", "note_click", "phone_click", "wechat_copy", "share"}:
             raise HTTPException(status_code=400, detail="展示页事件类型无效")
+        payload = self._normalize_public_view_payload(payload, showcase.ownerUserId, authenticated_user_id)
         viewer_user_id = self._clean_optional_text(payload.viewerUserId)
         if event_type != "share" and viewer_user_id and viewer_user_id == showcase.ownerUserId:
             return {"recorded": False, "ignored": "owner_event"}
@@ -5231,8 +9071,9 @@ class AppService:
         if note_id and note_id not in {item.noteId for item in self._valid_showcase_items(showcase)}:
             note_id = None
         now = now_iso()
+        event_id = self._existing_showcase_session_event_id(showcase.id, payload) or new_id("showcase_event")
         event = ShowcaseEvent(
-            id=self._existing_showcase_session_event_id(showcase.id, payload) or new_id("showcase_event"),
+            id=event_id,
             showcaseId=showcase.id,
             ownerUserId=showcase.ownerUserId,
             eventType=event_type,
@@ -5244,6 +9085,7 @@ class AppService:
             viewerUserId=viewer_user_id,
             viewType="logged_in" if viewer_user_id else "anonymous",
             anonymousId=self._clean_optional_text(payload.anonymousId),
+            visitorIdentityId=self._stable_visitor_identity_id(showcase.ownerUserId, viewer_user_id, payload.anonymousId, event_id),
             nickname=self._clean_optional_text(payload.nickname),
             avatarUrl=self._clean_optional_text(payload.avatarUrl),
             sessionId=self._clean_optional_text(payload.sessionId),
@@ -5254,6 +9096,8 @@ class AppService:
             dateKey=date_key(now),
         )
         self.repo.add_showcase_event(event)
+        if event_type in CUSTOMER_INTELLIGENCE_SHOWCASE_EVENTS:
+            self._invalidate_customer_intelligence_cache(showcase.ownerUserId)
         return {"recorded": True, "eventId": event.id}
 
     def get_showcase_analytics(self, showcase_id: str, owner_user_id: str) -> dict:
@@ -5265,7 +9109,8 @@ class AppService:
         if not showcase or showcase.status != "published":
             raise HTTPException(status_code=404, detail="展示页不存在或未发布")
         snapshot = showcase.publicSnapshot if isinstance(showcase.publicSnapshot, dict) else {}
-        if snapshot and isinstance(snapshot.get("items"), list):
+        scene_type = normalize_scene_type(showcase.sceneType, (showcase.displayConfig or {}).get("activeCategory"))
+        if snapshot and isinstance(snapshot.get("items"), list) and snapshot.get("templateId") == normalize_template_id(scene_type, showcase.templateId):
             return snapshot
         now = now_iso()
         next_version = (showcase.snapshotVersion or 0) + 1
@@ -5277,12 +9122,21 @@ class AppService:
         return snapshot
 
     def _build_showcase_public_snapshot(self, showcase: ShowcasePage, snapshot_at: str, snapshot_version: int) -> dict:
+        scene_type = normalize_scene_type(showcase.sceneType, (showcase.displayConfig or {}).get("activeCategory"))
+        share_snapshot = showcase.shareSnapshot if isinstance(showcase.shareSnapshot, dict) else {}
+        share_snapshot_url = (
+            share_snapshot.get("url")
+            if share_snapshot.get("status") == "ready"
+            and str(share_snapshot.get("sourceRevision") or "") == f"{snapshot_version}:{showcase.updatedAt}"
+            else ""
+        )
         return {
             "id": showcase.id,
             "name": showcase.name,
             "description": showcase.description,
             "bannerUrl": showcase.bannerUrl,
-            "templateId": showcase.templateId,
+            "sceneType": scene_type,
+            "templateId": normalize_template_id(scene_type, showcase.templateId),
             "shareTitle": showcase.shareTitle or showcase.name,
             "contactConfig": showcase.contactConfig,
             "displayConfig": showcase.displayConfig,
@@ -5292,6 +9146,7 @@ class AppService:
             "snapshotVersion": snapshot_version,
             "snapshotCreatedAt": snapshot_at,
             "snapshotSource": "published_snapshot",
+            "shareSnapshotUrl": share_snapshot_url,
         }
 
     def _ensure_showcase_owner(self, owner_user_id: str) -> None:
@@ -5300,9 +9155,23 @@ class AppService:
 
     def _showcase_owner_payload(self, showcase: ShowcasePage) -> dict:
         payload = showcase.model_dump()
+        scene_type = normalize_scene_type(showcase.sceneType, (showcase.displayConfig or {}).get("activeCategory"))
+        payload["sceneType"] = scene_type
+        payload["allowedTemplateIds"] = list(allowed_template_ids(scene_type))
+        payload["defaultTemplateId"] = default_template_id(scene_type)
+        # Keep the legacy property-batch identifier in owner responses for
+        # existing workflows; rendering and public snapshots use its alias.
+        payload["templateId"] = showcase.templateId if showcase.templateId == "property_batch_collection" else normalize_template_id(scene_type, showcase.templateId)
         payload["itemCount"] = len(self._valid_showcase_items(showcase))
         payload["sharePath"] = f"/pages/showcase-view/index?id={showcase.id}"
-        payload["analytics"] = self._build_showcase_analytics(showcase, compact=True)
+        analytics = self._build_showcase_analytics(showcase, compact=True)
+        payload["analytics"] = analytics if self._has_customer_intelligence(showcase.ownerUserId) else {
+            "locked": True,
+            "summary": analytics.get("summary") or {},
+            "recentViewers": [],
+            "recentEvents": [],
+            "topShares": [],
+        }
         return payload
 
     def _build_showcase_analytics(self, showcase: ShowcasePage, compact: bool = False) -> dict:
@@ -5423,7 +9292,7 @@ class AppService:
             "createdAt": event.createdAt,
         }
 
-    def get_business_dashboard(self, owner_user_id: str, requester_user_id: str | None = None, mode: str | None = None) -> dict:
+    def _build_business_dashboard(self, owner_user_id: str, requester_user_id: str | None = None, mode: str | None = None) -> dict:
         if not self.repo.get_user(owner_user_id):
             raise HTTPException(status_code=404, detail="用户不存在")
         if not requester_user_id:
@@ -5439,12 +9308,13 @@ class AppService:
             notes = [item for item in notes if self._is_service_note(item)]
         note_by_id = {item.id: item for item in notes}
         note_ids = set(note_by_id.keys())
-        note_view_events: dict[str, list[ViewEvent]] = {
-            note.id: self.repo.list_view_events_for_card(note.sourceCardId or note.id)
-            for note in notes
-        }
         note_card_ids = {item.sourceCardId for item in notes if item.sourceCardId}
         note_source_ids = note_ids | note_card_ids
+        note_event_rows = self.repo.list_view_events_for_cards(note_source_ids)
+        note_view_events: dict[str, list[ViewEvent]] = {
+            note.id: note_event_rows.get(note.sourceCardId or note.id, [])
+            for note in notes
+        }
         showcases = self.repo.list_showcase_pages(owner_user_id)
         if mode in {"groupbuy", "service"}:
             showcases = [
@@ -5453,20 +9323,24 @@ class AppService:
                 if any(showcase_item.noteId in note_ids for showcase_item in item.items)
             ]
         showcase_by_id = {item.id: item for item in showcases}
+        showcase_ids = {item.id for item in showcases}
+        showcase_event_rows = self.repo.list_showcase_events_for_showcases(showcase_ids)
         showcase_events = [
             event
-            for showcase in showcases
-            for event in self.repo.list_showcase_events(showcase.id)
+            for showcase_id in showcase_ids
+            for event in showcase_event_rows.get(showcase_id, [])
             if event.ownerUserId == owner_user_id
             and (mode not in {"groupbuy", "service"} or not event.noteId or event.noteId in note_ids)
         ]
+        actions_by_note = self.repo.list_customer_actions_for_notes(note_ids)
         actions = [
             action
-            for note in notes
-            for action in self.repo.list_customer_actions_for_note(note.id)
+            for rows in actions_by_note.values()
+            for action in rows
             if action.ownerUserId == owner_user_id
         ]
-        leads = self.repo.list_lead_reminders(owner_user_id)
+        all_leads = self.repo.list_lead_reminders(owner_user_id)
+        leads = all_leads
         if mode in {"groupbuy", "service"}:
             leads = [item for item in leads if item.cardId in note_source_ids]
         today = date_key(now_iso())
@@ -5549,9 +9423,18 @@ class AppService:
             "topShares": self._business_dashboard_top_shares(share_rows, showcase_events),
             "latestActions": self._business_dashboard_latest_actions(actions, note_by_id),
             "showcaseBreakdown": self._business_dashboard_showcase_breakdown(showcases, showcase_events),
-            "visitorProfiles": self._business_dashboard_visitor_profiles(showcase_events, actions, leads, showcase_by_id, note_by_id),
+            "visitorProfiles": self._business_dashboard_visitor_profiles(owner_user_id, showcase_events, actions, leads, showcase_by_id, note_by_id),
         }
-        return self._attach_opportunity_radar(dashboard, notes, showcase_events, actions, leads, note_view_events)
+        return self._attach_opportunity_radar(
+            owner_user_id,
+            dashboard,
+            notes,
+            showcase_events,
+            actions,
+            leads,
+            note_view_events,
+            suppression_leads=all_leads,
+        )
 
     def _is_property_note(self, note: UserNote) -> bool:
         config = note.visibilityConfig or {}
@@ -5612,10 +9495,12 @@ class AppService:
         notes = [item for item in self.repo.list_user_notes(owner_user_id, include_deleted=False) if self._is_property_note(item)]
         note_by_id = {item.id: item for item in notes}
         note_ids = set(note_by_id)
+        note_source_ids = note_ids | {item.sourceCardId for item in notes if item.sourceCardId}
+        actions_by_note = self.repo.list_customer_actions_for_notes(note_ids)
         actions = [
             action
-            for note in notes
-            for action in self.repo.list_customer_actions_for_note(note.id)
+            for rows in actions_by_note.values()
+            for action in rows
             if action.ownerUserId == owner_user_id
         ]
         projected_lead_ids = {
@@ -5624,10 +9509,11 @@ class AppService:
             if (action.projectionRefs or {}).get("leadReminderId")
         }
         all_leads = self.repo.list_lead_reminders(owner_user_id)
-        leads = [item for item in all_leads if item.id in projected_lead_ids or item.cardId in note_ids]
+        leads = [item for item in all_leads if item.id in projected_lead_ids or item.cardId in note_source_ids]
         note_stats = {note.id: self._build_note_stats(note) for note in notes}
+        note_event_rows = self.repo.list_view_events_for_cards(note_source_ids)
         note_view_events: dict[str, list[ViewEvent]] = {
-            note.id: self.repo.list_view_events_for_card(note.sourceCardId or note.id)
+            note.id: note_event_rows.get(note.sourceCardId or note.id, [])
             for note in notes
         }
         showcases = [
@@ -5636,10 +9522,12 @@ class AppService:
             if any(item.noteId in note_ids for item in showcase.items)
         ]
         showcase_by_id = {item.id: item for item in showcases}
+        showcase_ids = {item.id for item in showcases}
+        showcase_event_rows = self.repo.list_showcase_events_for_showcases(showcase_ids)
         showcase_events = [
             event
-            for showcase in showcases
-            for event in self.repo.list_showcase_events(showcase.id)
+            for showcase_id in showcase_ids
+            for event in showcase_event_rows.get(showcase_id, [])
             if event.ownerUserId == owner_user_id
         ]
         today = date_key(now_iso())
@@ -5654,6 +9542,8 @@ class AppService:
         today_package_consult_count = 0
         package_share_count = 0
         today_package_share_count = 0
+        note_share_count = 0
+        today_note_share_count = 0
         for event in showcase_events:
             is_today_event = event.dateKey == today
             if event.eventType == "view":
@@ -5711,6 +9601,11 @@ class AppService:
             for index in range(int(stats.get("anonymousUv") or 0)):
                 note_visitor_keys.add(f"note-anon:{note.id}:{index}")
             for event in note_view_events.get(note.id, []):
+                if event.viewType == "share":
+                    note_share_count += 1
+                    if event.dateKey == today:
+                        today_note_share_count += 1
+                    continue
                 if event.dateKey != today:
                     continue
                 today_note_view_count += 1
@@ -5735,13 +9630,13 @@ class AppService:
             note_pending = sum(1 for lead in leads if (lead.id in note_lead_ids or lead.cardId in note_card_ids) and lead.status == "pending")
             click_count = int(stats.get("pv") or 0) + int(note_clicks.get(note.id) or 0)
             today_open_count = (
-                sum(1 for event in note_view_events.get(note.id, []) if event.dateKey == today)
+                sum(1 for event in note_view_events.get(note.id, []) if event.dateKey == today and event.viewType != "share")
                 + int(today_note_clicks.get(note.id) or 0)
             )
             today_visitor_count = len({
                 self._dashboard_identity_key(event.viewerUserId, event.anonymousId, event.id)
                 for event in note_view_events.get(note.id, [])
-                if event.dateKey == today
+                if event.dateKey == today and event.viewType != "share"
             })
             today_followup_count = sum(1 for lead in leads if (lead.id in note_lead_ids or lead.cardId in note_card_ids) and lead.status == "pending" and date_key(lead.createdAt) == today)
             property_rows.append(
@@ -5775,7 +9670,7 @@ class AppService:
             "anonymousVisitorCount": sum(1 for key in note_visitor_keys | showcase_visitor_keys if not key.startswith("user:")),
             "noteClickCount": sum(int(item.get("openCount") or 0) for item in property_rows),
             "consultCount": package_consult_count + action_contact_count,
-            "shareCount": package_share_count,
+            "shareCount": package_share_count + note_share_count,
             "shareSourceCount": len(share_rows),
             "pendingLeadCount": len(pending_leads),
             "customerCount": len(leads),
@@ -5795,7 +9690,7 @@ class AppService:
             "anonymousVisitorCount": sum(1 for key in today_note_visitor_keys | today_showcase_visitor_keys if not key.startswith("user:")),
             "noteClickCount": today_note_view_count + sum(today_note_clicks.values()),
             "consultCount": today_package_consult_count + today_action_contact_count,
-            "shareCount": today_package_share_count,
+            "shareCount": today_package_share_count + today_note_share_count,
             "shareSourceCount": len({
                 event.shareId
                 for event in showcase_events
@@ -5813,18 +9708,88 @@ class AppService:
             "showcaseCount": summary["showcaseCount"],
             "publishedShowcaseCount": summary["publishedShowcaseCount"],
         }
+        last7_keys = {
+            (datetime.now(SHANGHAI).date() - timedelta(days=offset)).isoformat()
+            for offset in range(7)
+        }
+
+        def summarize_period(period_keys: set[str]) -> dict:
+            period_showcase_events = [event for event in showcase_events if event.dateKey in period_keys]
+            period_note_events = [
+                event
+                for events in note_view_events.values()
+                for event in events
+                if event.dateKey in period_keys
+            ]
+            period_note_open_events = [event for event in period_note_events if event.viewType != "share"]
+            period_note_share_events = [event for event in period_note_events if event.viewType == "share"]
+            period_visitor_keys = {
+                self._dashboard_identity_key(event.viewerUserId, event.anonymousId, event.id)
+                for event in period_showcase_events
+                if event.eventType == "view"
+            }
+            period_visitor_keys.update(
+                self._dashboard_identity_key(event.viewerUserId, event.anonymousId, event.id)
+                for event in period_note_open_events
+            )
+            period_actions = [action for action in actions if date_key(action.createdAt) in period_keys]
+            period_contact_count = sum(
+                1 for action in period_actions if action.actionKey in {"lead-contact", "appointment", "consult-click"}
+            )
+            period_pending_leads = [
+                lead for lead in pending_leads if date_key(lead.createdAt) in period_keys
+            ]
+            share_source_ids = {
+                event.shareId
+                for event in period_showcase_events + period_note_share_events
+                if event.shareId
+            }
+            return {
+                "propertyCount": sum(1 for note in notes if date_key(note.createdAt) in period_keys),
+                "updatedPropertyCount": sum(1 for note in notes if date_key(note.updatedAt) in period_keys),
+                "showcaseOpenCount": sum(1 for event in period_showcase_events if event.eventType == "view"),
+                "visitorCount": len(period_visitor_keys),
+                "loggedInVisitorCount": sum(1 for key in period_visitor_keys if key.startswith("user:")),
+                "anonymousVisitorCount": sum(1 for key in period_visitor_keys if not key.startswith("user:")),
+                "noteClickCount": len(period_note_open_events) + sum(
+                    1 for event in period_showcase_events if event.eventType == "note_click" and event.noteId in note_ids
+                ),
+                "consultCount": sum(
+                    1 for event in period_showcase_events if event.eventType in {"phone_click", "wechat_copy"}
+                ) + period_contact_count,
+                "shareCount": sum(1 for event in period_showcase_events if event.eventType == "share") + len(period_note_share_events),
+                "shareSourceCount": len(share_source_ids),
+                "pendingLeadCount": len(period_pending_leads),
+                "customerCount": len({
+                    self._dashboard_identity_key(action.viewerUserId, action.anonymousId, action.id)
+                    for action in period_actions
+                } | period_visitor_keys),
+                "orderCount": 0,
+                "pendingOrderCount": 0,
+                "todayEventCount": len(period_showcase_events),
+                "todayActionCount": len(period_actions),
+                "showcaseCount": len(showcases),
+                "publishedShowcaseCount": sum(1 for item in showcases if item.status == "published"),
+            }
+
+        range_summaries = {
+            "today": today_summary,
+            "last7": summarize_period(last7_keys),
+            "total": summary,
+        }
         property_showcase_events = [
             event
             for event in showcase_events
             if event.eventType != "note_click" or event.noteId in note_ids
         ]
-        visitor_profiles = self._business_dashboard_visitor_profiles(property_showcase_events, actions, leads, showcase_by_id, note_by_id)
-        visitor_profiles = self._merge_property_note_view_profiles(visitor_profiles, notes, note_view_events)
+        visitor_profiles = self._business_dashboard_visitor_profiles(owner_user_id, property_showcase_events, actions, leads, showcase_by_id, note_by_id)
+        visitor_profiles = self._merge_property_note_view_profiles(owner_user_id, visitor_profiles, notes, note_view_events)
         latest_actions = self._business_dashboard_latest_actions(actions, note_by_id)
         latest_actions = self._merge_pending_lead_actions(latest_actions, pending_leads, notes)
         dashboard = {
             "summary": summary,
             "todaySummary": today_summary,
+            "rangeSummaries": range_summaries,
             "entries": self._business_dashboard_entries(summary),
             "recentVisitors": self._property_dashboard_recent_visitors(notes, note_stats, property_showcase_events, showcase_by_id),
             "topNotes": property_rows[:8],
@@ -5834,16 +9799,28 @@ class AppService:
             "showcaseBreakdown": self._business_dashboard_showcase_breakdown(showcases, property_showcase_events),
             "visitorProfiles": visitor_profiles,
         }
-        return self._attach_opportunity_radar(dashboard, notes, property_showcase_events, actions, leads, note_view_events)
+        return self._attach_opportunity_radar(
+            owner_user_id,
+            dashboard,
+            notes,
+            property_showcase_events,
+            actions,
+            leads,
+            note_view_events,
+            suppression_leads=all_leads,
+        )
 
     def _attach_opportunity_radar(
         self,
+        owner_user_id: str,
         dashboard: dict,
         notes: list[UserNote],
         showcase_events: list[ShowcaseEvent],
         actions: list[CustomerAction],
         leads: list[LeadReminder],
         note_view_events: dict[str, list[ViewEvent]] | None = None,
+        suppression_leads: list[LeadReminder] | None = None,
+        synchronize_summary_counts: bool = False,
     ) -> dict:
         note_by_id = {item.id: item for item in notes}
         note_by_card_id: dict[str, UserNote] = {}
@@ -5851,13 +9828,131 @@ class AppService:
             note_by_card_id[note.id] = note
             if note.sourceCardId:
                 note_by_card_id[note.sourceCardId] = note
-        profiles = self._build_opportunity_profiles(note_by_id, note_by_card_id, showcase_events, actions, leads, note_view_events or {})
+        # A follow-up decision belongs to the owner/customer relationship, not
+        # to the currently selected card scene.  The status tabs remain
+        # scene-scoped through ``leads``, while suppression consults every
+        # owner lead so an abandoned/following identity cannot be rebuilt from
+        # historical events after switching scenes.
+        resolved_leads = [
+            item
+            for item in (suppression_leads if suppression_leads is not None else leads)
+            if item.status in LEAD_INBOX_RESOLVED_STATUSES
+        ]
+        active_leads = [item for item in leads if item.status not in LEAD_INBOX_RESOLVED_STATUSES]
+        abandoned_leads = [item for item in leads if item.status == "paused"]
+        viewer_contact_cache: dict[str, dict[str, str]] = {}
+        profiles = self._build_opportunity_profiles(
+            owner_user_id,
+            note_by_id,
+            note_by_card_id,
+            showcase_events,
+            actions,
+            active_leads,
+            note_view_events or {},
+            viewer_contact_cache=viewer_contact_cache,
+        )
+        if resolved_leads:
+            # A resolved inbox action is a deliberate owner decision for the
+            # customer, not just a flag on one lead row. Remove the identity
+            # from both radar worklists while keeping all source events and
+            # lead history available to customer detail/history.
+            profiles = [
+                profile
+                for profile in profiles
+                if not any(
+                    self._raw_customer_identity_matches(
+                        owner_user_id,
+                        closed_lead.visitorIdentityId or closed_lead.viewerUserId,
+                        visitor_identity_id=profile.get("visitorIdentityId"),
+                        viewer_user_id=profile.get("viewerUserId"),
+                        anonymous_id=profile.get("anonymousId"),
+                        fallback_id=profile.get("id"),
+                    )
+                    or self._raw_customer_identity_matches(
+                        owner_user_id,
+                        closed_lead.viewerUserId,
+                        visitor_identity_id=profile.get("visitorIdentityId"),
+                        viewer_user_id=profile.get("viewerUserId"),
+                        anonymous_id=profile.get("anonymousId"),
+                        fallback_id=profile.get("id"),
+                    )
+                    for closed_lead in resolved_leads
+                )
+            ]
+        # The customer-intelligence response uses the active profile count so
+        # its radar tab cannot resurrect a handled visitor. The general
+        # business dashboard keeps its historical event-based visitor count,
+        # so existing analytics consumers retain their meaning.
+        active_visitor_profiles = profiles
+        if synchronize_summary_counts:
+            dashboard_summary = dashboard.setdefault("summary", {})
+            dashboard_summary["visitorCount"] = len(active_visitor_profiles)
+            dashboard_summary["loggedInVisitorCount"] = sum(
+                1 for item in active_visitor_profiles if item.get("viewerUserId")
+            )
+            dashboard_summary["anonymousVisitorCount"] = sum(
+                1 for item in active_visitor_profiles if not item.get("viewerUserId")
+            )
+        following_leads = [item for item in leads if item.status == "following"]
+        following_profiles = self._build_opportunity_profiles(
+            owner_user_id,
+            note_by_id,
+            note_by_card_id,
+            showcase_events,
+            actions,
+            following_leads,
+            note_view_events or {},
+            viewer_contact_cache=viewer_contact_cache,
+        )
+        following_lead_ids = {item.id for item in following_leads}
+        following_profiles = [
+            profile for profile in following_profiles
+            if profile.get("leadReminderId") in following_lead_ids
+        ]
+        for profile in following_profiles:
+            lead = next(
+                (item for item in following_leads if item.id == profile.get("leadReminderId")),
+                None,
+            )
+            if lead:
+                profile["leadStatus"] = lead.status
+                profile["leadStatusText"] = self._lead_status_text(lead.status)
+                profile["nextFollowUpAt"] = lead.nextFollowUpAt or ""
+
+        abandoned_profiles = self._build_opportunity_profiles(
+            owner_user_id,
+            note_by_id,
+            note_by_card_id,
+            showcase_events,
+            actions,
+            abandoned_leads,
+            note_view_events or {},
+            viewer_contact_cache=viewer_contact_cache,
+        )
+        abandoned_lead_ids = {item.id for item in abandoned_leads}
+        abandoned_profiles = [
+            profile for profile in abandoned_profiles
+            if profile.get("leadReminderId") in abandoned_lead_ids
+        ]
+        for profile in abandoned_profiles:
+            lead = next(
+                (item for item in abandoned_leads if item.id == profile.get("leadReminderId")),
+                None,
+            )
+            if lead:
+                profile["leadStatus"] = lead.status
+                profile["leadStatusText"] = self._lead_status_text(lead.status)
+                profile["abandonedAt"] = lead.closedAt or lead.updatedAt or lead.createdAt
+                profile["conclusionReason"] = lead.conclusionReason or "放弃跟进"
+                profile["nextFollowUpAt"] = lead.nextFollowUpAt or ""
         alerts = self._build_opportunity_alerts(profiles)
         content_insights = self._build_content_insights(notes, profiles)
         revival_alerts = [item for item in alerts if item.get("alertType") == "revival"]
         today = date_key(now_iso())
         dashboard["radarProfiles"] = profiles[:20]
         dashboard["opportunityAlerts"] = alerts[:8]
+        dashboard["followingProfiles"] = following_profiles[:20]
+        dashboard["abandonedProfiles"] = abandoned_profiles[:20]
         dashboard["contentInsights"] = content_insights[:8]
         dashboard["revivalAlerts"] = revival_alerts[:6]
         dashboard["opportunitySummary"] = {
@@ -5866,6 +9961,9 @@ class AppService:
             "todayHighIntentCount": sum(1 for item in profiles if item.get("intentLevel") == "高" and item.get("lastActivityDateKey") == today),
             "todayVisitorCount": (dashboard.get("todaySummary") or {}).get("visitorCount", (dashboard.get("summary") or {}).get("todayEventCount", 0)),
             "pendingFollowupCount": (dashboard.get("summary") or {}).get("pendingLeadCount", 0),
+            "activeVisitorCount": len(profiles),
+            "followingFollowupCount": len(following_profiles),
+            "abandonedFollowupCount": len(abandoned_profiles),
             "opportunityCount": len(alerts),
             "revivalCount": len(revival_alerts),
             "topContentTitle": content_insights[0]["title"] if content_insights else "",
@@ -5874,26 +9972,50 @@ class AppService:
 
     def _build_opportunity_profiles(
         self,
+        owner_user_id: str,
         note_by_id: dict[str, UserNote],
         note_by_card_id: dict[str, UserNote],
         showcase_events: list[ShowcaseEvent],
         actions: list[CustomerAction],
         leads: list[LeadReminder],
         note_view_events: dict[str, list[ViewEvent]],
+        viewer_contact_cache: dict[str, dict[str, str]] | None = None,
     ) -> list[dict]:
         profiles: dict[str, dict] = {}
+        viewer_contact_cache = viewer_contact_cache if viewer_contact_cache is not None else {}
 
-        def ensure_profile(viewer_user_id: str | None, anonymous_id: str | None, fallback_id: str, nickname: str | None, avatar_url: str | None) -> dict:
-            key = self._dashboard_identity_key(viewer_user_id, anonymous_id, fallback_id)
-            return profiles.setdefault(
-                key,
-                {
+        def ensure_profile(
+            viewer_user_id: str | None,
+            anonymous_id: str | None,
+            fallback_id: str,
+            nickname: str | None,
+            avatar_url: str | None,
+            visitor_identity_id: str | None = None,
+        ) -> dict:
+            key = visitor_identity_id or self._stable_visitor_identity_id(owner_user_id, viewer_user_id, anonymous_id, fallback_id)
+            if key in profiles:
+                return profiles[key]
+            viewer_key = self._clean_optional_text(viewer_user_id)
+            if viewer_key:
+                if viewer_key not in viewer_contact_cache:
+                    viewer_contact_cache[viewer_key] = self._viewer_contact_fields(viewer_key)
+                viewer_contact = viewer_contact_cache[viewer_key]
+            else:
+                viewer_contact = {"phone": "", "wechat": "", "email": ""}
+            profile = {
                     "id": key,
+                    "visitorIdentityId": key,
                     "viewerUserId": viewer_user_id or "",
                     "anonymousId": anonymous_id or "",
                     "anonymous": not bool(viewer_user_id),
                     "nickname": self._dashboard_display_name(nickname, viewer_user_id),
                     "avatarUrl": avatar_url or "",
+                    "phone": viewer_contact["phone"],
+                    "wechat": viewer_contact["wechat"],
+                    "email": viewer_contact["email"],
+                    "budgetText": "",
+                    "customerTags": [],
+                    "leadReminderId": "",
                     "viewCount": 0,
                     "noteClickCount": 0,
                     "consultCount": 0,
@@ -5910,8 +10032,9 @@ class AppService:
                     "visitorIdentityLabel": VISITOR_IDENTITY_DEFAULT["label"],
                     "visitorIdentityGroup": VISITOR_IDENTITY_DEFAULT["group"],
                     "hasLead": False,
-                },
-            )
+                }
+            profiles[key] = profile
+            return profile
 
         def add_note(profile: dict, note: UserNote | None) -> None:
             if not note:
@@ -5929,7 +10052,7 @@ class AppService:
                 profile["lastActivityDateKey"] = date_key(at)
 
         for event in showcase_events:
-            profile = ensure_profile(event.viewerUserId, event.anonymousId, event.id, event.nickname, event.avatarUrl)
+            profile = ensure_profile(event.viewerUserId, event.anonymousId, event.id, event.nickname, event.avatarUrl, event.visitorIdentityId or self._event_visitor_identity_id(owner_user_id, event))
             if event.eventType == "view":
                 profile["viewCount"] += 1
             elif event.eventType == "note_click":
@@ -5945,7 +10068,7 @@ class AppService:
         for note_id, events in note_view_events.items():
             note = note_by_id.get(note_id)
             for event in events:
-                profile = ensure_profile(event.viewerUserId, event.anonymousId, event.id, event.nickname, event.avatarUrl)
+                profile = ensure_profile(event.viewerUserId, event.anonymousId, event.id, event.nickname, event.avatarUrl, event.visitorIdentityId or self._event_visitor_identity_id(owner_user_id, event))
                 profile["viewCount"] += 1
                 profile["durationSeconds"] = max(profile["durationSeconds"], int(event.durationSeconds or 0))
                 profile["maxScrollPercent"] = max(profile["maxScrollPercent"], int(event.maxScrollPercent or 0))
@@ -5954,7 +10077,10 @@ class AppService:
                 touch(profile, event.viewedAt)
 
         for action in actions:
-            profile = ensure_profile(action.viewerUserId, action.anonymousId, action.id, (action.payload or {}).get("name") or (action.payload or {}).get("nickname"), (action.payload or {}).get("avatarUrl"))
+            profile = ensure_profile(action.viewerUserId, action.anonymousId, action.id, (action.payload or {}).get("name") or (action.payload or {}).get("nickname"), (action.payload or {}).get("avatarUrl"), action.visitorIdentityId or self._stable_visitor_identity_id(owner_user_id, action.viewerUserId, action.anonymousId, action.id))
+            profile["phone"] = (action.payload or {}).get("phone") or profile.get("phone") or ""
+            profile["wechat"] = (action.payload or {}).get("wechat") or profile.get("wechat") or ""
+            profile["email"] = (action.payload or {}).get("email") or profile.get("email") or ""
             visitor_identity = self._customer_action_visitor_identity(action)
             profile["visitorIdentityType"] = visitor_identity["type"]
             profile["visitorIdentityLabel"] = visitor_identity["label"]
@@ -5966,8 +10092,20 @@ class AppService:
             touch(profile, action.createdAt)
 
         for lead in leads:
-            profile = ensure_profile(lead.viewerUserId, None, lead.id, lead.nickname, lead.avatarUrl)
+            profile = ensure_profile(lead.viewerUserId, None, lead.id, lead.nickname, lead.avatarUrl, lead.visitorIdentityId or self._stable_visitor_identity_id(owner_user_id, lead.viewerUserId, None, lead.id))
             profile["hasLead"] = True
+            profile["leadReminderId"] = lead.id
+            profile["leadVersion"] = int(lead.version or 0)
+            profile["leadStatus"] = lead.status
+            profile["leadStatusText"] = self._lead_status_text(lead.status)
+            # The radar projection carries only the current state and the
+            # latest reminder date. Full follow-up records are detail-only.
+            profile["nextFollowUpAt"] = lead.nextFollowUpAt or ""
+            profile["phone"] = lead.customerPhone or profile.get("phone") or ""
+            profile["wechat"] = lead.customerWechat or profile.get("wechat") or ""
+            profile["email"] = lead.customerEmail or profile.get("email") or ""
+            profile["budgetText"] = lead.budgetText or profile.get("budgetText") or ""
+            profile["customerTags"] = lead.customerTags or profile.get("customerTags") or []
             profile["viewCount"] = max(profile["viewCount"], int(lead.viewCount or 0))
             add_note(profile, note_by_card_id.get(lead.cardId))
             touch(profile, lead.updatedAt or lead.createdAt)
@@ -6110,6 +10248,15 @@ class AppService:
                 detail += f"，重点看了{sections}"
             alerts.append({
                 "id": f"opp_{profile.get('id')}",
+                "customerId": profile.get("id"),
+                "visitorIdentityId": profile.get("visitorIdentityId") or profile.get("id"),
+                "viewerUserId": profile.get("viewerUserId"),
+                "anonymousId": profile.get("anonymousId"),
+                "leadReminderId": profile.get("leadReminderId"),
+                "leadVersion": profile.get("leadVersion"),
+                "leadStatus": profile.get("leadStatus"),
+                "leadStatusText": profile.get("leadStatusText"),
+                "nextFollowUpAt": profile.get("nextFollowUpAt") or "",
                 "alertType": "revival" if profile.get("isRevival") else "intent",
                 "customerName": profile.get("nickname") or "客户",
                 "title": title,
@@ -6120,6 +10267,12 @@ class AppService:
                 "suggestedAction": profile.get("suggestedAction"),
                 "followupScript": profile.get("followupScript"),
                 "lastActivityAt": profile.get("lastActivityAt"),
+                "noteIds": profile.get("noteIds") or [],
+                "noteTitles": profile.get("noteTitles") or [],
+                "focusSections": profile.get("focusSections") or [],
+                "phone": profile.get("phone") or "",
+                "wechat": profile.get("wechat") or "",
+                "email": profile.get("email") or "",
             })
         return sorted(alerts, key=lambda item: item.get("lastActivityAt") or "", reverse=True)
 
@@ -6189,6 +10342,35 @@ class AppService:
                 continue
             return event.id
         return None
+
+    def _normalize_public_view_payload(self, payload, owner_user_id: str, authenticated_user_id: str | None):
+        """Use the signed session identity for public view/event endpoints.
+
+        Development fixtures historically submit viewerUserId directly. Keep that
+        compatibility outside production, but never accept it as an identity in
+        the production public browsing path. Anonymous clients may still provide
+        a session key for dedupe/statistics; it never becomes a known user and is
+        not eligible to consume a subscription grant.
+        """
+        if str(settings.app_env or "").lower() != "production":
+            return payload
+        user = self.repo.get_user(self._clean_optional_text(authenticated_user_id)) if authenticated_user_id else None
+        if user:
+            return payload.model_copy(
+                update={
+                    "viewerUserId": user.id,
+                    "anonymousId": None,
+                    "nickname": user.nickname,
+                    "avatarUrl": user.avatarUrl,
+                }
+            )
+        return payload.model_copy(
+            update={
+                "viewerUserId": None,
+                "nickname": None,
+                "avatarUrl": None,
+            }
+        )
 
     def _existing_showcase_session_event_id(self, showcase_id: str, payload: ShowcaseEventRequest) -> str | None:
         session_id = self._clean_optional_text(payload.sessionId)
@@ -6269,6 +10451,7 @@ class AppService:
 
     def _merge_property_note_view_profiles(
         self,
+        owner_user_id: str,
         profiles: list[dict],
         notes: list[UserNote],
         note_view_events: dict[str, list[ViewEvent]],
@@ -6281,11 +10464,12 @@ class AppService:
             if not note:
                 continue
             for event in sorted(events, key=lambda item: item.viewedAt):
-                key = self._dashboard_identity_key(event.viewerUserId, event.anonymousId, event.id)
+                key = event.visitorIdentityId or self._event_visitor_identity_id(owner_user_id, event)
                 profile = merged.setdefault(
                     key,
                     {
                         "id": key,
+                        "visitorIdentityId": key,
                         "viewerUserId": event.viewerUserId or "",
                         "anonymousId": event.anonymousId or "",
                         "anonymous": not bool(event.viewerUserId),
@@ -6386,6 +10570,52 @@ class AppService:
             return f"anon:{anonymous_id}"
         return f"anon:{fallback_id or new_id('visitor')}"
 
+    def _stable_visitor_identity_id(
+        self,
+        owner_user_id: str,
+        viewer_user_id: str | None = None,
+        anonymous_id: str | None = None,
+        fallback_id: str | None = None,
+    ) -> str:
+        """Return the owner-scoped identity shared by radar and detail.
+
+        Logged-in viewers retain the existing user key. Anonymous viewers get
+        an opaque, owner-scoped key derived from the client anonymous ID. If a
+        legacy event has no anonymous ID, its persisted event ID is the only
+        safe identity available; it remains stable for that record without
+        merging unrelated anonymous visitors.
+        """
+        viewer = self._clean_optional_text(viewer_user_id)
+        anonymous = self._clean_optional_text(anonymous_id)
+        if viewer:
+            return f"user:{viewer}"
+        if anonymous:
+            digest = hashlib.sha256(f"{owner_user_id}|{anonymous}".encode("utf-8")).hexdigest()[:32]
+            return f"visitor:{digest}"
+        return f"legacy:{self._clean_optional_text(fallback_id) or new_id('visitor')}"
+
+    def _event_visitor_identity_id(self, owner_user_id: str, event) -> str:
+        return self._clean_optional_text(getattr(event, "visitorIdentityId", None)) or self._stable_visitor_identity_id(
+            owner_user_id,
+            getattr(event, "viewerUserId", None),
+            getattr(event, "anonymousId", None),
+            getattr(event, "id", None),
+        )
+
+    def _viewer_contact_fields(self, viewer_user_id: str | None) -> dict[str, str]:
+        viewer_id = self._clean_optional_text(viewer_user_id)
+        if not viewer_id:
+            return {"phone": "", "wechat": "", "email": ""}
+        viewer = self.repo.get_user(viewer_id)
+        if not viewer:
+            return {"phone": "", "wechat": "", "email": ""}
+        sales_profile = viewer.salesProfile if isinstance(viewer.salesProfile, dict) else {}
+        return {
+            "phone": self._clean_optional_text(viewer.phone) or "",
+            "wechat": self._clean_optional_text(viewer.wechat) or "",
+            "email": self._clean_optional_text(sales_profile.get("email")) or "",
+        }
+
     def _dashboard_display_name(self, nickname: str | None, viewer_user_id: str | None = None) -> str:
         cleaned = str(nickname or "").strip()
         if cleaned:
@@ -6394,12 +10624,13 @@ class AppService:
 
     def _business_dashboard_contact_lookup(
         self,
+        owner_user_id: str,
         actions: list[CustomerAction],
         leads: list[LeadReminder],
     ) -> dict[str, dict]:
         lookup: dict[str, dict] = {}
         for lead in leads:
-            key = self._dashboard_identity_key(lead.viewerUserId)
+            key = lead.visitorIdentityId or self._stable_visitor_identity_id(owner_user_id, lead.viewerUserId, None, lead.id)
             row = lookup.setdefault(key, {})
             row.update(
                 {
@@ -6408,6 +10639,7 @@ class AppService:
                     "avatarUrl": lead.avatarUrl or row.get("avatarUrl") or "",
                     "phone": lead.customerPhone or row.get("phone") or "",
                     "wechat": lead.customerWechat or row.get("wechat") or "",
+                    "email": lead.customerEmail or row.get("email") or "",
                     "budgetText": lead.budgetText or row.get("budgetText") or "",
                     "intentLevel": lead.intentLevel or row.get("intentLevel") or "待判断",
                     "customerTags": lead.customerTags or row.get("customerTags") or [],
@@ -6416,7 +10648,7 @@ class AppService:
                 }
             )
         for action in actions:
-            key = self._dashboard_identity_key(action.viewerUserId, action.anonymousId, action.id)
+            key = action.visitorIdentityId or self._stable_visitor_identity_id(owner_user_id, action.viewerUserId, action.anonymousId, action.id)
             payload = action.payload or {}
             visitor_identity = self._customer_action_visitor_identity(action)
             row = lookup.setdefault(key, {})
@@ -6430,6 +10662,7 @@ class AppService:
                     "avatarUrl": payload.get("avatarUrl") or row.get("avatarUrl") or "",
                     "phone": payload.get("phone") or row.get("phone") or "",
                     "wechat": payload.get("wechat") or row.get("wechat") or "",
+                    "email": payload.get("email") or row.get("email") or "",
                     "leadReminderId": lead_id or row.get("leadReminderId") or "",
                     "orderActionId": action.id if is_order_action else row.get("orderActionId") or "",
                     "noteId": action.noteId or row.get("noteId") or "",
@@ -6519,22 +10752,24 @@ class AppService:
 
     def _business_dashboard_visitor_profiles(
         self,
+        owner_user_id: str,
         showcase_events: list[ShowcaseEvent],
         actions: list[CustomerAction],
         leads: list[LeadReminder],
         showcase_by_id: dict[str, ShowcasePage],
         note_by_id: dict[str, UserNote],
     ) -> list[dict]:
-        contact_lookup = self._business_dashboard_contact_lookup(actions, leads)
+        contact_lookup = self._business_dashboard_contact_lookup(owner_user_id, actions, leads)
         profiles: dict[str, dict] = {}
         for event in sorted(showcase_events, key=lambda item: item.createdAt):
-            key = self._dashboard_identity_key(event.viewerUserId, event.anonymousId, event.id)
+            key = event.visitorIdentityId or self._event_visitor_identity_id(owner_user_id, event)
             contact = contact_lookup.get(key, {})
             showcase = showcase_by_id.get(event.showcaseId)
             profile = profiles.setdefault(
                 key,
                 {
                     "id": key,
+                    "visitorIdentityId": key,
                     "viewerUserId": event.viewerUserId or contact.get("viewerUserId") or "",
                     "anonymousId": event.anonymousId or contact.get("anonymousId") or "",
                     "anonymous": not bool(event.viewerUserId),
@@ -6542,6 +10777,7 @@ class AppService:
                     "avatarUrl": contact.get("avatarUrl") or event.avatarUrl or "",
                     "phone": contact.get("phone") or "",
                     "wechat": contact.get("wechat") or "",
+                    "email": contact.get("email") or "",
                     "budgetText": contact.get("budgetText") or "",
                     "intentLevel": contact.get("intentLevel") or "待判断",
                     "customerTags": contact.get("customerTags") or [],
@@ -6569,6 +10805,7 @@ class AppService:
             profile["avatarUrl"] = contact.get("avatarUrl") or event.avatarUrl or profile["avatarUrl"]
             profile["phone"] = contact.get("phone") or profile["phone"]
             profile["wechat"] = contact.get("wechat") or profile["wechat"]
+            profile["email"] = contact.get("email") or profile.get("email") or ""
             profile["leadReminderId"] = contact.get("leadReminderId") or profile["leadReminderId"]
             profile["orderActionId"] = contact.get("orderActionId") or profile["orderActionId"]
             profile["noteId"] = contact.get("noteId") or event.noteId or profile["noteId"]
@@ -6604,6 +10841,7 @@ class AppService:
                 key,
                 {
                     "id": key,
+                    "visitorIdentityId": key,
                     "viewerUserId": contact.get("viewerUserId") or "",
                     "anonymousId": contact.get("anonymousId") or "",
                     "anonymous": not bool(contact.get("viewerUserId")),
@@ -6611,6 +10849,7 @@ class AppService:
                     "avatarUrl": contact.get("avatarUrl") or "",
                     "phone": contact.get("phone") or "",
                     "wechat": contact.get("wechat") or "",
+                    "email": contact.get("email") or "",
                     "budgetText": contact.get("budgetText") or "",
                     "intentLevel": contact.get("intentLevel") or "待判断",
                     "customerTags": contact.get("customerTags") or [],
@@ -6636,6 +10875,7 @@ class AppService:
             )
             profile["phone"] = contact.get("phone") or profile["phone"]
             profile["wechat"] = contact.get("wechat") or profile["wechat"]
+            profile["email"] = contact.get("email") or profile.get("email") or ""
             profile["leadReminderId"] = contact.get("leadReminderId") or profile["leadReminderId"]
             profile["orderActionId"] = contact.get("orderActionId") or profile["orderActionId"]
             profile["noteId"] = contact.get("noteId") or profile["noteId"]
@@ -6855,12 +11095,17 @@ class AppService:
             "showWechat": bool(source.get("showWechat", True)),
         }
 
+    def get_business_dashboard(self, owner_user_id: str, requester_user_id: str | None = None, mode: str | None = None) -> dict:
+        self.require_customer_intelligence(owner_user_id)
+        return self._build_business_dashboard(owner_user_id, requester_user_id, mode)
+
     def _normalize_showcase_display_config(self, config: dict | None) -> dict:
         source = config if isinstance(config, dict) else {}
         group_by = str(source.get("groupBy") or "none").strip()
         if group_by not in {"none", "cardType", "tag", "custom"}:
             group_by = "none"
         return {
+            "sceneType": self._clean_optional_text(source.get("sceneType")),
             "groupBy": group_by,
             "activeCategory": self._clean_optional_text(source.get("activeCategory")) or "全部",
             "showSearch": bool(source.get("showSearch", False)),
@@ -6898,7 +11143,20 @@ class AppService:
                 normalized.append({"key": key, "label": label, "options": options[:12]})
         return normalized
 
-    def _normalize_showcase_items(self, owner_user_id: str, items: list) -> list[ShowcaseItem]:
+    def _resolve_showcase_scene(self, owner_user_id: str, payload: ShowcasePageRequest) -> str:
+        display = payload.displayConfig if isinstance(payload.displayConfig, dict) else {}
+        explicit = payload.sceneType or display.get("sceneType")
+        category = display.get("activeCategory")
+        card_types = []
+        for item in payload.items or []:
+            note_id = str(getattr(item, "noteId", "") or "").strip()
+            note = self.repo.get_user_note(note_id) if note_id else None
+            if note:
+                config = note.visibilityConfig if isinstance(note.visibilityConfig, dict) else {}
+                card_types.append(str(config.get("cardType") or "text_note"))
+        return normalize_scene_type(explicit, category, card_types)
+
+    def _normalize_showcase_items(self, owner_user_id: str, items: list, scene_type: str | None = None) -> list[ShowcaseItem]:
         normalized: list[ShowcaseItem] = []
         seen: set[str] = set()
         for index, item in enumerate(items or []):
@@ -6910,6 +11168,11 @@ class AppService:
                 raise HTTPException(status_code=400, detail=f"资料不存在或已删除：{note_id}")
             if note.ownerUserId != owner_user_id:
                 raise HTTPException(status_code=403, detail="不能选择其他用户的资料")
+            if scene_type:
+                config = note.visibilityConfig if isinstance(note.visibilityConfig, dict) else {}
+                card_type = str(config.get("cardType") or "text_note")
+                if not scene_accepts_note(scene_type, card_type):
+                    raise HTTPException(status_code=400, detail="合集类型与所选资料类型不匹配，请新建对应类型合集")
             seen.add(note_id)
             normalized.append(
                 ShowcaseItem(
@@ -6935,7 +11198,7 @@ class AppService:
         rows: list[dict] = []
         for item in self._valid_showcase_items(showcase):
             note = self.repo.get_user_note(item.noteId)
-            if note:
+            if note and note.shareState == "published":
                 rows.append(self._showcase_note_summary(note, item))
         return rows
 
@@ -7020,21 +11283,204 @@ class AppService:
 
     def update_user_note(self, note_id: str, payload: UserNoteUpdateRequest) -> UserNote:
         note = self.get_user_note(note_id, payload.ownerUserId)
+        if payload.expectedRevision is not None and int(payload.expectedRevision) != int(note.revision or 0):
+            raise HTTPException(status_code=409, detail="资料已被其他页面更新，请刷新后再保存")
         if not payload.title.strip():
             raise HTTPException(status_code=400, detail="标题不能为空")
+        if note.status == "draft":
+            # Saving from any of the five editors confirms that the owner has
+            # taken over the imported draft.  Keep it private until the
+            # explicit send-to-customer action publishes it.
+            note.status = "active"
         body = payload.body.strip()
         note.title = payload.title.strip()
         note.summary = (payload.summary or body[:120]).strip()
         note.body = body
         note.coverUrl = payload.coverUrl
-        note.media = [item.model_dump() for item in payload.media]
+        note.media = self._normalize_note_media([item.model_dump() for item in payload.media])
+        if getattr(payload, "contentBlocks", None) is not None:
+            note.contentBlocks = self._normalize_note_content_blocks(
+                getattr(payload, "contentBlocks", None),
+                body=body,
+                media=note.media,
+            )
+        elif (payload.visibilityConfig or {}).get("cardType") == "service_offer":
+            # The service editor's structured detail text is canonical. Do not
+            # retain imported content blocks, which can contain a deleted phone
+            # number and make publish safety checks fail after the edit.
+            note.contentBlocks = self._normalize_note_content_blocks([], body=body, media=note.media)
+        elif not note.contentBlocks:
+            note.contentBlocks = self._normalize_note_content_blocks([], body=body, media=note.media)
         note.categoryIds = payload.categoryIds
         note.phone = payload.phone
         note.locationText = payload.locationText
-        note.visibilityConfig = self._normalize_note_visibility_config(payload.visibilityConfig)
+        previous_config = dict(note.visibilityConfig or {})
+        next_config = dict(payload.visibilityConfig or {})
+        # Marketing routing belongs to the PC operations console. Preserve an
+        # existing route for operations, but never let a user editor create or
+        # modify it through the normal note update endpoint.
+        if "marketingRoute" in previous_config:
+            next_config["marketingRoute"] = previous_config["marketingRoute"]
+        else:
+            next_config.pop("marketingRoute", None)
+        for key in ("shareSnapshot", "shareSnapshotHistory"):
+            if key not in next_config and key in previous_config:
+                next_config[key] = previous_config[key]
+        note.visibilityConfig = self._normalize_note_visibility_config(next_config)
+        note.revision = max(int(note.revision or 0), 0) + 1
+        if note.shareState == "published":
+            note.shareState = "private"
+        config = dict(note.visibilityConfig or {})
+        config["revision"] = note.revision
+        config["shareState"] = note.shareState
+        config["intakeState"] = "editing"
+        note.visibilityConfig = self._normalize_note_visibility_config(config)
         note.updatedAt = now_iso()
         self.repo.save_user_note(note)
+        self._invalidate_card_list_cache(payload.ownerUserId)
         return note
+
+    def _normalize_note_content_blocks(
+        self,
+        blocks: list | None,
+        *,
+        body: str = "",
+        media: list | None = None,
+    ) -> list[dict]:
+        """Keep text/media order separate from the media storage registry.
+
+        ``UserNote.media`` remains the deduplicated storage/reference list.  A
+        content block only describes how the customer-facing body is composed.
+        Old notes without blocks are upgraded on read/write as text followed by
+        their existing media order.
+        """
+        media_items = [item for item in (media or []) if isinstance(item, dict)]
+        media_by_id = {
+            str(item.get("id")): item
+            for item in media_items
+            if item.get("id")
+        }
+        media_by_url = {
+            str(item.get("url")): item
+            for item in media_items
+            if item.get("url")
+        }
+        source_blocks = blocks if isinstance(blocks, list) and blocks else None
+        if source_blocks is None:
+            source_blocks = []
+            text = strip_unicode_surrogates(body or "").strip()
+            if text:
+                source_blocks.append({"type": "text", "text": text, "sortOrder": 0})
+            source_blocks.extend(
+                {
+                    **item,
+                    "sortOrder": item.get("sortOrder", index + (1 if text else 0)),
+                }
+                for index, item in enumerate(media_items)
+                if item.get("type") in {"image", "pdf", "link"} and item.get("url")
+            )
+
+        normalized: list[dict] = []
+        for index, raw in enumerate(source_blocks):
+            if not isinstance(raw, dict):
+                continue
+            block_type = str(raw.get("type") or "text").strip().lower()
+            if block_type == "text":
+                text = strip_unicode_surrogates(raw.get("text") or raw.get("value") or "").strip()
+                if not text:
+                    continue
+                normalized.append({
+                    "id": str(raw.get("id") or f"block_text_{index}"),
+                    "type": "text",
+                    "text": text,
+                    "sortOrder": self._safe_int(raw.get("sortOrder"), index, 9999),
+                })
+                continue
+            if block_type not in {"image", "pdf", "link"}:
+                continue
+            media_item = media_by_id.get(str(raw.get("mediaId") or raw.get("id") or ""))
+            media_item = media_item or media_by_url.get(str(raw.get("url") or "")) or {}
+            url = self._clean_optional_text(raw.get("url") or media_item.get("url"))
+            if not url:
+                continue
+            block_id = self._clean_optional_text(raw.get("id") or media_item.get("id")) or self._stable_attachment_id(block_type, url)
+            block = {
+                "id": block_id,
+                "type": block_type,
+                "mediaId": self._clean_optional_text(raw.get("mediaId") or media_item.get("mediaId") or media_item.get("id")),
+                "url": url,
+                "sortOrder": self._safe_int(raw.get("sortOrder"), index, 9999),
+            }
+            for key in ("name", "title", "description", "mimeType", "sizeBytes", "pageCount", "coverUrl", "source", "status"):
+                value = raw.get(key, media_item.get(key))
+                if value not in (None, ""):
+                    block[key] = value
+            normalized.append(block)
+        normalized.sort(key=lambda item: (item.get("sortOrder", 0), item.get("id", "")))
+        for index, item in enumerate(normalized):
+            item["sortOrder"] = index
+        return normalized
+
+    def _public_note_content_blocks(self, note: UserNote, public_media: list[dict], *, body: str | None = None) -> list[dict]:
+        blocks = self._normalize_note_content_blocks(
+            note.contentBlocks,
+            body=note.body if body is None else body,
+            media=note.media,
+        )
+        allowed_ids = {str(item.get("id")) for item in public_media if item.get("id")}
+        allowed_urls = {str(item.get("url")) for item in public_media if item.get("url")}
+        result: list[dict] = []
+        for block in blocks:
+            if block.get("type") == "text":
+                result.append(self._sanitize_public_config_value(block))
+                continue
+            if str(block.get("mediaId") or "") in allowed_ids or str(block.get("url") or "") in allowed_urls:
+                result.append(self._sanitize_public_config_value(block))
+        return result
+
+    def _normalize_note_media(self, media: list | None, public_only: bool = False) -> list[dict]:
+        normalized: list[dict] = []
+        counts = {"image": 0, "pdf": 0, "link": 0}
+        for index, raw in enumerate(media or []):
+            if not isinstance(raw, dict):
+                continue
+            item = dict(raw)
+            media_type = str(item.get("type") or "image").lower()
+            if public_only and media_type not in PUBLIC_ATTACHMENT_TYPES:
+                continue
+            if media_type == "link":
+                parsed = urlparse(str(item.get("url") or ""))
+                if parsed.scheme != "https" or not parsed.netloc:
+                    if public_only:
+                        continue
+                    raise HTTPException(status_code=400, detail="外部链接必须使用HTTPS")
+            url = self._clean_optional_text(item.get("url"))
+            if not url:
+                continue
+            if media_type in counts:
+                counts[media_type] += 1
+            item.update({
+                "id": self._clean_optional_text(item.get("id")) or self._stable_attachment_id(media_type, url),
+                "type": media_type,
+                "url": url,
+                "sortOrder": self._safe_int(item.get("sortOrder"), index, 9999),
+                "status": str(item.get("status") or "ready"),
+                "source": str(item.get("source") or "upload"),
+            })
+            normalized.append(item)
+        if counts["image"] > 9:
+            raise HTTPException(status_code=400, detail="每份资料最多9张图片")
+        if counts["pdf"] > 5:
+            raise HTTPException(status_code=400, detail="每份资料最多5份PDF")
+        if counts["link"] > 5:
+            raise HTTPException(status_code=400, detail="每份资料最多5条外部链接")
+        if sum(counts.values()) > 12:
+            raise HTTPException(status_code=400, detail="每份资料最多12个公开附件")
+        return sorted(normalized, key=lambda row: row.get("sortOrder", 0))
+
+    def _stable_attachment_id(self, media_type: str, url: str) -> str:
+        digest = hashlib.sha256(f"{media_type}:{url}".encode("utf-8")).hexdigest()[:20]
+        return f"att_{digest}"
 
     def duplicate_user_note(self, note_id: str, owner_user_id: str) -> UserNote:
         source = self.get_user_note(note_id, owner_user_id)
@@ -7045,12 +11491,20 @@ class AppService:
         copy_note.importBatchId = None
         copy_note.title = f"{source.title} 副本"
         copy_note.status = "active"
+        copy_note.shareState = "private"
+        copy_note.revision = max(int(source.revision or 0), 1)
+        copy_note.intakeId = None
+        copy_note.idempotencyKey = None
         config = self._normalize_note_visibility_config(copy_note.visibilityConfig)
         config["cardState"] = "editing"
+        config["shareState"] = copy_note.shareState
+        config["revision"] = copy_note.revision
+        config["intakeState"] = "editing"
         copy_note.visibilityConfig = config
         copy_note.createdAt = now
         copy_note.updatedAt = now
         self.repo.save_user_note(copy_note)
+        self._invalidate_card_list_cache(owner_user_id)
         return copy_note
 
     def clone_property_same(self, payload: PropertySameCloneRequest) -> dict:
@@ -7117,6 +11571,7 @@ class AppService:
             showcase.snapshotVersion = 1
             showcase.snapshotCreatedAt = now
         self.repo.save_showcase_page(showcase)
+        self._invalidate_showcase_list_cache(owner.id)
         self._register_media_refs_for_urls([source.bannerUrl], owner.id, "showcase", showcase.id, "banner")
         return showcase
 
@@ -7130,22 +11585,27 @@ class AppService:
         source = self.repo.get_user_note(source_note_id)
         if not source or source.status == "deleted":
             raise HTTPException(status_code=404, detail="公开房源卡不存在")
-        source_config = source.visibilityConfig if isinstance(source.visibilityConfig, dict) else {}
+        public_source = self.get_public_note(source.id)
+        source_config = public_source.get("visibilityConfig") if isinstance(public_source.get("visibilityConfig"), dict) else {}
         source_structured = source_config.get("structuredData") if isinstance(source_config.get("structuredData"), dict) else {}
         structured_data = self._public_clone_structured_data(source_structured)
         phone = self._clean_optional_text(payload.phone) or owner.phone
         wechat = self._clean_optional_text(payload.wechat)
-        if phone:
-            structured_data["phone"] = phone
-            structured_data["contactPhone"] = phone
-        if wechat:
-            structured_data["wechat"] = wechat
-            structured_data["contactWechat"] = wechat
         media = self._clone_note_media(source)
         cover_url = source.coverUrl or self._first_media_url(media)
         now = now_iso()
         source_refs = self._unique_strings([*source.sourceRefs, source.id, source_showcase_id or ""])
         card_type = str(source_config.get("cardType") or "property_listing")
+        if card_type == "business_card":
+            structured_data = {"headline": "", "serviceKeywords": [], "bio": "", "featuredNoteIds": []}
+            media = []
+            cover_url = None
+            source_refs = []
+            source_config = {
+                "schemaVersion": 2,
+                "cardType": "business_card",
+                "displayConfig": {"styleId": ((source_config.get("displayConfig") or {}).get("styleId") or "business_blue")},
+            }
         visibility_config = self._normalize_note_visibility_config(
             {
                 **source_config,
@@ -7154,37 +11614,45 @@ class AppService:
                 "sourceType": "property_same_clone",
                 "structuredData": structured_data,
                 "conversionConfig": self._clone_conversion_config(card_type, source_config, phone, wechat),
-                "cloneSource": {
-                    "sourceNoteId": source.id,
-                    "sourceShowcaseId": source_showcase_id,
-                    "sourceOwnerUserId": source.ownerUserId,
-                },
-                "privateData": {
-                    "upstreamContact": self._clone_upstream_contact(payload, source, source_config),
-                    "editableByOwner": True,
-                },
+                "privateData": {},
             }
         )
+        visibility_config["shareState"] = "private"
+        visibility_config["intakeState"] = "editing"
+        visibility_config["revision"] = 1
+        source_owner = self.repo.get_user(source.ownerUserId)
+        title = self._sanitize_same_style_text(public_source.get("title") or source.title, source, source_owner)
+        summary = self._sanitize_same_style_text(public_source.get("summary") or source.summary, source, source_owner)
+        body = self._sanitize_same_style_text(public_source.get("body") or source.body, source, source_owner)
+        location_text = source.locationText
+        if card_type == "business_card":
+            title = f"{owner.nickname}的电子名片"
+            summary = ""
+            body = ""
+            location_text = None
         note = UserNote(
             id=new_id("note"),
             ownerUserId=owner.id,
             importBatchId=None,
             sourceCardId=None,
             status="active",
-            title=source.title,
-            summary=source.summary,
-            body=source.body,
+            shareState="private",
+            revision=1,
+            title=title,
+            summary=summary,
+            body=body,
             coverUrl=cover_url,
             media=media,
             categoryIds=[],
-            phone=phone,
-            locationText=source.locationText,
+            phone=None,
+            locationText=location_text,
             sourceRefs=source_refs,
             visibilityConfig=visibility_config,
             createdAt=now,
             updatedAt=now,
         )
         self.repo.save_user_note(note)
+        self._invalidate_card_list_cache(owner.id)
         self._register_media_refs_for_urls([cover_url, *[item.get("url") for item in media if isinstance(item, dict)]], owner.id, "note", note.id, "clone_media")
         self._record_property_same_peer_signal(
             source_note_id=source.id,
@@ -7193,8 +11661,28 @@ class AppService:
             payload=payload,
             clone_type="note",
             generated_ref_id=note.id,
+            source=source,
         )
         return note
+
+    def _sanitize_same_style_text(
+        self,
+        value: str | None,
+        source: UserNote,
+        source_owner: User | None = None,
+    ) -> str:
+        text = str(value or "")
+        source_owner = source_owner or self.repo.get_user(source.ownerUserId)
+        exact_values = [source.phone]
+        if source_owner:
+            exact_values.extend([source_owner.phone, source_owner.wechat])
+            profile = source_owner.salesProfile or {}
+            exact_values.extend([profile.get("phone"), profile.get("wechat")])
+        for raw in exact_values:
+            cleaned = self._clean_optional_text(raw)
+            if cleaned:
+                text = text.replace(cleaned, "[联系方式已移除]")
+        return re.sub(r"(?<!\d)1[3-9]\d{9}(?!\d)", "[联系方式已移除]", text)
 
     def _record_property_same_peer_signal(
         self,
@@ -7204,8 +11692,9 @@ class AppService:
         payload: PropertySameCloneRequest,
         clone_type: str,
         generated_ref_id: str,
+        source: UserNote | None = None,
     ) -> None:
-        source = self.repo.get_user_note(source_note_id)
+        source = source or self.repo.get_user_note(source_note_id)
         if not source or source.status == "deleted" or source.ownerUserId == clone_owner.id:
             return
         now = now_iso()
@@ -7245,6 +11734,9 @@ class AppService:
         media = [dict(item) for item in source.media if isinstance(item, dict)]
         if source.coverUrl and not any(item.get("url") == source.coverUrl for item in media):
             media.insert(0, self._image_media_payload(source.coverUrl, "封面图"))
+        for index, item in enumerate(media):
+            item["id"] = new_id("att")
+            item["sortOrder"] = index
         return media
 
     def _first_media_url(self, media: list[dict]) -> str | None:
@@ -7307,6 +11799,7 @@ class AppService:
 
     def _normalize_note_visibility_config(self, config: dict) -> dict:
         normalized = dict(config or {})
+        normalized["schemaVersion"] = 2
         normalized.setdefault("cardType", "link" if normalized.get("contentMode") == "bookmark" else "text_note")
         normalized.setdefault("cardState", "collected")
         structured_data = normalized.get("structuredData")
@@ -7315,6 +11808,7 @@ class AppService:
             normalized.get("cardType", "text_note"),
             normalized.get("conversionConfig", {}),
         )
+        normalized["conversionConfig"]["enableLightScrm"] = True
         type_suggestions = normalized.get("typeSuggestions")
         normalized["typeSuggestions"] = type_suggestions if isinstance(type_suggestions, list) else []
         tag_levels = normalized.get("tagLevels") or {}
@@ -7346,10 +11840,23 @@ class AppService:
             return dict(PROPERTY_CONVERSION_DEFAULTS)
         if card_type == "groupbuy_product":
             return dict(GROUPBUY_CONVERSION_DEFAULTS)
-        if card_type in {"business_card", "service_offer"}:
-            return dict(SERVICE_CONVERSION_DEFAULTS)
-        defaults = {key: False for key in CONVERSION_CONFIG_KEYS}
-        defaults["enableLightScrm"] = True
+        if card_type == "business_card":
+            defaults = dict(SERVICE_CONVERSION_DEFAULTS)
+            defaults["collectLeads"] = True
+            defaults["enableAppointment"] = False
+            return defaults
+        if card_type == "service_offer":
+            defaults = dict(SERVICE_CONVERSION_DEFAULTS)
+            defaults["enableAppointment"] = False
+            return defaults
+        # Every public material uses the same customer-page communication
+        # baseline. Scene-specific actions (viewing appointments, relay,
+        # payment) remain opt-in in their own card types.
+        defaults = dict(SERVICE_CONVERSION_DEFAULTS)
+        defaults["enableAppointment"] = False
+        defaults["enableGroupRelay"] = False
+        defaults["enablePaymentPlaceholder"] = False
+        defaults["enableSharePoster"] = False
         return defaults
 
     def _unique_strings(self, values) -> list[str]:
@@ -7408,8 +11915,10 @@ class AppService:
         note.visibilityConfig = config
         if note.summary in {"已收藏，待整理。", "已收藏，待整理"}:
             note.summary = note.body[:120] if note.body else note.title
+        self._mark_note_content_edit(note, "editing")
         note.updatedAt = now_iso()
         self.repo.save_user_note(note)
+        self._invalidate_card_list_cache(owner_user_id)
         return note
 
     def generate_note_result(self, note_id: str, owner_user_id: str) -> UserNote:
@@ -7432,8 +11941,10 @@ class AppService:
         config["structuredData"] = structured_data
         config["canDeepOrganize"] = False
         note.visibilityConfig = config
+        self._mark_note_content_edit(note, "editing")
         note.updatedAt = now_iso()
         self.repo.save_user_note(note)
+        self._invalidate_card_list_cache(owner_user_id)
         return note
 
     def confirm_note_type(self, note_id: str, payload: NoteTypeConfirmRequest) -> UserNote:
@@ -7488,8 +11999,10 @@ class AppService:
         }
         note.visibilityConfig = self._normalize_note_visibility_config(config)
         self._apply_owner_public_contact_to_property_note(note)
+        self._mark_note_content_edit(note, "editing")
         note.updatedAt = now_iso()
         self.repo.save_user_note(note)
+        self._invalidate_card_list_cache(payload.ownerUserId)
         return note
 
     def _build_confirmed_structured_data(self, note: UserNote, config: dict, card_type: str) -> dict:
@@ -7552,35 +12065,51 @@ class AppService:
         if card_type == "business_card":
             return {
                 **preserved,
-                "name": current.get("name") or note.title,
-                "title": current.get("title", ""),
-                "company": current.get("company", ""),
-                "serviceScope": current.get("serviceScope", ""),
                 "headline": current.get("headline") or note.summary or "",
-                "bio": current.get("bio") or note.body,
-                "phone": current.get("phone") or note.phone or "",
-                "wechat": current.get("wechat", ""),
-                "city": current.get("city") or note.locationText or "",
-                "avatarUrl": current.get("avatarUrl") or note.coverUrl or "",
-                "qrCodeUrl": current.get("qrCodeUrl", ""),
-                "images": images,
-                "rawText": current.get("rawText") or note.body,
+                "serviceKeywords": current.get("serviceKeywords") if isinstance(current.get("serviceKeywords"), list) else [],
+                "bio": current.get("bio") or note.body or "",
+                "featuredNoteIds": current.get("featuredNoteIds") if isinstance(current.get("featuredNoteIds"), list) else [],
             }
         if card_type == "service_offer":
+            has_new_detail = "detailText" in current
+            placeholder_values = {
+                "未命名服务方案",
+                "未命名服务",
+                "手动创建，可继续补充内容。",
+                "补充服务内容和预约方式后即可发给客户",
+                "让客户快速理解价值",
+            }
+
+            def service_text(value) -> str:
+                text = str(value or "").strip()
+                return "" if text in placeholder_values else text
+
+            detail_parts = []
+            for value in (
+                current.get("detailText"),
+                current.get("serviceContent"),
+                current.get("targetAudience"),
+                current.get("serviceProcess"),
+                current.get("caseHighlights"),
+                current.get("appointmentNote"),
+            ):
+                normalized = service_text(value)
+                if normalized and normalized not in detail_parts:
+                    detail_parts.append(normalized)
+            if not detail_parts and not has_new_detail:
+                body = service_text(note.body)
+                if body:
+                    detail_parts.append(body)
             return {
                 **preserved,
-                "serviceName": current.get("serviceName") or note.title,
-                "headline": current.get("headline") or note.summary or "",
-                "targetAudience": current.get("targetAudience", ""),
-                "serviceContent": current.get("serviceContent") or note.body,
-                "pricingNote": current.get("pricingNote", ""),
-                "serviceProcess": current.get("serviceProcess", ""),
-                "caseHighlights": current.get("caseHighlights", ""),
-                "serviceArea": current.get("serviceArea") or note.locationText or "",
-                "contact": current.get("contact") or note.phone or "",
-                "appointmentNote": current.get("appointmentNote", ""),
-                "images": images,
-                "rawText": current.get("rawText") or note.body,
+                "serviceName": service_text(current.get("serviceName") or note.title),
+                "headline": service_text(current.get("headline") or note.summary),
+                "detailText": "\n\n".join(detail_parts),
+                "serviceScope": service_text(current.get("serviceScope") or current.get("serviceArea")),
+                "pricingOrTerms": service_text(
+                    current.get("pricingOrTerms") or current.get("cooperationTerms") or current.get("pricingNote")
+                ),
+                "primaryAction": "consult",
             }
         return {
             **preserved,
@@ -7776,6 +12305,7 @@ class AppService:
         config["topicIds"] = topic_ids
         config["topics"] = topics
         note.visibilityConfig = config
+        self._mark_note_content_edit(note, "editing")
         note.updatedAt = now_iso()
         self.repo.save_user_note(note)
         return note
@@ -7786,6 +12316,7 @@ class AppService:
         config["topicIds"] = [item for item in config.get("topicIds", []) if item != topic_id]
         config["topics"] = [item for item in config.get("topics", []) if item.get("id") != topic_id]
         note.visibilityConfig = config
+        self._mark_note_content_edit(note, "editing")
         note.updatedAt = now_iso()
         self.repo.save_user_note(note)
         return note
@@ -8263,6 +12794,7 @@ class AppService:
         state.lead_reminders = [item for item in state.lead_reminders if item.id not in demo_lead_ids]
         state.customer_actions = [item for item in state.customer_actions if item.id not in demo_action_ids]
         self.repo.save(state)
+        self._invalidate_card_list_cache(owner_user_id)
         return {
             "deleted": {
                 "notes": before["notes"] - len(state.user_notes),
@@ -8279,7 +12811,7 @@ class AppService:
         viewer_user_id: str | None = None,
         anonymous_id: str | None = None,
     ) -> dict:
-        note = self._get_active_note(note_id)
+        note = self._require_published_note(note_id)
         config = self._normalize_note_visibility_config(note.visibilityConfig)
         actions = self._available_customer_actions(config)
         submitted = self._submitted_customer_actions(note_id, viewer_user_id, anonymous_id)
@@ -8373,7 +12905,7 @@ class AppService:
         }
 
     def submit_customer_action(self, note_id: str, action_key: str, payload: CustomerActionSubmitRequest) -> dict:
-        note = self._get_active_note(note_id)
+        note = self._require_published_note(note_id)
         config = self._normalize_note_visibility_config(note.visibilityConfig)
         allowed_keys = {item["key"] for item in self._available_customer_actions(config)}
         if action_key not in allowed_keys:
@@ -8405,6 +12937,7 @@ class AppService:
             sourceCardId=note.sourceCardId,
             viewerUserId=payload.viewerUserId,
             anonymousId=payload.anonymousId,
+            visitorIdentityId=self._stable_visitor_identity_id(note.ownerUserId, payload.viewerUserId, payload.anonymousId, new_id("legacy_action")),
             actionKey=action_key,
             actionLabel=CUSTOMER_ACTION_LABELS[action_key],
             payload=clean_payload,
@@ -8417,6 +12950,7 @@ class AppService:
             reminder = self._project_customer_action_to_lead(note, action, payload, viewer_key)
             action.projectionRefs = {"leadReminderId": reminder.id}
         self.repo.save_customer_action(action)
+        self._invalidate_customer_intelligence_cache(note.ownerUserId)
         return {
             "action": action.model_dump(),
             "projection": {
@@ -8431,6 +12965,12 @@ class AppService:
         note = self.repo.get_user_note(note_id)
         if not note or note.status == "deleted":
             raise HTTPException(status_code=404, detail="笔记不存在")
+        return note
+
+    def _require_published_note(self, note_id: str) -> UserNote:
+        note = self._get_active_note(note_id)
+        if note.shareState != "published":
+            raise HTTPException(status_code=404, detail="资料尚未发布")
         return note
 
     def _available_customer_actions(self, config: dict) -> list[dict]:
@@ -8494,12 +13034,14 @@ class AppService:
         if action_key == "lead-contact":
             phone = str(data.get("phone") or "").strip()
             wechat = str(data.get("wechat") or "").strip()
-            if not phone and not wechat:
-                raise HTTPException(status_code=400, detail="请填写电话或微信")
+            email = str(data.get("email") or data.get("mail") or "").strip()
+            if not phone and not wechat and not email:
+                raise HTTPException(status_code=400, detail="请填写电话、微信或邮箱")
             return {
                 "name": str(data.get("name") or "").strip(),
                 "phone": phone,
                 "wechat": wechat,
+                "email": email,
                 "remark": str(data.get("remark") or "").strip(),
             }
         if action_key == "appointment":
@@ -8614,18 +13156,31 @@ class AppService:
         logs = list(existing.followUpLogs if existing else [])
         log_content = self._customer_action_log_content(action.actionKey, action.payload)
         if log_content:
-            logs.insert(0, LeadFollowUpLog(id=new_id("log"), content=log_content, createdAt=now))
+            logs.insert(
+                0,
+                LeadFollowUpLog(
+                    id=new_id("log"),
+                    content=log_content,
+                    createdAt=now,
+                    action=action.actionKey,
+                    actionLabel=action.actionLabel or action.actionKey,
+                    note=log_content,
+                    nextFollowUpAt=self._appointment_follow_up_at(action.payload) if action.actionKey == "appointment" else (existing.nextFollowUpAt if existing else None),
+                ),
+            )
         reminder = LeadReminder(
             id=existing.id if existing else new_id("lead"),
             ownerUserId=note.ownerUserId,
             cardId=source_card_id,
             viewerUserId=viewer_key,
+            visitorIdentityId=action.visitorIdentityId or self._stable_visitor_identity_id(note.ownerUserId, request.viewerUserId, request.anonymousId, action.id),
             nickname=nickname,
             avatarUrl=request.avatarUrl or (existing.avatarUrl if existing else None),
             status="pending" if not existing else existing.status,
             note=self._merge_lead_note(existing.note if existing else None, action),
             customerPhone=action.payload.get("phone") or (existing.customerPhone if existing else None),
             customerWechat=action.payload.get("wechat") or (existing.customerWechat if existing else None),
+            customerEmail=action.payload.get("email") or (existing.customerEmail if existing else None),
             budgetText=existing.budgetText if existing else None,
             intentLevel=existing.intentLevel if existing else None,
             customerTags=existing.customerTags if existing else [],
@@ -8640,6 +13195,7 @@ class AppService:
             updatedAt=now,
         )
         self.repo.save_lead_reminder(reminder)
+        self._invalidate_customer_intelligence_cache(note.ownerUserId)
         return reminder
 
     def _customer_action_log_content(self, action_key: str, payload: dict) -> str:
@@ -8864,6 +13420,7 @@ class AppService:
             None,
         )
         now = now_iso()
+        created_message = None
         if not thread:
             thread = MessageThread(
                 id=new_id("thread"),
@@ -8879,9 +13436,12 @@ class AppService:
             )
             self.repo.save_message_thread(thread)
         if content:
-            self._append_message(thread, user_id, content)
+            created_message = self._append_message(thread, user_id, content)
             thread = self.repo.get_message_thread(thread.id) or thread
-        return self._build_message_thread_row(thread, user_id)
+        result = self._build_message_thread_row(thread, user_id)
+        if created_message:
+            result["message"] = created_message.model_dump()
+        return result
 
     def list_thread_messages(self, thread_id: str, user_id: str) -> dict:
         thread = self._get_thread_for_user(thread_id, user_id)
@@ -8970,6 +13530,7 @@ class AppService:
         note.status = "deleted"
         note.updatedAt = now_iso()
         self.repo.save_user_note(note)
+        self._invalidate_card_list_cache(owner_user_id)
         self._remove_deleted_note_from_showcase_snapshots(note_id, owner_user_id)
         return {"deletedNoteId": note_id}
 
@@ -9001,14 +13562,184 @@ class AppService:
                 showcase.updatedAt = now
                 self.repo.save_showcase_page(showcase)
 
-    def list_cards(self, owner_user_id: str | None = None, keyword: str | None = None, category_id: str | None = None) -> list[dict]:
+    def _invalidate_card_list_cache(self, owner_user_id: str | None = None) -> None:
+        if not owner_user_id:
+            self._card_list_cache.clear()
+            self._note_list_cache.clear()
+            return
+        self._card_list_cache = {key: value for key, value in self._card_list_cache.items() if key[0] != owner_user_id}
+        self._note_list_cache = {key: value for key, value in self._note_list_cache.items() if key[0] != owner_user_id}
+
+    def _invalidate_showcase_list_cache(self, owner_user_id: str | None = None) -> None:
+        if not owner_user_id:
+            self._showcase_list_cache.clear()
+            return
+        self._showcase_list_cache.pop(owner_user_id, None)
+
+    def _invalidate_customer_intelligence_cache(self, owner_user_id: str | None = None) -> None:
+        if not owner_user_id:
+            self._customer_intelligence_cache.clear()
+            self._customer_intelligence_summary_cache.clear()
+            return
+        self._customer_intelligence_cache = {
+            key: value for key, value in self._customer_intelligence_cache.items()
+            if key[0] != owner_user_id
+        }
+        self._customer_intelligence_summary_cache = {
+            key: value for key, value in self._customer_intelligence_summary_cache.items()
+            if key[0] != owner_user_id
+        }
+
+    def _remember_customer_intelligence_cache(
+        self,
+        cache_key: tuple[str, str, str],
+        response: dict,
+        saved_at: float,
+    ) -> None:
+        self._customer_intelligence_cache[cache_key] = (saved_at, response)
+        if len(self._customer_intelligence_cache) <= self._customer_intelligence_cache_max_entries:
+            return
+        expired_before = saved_at - self._customer_intelligence_cache_ttl_seconds
+        self._customer_intelligence_cache = {
+            key: value for key, value in self._customer_intelligence_cache.items()
+            if value[0] >= expired_before
+        }
+        if len(self._customer_intelligence_cache) > self._customer_intelligence_cache_max_entries:
+            oldest_keys = sorted(self._customer_intelligence_cache, key=lambda key: self._customer_intelligence_cache[key][0])
+            for old_key in oldest_keys[:len(self._customer_intelligence_cache) - self._customer_intelligence_cache_max_entries]:
+                self._customer_intelligence_cache.pop(old_key, None)
+
+    def _remember_customer_intelligence_summary_cache(
+        self,
+        cache_key: tuple[str, str, str],
+        response: dict,
+        saved_at: float,
+    ) -> None:
+        self._customer_intelligence_summary_cache[cache_key] = (saved_at, response)
+        if len(self._customer_intelligence_summary_cache) <= self._customer_intelligence_summary_cache_max_entries:
+            return
+        expired_before = saved_at - self._customer_intelligence_summary_cache_ttl_seconds
+        self._customer_intelligence_summary_cache = {
+            key: value for key, value in self._customer_intelligence_summary_cache.items()
+            if value[0] >= expired_before
+        }
+        if len(self._customer_intelligence_summary_cache) > self._customer_intelligence_summary_cache_max_entries:
+            oldest_keys = sorted(
+                self._customer_intelligence_summary_cache,
+                key=lambda key: self._customer_intelligence_summary_cache[key][0],
+            )
+            for old_key in oldest_keys[:len(self._customer_intelligence_summary_cache) - self._customer_intelligence_summary_cache_max_entries]:
+                self._customer_intelligence_summary_cache.pop(old_key, None)
+
+    def list_view_history(self, viewer_user_id: str, limit: int = 30) -> list[dict]:
+        viewer_id = str(viewer_user_id or "").strip()
+        if not viewer_id:
+            return []
+        safe_limit = max(1, min(int(limit or 30), 50))
+        notes = self.repo.list_all_user_notes(include_deleted=False)
+        cards = self.repo.list_cards()
+        notes_by_id = {note.id: note for note in notes}
+        notes_by_source_card = {
+            note.sourceCardId: note
+            for note in notes
+            if note.sourceCardId
+        }
+        cards_by_id = {card.id: card for card in cards}
+        history: list[dict] = []
+        seen_targets: set[tuple[str, str]] = set()
+
+        # A user only needs the newest distinct targets. Bound the source
+        # events as well so a long-lived account does not make the profile tab
+        # scan its entire view history on every return.
+        event_limit = min(1000, max(safe_limit * 10, 50))
+        for event in self.repo.list_view_events_for_viewer(viewer_id, limit=event_limit):
+            target_note = notes_by_id.get(event.cardId) or notes_by_source_card.get(event.cardId)
+            if target_note:
+                if target_note.ownerUserId != viewer_id and target_note.status != "deleted" and target_note.shareState == "published":
+                    target = ("note", target_note.id)
+                    if target in seen_targets:
+                        continue
+                    seen_targets.add(target)
+                    history.append(
+                        {
+                            "id": target_note.id,
+                            "targetType": "note",
+                            "title": target_note.title or "未命名资料",
+                            "summary": target_note.summary or "",
+                            "coverUrl": self._first_note_image_url(target_note),
+                            "viewedAt": event.viewedAt,
+                        }
+                    )
+                    if len(history) >= safe_limit:
+                        break
+                continue
+
+            target_card = cards_by_id.get(event.cardId)
+            if not target_card or target_card.ownerUserId == viewer_id or target_card.status != "published":
+                continue
+            target = ("card", target_card.id)
+            if target in seen_targets:
+                continue
+            seen_targets.add(target)
+            history.append(
+                {
+                    "id": target_card.id,
+                    "targetType": "card",
+                    "title": target_card.title or "未命名资料",
+                    "summary": target_card.detailText or target_card.projectName or "",
+                    "coverUrl": target_card.coverUrl or "",
+                    "viewedAt": event.viewedAt,
+                }
+            )
+            if len(history) >= safe_limit:
+                break
+        return history
+
+    def list_cards(self, owner_user_id: str | None = None, keyword: str | None = None, category_id: str | None = None, limit: int | None = None, offset: int = 0) -> list[dict]:
+        cache_key = (owner_user_id or "", keyword or "", category_id or "")
+        cached = self._card_list_cache.get(cache_key)
+        now = time.monotonic()
+        if cached and now - cached[0] < self._card_list_cache_ttl_seconds:
+            rows = cached[1]
+            start = max(int(offset or 0), 0)
+            return rows[start:start + limit] if limit else rows[start:]
         cards = self.repo.list_cards(owner_user_id=owner_user_id, keyword=keyword, category_id=category_id)
+        notes = (
+            self.repo.list_user_notes(owner_user_id=owner_user_id, keyword=None, category_id=category_id, include_deleted=False)
+            if owner_user_id
+            else self.repo.list_all_user_notes(include_deleted=False)
+        )
+        if keyword:
+            lowered = keyword.lower().strip()
+            query_digits = re.sub(r"\D+", "", lowered)
+            notes = [item for item in notes if self._note_matches_keyword(item, lowered, query_digits)]
+        notes_by_source_card = {
+            note.sourceCardId: note
+            for note in notes
+            if note.sourceCardId
+        }
+        backed_note_ids = {note.id for note in notes_by_source_card.values()}
+        stats_ids = {item.id for item in cards}
+        stats_ids.update(note.sourceCardId or note.id for note in notes)
+        view_events_by_card = self.repo.list_view_events_for_cards(stats_ids)
+        relays_by_card = self.repo.list_relay_entries_for_cards(stats_ids, relay_status="active")
+        note_ids = {note.id for note in notes}
+        actions_by_note = self.repo.list_customer_actions_for_notes(note_ids)
+        leads_by_owner = {
+            owner_id: self.repo.list_lead_reminders(owner_id)
+            for owner_id in {note.ownerUserId for note in notes}
+        }
+
+        def card_stats(card_id: str) -> dict:
+            return self._build_stats_from_events(
+                card_id,
+                view_events_by_card.get(card_id, []),
+                relays_by_card.get(card_id, []),
+            )
+
         rows = []
-        backed_note_ids: set[str] = set()
         for item in cards:
-            source_note = self._find_note_by_source_card(item.id)
-            if source_note:
-                backed_note_ids.add(source_note.id)
+            source_note = notes_by_source_card.get(item.id)
             source_note_config = source_note.visibilityConfig if source_note else {}
             source_note_cover_url = self._first_note_image_url(source_note) if source_note else ""
             rows.append(
@@ -9018,14 +13749,46 @@ class AppService:
                     "cardType": source_note_config.get("cardType"),
                     "systemCategory": source_note_config.get("systemCategory"),
                     "visibilityConfig": source_note_config,
-                    "stats": self._build_card_stats(item.id),
+                    "stats": card_stats(item.id),
                     "sourceNoteId": source_note.id if source_note else None,
-                    "customerSummary": self._build_note_customer_summary(source_note) if source_note else {},
+                    "shareState": source_note.shareState if source_note else None,
+                    "sourceNoteShareState": source_note.shareState if source_note else None,
+                    "sourceNoteStatus": source_note.status if source_note else None,
+                    "revision": source_note.revision if source_note else None,
+                    "customerSummary": self._build_note_customer_summary(
+                        source_note,
+                        actions_by_note=actions_by_note,
+                        leads_by_owner=leads_by_owner,
+                    ) if source_note else {},
                 }
             )
-        rows.extend(self._note_card_rows(owner_user_id, keyword, category_id, backed_note_ids))
+        rows.extend(
+            self._note_card_rows(
+                owner_user_id,
+                keyword,
+                category_id,
+                backed_note_ids,
+                notes=notes,
+                view_events_by_card=view_events_by_card,
+                relays_by_card=relays_by_card,
+                actions_by_note=actions_by_note,
+                leads_by_owner=leads_by_owner,
+            )
+        )
         rows.sort(key=lambda item: item.get("updatedAt") or item.get("createdAt") or "", reverse=True)
-        return rows
+        self._card_list_cache[cache_key] = (now, rows)
+        if len(self._card_list_cache) > self._card_list_cache_max_entries:
+            expired_before = now - self._card_list_cache_ttl_seconds
+            self._card_list_cache = {
+                key: value for key, value in self._card_list_cache.items()
+                if value[0] >= expired_before
+            }
+            if len(self._card_list_cache) > self._card_list_cache_max_entries:
+                oldest_keys = sorted(self._card_list_cache, key=lambda key: self._card_list_cache[key][0])
+                for old_key in oldest_keys[:len(self._card_list_cache) - self._card_list_cache_max_entries]:
+                    self._card_list_cache.pop(old_key, None)
+        start = max(int(offset or 0), 0)
+        return rows[start:start + limit] if limit else rows[start:]
 
     def _note_card_rows(
         self,
@@ -9033,19 +13796,25 @@ class AppService:
         keyword: str | None,
         category_id: str | None,
         backed_note_ids: set[str],
+        *,
+        notes: list[UserNote] | None = None,
+        view_events_by_card: dict[str, list[ViewEvent]] | None = None,
+        relays_by_card: dict[str, list[RelayEntry]] | None = None,
+        actions_by_note: dict[str, list[CustomerAction]] | None = None,
+        leads_by_owner: dict[str, list[LeadReminder]] | None = None,
     ) -> list[dict]:
         if not owner_user_id:
             return []
-        notes = self.repo.list_user_notes(
+        notes = notes if notes is not None else self.repo.list_user_notes(
             owner_user_id=owner_user_id,
             keyword=None,
             category_id=category_id,
             include_deleted=False,
         )
-        if keyword:
-            lowered = keyword.lower().strip()
-            query_digits = re.sub(r"\D+", "", lowered)
-            notes = [item for item in notes if self._note_matches_keyword(item, lowered, query_digits)]
+        view_events_by_card = view_events_by_card or {}
+        relays_by_card = relays_by_card or {}
+        actions_by_note = actions_by_note or {}
+        leads_by_owner = leads_by_owner or {}
         rows: list[dict] = []
         for note in notes:
             if note.id in backed_note_ids or note.sourceCardId:
@@ -9054,6 +13823,7 @@ class AppService:
             card_type = config.get("cardType") or ("link" if config.get("contentMode") == "bookmark" else "text_note")
             system_category = self._note_card_category_name(card_type, config.get("systemCategory"))
             cover_url = note.coverUrl or self._first_note_image_url(note)
+            stats_id = note.sourceCardId or note.id
             rows.append(
                 {
                     "id": f"note_card_{note.id}",
@@ -9080,9 +13850,21 @@ class AppService:
                     "systemCategory": system_category,
                     "categoryName": system_category,
                     "visibilityConfig": config,
-                    "stats": self._build_note_stats(note),
+                    "stats": self._build_stats_from_events(
+                        stats_id,
+                        view_events_by_card.get(stats_id, []),
+                        relays_by_card.get(stats_id, []),
+                    ),
                     "sourceNoteId": note.id,
-                    "customerSummary": self._build_note_customer_summary(note),
+                    "shareState": note.shareState,
+                    "sourceNoteShareState": note.shareState,
+                    "sourceNoteStatus": note.status,
+                    "revision": note.revision,
+                    "customerSummary": self._build_note_customer_summary(
+                        note,
+                        actions_by_note=actions_by_note,
+                        leads_by_owner=leads_by_owner,
+                    ),
                 }
             )
         return rows
@@ -9155,6 +13937,7 @@ class AppService:
                 card.updatedAt = now_iso()
                 self.repo.save_card(card)
         self.repo.delete_category(category_id)
+        self._invalidate_card_list_cache(owner_user_id)
         return {"deletedCategoryId": category_id}
 
     def get_card(self, card_id: str) -> Card:
@@ -9170,6 +13953,7 @@ class AppService:
         if card.ownerUserId != owner_user_id:
             raise HTTPException(status_code=403, detail="仅卡片拥有者可删除")
         self.repo.delete_card(card_id)
+        self._invalidate_card_list_cache(owner_user_id)
         return {"deletedCardId": card_id}
 
     def create_card(self, payload: CardCreateRequest) -> Card:
@@ -9201,6 +13985,7 @@ class AppService:
             updatedAt=now,
         )
         self.repo.save_card(card)
+        self._invalidate_card_list_cache(payload.ownerUserId)
         return card
 
     def update_card(self, card_id: str, payload: CardUpdateRequest) -> Card:
@@ -9222,6 +14007,7 @@ class AppService:
                 setattr(card, key, value)
         card.updatedAt = now
         self.repo.save_card(card)
+        self._invalidate_card_list_cache(payload.ownerUserId)
         return card
 
     def publish_card(self, card_id: str, user_id: str) -> Card:
@@ -9235,6 +14021,7 @@ class AppService:
         card.publishedAt = now
         card.updatedAt = now
         self.repo.save_card(card)
+        self._invalidate_card_list_cache(user_id)
         return card
 
     def duplicate_card(self, card_id: str, user_id: str) -> Card:
@@ -9261,12 +14048,19 @@ class AppService:
             remapped_media.append(item)
         copy_card.media = remapped_media
         self.repo.save_card(copy_card)
+        self._invalidate_card_list_cache(user_id)
         return copy_card
 
-    def record_view(self, card_id: str, payload: RecordViewRequest) -> ViewEvent:
+    def record_view(
+        self,
+        card_id: str,
+        payload: RecordViewRequest,
+        authenticated_user_id: str | None = None,
+    ) -> ViewEvent:
         card = self.repo.get_card(card_id)
         if not card:
             raise HTTPException(status_code=404, detail="卡片不存在")
+        payload = self._normalize_public_view_payload(payload, card.ownerUserId, authenticated_user_id)
         is_share_event = self._clean_optional_text(payload.eventType) == "share"
         if not is_share_event and payload.viewerUserId and payload.viewerUserId == card.ownerUserId:
             now = now_iso()
@@ -9276,6 +14070,7 @@ class AppService:
                 viewerUserId=payload.viewerUserId,
                 viewType="logged_in",
                 anonymousId=payload.anonymousId,
+                visitorIdentityId=self._stable_visitor_identity_id(card.ownerUserId, payload.viewerUserId, payload.anonymousId, "ignored"),
                 nickname=payload.nickname,
                 avatarUrl=payload.avatarUrl,
                 shareId=self._clean_optional_text(payload.shareId),
@@ -9291,12 +14086,14 @@ class AppService:
             )
 
         now = now_iso()
+        event_id = self._existing_view_session_event_id(card_id, payload) or new_id("view")
         event = ViewEvent(
-            id=self._existing_view_session_event_id(card_id, payload) or new_id("view"),
+            id=event_id,
             cardId=card_id,
             viewerUserId=payload.viewerUserId,
             viewType="share" if is_share_event else "logged_in" if payload.viewerUserId else "anonymous",
             anonymousId=payload.anonymousId,
+            visitorIdentityId=self._stable_visitor_identity_id(card.ownerUserId, payload.viewerUserId, payload.anonymousId, event_id),
             nickname=payload.nickname,
             avatarUrl=payload.avatarUrl,
             shareId=self._clean_optional_text(payload.shareId),
@@ -9311,11 +14108,18 @@ class AppService:
             dateKey=date_key(now),
         )
         self.repo.add_view_event(event)
+        self._invalidate_card_list_cache(card.ownerUserId)
         return event
 
-    def record_note_view(self, note_id: str, payload: RecordViewRequest) -> ViewEvent:
-        note = self._get_active_note(note_id)
+    def record_note_view(
+        self,
+        note_id: str,
+        payload: RecordViewRequest,
+        authenticated_user_id: str | None = None,
+    ) -> ViewEvent:
+        note = self._require_published_note(note_id)
         event_card_id = note.sourceCardId or note.id
+        payload = self._normalize_public_view_payload(payload, note.ownerUserId, authenticated_user_id)
         is_share_event = self._clean_optional_text(payload.eventType) == "share"
         if not is_share_event and payload.viewerUserId and payload.viewerUserId == note.ownerUserId:
             now = now_iso()
@@ -9325,6 +14129,7 @@ class AppService:
                 viewerUserId=payload.viewerUserId,
                 viewType="logged_in",
                 anonymousId=payload.anonymousId,
+                visitorIdentityId=self._stable_visitor_identity_id(note.ownerUserId, payload.viewerUserId, payload.anonymousId, "ignored"),
                 nickname=payload.nickname,
                 avatarUrl=payload.avatarUrl,
                 shareId=self._clean_optional_text(payload.shareId),
@@ -9339,12 +14144,14 @@ class AppService:
                 dateKey=date_key(now),
             )
         now = now_iso()
+        event_id = self._existing_view_session_event_id(event_card_id, payload) or new_id("view")
         event = ViewEvent(
-            id=self._existing_view_session_event_id(event_card_id, payload) or new_id("view"),
+            id=event_id,
             cardId=event_card_id,
             viewerUserId=payload.viewerUserId,
             viewType="share" if is_share_event else "logged_in" if payload.viewerUserId else "anonymous",
             anonymousId=payload.anonymousId,
+            visitorIdentityId=self._stable_visitor_identity_id(note.ownerUserId, payload.viewerUserId, payload.anonymousId, event_id),
             nickname=payload.nickname,
             avatarUrl=payload.avatarUrl,
             shareId=self._clean_optional_text(payload.shareId),
@@ -9359,7 +14166,65 @@ class AppService:
             dateKey=date_key(now),
         )
         self.repo.add_view_event(event)
+        self._invalidate_card_list_cache(note.ownerUserId)
         return event
+
+    def record_note_interaction(self, note_id: str, payload: NoteInteractionEventRequest) -> dict:
+        note = self._require_published_note(note_id)
+        event_type = str(payload.eventType or "").strip().lower()
+        if event_type not in NOTE_INTERACTION_TYPES:
+            raise HTTPException(status_code=400, detail="不支持的资料互动事件")
+        if payload.viewerUserId and payload.viewerUserId == note.ownerUserId:
+            return {"recorded": False, "ignoredReason": "owner_preview"}
+        attachment = None
+        if payload.attachmentId:
+            public_media = self._normalize_note_media(note.media, public_only=True)
+            attachment = next((item for item in public_media if item.get("id") == payload.attachmentId), None)
+            if not attachment:
+                raise HTTPException(status_code=400, detail="附件不属于当前资料")
+            expected = {"image_open": "image", "pdf_open": "pdf", "link_open": "link"}.get(event_type)
+            if expected and attachment.get("type") != expected:
+                raise HTTPException(status_code=400, detail="附件类型与事件不匹配")
+        elif event_type in {"image_open", "pdf_open", "link_open"}:
+            raise HTTPException(status_code=400, detail="附件事件必须提供附件ID")
+        session_id = self._clean_optional_text(payload.sessionId)
+        interaction_ref = payload.attachmentId or self._clean_optional_text((payload.metadata or {}).get("featuredNoteId")) or "-"
+        dedupe_key = f"interaction:{event_type}:{interaction_ref}:{session_id or '-'}"
+        if session_id:
+            existing = self.repo.list_customer_actions_for_note(note.id)
+            if any((item.projectionRefs or {}).get("dedupeKey") == dedupe_key for item in existing):
+                return {"recorded": False, "duplicate": True}
+        now = now_iso()
+        action_key = event_type.replace("_", "-")
+        labels = {
+            "image_open": "查看图片", "pdf_open": "打开PDF", "link_open": "点击链接", "source_open": "查看原文",
+            "contact_click": "点击咨询", "phone_click": "点击拨号", "wechat_qr_open": "查看二维码", "featured_note_open": "打开精选资料", "map_open": "打开地图",
+        }
+        action = CustomerAction(
+            id=new_id("customer_action"),
+            ownerUserId=note.ownerUserId,
+            noteId=note.id,
+            sourceCardId=note.sourceCardId,
+            viewerUserId=payload.viewerUserId,
+            anonymousId=payload.anonymousId,
+            actionKey=action_key,
+            actionLabel=labels[event_type],
+            payload={
+                "attachmentId": payload.attachmentId,
+                "shareId": payload.shareId,
+                "shareFromUserId": payload.shareFromUserId,
+                "scene": payload.scene,
+                "metadata": payload.metadata,
+            },
+            projectionRefs={"dedupeKey": dedupe_key} if session_id else {},
+            createdAt=now,
+            updatedAt=now,
+        )
+        self.repo.save_customer_action(action)
+        self._invalidate_card_list_cache(note.ownerUserId)
+        if event_type in CUSTOMER_INTELLIGENCE_NOTE_EVENTS:
+            self._invalidate_customer_intelligence_cache(note.ownerUserId)
+        return {"recorded": True, "event": action.model_dump(), "attachment": attachment}
 
     def get_card_stats(self, card_id: str, requester_user_id: str | None = None) -> dict:
         card = self.repo.get_card(card_id)
@@ -9466,6 +14331,8 @@ class AppService:
 
     def list_lead_reminders(self, owner_user_id: str, reminder_status: str | None = None) -> list[dict]:
         reminders = self.repo.list_lead_reminders(owner_user_id, reminder_status)
+        if not reminder_status:
+            reminders = [item for item in reminders if item.status != "deleted"]
         return [self._build_lead_reminder_row(item) for item in reminders]
 
     def get_lead_reminder_detail(self, reminder_id: str, owner_user_id: str) -> dict:
@@ -9476,6 +14343,435 @@ class AppService:
             raise HTTPException(status_code=403, detail="仅发布者可查看线索")
         return self._build_lead_reminder_row(reminder)
 
+    def _compact_followup_profile(
+        self,
+        owner_user_id: str,
+        customer_id: str,
+        mode: str | None,
+        profile_hint: dict | None,
+    ) -> tuple[dict, UserNote] | None:
+        """Resolve a first-time radar visitor from its compact card projection.
+
+        The radar card already names the owner-scoped identity and source note.
+        Reusing those two facts avoids the much more expensive full dashboard
+        build that the legacy no-lead path used for every first action.
+        """
+        hint = profile_hint if isinstance(profile_hint, dict) else {}
+        source_note_id = self._clean_optional_text(hint.get("sourceNoteId"))
+        visitor_identity_id = self._clean_optional_text(
+            hint.get("visitorIdentityId") or customer_id
+        )
+        if not source_note_id or not visitor_identity_id:
+            return None
+        note = self.repo.get_user_note(source_note_id)
+        if not note or note.ownerUserId != owner_user_id or note.status == "deleted":
+            return None
+        if mode == "property" and not self._is_property_note(note):
+            return None
+        if mode == "groupbuy" and not self._is_groupbuy_note(note):
+            return None
+        if mode == "service" and not self._is_service_note(note):
+            return None
+
+        viewer_user_id = self._clean_optional_text(hint.get("viewerUserId")) or ""
+        anonymous_id = self._clean_optional_text(hint.get("anonymousId")) or ""
+        viewer_contacts = self._viewer_contact_fields(viewer_user_id)
+        display_name = self._clean_optional_text(hint.get("nickname")) or (
+            "微信客户" if viewer_user_id else "匿名访客"
+        )
+        last_activity_at = self._clean_optional_text(hint.get("lastActivityAt")) or now_iso()
+        return (
+            {
+                "id": visitor_identity_id,
+                "visitorIdentityId": visitor_identity_id,
+                "viewerUserId": viewer_user_id,
+                "anonymousId": anonymous_id,
+                "anonymous": not bool(viewer_user_id),
+                "nickname": display_name,
+                "avatarUrl": self._clean_optional_text(hint.get("avatarUrl")) or "",
+                "phone": viewer_contacts["phone"],
+                "wechat": viewer_contacts["wechat"],
+                "email": viewer_contacts["email"],
+                "budgetText": "",
+                "customerTags": [],
+                "viewCount": max(0, int(hint.get("viewCount") or 0)),
+                "lastActivityAt": last_activity_at,
+                "noteIds": [note.id],
+                "noteTitles": [note.title] if note.title else [],
+                "intentLevel": None,
+            },
+            note,
+        )
+
+    def ensure_customer_followup(
+        self,
+        owner_user_id: str,
+        requester_user_id: str,
+        customer_id: str,
+        mode: str | None = None,
+        lead_id: str | None = None,
+        initial_status: str = "pending",
+        initial_conclusion_reason: str | None = None,
+        initial_log_content: str | None = None,
+        operation_id: str | None = None,
+        profile_hint: dict | None = None,
+        initial_tags: list[str] | None = None,
+        initial_next_follow_up_at: str | None = None,
+        initial_note: str | None = None,
+    ) -> dict:
+        """Create or reuse one owner-scoped follow-up record for a customer."""
+        if initial_status not in LEAD_REMINDER_STATUSES:
+            raise HTTPException(status_code=400, detail="线索状态无效")
+        if requester_user_id != owner_user_id:
+            raise HTTPException(status_code=403, detail="仅工作台拥有者可建立跟进档案")
+        self.require_customer_intelligence(owner_user_id)
+        normalized_initial_tags = (
+            None
+            if initial_tags is None
+            else list(dict.fromkeys(
+                self._clean_optional_text(item)
+                for item in initial_tags
+                if self._clean_optional_text(item)
+            ))
+        )
+        normalized_initial_next_follow_up_at = self._clean_optional_text(initial_next_follow_up_at)
+        normalized_initial_note = self._clean_optional_text(initial_note)
+        compact = self._compact_followup_profile(owner_user_id, customer_id, mode, profile_hint)
+        note = None
+        detail = None
+        if compact:
+            profile, note = compact
+        else:
+            detail = self.get_customer_detail(
+                owner_user_id,
+                requester_user_id,
+                customer_id,
+                mode,
+                lead_id,
+            )
+            if detail.get("locked") is not False:
+                raise HTTPException(status_code=403, detail="当前账号不能建立跟进档案")
+            profile = detail.get("customer") or {}
+        visitor_identity_id = self._clean_optional_text(
+            profile.get("visitorIdentityId") or customer_id
+        )
+        viewer_user_id = self._clean_optional_text(profile.get("viewerUserId"))
+        anonymous_id = self._clean_optional_text(profile.get("anonymousId"))
+        viewer_key = viewer_user_id or anonymous_id or visitor_identity_id
+        stable_lead_id = "lead_customer_" + hashlib.sha256(
+            f"{owner_user_id}|{visitor_identity_id or viewer_key}".encode("utf-8")
+        ).hexdigest()[:32]
+        identity_values = {
+            value
+            for value in (visitor_identity_id, viewer_user_id, anonymous_id, viewer_key)
+            if value
+        }
+
+        existing_by_id = self.repo.get_lead_reminder(stable_lead_id)
+        existing = next(
+            (
+                item
+                for item in self.repo.list_lead_reminders(owner_user_id)
+                if item.status != "deleted"
+                if identity_values.intersection(
+                    {
+                        value
+                        for value in (item.visitorIdentityId, item.viewerUserId)
+                        if value
+                    }
+                )
+            ),
+            None,
+        )
+        if not existing and existing_by_id and existing_by_id.ownerUserId == owner_user_id and existing_by_id.status != "deleted":
+            existing = existing_by_id
+        if not existing and detail and detail.get("lead"):
+            detail_lead_id = str((detail.get("lead") or {}).get("id") or "").strip()
+            existing = self.repo.get_lead_reminder(detail_lead_id) if detail_lead_id else None
+            if existing and existing.status == "deleted":
+                existing = None
+        if existing:
+            return {"created": False, "lead": self._build_lead_reminder_row(existing)}
+
+        if not note:
+            for raw_note_id in profile.get("noteIds") or []:
+                candidate = self.repo.get_user_note(str(raw_note_id))
+                if candidate and candidate.ownerUserId == owner_user_id and candidate.status != "deleted":
+                    note = candidate
+                    break
+                candidate = self._find_note_by_lead_source(str(raw_note_id))
+                if candidate and candidate.ownerUserId == owner_user_id and candidate.status != "deleted":
+                    note = candidate
+                    break
+        if not note:
+            raise HTTPException(status_code=409, detail="当前客户暂时没有可关联的来源资料")
+
+        now = now_iso()
+        lead = LeadReminder(
+            id=stable_lead_id,
+            ownerUserId=owner_user_id,
+            # A compact radar action already resolved the concrete note. Keep
+            # that note ID as the lead source so the response can be built with
+            # one direct lookup instead of scanning every note for a card ID.
+            cardId=note.id if compact else (note.sourceCardId or note.id),
+            viewerUserId=viewer_key,
+            visitorIdentityId=visitor_identity_id,
+            nickname=self._clean_optional_text(profile.get("nickname")) or "客户",
+            avatarUrl=self._clean_optional_text(profile.get("avatarUrl")) or None,
+            status=initial_status,
+            note=(
+                normalized_initial_note
+                or (
+                    "已开始跟进。"
+                    if initial_status in {"following", "contacted"}
+                    else "已放弃跟进。"
+                    if initial_status == "paused"
+                    else "来自客户雷达，等待首次联系。"
+                )
+            ),
+            customerPhone=self._clean_optional_text(profile.get("phone")) or None,
+            customerWechat=self._clean_optional_text(profile.get("wechat")) or None,
+            customerEmail=self._clean_optional_text(profile.get("email")) or None,
+            budgetText=self._clean_optional_text(profile.get("budgetText")) or None,
+            intentLevel=self._clean_optional_text(profile.get("intentLevel")) or None,
+            customerTags=(
+                normalized_initial_tags
+                if normalized_initial_tags is not None
+                else list(profile.get("customerTags") or [])
+            ),
+            viewCount=max(0, int(profile.get("viewCount") or 0)),
+            lastViewedAt=self._clean_optional_text(profile.get("lastActivityAt")) or None,
+            contactedAt=now if initial_status == "contacted" else None,
+            closedAt=now if initial_status in LEAD_CLOSED_STATUSES else None,
+            conclusionReason=(
+                initial_conclusion_reason
+                if initial_status in LEAD_CLOSED_STATUSES
+                else None
+            ),
+            nextFollowUpAt=normalized_initial_next_follow_up_at,
+            followUpLogs=(
+                [
+                    LeadFollowUpLog(
+                        id=new_id("log"),
+                        content=(
+                            normalized_initial_note
+                            or initial_log_content
+                            or "已记录跟进"
+                        ),
+                        createdAt=now,
+                        action=(
+                            "abandon"
+                            if initial_status == "paused"
+                            else "start"
+                            if initial_status in {"following", "contacted"}
+                            else "create"
+                        ),
+                        actionLabel=initial_log_content,
+                        tags=(
+                            normalized_initial_tags
+                            if normalized_initial_tags is not None
+                            else list(profile.get("customerTags") or [])
+                        ),
+                        note=normalized_initial_note,
+                        nextFollowUpAt=normalized_initial_next_follow_up_at,
+                    )
+                ]
+                if initial_log_content or normalized_initial_note or normalized_initial_tags is not None or initial_next_follow_up_at is not None
+                else []
+            ),
+            version=1,
+            lastOperationId=self._clean_optional_text(operation_id) or None,
+            createdAt=now,
+            updatedAt=now,
+        )
+        self.repo.save_lead_reminder(lead)
+        self._invalidate_customer_intelligence_cache(owner_user_id)
+        return {"created": True, "lead": self._build_lead_reminder_row(lead)}
+
+    def act_on_customer_followup(
+        self,
+        owner_user_id: str,
+        requester_user_id: str,
+        customer_id: str,
+        action: str,
+        mode: str | None = None,
+        lead_id: str | None = None,
+        operation_id: str | None = None,
+        expected_version: int | None = None,
+        profile_hint: dict | None = None,
+        follow_up_tags: list[str] | None = None,
+        log_content: str | None = None,
+        next_follow_up_at: str | None = None,
+    ) -> dict:
+        """Atomically persist one radar action and return the committed row.
+
+        The client may remove a card optimistically, but this method is the
+        source of truth. A retry with the same operation ID is idempotent, and
+        a stale expected version is rejected instead of silently overwriting a
+        newer operator action.
+        """
+        action_key = str(action or "").strip().lower()
+        action_config = {
+            "start": {
+                "status": "following",
+                "logContent": "已开始跟进",
+            },
+            "continue": {
+                "logContent": "已继续跟进",
+            },
+            "abandon": {
+                "status": "paused",
+                "conclusionReason": "放弃跟进",
+                "logContent": "已放弃跟进",
+            },
+            "restore": {
+                "status": "pending",
+                "logContent": "已恢复跟进",
+            },
+        }.get(action_key)
+        if not action_config:
+            raise HTTPException(status_code=400, detail="客户跟进动作无效")
+
+        if requester_user_id != owner_user_id:
+            raise HTTPException(status_code=403, detail="仅工作台拥有者可操作跟进档案")
+        operation_id = self._clean_optional_text(operation_id) or None
+        requested_lead_id = str(lead_id or "").strip()
+        normalized_tags = (
+            None
+            if follow_up_tags is None
+            else list(dict.fromkeys(
+                self._clean_optional_text(item)
+                for item in follow_up_tags
+                if self._clean_optional_text(item)
+            ))
+        )
+        normalized_log_content = self._clean_optional_text(log_content)
+        next_follow_up_at_provided = next_follow_up_at is not None
+        normalized_next_follow_up_at = self._clean_optional_text(next_follow_up_at)
+        with FOLLOWUP_ACTION_LOCK:
+            target_status = action_config.get("status")
+            ensured = None
+            if requested_lead_id:
+                # The detail page already has the owner-scoped lead ID. Avoid
+                # rebuilding the complete intelligence projection for a hot
+                # path action such as abandon/continue.
+                self.require_customer_intelligence(owner_user_id)
+                reminder = self.repo.get_lead_reminder(requested_lead_id)
+                if not reminder:
+                    raise HTTPException(status_code=404, detail="线索不存在")
+                if reminder.ownerUserId != owner_user_id:
+                    raise HTTPException(status_code=403, detail="仅发布者可操作线索")
+                if customer_id:
+                    lead_aliases = set()
+                    for value in (reminder.id, reminder.viewerUserId, reminder.visitorIdentityId):
+                        lead_aliases.update(self._customer_identity_aliases(value))
+                    if not self._customer_identity_aliases(customer_id).intersection(lead_aliases):
+                        raise HTTPException(status_code=404, detail="客户与跟进档案不匹配")
+            else:
+                # First-time visitors have no lead ID, so resolve the customer
+                # once and create the target state directly instead of doing
+                # an HTTP-level ensure followed by an update.
+                ensured = self.ensure_customer_followup(
+                    owner_user_id,
+                    requester_user_id,
+                    customer_id,
+                    mode,
+                    None,
+                    initial_status=target_status or "following",
+                    initial_conclusion_reason=action_config.get("conclusionReason"),
+                    initial_log_content=action_config.get("logContent"),
+                    operation_id=operation_id,
+                    profile_hint=profile_hint,
+                    initial_tags=normalized_tags,
+                    initial_next_follow_up_at=normalized_next_follow_up_at,
+                    initial_note=normalized_log_content,
+                )
+                reminder_id = str((ensured.get("lead") or {}).get("id") or "").strip()
+                reminder = self.repo.get_lead_reminder(reminder_id) if reminder_id else None
+                if not reminder:
+                    raise HTTPException(status_code=409, detail="跟进档案不存在")
+
+            if operation_id and reminder.lastOperationId == operation_id:
+                persisted = self.repo.get_lead_reminder(reminder.id) or reminder
+                return {
+                    "action": action_key,
+                    "actionLabel": action_config.get("logContent", ""),
+                    "removedFromRadar": action_key != "restore",
+                    "persisted": True,
+                    "idempotent": True,
+                    "operationId": operation_id,
+                    "followupCounts": self._customer_followup_counts(owner_user_id),
+                    "lead": self._build_lead_reminder_row(persisted),
+                }
+
+            current_version = int(reminder.version or 0)
+            if expected_version is not None and current_version != int(expected_version):
+                raise HTTPException(status_code=409, detail="跟进状态已更新，请刷新后重试")
+
+            if action_key == "start":
+                target_status = "following"
+            elif action_key == "continue":
+                target_status = reminder.status if reminder.status in {"following", "contacted"} else "following"
+
+            created = bool(ensured and ensured.get("created"))
+            next_reminder = reminder.model_copy(deep=True)
+            if normalized_tags is not None:
+                next_reminder.customerTags = normalized_tags
+            if next_follow_up_at_provided:
+                next_reminder.nextFollowUpAt = normalized_next_follow_up_at
+            status_changed = next_reminder.status != target_status
+            if status_changed:
+                next_reminder.status = target_status
+                next_reminder.closedAt = None
+                next_reminder.conclusionReason = None
+                if target_status != "contacted":
+                    next_reminder.contactedAt = None
+            if not created:
+                now = now_iso()
+                next_reminder.followUpLogs.insert(
+                    0,
+                    LeadFollowUpLog(
+                        id=new_id("log"),
+                        content=normalized_log_content or action_config["logContent"],
+                        createdAt=now,
+                        action=action_key,
+                        actionLabel=action_config["logContent"],
+                        tags=list(next_reminder.customerTags),
+                        note=normalized_log_content,
+                        nextFollowUpAt=next_reminder.nextFollowUpAt,
+                    ),
+                )
+                if action_key == "abandon":
+                    next_reminder.closedAt = now
+                    next_reminder.conclusionReason = action_config.get("conclusionReason")
+                next_reminder.updatedAt = now
+            next_reminder.version = current_version + (0 if created else 1)
+            if operation_id:
+                next_reminder.lastOperationId = operation_id
+
+            if not created:
+                saved = self.repo.save_lead_reminder_if_version(next_reminder, current_version)
+                if not saved:
+                    latest = self.repo.get_lead_reminder(reminder.id)
+                    if operation_id and latest and latest.lastOperationId == operation_id:
+                        next_reminder = latest
+                    else:
+                        raise HTTPException(status_code=409, detail="跟进状态已被其他操作更新，请刷新后重试")
+            persisted = self.repo.get_lead_reminder(next_reminder.id)
+            if not persisted or persisted.status != next_reminder.status or int(persisted.version or 0) != int(next_reminder.version or 0):
+                raise HTTPException(status_code=500, detail="跟进状态未确认写入，请重试")
+            self._invalidate_customer_intelligence_cache(owner_user_id)
+        return {
+            "action": action_key,
+            "actionLabel": action_config.get("logContent", ""),
+            "removedFromRadar": action_key != "restore",
+            "persisted": True,
+            "idempotent": False,
+            "operationId": operation_id,
+            "followupCounts": self._customer_followup_counts(owner_user_id),
+            "lead": self._build_lead_reminder_row(persisted),
+        }
+
     def _build_lead_reminder_row(self, reminder: LeadReminder) -> dict:
         row = reminder.model_dump()
         card = self.repo.get_card(reminder.cardId)
@@ -9485,13 +14781,25 @@ class AppService:
         row["sourceNoteId"] = note.id if note else None
         return row
 
+    def _customer_followup_counts(self, owner_user_id: str) -> dict[str, int]:
+        """Return status counts without rebuilding the customer radar."""
+        reminders = self.repo.list_lead_reminders(owner_user_id)
+        return {
+            "pending": sum(1 for item in reminders if item.status == "pending"),
+            "following": sum(1 for item in reminders if item.status == "following"),
+            "contacted": sum(1 for item in reminders if item.status == "contacted"),
+            "abandoned": sum(1 for item in reminders if item.status == "paused"),
+        }
+
     def _lead_status_text(self, status: str | None) -> str:
         status_map = {
             "pending": "待联系",
+            "following": "跟进中",
             "contacted": "已联系",
             "invalid": "无效",
-            "paused": "暂不跟进",
+            "paused": "已放弃跟进",
             "completed": "已完成",
+            "deleted": "已清空",
         }
         return status_map.get(status or "", "")
 
@@ -9530,12 +14838,14 @@ class AppService:
             ownerUserId=payload.ownerUserId,
             cardId=payload.cardId,
             viewerUserId=payload.viewerUserId,
+            visitorIdentityId=existing.visitorIdentityId if existing else self._stable_visitor_identity_id(payload.ownerUserId, payload.viewerUserId, None, payload.cardId),
             nickname=payload.nickname,
             avatarUrl=payload.avatarUrl,
             status=payload.status,
             note=payload.note,
             customerPhone=existing.customerPhone if existing else None,
             customerWechat=existing.customerWechat if existing else None,
+            customerEmail=existing.customerEmail if existing else None,
             budgetText=existing.budgetText if existing else None,
             intentLevel=existing.intentLevel if existing else None,
             customerTags=existing.customerTags if existing else [],
@@ -9546,10 +14856,13 @@ class AppService:
             conclusionReason=conclusion_reason,
             nextFollowUpAt=payload.nextFollowUpAt,
             followUpLogs=existing.followUpLogs if existing else [],
+            version=(int(existing.version or 0) + 1) if existing else 1,
+            lastOperationId=None,
             createdAt=existing.createdAt if existing else now,
             updatedAt=now,
         )
         self.repo.save_lead_reminder(reminder)
+        self._invalidate_customer_intelligence_cache(payload.ownerUserId)
         return reminder
 
     def update_lead_reminder(self, reminder_id: str, payload: LeadReminderUpdateRequest) -> LeadReminder:
@@ -9573,21 +14886,53 @@ class AppService:
             reminder.customerPhone = payload.customerPhone
         if payload.customerWechat is not None:
             reminder.customerWechat = payload.customerWechat
+        if payload.customerEmail is not None:
+            reminder.customerEmail = payload.customerEmail
         if payload.budgetText is not None:
             reminder.budgetText = payload.budgetText
         if payload.intentLevel is not None:
             reminder.intentLevel = payload.intentLevel
-        if payload.customerTags is not None:
-            reminder.customerTags = [tag.strip() for tag in payload.customerTags if tag.strip()]
+        payload_fields = getattr(payload, "model_fields_set", set())
+        follow_up_tags_provided = "followUpTags" in payload_fields or payload.followUpTags is not None
+        legacy_customer_tags_provided = "customerTags" in payload_fields or payload.customerTags is not None
+        follow_up_tags = None
+        if follow_up_tags_provided:
+            follow_up_tags = [tag.strip() for tag in (payload.followUpTags or []) if tag.strip()]
+            reminder.customerTags = follow_up_tags
+        elif legacy_customer_tags_provided:
+            follow_up_tags = [tag.strip() for tag in (payload.customerTags or []) if tag.strip()]
+            reminder.customerTags = follow_up_tags
         if payload.conclusionReason is not None and reminder.status in LEAD_CLOSED_STATUSES:
             reminder.conclusionReason = payload.conclusionReason
+        next_follow_up_provided = "nextFollowUpAt" in payload_fields or payload.nextFollowUpAt is not None
         if payload.nextFollowUpAt is not None:
-            reminder.nextFollowUpAt = payload.nextFollowUpAt
+            reminder.nextFollowUpAt = payload.nextFollowUpAt.strip() or None
         log_content = (payload.logContent or "").strip()
-        if log_content:
-            reminder.followUpLogs.insert(0, LeadFollowUpLog(id=new_id("log"), content=log_content, createdAt=now))
+        # A saved follow-up is one record, even when the operator only picks a
+        # tag or a next date. This keeps the historical decision auditable and
+        # prevents the old text-only log from losing the selected state.
+        if log_content or follow_up_tags_provided or next_follow_up_provided:
+            action = (payload.followUpAction or "record").strip() or "record"
+            action_label = "跟进记录" if action == "record" else action
+            content = log_content or action_label
+            reminder.followUpLogs.insert(
+                0,
+                LeadFollowUpLog(
+                    id=new_id("log"),
+                    content=content,
+                    createdAt=now,
+                    action=action,
+                    actionLabel=action_label,
+                    tags=list(follow_up_tags if follow_up_tags is not None else reminder.customerTags),
+                    note=log_content or None,
+                    nextFollowUpAt=reminder.nextFollowUpAt,
+                ),
+            )
+        reminder.version = int(reminder.version or 0) + 1
+        reminder.lastOperationId = None
         reminder.updatedAt = now
         self.repo.save_lead_reminder(reminder)
+        self._invalidate_customer_intelligence_cache(reminder.ownerUserId)
         return reminder
 
     def delete_lead_reminder(self, reminder_id: str, owner_user_id: str) -> dict:
@@ -9596,13 +14941,50 @@ class AppService:
             raise HTTPException(status_code=404, detail="线索不存在")
         if reminder.ownerUserId != owner_user_id:
             raise HTTPException(status_code=403, detail="仅发布者可管理线索")
-        self.repo.delete_lead_reminder(reminder_id)
+        # Keep a tombstone so the same visitor identity cannot be recreated
+        # from historical view events after the owner clears the recycle bin.
+        reminder.status = "deleted"
+        reminder.closedAt = now_iso()
+        reminder.conclusionReason = "已清空删除"
+        reminder.version = int(reminder.version or 0) + 1
+        reminder.lastOperationId = None
+        reminder.updatedAt = reminder.closedAt
+        self.repo.save_lead_reminder(reminder)
+        self._invalidate_customer_intelligence_cache(owner_user_id)
         return {"deletedLeadReminderId": reminder_id}
 
     def _build_card_stats(self, card_id: str) -> dict:
         events = self.repo.list_view_events_for_card(card_id)
         relays = self.repo.list_relay_entries_for_card(card_id, relay_status="active")
-        return self._build_stats_from_events(card_id, events, relays)
+        stats = self._build_stats_from_events(card_id, events, relays)
+        stats["trend"] = self._build_card_view_trend(events)
+        return stats
+
+    def _build_card_view_trend(self, events: list[ViewEvent]) -> dict:
+        """Return the small, owner-safe trend dataset used by resource operations."""
+        today = datetime.now(tz=SHANGHAI).date()
+        days = [today - timedelta(days=offset) for offset in range(6, -1, -1)]
+        day_counts = {day.isoformat(): 0 for day in days}
+        today_counts = [0] * 6
+        for event in events:
+            if event.viewType == "share" or not event.viewedAt:
+                continue
+            viewed_at = parse_iso(event.viewedAt).astimezone(SHANGHAI)
+            day_key = viewed_at.date().isoformat()
+            if day_key in day_counts:
+                day_counts[day_key] += 1
+            if viewed_at.date() == today:
+                today_counts[min(viewed_at.hour // 4, 5)] += 1
+        return {
+            "last7": [
+                {"label": day.strftime("%m-%d"), "value": day_counts[day.isoformat()]}
+                for day in days
+            ],
+            "today": [
+                {"label": f"{hour:02d}:00", "value": today_counts[index]}
+                for index, hour in enumerate((0, 4, 8, 12, 16, 20))
+            ],
+        }
 
     def _build_note_stats(self, note: UserNote) -> dict:
         stats_id = note.sourceCardId or note.id
@@ -9610,20 +14992,31 @@ class AppService:
         relays = self.repo.list_relay_entries_for_card(stats_id, relay_status="active")
         return self._build_stats_from_events(stats_id, events, relays)
 
-    def _build_note_customer_summary(self, note: UserNote | None) -> dict:
+    def _build_note_customer_summary(
+        self,
+        note: UserNote | None,
+        *,
+        actions_by_note: dict[str, list[CustomerAction]] | None = None,
+        leads_by_owner: dict[str, list[LeadReminder]] | None = None,
+    ) -> dict:
         if not note:
             return {}
-        actions = self.repo.list_customer_actions_for_note(note.id)
+        actions = (
+            actions_by_note.get(note.id, [])
+            if actions_by_note is not None
+            else self.repo.list_customer_actions_for_note(note.id)
+        )
         projected_lead_ids = {
             str((action.projectionRefs or {}).get("leadReminderId") or "")
             for action in actions
             if (action.projectionRefs or {}).get("leadReminderId")
         }
-        leads = [
-            item
-            for item in self.repo.list_lead_reminders(note.ownerUserId)
-            if item.id in projected_lead_ids
-        ]
+        owner_leads = (
+            leads_by_owner.get(note.ownerUserId, [])
+            if leads_by_owner is not None
+            else self.repo.list_lead_reminders(note.ownerUserId)
+        )
+        leads = [item for item in owner_leads if item.id in projected_lead_ids]
         latest_action_at = max((action.createdAt for action in actions), default=None)
         order_count = sum(1 for action in actions if action.actionKey in PRODUCT_ORDER_ACTION_KEYS)
         relay_count = sum(1 for action in actions if action.actionKey == "relay-intent")

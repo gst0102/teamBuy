@@ -1,8 +1,32 @@
 const { buildApiUrl, request } = require("../utils/request");
 const { withCachedMedia, withCachedCards } = require("../utils/media-cache");
+const cachePolicy = require("../utils/cache-policy");
 
 const NOTE_CACHE_PREFIX = "teambuy:notes-cache";
-const NOTE_CACHE_TTL_MS = 5 * 60 * 1000;
+const SHOWCASE_CACHE_PREFIX = "teambuy:showcases-cache:v1";
+const TOPIC_CACHE_PREFIX = "teambuy:topics-cache:v1";
+const listCacheMemory = {
+  showcases: {},
+  topics: {}
+};
+const listCacheInFlight = {
+  showcases: {},
+  topics: {}
+};
+const noteCacheMemory = {};
+const LIST_CACHE_MEMORY_MAX_ENTRIES = 16;
+let listCacheGeneration = 0;
+const noteListInFlight = {};
+let noteListGeneration = 0;
+const membershipCache = {};
+const membershipInFlight = {};
+let membershipCacheGeneration = 0;
+const customerIntelligenceSummaryCache = {};
+const customerIntelligenceSummaryInFlight = {};
+let customerIntelligenceSummaryCacheGeneration = 0;
+const notificationConfigCache = {};
+const notificationConfigInFlight = {};
+let notificationConfigCacheGeneration = 0;
 
 function toAbsoluteUrl(url) {
   if (!url) return url;
@@ -39,9 +63,32 @@ function normalizeCardPayload(card) {
 
 function normalizeNotePayload(note) {
   if (!note || typeof note !== "object") return note;
+  const visibilityConfig = note.visibilityConfig && typeof note.visibilityConfig === "object"
+    ? { ...note.visibilityConfig }
+    : note.visibilityConfig;
+  if (visibilityConfig && visibilityConfig.shareSnapshot) {
+    visibilityConfig.shareSnapshot = {
+      ...visibilityConfig.shareSnapshot,
+      url: toAbsoluteUrl(visibilityConfig.shareSnapshot.url)
+    };
+  }
+  if (visibilityConfig && Array.isArray(visibilityConfig.shareSnapshotHistory)) {
+    visibilityConfig.shareSnapshotHistory = visibilityConfig.shareSnapshotHistory.map((item) => ({
+      ...item,
+      url: toAbsoluteUrl(item && item.url)
+    }));
+  }
   return {
     ...note,
+    visibilityConfig,
     coverUrl: toAbsoluteUrl(note.coverUrl),
+    contentBlocks: Array.isArray(note.contentBlocks)
+      ? note.contentBlocks.map((item) => ({
+          ...item,
+          url: toAbsoluteUrl(item && item.url),
+          coverUrl: toAbsoluteUrl(item && item.coverUrl)
+        }))
+      : note.contentBlocks,
     media: Array.isArray(note.media)
       ? note.media.map((item) => ({
           ...item,
@@ -59,6 +106,13 @@ function normalizeAndCacheNote(note) {
   return withCachedMedia(normalizeNotePayload(note));
 }
 
+function authHeader() {
+  const app = getApp();
+  const user = (app && app.globalData && app.globalData.currentUser) || wx.getStorageSync("currentUser") || {};
+  const authToken = String(user.authToken || "").trim();
+  return authToken ? { Authorization: `Bearer ${authToken}` } : {};
+}
+
 function cacheScope() {
   const app = getApp();
   const data = (app && app.globalData) || {};
@@ -69,6 +123,7 @@ function noteListCacheKey(params = {}) {
   const normalized = {
     ownerUserId: params.ownerUserId || "",
     keyword: params.keyword || "",
+    categoryId: params.categoryId || "",
     sourceType: params.sourceType || "",
     systemCategory: params.systemCategory || "",
     tag: params.tag || "",
@@ -83,11 +138,19 @@ function noteItemCacheKey(ownerUserId, noteId) {
   return `${NOTE_CACHE_PREFIX}:item:${cacheScope()}:${ownerUserId || ""}:${noteId || ""}`;
 }
 
-function readCache(key) {
+function readCache(key, options = {}) {
+  const memory = noteCacheMemory[key];
+  const ttl = options.allowStale ? cachePolicy.noteListStaleTtlMs : cachePolicy.noteListTtlMs;
+  if (memory) {
+    if (memory.savedAt && Date.now() - Number(memory.savedAt) <= ttl) return memory.data || null;
+    delete noteCacheMemory[key];
+    return null;
+  }
   try {
     const item = wx.getStorageSync(key);
     if (!item || !item.savedAt) return null;
-    if (Date.now() - Number(item.savedAt || 0) > NOTE_CACHE_TTL_MS) return null;
+    if (Date.now() - Number(item.savedAt || 0) > ttl) return null;
+    noteCacheMemory[key] = item;
     return item.data || null;
   } catch (error) {
     return null;
@@ -95,11 +158,93 @@ function readCache(key) {
 }
 
 function writeCache(key, data) {
+  const value = { savedAt: Date.now(), data };
+  noteCacheMemory[key] = value;
   try {
-    wx.setStorageSync(key, { savedAt: Date.now(), data });
+    if (typeof wx.setStorage === "function") wx.setStorage({ key, data: value });
+    else wx.setStorageSync(key, value);
   } catch (error) {
     // Cache is a speed hint; network data remains the source of truth.
   }
+}
+
+function listCacheKey(prefix, ownerUserId) {
+  return `${prefix}:${cacheScope()}:${ownerUserId || ""}`;
+}
+
+function readListCache(kind, prefix, ownerUserId) {
+  const ttl = kind === "topics" ? cachePolicy.topicTtlMs : cachePolicy.showcaseListTtlMs;
+  const key = listCacheKey(prefix, ownerUserId);
+  const memory = listCacheMemory[kind][key];
+  if (memory && Date.now() - Number(memory.savedAt || 0) <= ttl) {
+    return memory.data;
+  }
+  try {
+    const stored = wx.getStorageSync(key);
+    if (stored && stored.savedAt && Date.now() - Number(stored.savedAt) <= ttl) {
+      listCacheMemory[kind][key] = stored;
+      return stored.data;
+    }
+  } catch (error) {}
+  return null;
+}
+
+function writeListCache(kind, prefix, ownerUserId, data) {
+  const key = listCacheKey(prefix, ownerUserId);
+  const value = { savedAt: Date.now(), data: Array.isArray(data) ? data : [] };
+  listCacheMemory[kind][key] = value;
+  const keys = Object.keys(listCacheMemory[kind]);
+  if (keys.length > LIST_CACHE_MEMORY_MAX_ENTRIES) {
+    keys.sort((left, right) => Number(listCacheMemory[kind][left].savedAt || 0) - Number(listCacheMemory[kind][right].savedAt || 0));
+    keys.slice(0, keys.length - LIST_CACHE_MEMORY_MAX_ENTRIES).forEach((oldKey) => delete listCacheMemory[kind][oldKey]);
+  }
+  try {
+    if (typeof wx.setStorage === "function") wx.setStorage({ key, data: value });
+    else wx.setStorageSync(key, value);
+  } catch (error) {}
+  return value.data;
+}
+
+function removeListCache(kind, prefix, ownerUserId) {
+  const key = listCacheKey(prefix, ownerUserId);
+  delete listCacheMemory[kind][key];
+  try {
+    if (typeof wx.removeStorage === "function") wx.removeStorage({ key });
+    else wx.removeStorageSync(key);
+  } catch (error) {}
+}
+
+function clearUserScopedCaches() {
+  listCacheGeneration += 1;
+  noteListGeneration += 1;
+  membershipCacheGeneration += 1;
+  customerIntelligenceSummaryCacheGeneration += 1;
+  notificationConfigCacheGeneration += 1;
+  Object.keys(listCacheMemory).forEach((kind) => { listCacheMemory[kind] = {}; });
+  Object.keys(noteCacheMemory).forEach((key) => { delete noteCacheMemory[key]; });
+  Object.keys(listCacheInFlight).forEach((kind) => { listCacheInFlight[kind] = {}; });
+  Object.keys(noteListInFlight).forEach((key) => { delete noteListInFlight[key]; });
+  Object.keys(membershipCache).forEach((key) => { delete membershipCache[key]; });
+  Object.keys(membershipInFlight).forEach((key) => { delete membershipInFlight[key]; });
+  Object.keys(customerIntelligenceSummaryCache).forEach((key) => { delete customerIntelligenceSummaryCache[key]; });
+  Object.keys(customerIntelligenceSummaryInFlight).forEach((key) => { delete customerIntelligenceSummaryInFlight[key]; });
+  Object.keys(notificationConfigCache).forEach((key) => { delete notificationConfigCache[key]; });
+  Object.keys(notificationConfigInFlight).forEach((key) => { delete notificationConfigInFlight[key]; });
+  try {
+    const info = wx.getStorageInfoSync();
+    const prefixes = [NOTE_CACHE_PREFIX, SHOWCASE_CACHE_PREFIX, TOPIC_CACHE_PREFIX];
+    (info.keys || [])
+      .filter((key) => prefixes.some((prefix) => key.startsWith(prefix)))
+      .forEach((key) => {
+        if (typeof wx.removeStorage === "function") wx.removeStorage({ key });
+        else wx.removeStorageSync(key);
+      });
+  } catch (error) {}
+}
+
+function getCachedList(kind, prefix, ownerUserId) {
+  const cached = readListCache(kind, prefix, ownerUserId);
+  return Array.isArray(cached) ? cached : [];
 }
 
 function writeNoteItemCache(note) {
@@ -108,12 +253,19 @@ function writeNoteItemCache(note) {
 }
 
 function invalidateNoteListCaches(ownerUserId) {
+  noteListGeneration += 1;
+  Object.keys(noteCacheMemory).forEach((key) => { delete noteCacheMemory[key]; });
+  const ownerText = `"ownerUserId":"${ownerUserId || ""}`;
+  Object.keys(noteListInFlight).forEach((key) => {
+    if (!ownerUserId || key.includes(ownerText)) delete noteListInFlight[key];
+  });
   try {
     const info = wx.getStorageInfoSync();
-    const ownerText = `"ownerUserId":"${ownerUserId || ""}"`;
+    const storageOwnerText = `"ownerUserId":"${ownerUserId || ""}"`;
     (info.keys || []).forEach((key) => {
-      if (key.startsWith(`${NOTE_CACHE_PREFIX}:list:`) && (!ownerUserId || key.includes(ownerText))) {
-        wx.removeStorageSync(key);
+      if (key.startsWith(`${NOTE_CACHE_PREFIX}:list:`) && (!ownerUserId || key.includes(storageOwnerText))) {
+        if (typeof wx.removeStorage === "function") wx.removeStorage({ key });
+        else wx.removeStorageSync(key);
       }
     });
   } catch (error) {
@@ -121,8 +273,13 @@ function invalidateNoteListCaches(ownerUserId) {
   }
 }
 
-function getCachedNotes(params = {}) {
-  return readCache(noteListCacheKey(params)) || [];
+function getCachedNotes(params = {}, options = {}) {
+  return readCache(noteListCacheKey(params), options) || [];
+}
+
+function hasCachedNotes(params = {}, options = {}) {
+  const cached = readCache(noteListCacheKey(params), options);
+  return Array.isArray(cached);
 }
 
 function getCachedNote(noteId, ownerUserId) {
@@ -134,6 +291,12 @@ function normalizeShowcasePayload(showcase) {
   return {
     ...showcase,
     bannerUrl: toAbsoluteUrl(showcase.bannerUrl),
+    shareSnapshot: showcase.shareSnapshot
+      ? { ...showcase.shareSnapshot, url: toAbsoluteUrl(showcase.shareSnapshot.url) }
+      : showcase.shareSnapshot,
+    shareSnapshotHistory: Array.isArray(showcase.shareSnapshotHistory)
+      ? showcase.shareSnapshotHistory.map((item) => ({ ...item, url: toAbsoluteUrl(item && item.url) }))
+      : showcase.shareSnapshotHistory,
     items: Array.isArray(showcase.items)
       ? showcase.items.map((item) => ({
           ...item,
@@ -224,6 +387,20 @@ function createWecomBindIntent(userId) {
   });
 }
 
+function getWecomBindStatus(userId) {
+  return request({
+    url: `/api/auth/wecom-bind-status?userId=${encodeURIComponent(userId || "")}`
+  });
+}
+
+function bindWecomCard(token, userId) {
+  return request({
+    url: "/api/auth/wecom-bind-card",
+    method: "POST",
+    data: { token, userId }
+  });
+}
+
 function createH5Ticket(payload) {
   return request({
     url: "/api/auth/h5-ticket",
@@ -232,7 +409,11 @@ function createH5Ticket(payload) {
   });
 }
 
-function fetchNotes(params = {}) {
+function fetchNotes(params = {}, options = {}) {
+  const key = noteListCacheKey(params);
+  const cached = !options.force ? readCache(key) : null;
+  if (Array.isArray(cached)) return Promise.resolve({ data: cached, cached: true });
+  if (!options.force && noteListInFlight[key]) return noteListInFlight[key];
   const query = [];
   if (params.ownerUserId) query.push(`ownerUserId=${params.ownerUserId}`);
   if (params.keyword) query.push(`keyword=${encodeURIComponent(params.keyword)}`);
@@ -244,15 +425,32 @@ function fetchNotes(params = {}) {
   if (params.sort) query.push(`sort=${encodeURIComponent(params.sort)}`);
   if (params.includeDeleted) query.push("includeDeleted=true");
   const suffix = query.length ? `?${query.join("&")}` : "";
-  return request({
+  const generation = noteListGeneration;
+  const promise = request({
     url: `/api/notes${suffix}`
   }).then(async (res) => {
-    const data = Array.isArray(res.data) ? await Promise.all(res.data.map(normalizeAndCacheNote)) : res.data;
+    const data = Array.isArray(res.data)
+      ? options.metadataOnly
+        ? res.data.map(normalizeNotePayload)
+        : await Promise.all(res.data.map(normalizeAndCacheNote))
+      : res.data;
     if (Array.isArray(data)) {
-      writeCache(noteListCacheKey(params), data);
-      data.forEach(writeNoteItemCache);
+      if (generation === noteListGeneration) writeCache(key, data);
+      // A metadata list must not overwrite the detail cache with a partial
+      // payload. Full note detail is cached only after a full fetch.
+      if (!options.metadataOnly) data.forEach(writeNoteItemCache);
     }
     return { ...res, data };
+  }).finally(() => {
+    if (noteListInFlight[key] === promise) delete noteListInFlight[key];
+  });
+  noteListInFlight[key] = promise;
+  return promise;
+}
+
+function fetchBusinessCardSummary(ownerUserId) {
+  return request({
+    url: `/api/notes/business-card-summary?ownerUserId=${encodeURIComponent(ownerUserId || "")}`
   });
 }
 
@@ -295,6 +493,21 @@ function createQuickNoteCapture(payload) {
   });
 }
 
+function createLinkNoteCapture(payload) {
+  return request({
+    url: "/api/notes/link-capture",
+    method: "POST",
+    data: payload
+  }).then(async (res) => ({
+    ...res,
+    data: await normalizeAndCacheNote(res.data)
+  })).then((res) => {
+    writeNoteItemCache(res.data);
+    invalidateNoteListCaches(payload.ownerUserId);
+    return res;
+  });
+}
+
 function parsePropertyBatch(payload) {
   return request({
     url: "/api/notes/property-batch/parse",
@@ -316,17 +529,49 @@ function createPropertyBatch(payload) {
         ? await Promise.all(res.data.notes.map(normalizeAndCacheNote))
         : []
     }
-  }));
+  })).then((res) => {
+    invalidateNoteListCaches(payload.ownerUserId);
+    invalidateShowcasesCache(payload.ownerUserId);
+    return res;
+  });
 }
 
-function fetchTopics(ownerUserId) {
-  return request({ url: `/api/notes/topics?ownerUserId=${ownerUserId}` });
+function getCachedTopics(ownerUserId) {
+  return getCachedList("topics", TOPIC_CACHE_PREFIX, ownerUserId);
+}
+
+function fetchTopics(ownerUserId, options = {}) {
+  const cached = !options.force ? readListCache("topics", TOPIC_CACHE_PREFIX, ownerUserId) : null;
+  if (Array.isArray(cached)) return Promise.resolve({ data: cached, cached: true });
+  const key = listCacheKey(TOPIC_CACHE_PREFIX, ownerUserId);
+  if (!options.force && listCacheInFlight.topics[key]) return listCacheInFlight.topics[key];
+  const generation = listCacheGeneration;
+  const promise = request({ url: `/api/notes/topics?ownerUserId=${ownerUserId}` })
+    .then((res) => ({
+      ...res,
+      data: generation === listCacheGeneration
+        ? writeListCache("topics", TOPIC_CACHE_PREFIX, ownerUserId, res.data)
+        : res.data
+    }))
+    .finally(() => {
+      if (listCacheInFlight.topics[key] === promise) delete listCacheInFlight.topics[key];
+    });
+  listCacheInFlight.topics[key] = promise;
+  return promise;
+}
+
+function invalidateTopicsCache(ownerUserId) {
+  removeListCache("topics", TOPIC_CACHE_PREFIX, ownerUserId);
 }
 
 function createDemoData(ownerUserId) {
   return request({
     url: `/api/notes/demo-data?ownerUserId=${ownerUserId}`,
     method: "POST"
+  }).then((res) => {
+    invalidateNoteListCaches(ownerUserId);
+    invalidateShowcasesCache(ownerUserId);
+    return res;
   });
 }
 
@@ -334,6 +579,10 @@ function cleanupDemoData(ownerUserId) {
   return request({
     url: `/api/notes/demo-data/cleanup?ownerUserId=${ownerUserId}`,
     method: "POST"
+  }).then((res) => {
+    invalidateNoteListCaches(ownerUserId);
+    invalidateShowcasesCache(ownerUserId);
+    return res;
   });
 }
 
@@ -342,6 +591,9 @@ function createTopic(payload) {
     url: "/api/notes/topics",
     method: "POST",
     data: payload
+  }).then((res) => {
+    invalidateTopicsCache(payload.ownerUserId);
+    return res;
   });
 }
 
@@ -349,6 +601,9 @@ function deleteTopic(topicId, ownerUserId) {
   return request({
     url: `/api/notes/topics/${topicId}?ownerUserId=${ownerUserId}`,
     method: "DELETE"
+  }).then((res) => {
+    invalidateTopicsCache(ownerUserId);
+    return res;
   });
 }
 
@@ -360,7 +615,11 @@ function addNoteToTopic(noteId, topicId, ownerUserId) {
   }).then(async (res) => ({
     ...res,
     data: await normalizeAndCacheNote(res.data)
-  }));
+  })).then((res) => {
+    invalidateNoteListCaches(ownerUserId);
+    invalidateTopicsCache(ownerUserId);
+    return res;
+  });
 }
 
 function removeNoteFromTopic(noteId, topicId, ownerUserId) {
@@ -370,16 +629,21 @@ function removeNoteFromTopic(noteId, topicId, ownerUserId) {
   }).then(async (res) => ({
     ...res,
     data: await normalizeAndCacheNote(res.data)
-  }));
+  })).then((res) => {
+    invalidateNoteListCaches(ownerUserId);
+    invalidateTopicsCache(ownerUserId);
+    return res;
+  });
 }
 
-function fetchNote(noteId, ownerUserId) {
+function fetchNote(noteId, ownerUserId, options = {}) {
+  const cached = !options.force && getCachedNote(noteId, ownerUserId);
+  if (cached) return Promise.resolve({ data: cached, cached: true });
   return request({
     url: `/api/notes/${noteId}?ownerUserId=${ownerUserId}`
   }).then(async (res) => {
     const data = await normalizeAndCacheNote(res.data);
     writeNoteItemCache(data);
-    invalidateNoteListCaches(payload.ownerUserId);
     return { ...res, data };
   });
 }
@@ -495,7 +759,50 @@ function updateNote(noteId, payload) {
     const data = await normalizeAndCacheNote(res.data);
     writeNoteItemCache(data);
     invalidateNoteListCaches(payload.ownerUserId);
+    invalidateShowcasesCache(payload.ownerUserId);
     return { ...res, data };
+  });
+}
+
+function saveNoteShareSnapshot(noteId, payload) {
+  return request({
+    url: `/api/notes/${noteId}/share-snapshot`,
+    method: "PATCH",
+    data: payload
+  }).then(async (res) => {
+    const data = await normalizeAndCacheNote(res.data);
+    writeNoteItemCache(data);
+    invalidateNoteListCaches(payload.ownerUserId);
+    return { ...res, data };
+  });
+}
+
+function publishNote(noteId, ownerUserId, expectedRevision) {
+  return request({
+    url: `/api/notes/${noteId}/publish`,
+    method: "POST",
+    data: { ownerUserId, expectedRevision }
+  }).then(async (res) => {
+    const data = await normalizeAndCacheNote(res.data);
+    writeNoteItemCache(data);
+    invalidateNoteListCaches(ownerUserId);
+    invalidateShowcasesCache(ownerUserId);
+    return { ...res, data };
+  });
+}
+
+function revokeNote(noteId, ownerUserId) {
+  return request({
+    url: `/api/notes/${noteId}/revoke`,
+    method: "POST",
+    data: { ownerUserId }
+  }).then(async (res) => ({
+    ...res,
+    data: await normalizeAndCacheNote(res.data)
+  })).then((res) => {
+    invalidateNoteListCaches(ownerUserId);
+    invalidateShowcasesCache(ownerUserId);
+    return res;
   });
 }
 
@@ -507,7 +814,11 @@ function duplicateNote(noteId, ownerUserId) {
   }).then(async (res) => ({
     ...res,
     data: await normalizeAndCacheNote(res.data)
-  }));
+  })).then((res) => {
+    writeNoteItemCache(res.data);
+    invalidateNoteListCaches(ownerUserId);
+    return res;
+  });
 }
 
 function clonePropertySame(payload) {
@@ -536,6 +847,10 @@ function clonePropertySame(payload) {
       };
     }
     return res;
+  }).then((res) => {
+    invalidateNoteListCaches(payload.ownerUserId);
+    invalidateShowcasesCache(payload.ownerUserId);
+    return res;
   });
 }
 
@@ -546,7 +861,11 @@ function organizeNote(noteId, ownerUserId) {
   }).then(async (res) => ({
     ...res,
     data: await normalizeAndCacheNote(res.data)
-  }));
+  })).then((res) => {
+    writeNoteItemCache(res.data);
+    invalidateNoteListCaches(ownerUserId);
+    return res;
+  });
 }
 
 function generateNote(noteId, ownerUserId) {
@@ -556,7 +875,11 @@ function generateNote(noteId, ownerUserId) {
   }).then(async (res) => ({
     ...res,
     data: await normalizeAndCacheNote(res.data)
-  }));
+  })).then((res) => {
+    writeNoteItemCache(res.data);
+    invalidateNoteListCaches(ownerUserId);
+    return res;
+  });
 }
 
 function confirmNoteType(noteId, payload) {
@@ -567,6 +890,7 @@ function confirmNoteType(noteId, payload) {
   }).then(async (res) => {
     const data = await normalizeAndCacheNote(res.data);
     writeNoteItemCache(data);
+    invalidateNoteListCaches(payload.ownerUserId);
     return { ...res, data };
   });
 }
@@ -575,21 +899,35 @@ function deleteNote(noteId, ownerUserId) {
   return request({
     url: `/api/notes/${noteId}?ownerUserId=${ownerUserId}`,
     method: "DELETE"
+  }).then((res) => {
+    invalidateNoteListCaches(ownerUserId);
+    invalidateShowcasesCache(ownerUserId);
+    return res;
   });
 }
 
-function fetchCards(params = {}) {
+function fetchCards(params = {}, options = {}) {
   const query = [];
   if (params.ownerUserId) query.push(`ownerUserId=${params.ownerUserId}`);
   if (params.keyword) query.push(`keyword=${encodeURIComponent(params.keyword)}`);
   if (params.categoryId) query.push(`categoryId=${params.categoryId}`);
+  if (Number.isFinite(Number(params.limit))) query.push(`limit=${Math.max(1, Number(params.limit))}`);
+  if (Number.isFinite(Number(params.offset)) && Number(params.offset) > 0) query.push(`offset=${Number(params.offset)}`);
   const suffix = query.length ? `?${query.join("&")}` : "";
   return request({
     url: `/api/cards${suffix}`
   }).then(async (res) => ({
     ...res,
-    data: Array.isArray(res.data) ? await normalizeAndCacheCards(res.data) : res.data
+    data: Array.isArray(res.data)
+      ? options.metadataOnly
+        ? res.data.map(normalizeCardPayload)
+        : await normalizeAndCacheCards(res.data)
+      : res.data
   }));
+}
+
+function fetchCardsMetadata(params = {}) {
+  return fetchCards(params, { metadataOnly: true });
 }
 
 function fetchCard(cardId) {
@@ -641,6 +979,7 @@ function uploadAsset({ filePath, mediaType = "image", ownerUserId = "" }) {
       url: buildApiUrl("/api/uploads/asset"),
       filePath,
       name: "file",
+      header: authHeader(),
       formData: {
         ownerUserId,
         mediaType
@@ -654,17 +993,22 @@ function uploadAsset({ filePath, mediaType = "image", ownerUserId = "" }) {
           return;
         }
         if (res.statusCode >= 200 && res.statusCode < 300) {
+          const asset = data && data.data;
+          if (!asset || !asset.url) {
+            reject({ detail: (data && (data.message || data.detail)) || "上传成功但未返回文件地址" });
+            return;
+          }
           resolve({
-            ...data.data,
-            url: toAbsoluteUrl(data.data && data.data.url),
-            displayUrl: toAbsoluteUrl(data.data && data.data.url)
+            ...asset,
+            url: toAbsoluteUrl(asset.url),
+            displayUrl: toAbsoluteUrl(asset.url)
           });
           return;
         }
-        reject(data);
+        reject({ ...data, detail: data.detail || data.message || `上传失败（${res.statusCode || "无状态码"}）` });
       },
       fail(err) {
-        reject(err);
+        reject({ ...err, detail: "头像或图片上传失败，请检查网络后重试" });
       }
     });
   });
@@ -677,6 +1021,7 @@ function uploadImageNote({ filePath, ownerUserId = "" }) {
       url: buildApiUrl("/api/notes/image-capture"),
       filePath,
       name: "file",
+      header: authHeader(),
       formData: {
         ownerUserId
       },
@@ -716,13 +1061,35 @@ function recognizeNoteImage(noteId, ownerUserId) {
   }));
 }
 
-function fetchShowcases(ownerUserId) {
-  return request({
+function getCachedShowcases(ownerUserId) {
+  return getCachedList("showcases", SHOWCASE_CACHE_PREFIX, ownerUserId).map(normalizeShowcasePayload);
+}
+
+function fetchShowcases(ownerUserId, options = {}) {
+  const cached = !options.force ? readListCache("showcases", SHOWCASE_CACHE_PREFIX, ownerUserId) : null;
+  if (Array.isArray(cached)) return Promise.resolve({ data: cached.map(normalizeShowcasePayload), cached: true });
+  const key = listCacheKey(SHOWCASE_CACHE_PREFIX, ownerUserId);
+  if (!options.force && listCacheInFlight.showcases[key]) return listCacheInFlight.showcases[key];
+  const generation = listCacheGeneration;
+  const promise = request({
     url: `/api/showcases?ownerUserId=${encodeURIComponent(ownerUserId)}`
-  }).then((res) => ({
-    ...res,
-    data: Array.isArray(res.data) ? res.data.map(normalizeShowcasePayload) : res.data
-  }));
+  }).then((res) => {
+    const data = Array.isArray(res.data) ? res.data.map(normalizeShowcasePayload) : [];
+    return {
+      ...res,
+      data: generation === listCacheGeneration
+        ? writeListCache("showcases", SHOWCASE_CACHE_PREFIX, ownerUserId, data)
+        : data
+    };
+  }).finally(() => {
+    if (listCacheInFlight.showcases[key] === promise) delete listCacheInFlight.showcases[key];
+  });
+  listCacheInFlight.showcases[key] = promise;
+  return promise;
+}
+
+function invalidateShowcasesCache(ownerUserId) {
+  removeListCache("showcases", SHOWCASE_CACHE_PREFIX, ownerUserId);
 }
 
 function createShowcase(payload) {
@@ -733,7 +1100,10 @@ function createShowcase(payload) {
   }).then((res) => ({
     ...res,
     data: normalizeShowcasePayload(res.data)
-  }));
+  })).then((res) => {
+    invalidateShowcasesCache(payload.ownerUserId);
+    return res;
+  });
 }
 
 function fetchShowcase(showcaseId, ownerUserId) {
@@ -753,7 +1123,24 @@ function updateShowcase(showcaseId, payload) {
   }).then((res) => ({
     ...res,
     data: normalizeShowcasePayload(res.data)
-  }));
+  })).then((res) => {
+    invalidateShowcasesCache(payload.ownerUserId);
+    return res;
+  });
+}
+
+function saveShowcaseShareSnapshot(showcaseId, payload) {
+  return request({
+    url: `/api/showcases/${showcaseId}/share-snapshot`,
+    method: "PATCH",
+    data: payload
+  }).then((res) => ({
+    ...res,
+    data: normalizeShowcasePayload(res.data)
+  })).then((res) => {
+    invalidateShowcasesCache(payload.ownerUserId);
+    return res;
+  });
 }
 
 function publishShowcase(showcaseId, ownerUserId) {
@@ -764,7 +1151,10 @@ function publishShowcase(showcaseId, ownerUserId) {
   }).then((res) => ({
     ...res,
     data: normalizeShowcasePayload(res.data)
-  }));
+  })).then((res) => {
+    invalidateShowcasesCache(ownerUserId);
+    return res;
+  });
 }
 
 function archiveShowcase(showcaseId, ownerUserId) {
@@ -775,7 +1165,10 @@ function archiveShowcase(showcaseId, ownerUserId) {
   }).then((res) => ({
     ...res,
     data: normalizeShowcasePayload(res.data)
-  }));
+  })).then((res) => {
+    invalidateShowcasesCache(ownerUserId);
+    return res;
+  });
 }
 
 function deleteShowcase(showcaseId, ownerUserId) {
@@ -783,6 +1176,9 @@ function deleteShowcase(showcaseId, ownerUserId) {
     url: `/api/showcases/${showcaseId}/delete`,
     method: "POST",
     data: { ownerUserId }
+  }).then((res) => {
+    invalidateShowcasesCache(ownerUserId);
+    return res;
   });
 }
 
@@ -817,6 +1213,219 @@ function fetchBusinessDashboard(ownerUserId, requesterUserId = ownerUserId, mode
   if (mode) query.push(`mode=${encodeURIComponent(mode)}`);
   return request({
     url: `/api/dashboard/business?${query.join("&")}`
+  });
+}
+
+function fetchCustomerIntelligence(ownerUserId, requesterUserId = ownerUserId, mode = "", options = {}) {
+  const query = [
+    `ownerUserId=${encodeURIComponent(ownerUserId)}`,
+    `requesterUserId=${encodeURIComponent(requesterUserId)}`
+  ];
+  if (mode) query.push(`mode=${encodeURIComponent(mode)}`);
+  if (options && options.force) query.push("refresh=1");
+  return request({ url: `/api/scrm/customer-intelligence?${query.join("&")}` });
+}
+
+function fetchCustomerIntelligenceSummary(ownerUserId, requesterUserId = ownerUserId, mode = "", options = {}) {
+  const query = [
+    `ownerUserId=${encodeURIComponent(ownerUserId)}`,
+    `requesterUserId=${encodeURIComponent(requesterUserId)}`
+  ];
+  if (mode) query.push(`mode=${encodeURIComponent(mode)}`);
+  if (options && options.force) query.push("refresh=1");
+  const key = customerIntelligenceSummaryCacheKey(ownerUserId, requesterUserId, mode);
+  const cached = customerIntelligenceSummaryCache[key];
+  if (!options.force && cached && Date.now() - cached.savedAt <= cachePolicy.customerIntelligenceTtlMs) {
+    return Promise.resolve({ ...cached.response, cached: true });
+  }
+  if (customerIntelligenceSummaryInFlight[key]) return customerIntelligenceSummaryInFlight[key];
+  const generation = customerIntelligenceSummaryCacheGeneration;
+  const promise = request({ url: `/api/scrm/customer-intelligence/summary?${query.join("&")}` })
+    .then((response) => {
+      if (generation === customerIntelligenceSummaryCacheGeneration) {
+        customerIntelligenceSummaryCache[key] = { savedAt: Date.now(), response };
+      }
+      return response;
+    })
+    .finally(() => {
+      if (customerIntelligenceSummaryInFlight[key] === promise) delete customerIntelligenceSummaryInFlight[key];
+    });
+  customerIntelligenceSummaryInFlight[key] = promise;
+  return promise;
+}
+
+function customerIntelligenceSummaryCacheKey(ownerUserId, requesterUserId, mode) {
+  return `${cacheScope()}:${ownerUserId || ""}:${requesterUserId || ""}:${mode || ""}`;
+}
+
+function clearCustomerIntelligenceSummaryCache(ownerUserId) {
+  customerIntelligenceSummaryCacheGeneration += 1;
+  const prefix = `${cacheScope()}:${ownerUserId || ""}:`;
+  Object.keys(customerIntelligenceSummaryCache).forEach((key) => {
+    if (key.startsWith(prefix)) delete customerIntelligenceSummaryCache[key];
+  });
+  Object.keys(customerIntelligenceSummaryInFlight).forEach((key) => {
+    if (key.startsWith(prefix)) delete customerIntelligenceSummaryInFlight[key];
+  });
+}
+
+function fetchCustomerDetail(ownerUserId, requesterUserId, customerId, mode = "", leadId = "") {
+  const query = [
+    `ownerUserId=${encodeURIComponent(ownerUserId || "")}`,
+    `requesterUserId=${encodeURIComponent(requesterUserId || ownerUserId || "")}`
+  ];
+  if (mode) query.push(`mode=${encodeURIComponent(mode)}`);
+  if (leadId) {
+    // leadId is the canonical identity after a follow-up record exists.
+    // Never let a legacy customer alias compete with it at the API boundary.
+    query.push(`leadId=${encodeURIComponent(leadId)}`);
+  } else {
+    query.push(`customerId=${encodeURIComponent(customerId || "")}`);
+  }
+  return request({ url: `/api/scrm/customer-detail?${query.join("&")}` });
+}
+
+function actOnCustomerFollowup(payload = {}) {
+  const normalizedPayload = payload.leadId
+    ? { ...payload, customerId: "" }
+    : payload;
+  return request({
+    url: "/api/scrm/customer-followups/action",
+    method: "POST",
+    data: normalizedPayload
+  });
+}
+
+function membershipCacheKey(userId) {
+  return `${cacheScope()}:${userId || ""}`;
+}
+
+function clearMembershipCache(userId) {
+  membershipCacheGeneration += 1;
+  const key = membershipCacheKey(userId);
+  delete membershipCache[key];
+  delete membershipInFlight[key];
+  clearCustomerIntelligenceSummaryCache(userId);
+  clearNotificationConfigCache(userId);
+}
+
+function fetchMembership(userId, options = {}) {
+  const key = membershipCacheKey(userId);
+  const cached = membershipCache[key];
+  if (!options.force && cached && Date.now() - cached.savedAt <= cachePolicy.membershipTtlMs) {
+    return Promise.resolve({ ...cached.response, cached: true });
+  }
+  if (membershipInFlight[key]) return membershipInFlight[key];
+  const generation = membershipCacheGeneration;
+  const promise = request({ url: `/api/scrm/membership?userId=${encodeURIComponent(userId)}` })
+    .then((response) => {
+      if (generation === membershipCacheGeneration) membershipCache[key] = { savedAt: Date.now(), response };
+      return response;
+    })
+    .finally(() => {
+      if (membershipInFlight[key] === promise) delete membershipInFlight[key];
+    });
+  membershipInFlight[key] = promise;
+  return promise;
+}
+
+function notificationConfigCacheKey(userId) {
+  return `${cacheScope()}:${userId || ""}`;
+}
+
+function clearNotificationConfigCache(userId) {
+  notificationConfigCacheGeneration += 1;
+  const key = notificationConfigCacheKey(userId);
+  delete notificationConfigCache[key];
+  delete notificationConfigInFlight[key];
+}
+
+function fetchNotificationConfig(userId, options = {}) {
+  const key = notificationConfigCacheKey(userId);
+  const cached = notificationConfigCache[key];
+  if (!options.force && cached && Date.now() - cached.savedAt <= cachePolicy.notificationConfigTtlMs) {
+    return Promise.resolve({ ...cached.response, cached: true });
+  }
+  if (notificationConfigInFlight[key]) return notificationConfigInFlight[key];
+  const generation = notificationConfigCacheGeneration;
+  const promise = request({ url: `/api/scrm/notification-config?userId=${encodeURIComponent(userId)}` })
+    .then((response) => {
+      if (generation === notificationConfigCacheGeneration) {
+        notificationConfigCache[key] = { savedAt: Date.now(), response };
+      }
+      return response;
+    })
+    .finally(() => {
+      if (notificationConfigInFlight[key] === promise) delete notificationConfigInFlight[key];
+    });
+  notificationConfigInFlight[key] = promise;
+  return promise;
+}
+
+function recordNotificationSubscription(payload) {
+  return request({
+    url: "/api/scrm/notification-subscriptions",
+    method: "POST",
+    data: payload
+  });
+}
+
+function updateNotificationPreferences(payload) {
+  return request({
+    url: "/api/scrm/notification-preferences",
+    method: "PUT",
+    data: payload
+  }).then((response) => {
+    clearNotificationConfigCache(payload.userId);
+    return response;
+  });
+}
+
+function createMembershipOrder(userId) {
+  return request({ url: "/api/scrm/membership/orders", method: "POST", data: { userId } });
+}
+
+function createMembershipPayment(orderId, userId) {
+  return request({
+    url: `/api/scrm/membership/orders/${orderId}/pay`,
+    method: "POST",
+    data: { userId }
+  });
+}
+
+function confirmTestMembershipOrder(orderId, transactionId) {
+  return request({
+    url: `/api/scrm/membership/orders/${orderId}/test-confirm`,
+    method: "POST",
+    data: { transactionId }
+  });
+}
+
+function fetchReferralCenter(userId) {
+  return request({ url: `/api/scrm/referrals?userId=${encodeURIComponent(userId)}` });
+}
+
+function bindReferral(inviteeUserId, inviteCode) {
+  return request({ url: "/api/scrm/referrals/bind", method: "POST", data: { inviteeUserId, inviteCode } });
+}
+
+function bindReferralFromShare(inviteeUserId, inviterUserId, source = "share_link") {
+  return request({
+    url: "/api/scrm/referrals/share-bind",
+    method: "POST",
+    data: { inviteeUserId, inviterUserId, source }
+  });
+}
+
+function createReferralWithdrawal(userId, amountFen) {
+  return request({ url: "/api/scrm/referrals/withdrawals", method: "POST", data: { userId, amountFen } });
+}
+
+function generateSameStyle(payload) {
+  return request({ url: "/api/scrm/same-style/generate", method: "POST", data: payload }).then((res) => {
+    invalidateNoteListCaches(payload && payload.ownerUserId);
+    invalidateShowcasesCache(payload && payload.ownerUserId);
+    return res;
   });
 }
 
@@ -871,6 +1480,20 @@ function recordView(cardId, payload) {
 function recordNoteView(noteId, payload) {
   return request({
     url: `/api/notes/${noteId}/view`,
+    method: "POST",
+    data: payload
+  });
+}
+
+function fetchViewHistory(userId, limit = 30) {
+  return request({
+    url: `/api/view-history?userId=${encodeURIComponent(userId || "")}&limit=${Math.min(Math.max(Number(limit) || 30, 1), 50)}`
+  });
+}
+
+function recordNoteInteraction(noteId, payload) {
+  return request({
+    url: `/api/notes/${noteId}/events`,
     method: "POST",
     data: payload
   });
@@ -1147,14 +1770,23 @@ module.exports = {
   claimImport,
   claimImportByToken,
   createWecomBindIntent,
+  getWecomBindStatus,
+  bindWecomCard,
   createH5Ticket,
   fetchNotes,
+  fetchBusinessCardSummary,
   getCachedNotes,
+  hasCachedNotes,
+  clearUserScopedCaches,
+  clearMembershipCache,
+  clearCustomerIntelligenceSummaryCache,
   fetchTagSuggestions,
   createManualNoteDraft,
   createQuickNoteCapture,
+  createLinkNoteCapture,
   parsePropertyBatch,
   createPropertyBatch,
+  getCachedTopics,
   fetchTopics,
   createDemoData,
   cleanupDemoData,
@@ -1179,6 +1811,9 @@ module.exports = {
   sendThreadMessage,
   markThreadRead,
   updateNote,
+  saveNoteShareSnapshot,
+  publishNote,
+  revokeNote,
   duplicateNote,
   clonePropertySame,
   organizeNote,
@@ -1186,6 +1821,7 @@ module.exports = {
   confirmNoteType,
   deleteNote,
   fetchCards,
+  fetchCardsMetadata,
   fetchCard,
   fetchCategories,
   createCategory,
@@ -1194,10 +1830,12 @@ module.exports = {
   uploadAsset,
   uploadImageNote,
   recognizeNoteImage,
+  getCachedShowcases,
   fetchShowcases,
   createShowcase,
   fetchShowcase,
   updateShowcase,
+  saveShowcaseShareSnapshot,
   publishShowcase,
   archiveShowcase,
   deleteShowcase,
@@ -1205,12 +1843,30 @@ module.exports = {
   fetchShowcaseAnalytics,
   fetchPublicShowcase,
   fetchBusinessDashboard,
+  fetchCustomerIntelligence,
+  fetchCustomerIntelligenceSummary,
+  fetchCustomerDetail,
+  actOnCustomerFollowup,
+  fetchMembership,
+  fetchNotificationConfig,
+  recordNotificationSubscription,
+  updateNotificationPreferences,
+  createMembershipOrder,
+  createMembershipPayment,
+  confirmTestMembershipOrder,
+  fetchReferralCenter,
+  bindReferral,
+  bindReferralFromShare,
+  createReferralWithdrawal,
+  generateSameStyle,
   updateCard,
   deleteCard,
   publishCard,
   duplicateCard,
   recordView,
   recordNoteView,
+  fetchViewHistory,
+  recordNoteInteraction,
   fetchStats,
   createRelay,
   fetchRelays,

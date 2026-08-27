@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 from pathlib import Path
 from typing import Protocol
 
@@ -11,6 +12,9 @@ from psycopg.rows import dict_row
 from app.core.database import normalize_database_url
 from app.models.domain import (
     AppState,
+    AutomationDevice,
+    AutomationGroupCandidate,
+    AutomationTask,
     Card,
     Category,
     CustomerAction,
@@ -39,6 +43,12 @@ from app.models.domain import (
     ResponsePackageEvent,
     ResponsePackageItem,
     OpportunityPushDigest,
+    MembershipOrder,
+    MembershipEntitlement,
+    ReferralRelation,
+    ReferralReward,
+    ReferralWithdrawal,
+    SameStyleGeneration,
     SupplyDemandCard,
     SupplyDemandApplication,
     ShowcasePage,
@@ -49,13 +59,19 @@ from app.models.domain import (
     SyncTaskLog,
     Topic,
     User,
+    WecomBindCardToken,
+    WecomBindCardAsset,
     WecomIdentityBinding,
     UserNote,
     ViewEvent,
     WecomArchiveCursor,
     WecomArchiveMessage,
+    NotificationPreference,
+    WechatSubscriptionGrant,
+    WechatSubscriptionDelivery,
 )
 from app.services.text_safety import strip_unicode_surrogates
+from app.services.time_utils import parse_iso
 
 
 class AppRepository(Protocol):
@@ -78,6 +94,33 @@ class AppRepository(Protocol):
         ...
 
     def save_wecom_identity_binding(self, binding: WecomIdentityBinding) -> None:
+        ...
+
+    def get_wecom_bind_card_token(self, token_hash: str) -> WecomBindCardToken | None:
+        ...
+
+    def get_pending_wecom_bind_card_token(self, welcome_code_hash: str) -> WecomBindCardToken | None:
+        ...
+
+    def save_wecom_bind_card_token(self, token: WecomBindCardToken) -> None:
+        ...
+
+    def get_active_wecom_bind_card_asset(self) -> WecomBindCardAsset | None:
+        ...
+
+    def get_latest_wecom_bind_card_asset(self) -> WecomBindCardAsset | None:
+        ...
+
+    def save_wecom_bind_card_asset(self, asset: WecomBindCardAsset) -> None:
+        ...
+
+    def consume_wecom_bind_card_token(
+        self,
+        token_hash: str,
+        owner_user_id: str,
+        owner_openid: str,
+        now: str,
+    ) -> WecomBindCardToken | None:
         ...
 
     def list_import_batches(self, statuses: set[str] | None = None) -> list[ImportBatch]:
@@ -114,6 +157,35 @@ class AppRepository(Protocol):
         ...
 
     def save_showcase_page(self, showcase: ShowcasePage) -> None:
+        ...
+
+    def list_referral_relations(self) -> list[ReferralRelation]:
+        ...
+
+    def find_same_style_generation(
+        self,
+        owner_user_id: str,
+        idempotency_key: str,
+    ) -> SameStyleGeneration | None:
+        ...
+
+    def find_latest_same_style_generation(
+        self,
+        owner_user_id: str,
+        mode: str,
+        source_note_id: str | None = None,
+        source_showcase_id: str | None = None,
+    ) -> SameStyleGeneration | None:
+        ...
+
+    def list_same_style_generations(self, owner_user_id: str) -> list[SameStyleGeneration]:
+        ...
+
+    def save_same_style_generation(
+        self,
+        generation: SameStyleGeneration,
+        referral_relation: ReferralRelation | None = None,
+    ) -> None:
         ...
 
     def delete_showcase_page(self, showcase_id: str) -> None:
@@ -176,13 +248,62 @@ class AppRepository(Protocol):
     def add_view_event(self, event: ViewEvent) -> None:
         ...
 
-    def list_view_events_for_card(self, card_id: str) -> list[ViewEvent]:
+    def list_view_events_for_card(
+        self,
+        card_id: str,
+        viewer_user_id: str | None = None,
+        anonymous_id: str | None = None,
+        visitor_identity_id: str | None = None,
+        limit: int | None = None,
+    ) -> list[ViewEvent]:
+        ...
+
+    def list_view_events_for_cards(self, card_ids: set[str]) -> dict[str, list[ViewEvent]]:
+        ...
+
+    def list_view_events_for_viewer(self, viewer_user_id: str, limit: int = 1000) -> list[ViewEvent]:
         ...
 
     def add_showcase_event(self, event: ShowcaseEvent) -> None:
         ...
 
     def list_showcase_events(self, showcase_id: str) -> list[ShowcaseEvent]:
+        ...
+
+    def list_showcase_events_for_showcases(self, showcase_ids: set[str]) -> dict[str, list[ShowcaseEvent]]:
+        ...
+
+    def get_notification_preference(self, user_id: str) -> NotificationPreference | None:
+        ...
+
+    def save_notification_preference(self, preference: NotificationPreference) -> None:
+        ...
+
+    def list_wechat_subscription_grants(self, user_id: str, template_id: str | None = None) -> list[WechatSubscriptionGrant]:
+        ...
+
+    def get_wechat_subscription_grant(self, grant_id: str) -> WechatSubscriptionGrant | None:
+        ...
+
+    def save_wechat_subscription_grant(self, grant: WechatSubscriptionGrant) -> None:
+        ...
+
+    def reserve_wechat_subscription_grant(self, user_id: str, template_id: str, now: str) -> WechatSubscriptionGrant | None:
+        ...
+
+    def release_stale_wechat_subscription_grants(self, cutoff: str, now: str) -> int:
+        ...
+
+    def list_wechat_subscription_deliveries(self, owner_user_id: str, limit: int = 100) -> list[WechatSubscriptionDelivery]:
+        ...
+
+    def get_wechat_subscription_delivery(self, delivery_id: str) -> WechatSubscriptionDelivery | None:
+        ...
+
+    def find_wechat_subscription_delivery_by_dedupe_key(self, dedupe_key: str) -> WechatSubscriptionDelivery | None:
+        ...
+
+    def save_wechat_subscription_delivery(self, delivery: WechatSubscriptionDelivery) -> None:
         ...
 
     def add_relay_entry(self, relay: RelayEntry) -> None:
@@ -197,6 +318,13 @@ class AppRepository(Protocol):
     def list_relay_entries_for_card(self, card_id: str, relay_status: str | None = "active") -> list[RelayEntry]:
         ...
 
+    def list_relay_entries_for_cards(
+        self,
+        card_ids: set[str],
+        relay_status: str | None = "active",
+    ) -> dict[str, list[RelayEntry]]:
+        ...
+
     def list_lead_reminders(self, owner_user_id: str, status: str | None = None) -> list[LeadReminder]:
         ...
 
@@ -207,6 +335,9 @@ class AppRepository(Protocol):
         ...
 
     def save_lead_reminder(self, reminder: LeadReminder) -> None:
+        ...
+
+    def save_lead_reminder_if_version(self, reminder: LeadReminder, expected_version: int) -> bool:
         ...
 
     def delete_lead_reminder(self, reminder_id: str) -> None:
@@ -220,7 +351,12 @@ class AppRepository(Protocol):
         note_id: str,
         viewer_user_id: str | None = None,
         anonymous_id: str | None = None,
+        visitor_identity_id: str | None = None,
+        limit: int | None = None,
     ) -> list[CustomerAction]:
+        ...
+
+    def list_customer_actions_for_notes(self, note_ids: set[str]) -> dict[str, list[CustomerAction]]:
         ...
 
     def get_customer_action(self, action_id: str) -> CustomerAction | None:
@@ -297,7 +433,7 @@ class AppRepository(Protocol):
     def get_media_asset_by_url(self, url: str) -> MediaAsset | None:
         ...
 
-    def save_media_asset(self, asset: MediaAsset) -> None:
+    def save_media_asset(self, asset: MediaAsset) -> bool:
         ...
 
     def save_media_asset_ref(self, ref: MediaAssetRef) -> None:
@@ -309,6 +445,15 @@ class AppRepository(Protocol):
         ref_type: str | None = None,
         ref_id: str | None = None,
     ) -> list[MediaAssetRef]:
+        ...
+
+    def delete_media_asset_refs(
+        self,
+        asset_id: str,
+        ref_type: str | None = None,
+        ref_id: str | None = None,
+        usage: str | None = None,
+    ) -> int:
         ...
 
     def save_sync_task(self, task: SyncTask) -> None:
@@ -340,6 +485,58 @@ class AppRepository(Protocol):
     ) -> list[SkillRun]:
         ...
 
+    def get_automation_device(self, device_id: str) -> AutomationDevice | None:
+        ...
+
+    def list_automation_devices(self, limit: int = 100) -> list[AutomationDevice]:
+        ...
+
+    def save_automation_device(self, device: AutomationDevice) -> None:
+        ...
+
+    def get_automation_task(self, task_id: str) -> AutomationTask | None:
+        ...
+
+    def find_automation_task_by_idempotency_key(self, idempotency_key: str) -> AutomationTask | None:
+        ...
+
+    def save_automation_task(self, task: AutomationTask) -> None:
+        ...
+
+    def list_automation_tasks(
+        self,
+        device_id: str | None = None,
+        statuses: set[str] | None = None,
+        limit: int = 50,
+    ) -> list[AutomationTask]:
+        ...
+
+    def claim_next_automation_task(
+        self,
+        device_id: str,
+        active_wechat_account_id: str | None,
+        now: str,
+        lease_expires_at: str,
+        lease_token: str,
+    ) -> AutomationTask | None:
+        ...
+
+    def get_automation_group_candidate(self, candidate_id: str) -> AutomationGroupCandidate | None:
+        ...
+
+    def find_automation_group_candidate_by_idempotency_key(self, idempotency_key: str) -> AutomationGroupCandidate | None:
+        ...
+
+    def save_automation_group_candidate(self, candidate: AutomationGroupCandidate) -> None:
+        ...
+
+    def list_automation_group_candidates(
+        self,
+        wechat_account_id: str | None = None,
+        limit: int = 100,
+    ) -> list[AutomationGroupCandidate]:
+        ...
+
     def get_wecom_archive_cursor(self, corp_id: str) -> WecomArchiveCursor | None:
         ...
 
@@ -350,6 +547,15 @@ class AppRepository(Protocol):
         ...
 
     def existing_wecom_archive_msg_ids(self, msg_ids: set[str]) -> set[str]:
+        ...
+
+    def get_wecom_archive_message_by_msg_id(self, msg_id: str) -> WecomArchiveMessage | None:
+        ...
+
+    def get_wecom_archive_message_by_generated_note_id(self, note_id: str) -> WecomArchiveMessage | None:
+        ...
+
+    def list_wecom_archive_messages_by_generated_note_id(self, note_id: str) -> list[WecomArchiveMessage]:
         ...
 
     def list_wecom_archive_messages(self, limit: int = 100) -> list[WecomArchiveMessage]:
@@ -486,6 +692,7 @@ class AppRepository(Protocol):
 class JsonRepository:
     def __init__(self, data_file: Path):
         self.data_file = data_file
+        self._automation_lock = threading.RLock()
         self.data_file.parent.mkdir(parents=True, exist_ok=True)
         if not self.data_file.exists():
             self.save(AppState())
@@ -528,6 +735,69 @@ class JsonRepository:
         state.wecom_identity_bindings = [item for item in state.wecom_identity_bindings if item.id != binding.id]
         state.wecom_identity_bindings.append(binding)
         self.save(state)
+
+    def get_wecom_bind_card_token(self, token_hash: str) -> WecomBindCardToken | None:
+        return next((item for item in self.load().wecom_bind_card_tokens if item.tokenHash == token_hash), None)
+
+    def get_pending_wecom_bind_card_token(self, welcome_code_hash: str) -> WecomBindCardToken | None:
+        return next(
+            (
+                item
+                for item in self.load().wecom_bind_card_tokens
+                if item.welcomeCodeHash == welcome_code_hash
+            ),
+            None,
+        )
+
+    def save_wecom_bind_card_token(self, token: WecomBindCardToken) -> None:
+        state = self.load()
+        state.wecom_bind_card_tokens = [item for item in state.wecom_bind_card_tokens if item.id != token.id]
+        state.wecom_bind_card_tokens.append(token)
+        self.save(state)
+
+    def get_active_wecom_bind_card_asset(self) -> WecomBindCardAsset | None:
+        assets = [item for item in self.load().wecom_bind_card_assets if item.status == "active"]
+        return max(assets, key=lambda item: item.updatedAt) if assets else None
+
+    def get_latest_wecom_bind_card_asset(self) -> WecomBindCardAsset | None:
+        assets = self.load().wecom_bind_card_assets
+        return max(assets, key=lambda item: item.updatedAt) if assets else None
+
+    def save_wecom_bind_card_asset(self, asset: WecomBindCardAsset) -> None:
+        state = self.load()
+        state.wecom_bind_card_assets = [item for item in state.wecom_bind_card_assets if item.id != asset.id]
+        state.wecom_bind_card_assets.append(asset)
+        self.save(state)
+
+    def consume_wecom_bind_card_token(
+        self,
+        token_hash: str,
+        owner_user_id: str,
+        owner_openid: str,
+        now: str,
+    ) -> WecomBindCardToken | None:
+        state = self.load()
+        token = next((item for item in state.wecom_bind_card_tokens if item.tokenHash == token_hash), None)
+        if not token or token.status != "issued" or token.deliveryStatus != "sent":
+            return None
+        try:
+            if parse_iso(token.expiresAt) <= parse_iso(now):
+                return None
+        except Exception:
+            return None
+        consumed = token.model_copy(
+            update={
+                "status": "consumed",
+                "usedAt": now,
+                "ownerUserId": owner_user_id,
+                "ownerOpenid": owner_openid,
+                "updatedAt": now,
+            }
+        )
+        state.wecom_bind_card_tokens = [item for item in state.wecom_bind_card_tokens if item.id != token.id]
+        state.wecom_bind_card_tokens.append(consumed)
+        self.save(state)
+        return consumed
 
     def list_import_batches(self, statuses: set[str] | None = None) -> list[ImportBatch]:
         batches = self.load().import_batches
@@ -585,6 +855,59 @@ class JsonRepository:
         state = self.load()
         state.showcase_pages = [item for item in state.showcase_pages if item.id != showcase.id]
         state.showcase_pages.append(showcase)
+        self.save(state)
+
+    def list_referral_relations(self) -> list[ReferralRelation]:
+        return list(self.load().referral_relations)
+
+    def find_same_style_generation(
+        self,
+        owner_user_id: str,
+        idempotency_key: str,
+    ) -> SameStyleGeneration | None:
+        return next(
+            (
+                item
+                for item in self.load().same_style_generations
+                if item.ownerUserId == owner_user_id and item.idempotencyKey == idempotency_key
+            ),
+            None,
+        )
+
+    def find_latest_same_style_generation(
+        self,
+        owner_user_id: str,
+        mode: str,
+        source_note_id: str | None = None,
+        source_showcase_id: str | None = None,
+    ) -> SameStyleGeneration | None:
+        candidates = [
+            item
+            for item in self.load().same_style_generations
+            if item.ownerUserId == owner_user_id
+            and item.mode == mode
+            and item.sourceNoteId == source_note_id
+            and item.sourceShowcaseId == source_showcase_id
+        ]
+        return max(candidates, key=lambda item: (item.createdAt, item.id), default=None)
+
+    def list_same_style_generations(self, owner_user_id: str) -> list[SameStyleGeneration]:
+        return sorted(
+            [item for item in self.load().same_style_generations if item.ownerUserId == owner_user_id],
+            key=lambda item: (item.createdAt, item.id),
+            reverse=True,
+        )
+
+    def save_same_style_generation(
+        self,
+        generation: SameStyleGeneration,
+        referral_relation: ReferralRelation | None = None,
+    ) -> None:
+        state = self.load()
+        if referral_relation and not any(item.id == referral_relation.id for item in state.referral_relations):
+            state.referral_relations.append(referral_relation)
+        state.same_style_generations = [item for item in state.same_style_generations if item.id != generation.id]
+        state.same_style_generations.append(generation)
         self.save(state)
 
     def delete_showcase_page(self, showcase_id: str) -> None:
@@ -710,8 +1033,37 @@ class JsonRepository:
         state.view_events.append(event)
         self.save(state)
 
-    def list_view_events_for_card(self, card_id: str) -> list[ViewEvent]:
-        return [item for item in self.load().view_events if item.cardId == card_id]
+    def list_view_events_for_card(
+        self,
+        card_id: str,
+        viewer_user_id: str | None = None,
+        anonymous_id: str | None = None,
+        visitor_identity_id: str | None = None,
+        limit: int | None = None,
+    ) -> list[ViewEvent]:
+        rows = [item for item in self.load().view_events if item.cardId == card_id]
+        if viewer_user_id or anonymous_id or visitor_identity_id:
+            rows = [
+                item
+                for item in rows
+                if (viewer_user_id and item.viewerUserId == viewer_user_id)
+                or (anonymous_id and item.anonymousId == anonymous_id)
+                or (visitor_identity_id and item.visitorIdentityId == visitor_identity_id)
+            ]
+        rows.sort(key=lambda item: (item.viewedAt, item.id), reverse=True)
+        return rows[: max(1, min(int(limit), 100))] if limit is not None else rows
+
+    def list_view_events_for_cards(self, card_ids: set[str]) -> dict[str, list[ViewEvent]]:
+        grouped: dict[str, list[ViewEvent]] = {card_id: [] for card_id in card_ids}
+        for item in self.load().view_events:
+            if item.cardId in grouped:
+                grouped[item.cardId].append(item)
+        return grouped
+
+    def list_view_events_for_viewer(self, viewer_user_id: str, limit: int = 1000) -> list[ViewEvent]:
+        rows = [item for item in self.load().view_events if item.viewerUserId == viewer_user_id]
+        rows.sort(key=lambda item: (item.viewedAt, item.id), reverse=True)
+        return rows[: max(1, min(int(limit or 1000), 1000))]
 
     def add_showcase_event(self, event: ShowcaseEvent) -> None:
         state = self.load()
@@ -725,6 +1077,92 @@ class JsonRepository:
             key=lambda item: (item.createdAt, item.id),
             reverse=True,
         )
+
+    def list_showcase_events_for_showcases(self, showcase_ids: set[str]) -> dict[str, list[ShowcaseEvent]]:
+        grouped: dict[str, list[ShowcaseEvent]] = {showcase_id: [] for showcase_id in showcase_ids}
+        for item in self.load().showcase_events:
+            if item.showcaseId in grouped:
+                grouped[item.showcaseId].append(item)
+        for events in grouped.values():
+            events.sort(key=lambda item: (item.createdAt, item.id), reverse=True)
+        return grouped
+
+    def get_notification_preference(self, user_id: str) -> NotificationPreference | None:
+        return next((item for item in self.load().notification_preferences if item.userId == user_id), None)
+
+    def save_notification_preference(self, preference: NotificationPreference) -> None:
+        state = self.load()
+        state.notification_preferences = [item for item in state.notification_preferences if item.id != preference.id and item.userId != preference.userId]
+        state.notification_preferences.append(preference)
+        self.save(state)
+
+    def list_wechat_subscription_grants(self, user_id: str, template_id: str | None = None) -> list[WechatSubscriptionGrant]:
+        rows = [item for item in self.load().wechat_subscription_grants if item.userId == user_id]
+        if template_id:
+            rows = [item for item in rows if item.templateId == template_id]
+        return sorted(rows, key=lambda item: (item.authorizedAt, item.id), reverse=True)
+
+    def get_wechat_subscription_grant(self, grant_id: str) -> WechatSubscriptionGrant | None:
+        return next((item for item in self.load().wechat_subscription_grants if item.id == grant_id), None)
+
+    def save_wechat_subscription_grant(self, grant: WechatSubscriptionGrant) -> None:
+        state = self.load()
+        state.wechat_subscription_grants = [item for item in state.wechat_subscription_grants if item.id != grant.id]
+        state.wechat_subscription_grants.append(grant)
+        self.save(state)
+
+    def reserve_wechat_subscription_grant(self, user_id: str, template_id: str, now: str) -> WechatSubscriptionGrant | None:
+        state = self.load()
+        grant = next(
+            (
+                item for item in sorted(state.wechat_subscription_grants, key=lambda value: (value.authorizedAt, value.id))
+                if item.userId == user_id and item.templateId == template_id and item.status == "available"
+            ),
+            None,
+        )
+        if not grant:
+            return None
+        grant.status = "reserved"
+        grant.reservedAt = now
+        grant.updatedAt = now
+        self.save(state)
+        return grant
+
+    def release_stale_wechat_subscription_grants(self, cutoff: str, now: str) -> int:
+        state = self.load()
+        released = 0
+        for grant in state.wechat_subscription_grants:
+            if grant.status != "reserved" or not grant.reservedAt:
+                continue
+            try:
+                stale = parse_iso(grant.reservedAt) <= parse_iso(cutoff)
+            except (TypeError, ValueError, OverflowError):
+                stale = True
+            if not stale:
+                continue
+            grant.status = "available"
+            grant.reservedAt = None
+            grant.updatedAt = now
+            released += 1
+        if released:
+            self.save(state)
+        return released
+
+    def list_wechat_subscription_deliveries(self, owner_user_id: str, limit: int = 100) -> list[WechatSubscriptionDelivery]:
+        rows = [item for item in self.load().wechat_subscription_deliveries if item.ownerUserId == owner_user_id]
+        return sorted(rows, key=lambda item: (item.createdAt, item.id), reverse=True)[:limit]
+
+    def get_wechat_subscription_delivery(self, delivery_id: str) -> WechatSubscriptionDelivery | None:
+        return next((item for item in self.load().wechat_subscription_deliveries if item.id == delivery_id), None)
+
+    def find_wechat_subscription_delivery_by_dedupe_key(self, dedupe_key: str) -> WechatSubscriptionDelivery | None:
+        return next((item for item in self.load().wechat_subscription_deliveries if item.dedupeKey == dedupe_key), None)
+
+    def save_wechat_subscription_delivery(self, delivery: WechatSubscriptionDelivery) -> None:
+        state = self.load()
+        state.wechat_subscription_deliveries = [item for item in state.wechat_subscription_deliveries if item.id != delivery.id]
+        state.wechat_subscription_deliveries.append(delivery)
+        self.save(state)
 
     def add_relay_entry(self, relay: RelayEntry) -> None:
         state = self.load()
@@ -745,6 +1183,18 @@ class JsonRepository:
         if relay_status:
             relays = [item for item in relays if item.status == relay_status]
         return relays
+
+    def list_relay_entries_for_cards(
+        self,
+        card_ids: set[str],
+        relay_status: str | None = "active",
+    ) -> dict[str, list[RelayEntry]]:
+        grouped: dict[str, list[RelayEntry]] = {card_id: [] for card_id in card_ids}
+        for item in self.load().relay_entries:
+            if item.cardId not in grouped or (relay_status and item.status != relay_status):
+                continue
+            grouped[item.cardId].append(item)
+        return grouped
 
     def list_lead_reminders(self, owner_user_id: str, status: str | None = None) -> list[LeadReminder]:
         reminders = [item for item in self.load().lead_reminders if item.ownerUserId == owner_user_id]
@@ -771,6 +1221,16 @@ class JsonRepository:
         state.lead_reminders.append(reminder)
         self.save(state)
 
+    def save_lead_reminder_if_version(self, reminder: LeadReminder, expected_version: int) -> bool:
+        state = self.load()
+        current = next((item for item in state.lead_reminders if item.id == reminder.id), None)
+        if current is None or int(current.version or 0) != int(expected_version):
+            return False
+        state.lead_reminders = [item for item in state.lead_reminders if item.id != reminder.id]
+        state.lead_reminders.append(reminder)
+        self.save(state)
+        return True
+
     def delete_lead_reminder(self, reminder_id: str) -> None:
         state = self.load()
         state.lead_reminders = [item for item in state.lead_reminders if item.id != reminder_id]
@@ -787,13 +1247,29 @@ class JsonRepository:
         note_id: str,
         viewer_user_id: str | None = None,
         anonymous_id: str | None = None,
+        visitor_identity_id: str | None = None,
+        limit: int | None = None,
     ) -> list[CustomerAction]:
         actions = [item for item in self.load().customer_actions if item.noteId == note_id]
-        if viewer_user_id:
-            actions = [item for item in actions if item.viewerUserId == viewer_user_id]
-        elif anonymous_id:
-            actions = [item for item in actions if item.anonymousId == anonymous_id]
-        return sorted(actions, key=lambda item: item.createdAt, reverse=True)
+        if viewer_user_id or anonymous_id or visitor_identity_id:
+            actions = [
+                item
+                for item in actions
+                if (viewer_user_id and item.viewerUserId == viewer_user_id)
+                or (anonymous_id and item.anonymousId == anonymous_id)
+                or (visitor_identity_id and item.visitorIdentityId == visitor_identity_id)
+            ]
+        actions = sorted(actions, key=lambda item: item.createdAt, reverse=True)
+        return actions[: max(1, min(int(limit), 100))] if limit is not None else actions
+
+    def list_customer_actions_for_notes(self, note_ids: set[str]) -> dict[str, list[CustomerAction]]:
+        grouped: dict[str, list[CustomerAction]] = {note_id: [] for note_id in note_ids}
+        for item in self.load().customer_actions:
+            if item.noteId in grouped:
+                grouped[item.noteId].append(item)
+        for actions in grouped.values():
+            actions.sort(key=lambda item: item.createdAt, reverse=True)
+        return grouped
 
     def get_customer_action(self, action_id: str) -> CustomerAction | None:
         return next((item for item in self.load().customer_actions if item.id == action_id), None)
@@ -960,11 +1436,12 @@ class JsonRepository:
     def get_media_asset_by_url(self, url: str) -> MediaAsset | None:
         return next((item for item in self.load().media_assets if item.url == url and item.status == "active"), None)
 
-    def save_media_asset(self, asset: MediaAsset) -> None:
+    def save_media_asset(self, asset: MediaAsset) -> bool:
         state = self.load()
         state.media_assets = [item for item in state.media_assets if item.id != asset.id]
         state.media_assets.append(asset)
         self.save(state)
+        return True
 
     def save_media_asset_ref(self, ref: MediaAssetRef) -> None:
         state = self.load()
@@ -986,6 +1463,30 @@ class JsonRepository:
         if ref_id:
             refs = [item for item in refs if item.refId == ref_id]
         return sorted(refs, key=lambda item: item.createdAt, reverse=True)
+
+    def delete_media_asset_refs(
+        self,
+        asset_id: str,
+        ref_type: str | None = None,
+        ref_id: str | None = None,
+        usage: str | None = None,
+    ) -> int:
+        state = self.load()
+        kept = []
+        deleted = 0
+        for item in state.media_asset_refs:
+            matches = item.assetId == asset_id
+            matches = matches and (ref_type is None or item.refType == ref_type)
+            matches = matches and (ref_id is None or item.refId == ref_id)
+            matches = matches and (usage is None or item.usage == usage)
+            if matches:
+                deleted += 1
+            else:
+                kept.append(item)
+        if deleted:
+            state.media_asset_refs = kept
+            self.save(state)
+        return deleted
 
     def save_sync_task(self, task: SyncTask) -> None:
         state = self.load()
@@ -1049,6 +1550,146 @@ class JsonRepository:
             runs = [item for item in runs if item.skillId == skill_id]
         return sorted(runs, key=lambda item: item.startedAt, reverse=True)[:limit]
 
+    def get_automation_device(self, device_id: str) -> AutomationDevice | None:
+        return next((item for item in self.load().automation_devices if item.id == device_id), None)
+
+    def list_automation_devices(self, limit: int = 100) -> list[AutomationDevice]:
+        devices = sorted(
+            self.load().automation_devices,
+            key=lambda item: (item.updatedAt, item.id),
+            reverse=True,
+        )
+        return devices[:limit]
+
+    def save_automation_device(self, device: AutomationDevice) -> None:
+        with self._automation_lock:
+            state = self.load()
+            state.automation_devices = [item for item in state.automation_devices if item.id != device.id]
+            state.automation_devices.append(device)
+            self.save(state)
+
+    def get_automation_task(self, task_id: str) -> AutomationTask | None:
+        return next((item for item in self.load().automation_tasks if item.id == task_id), None)
+
+    def find_automation_task_by_idempotency_key(self, idempotency_key: str) -> AutomationTask | None:
+        key = str(idempotency_key or "").strip()
+        if not key:
+            return None
+        return next((item for item in self.load().automation_tasks if item.idempotencyKey == key), None)
+
+    def save_automation_task(self, task: AutomationTask) -> None:
+        with self._automation_lock:
+            state = self.load()
+            state.automation_tasks = [item for item in state.automation_tasks if item.id != task.id]
+            state.automation_tasks.append(task)
+            self.save(state)
+
+    def list_automation_tasks(
+        self,
+        device_id: str | None = None,
+        statuses: set[str] | None = None,
+        limit: int = 50,
+    ) -> list[AutomationTask]:
+        tasks = self.load().automation_tasks
+        if device_id:
+            tasks = [item for item in tasks if item.deviceId == device_id]
+        if statuses:
+            tasks = [item for item in tasks if item.status in statuses]
+        return sorted(tasks, key=lambda item: (item.createdAt, item.id), reverse=True)[:limit]
+
+    def claim_next_automation_task(
+        self,
+        device_id: str,
+        active_wechat_account_id: str | None,
+        now: str,
+        lease_expires_at: str,
+        lease_token: str,
+    ) -> AutomationTask | None:
+        with self._automation_lock:
+            state = self.load()
+            active_tasks = []
+            for item in state.automation_tasks:
+                if item.deviceId != device_id or item.status != "running":
+                    continue
+                if not item.leaseExpiresAt:
+                    active_tasks.append(item)
+                    continue
+                try:
+                    if parse_iso(item.leaseExpiresAt) > parse_iso(now):
+                        active_tasks.append(item)
+                except Exception:
+                    active_tasks.append(item)
+            if active_tasks:
+                return None
+
+            candidates = []
+            for item in state.automation_tasks:
+                if item.deviceId != device_id:
+                    continue
+                if item.status == "pending":
+                    claimable = True
+                elif item.status == "running" and item.leaseExpiresAt:
+                    try:
+                        claimable = parse_iso(item.leaseExpiresAt) <= parse_iso(now)
+                    except Exception:
+                        claimable = False
+                else:
+                    claimable = False
+                if not claimable:
+                    continue
+                account_matches = (
+                    item.targetWechatAccountId is None
+                    or item.targetWechatAccountId == active_wechat_account_id
+                    or item.functionId == "wechat.switch_account"
+                )
+                if account_matches:
+                    candidates.append(item)
+            if not candidates:
+                return None
+            task = sorted(candidates, key=lambda item: (item.createdAt, item.id))[0]
+            updated = task.model_copy(
+                update={
+                    "status": "running",
+                    "attempts": task.attempts + 1,
+                    "leaseToken": lease_token,
+                    "leaseExpiresAt": lease_expires_at,
+                    "startedAt": task.startedAt or now,
+                    "updatedAt": now,
+                }
+            )
+            state.automation_tasks = [item for item in state.automation_tasks if item.id != task.id]
+            state.automation_tasks.append(updated)
+            self.save(state)
+            return updated
+
+    def get_automation_group_candidate(self, candidate_id: str) -> AutomationGroupCandidate | None:
+        return next((item for item in self.load().automation_group_candidates if item.id == candidate_id), None)
+
+    def find_automation_group_candidate_by_idempotency_key(self, idempotency_key: str) -> AutomationGroupCandidate | None:
+        key = str(idempotency_key or "").strip()
+        if not key:
+            return None
+        return next((item for item in self.load().automation_group_candidates if item.idempotencyKey == key), None)
+
+    def save_automation_group_candidate(self, candidate: AutomationGroupCandidate) -> None:
+        with self._automation_lock:
+            state = self.load()
+            state.automation_group_candidates = [
+                item for item in state.automation_group_candidates if item.id != candidate.id
+            ]
+            state.automation_group_candidates.append(candidate)
+            self.save(state)
+
+    def list_automation_group_candidates(
+        self,
+        wechat_account_id: str | None = None,
+        limit: int = 100,
+    ) -> list[AutomationGroupCandidate]:
+        candidates = self.load().automation_group_candidates
+        if wechat_account_id:
+            candidates = [item for item in candidates if item.wechatAccountId == wechat_account_id]
+        return sorted(candidates, key=lambda item: (item.savedAt, item.id), reverse=True)[:limit]
+
     def get_wecom_archive_cursor(self, corp_id: str) -> WecomArchiveCursor | None:
         return next((item for item in self.load().wecom_archive_cursors if item.corpId == corp_id), None)
 
@@ -1073,6 +1714,18 @@ class JsonRepository:
             for item in self.load().wecom_archive_messages
             if item.msgId and item.msgId in msg_ids
         }
+
+    def get_wecom_archive_message_by_msg_id(self, msg_id: str) -> WecomArchiveMessage | None:
+        return next((item for item in self.load().wecom_archive_messages if item.msgId == msg_id), None)
+
+    def get_wecom_archive_message_by_generated_note_id(self, note_id: str) -> WecomArchiveMessage | None:
+        return next((item for item in self.load().wecom_archive_messages if item.generatedNoteId == note_id), None)
+
+    def list_wecom_archive_messages_by_generated_note_id(self, note_id: str) -> list[WecomArchiveMessage]:
+        return sorted(
+            [item for item in self.load().wecom_archive_messages if item.generatedNoteId == note_id],
+            key=lambda item: (item.seq, item.createdAt),
+        )
 
     def list_wecom_archive_messages(self, limit: int = 100) -> list[WecomArchiveMessage]:
         messages = self.load().wecom_archive_messages
@@ -1328,6 +1981,8 @@ class PostgresRepository:
     TABLES = {
         "users": "users",
         "wecom_identity_bindings": "wecom_identity_bindings",
+        "wecom_bind_card_tokens": "wecom_bind_card_tokens",
+        "wecom_bind_card_assets": "wecom_bind_card_assets",
         "import_batches": "import_batches",
         "raw_messages": "raw_messages",
         "cards": "cards",
@@ -1350,6 +2005,9 @@ class PostgresRepository:
         "sync_tasks": "sync_tasks",
         "sync_task_logs": "sync_task_logs",
         "skill_runs": "skill_runs",
+        "automation_devices": "automation_devices",
+        "automation_tasks": "automation_tasks",
+        "automation_group_candidates": "automation_group_candidates",
         "wecom_archive_cursors": "wecom_archive_cursors",
         "wecom_archive_messages": "wecom_archive_messages",
         "resource_wallets": "resource_wallets",
@@ -1369,6 +2027,15 @@ class PostgresRepository:
         "supply_demand_cards": "supply_demand_cards",
         "supply_demand_applications": "supply_demand_applications",
         "opportunity_push_digests": "opportunity_push_digests",
+        "membership_orders": "membership_orders",
+        "membership_entitlements": "membership_entitlements",
+        "notification_preferences": "notification_preferences",
+        "wechat_subscription_grants": "wechat_subscription_grants",
+        "wechat_subscription_deliveries": "wechat_subscription_deliveries",
+        "referral_relations": "referral_relations",
+        "referral_rewards": "referral_rewards",
+        "referral_withdrawals": "referral_withdrawals",
+        "same_style_generations": "same_style_generations",
     }
     FIELD_COLUMNS = {
         "users": [
@@ -1383,6 +2050,23 @@ class PostgresRepository:
             ("bind_source", "text", "bindSource"),
             ("first_import_batch_id", "text", "firstImportBatchId"),
             ("last_import_batch_id", "text", "lastImportBatchId"),
+        ],
+        "wecom_bind_card_tokens": [
+            ("token_hash", "text", "tokenHash"),
+            ("welcome_code_hash", "text", "welcomeCodeHash"),
+            ("external_user_id", "text", "externalUserId"),
+            ("status", "text", "status"),
+            ("delivery_status", "text", "deliveryStatus"),
+            ("expires_at", "timestamptz", "expiresAt"),
+            ("used_at", "timestamptz", "usedAt"),
+            ("owner_user_id", "text", "ownerUserId"),
+            ("owner_openid", "text", "ownerOpenid"),
+        ],
+        "wecom_bind_card_assets": [
+            ("source_sha256", "text", "sourceSha256"),
+            ("media_id", "text", "mediaId"),
+            ("media_id_expires_at", "timestamptz", "mediaIdExpiresAt"),
+            ("status", "text", "status"),
         ],
         "import_batches": [
             ("external_user_id", "text", "externalUserId"),
@@ -1421,11 +2105,17 @@ class PostgresRepository:
             ("source_card_id", "text", "sourceCardId"),
             ("status", "text", "status"),
             ("title", "text", "title"),
+            ("share_state", "text", "shareState"),
+            ("intake_id", "text", "intakeId"),
+            ("idempotency_key", "text", "idempotencyKey"),
+            ("revision", "integer", "revision"),
         ],
         "showcase_pages": [
             ("owner_user_id", "text", "ownerUserId"),
             ("status", "text", "status"),
             ("name", "text", "name"),
+            ("intake_id", "text", "intakeId"),
+            ("idempotency_key", "text", "idempotencyKey"),
             ("published_at", "timestamptz", "publishedAt"),
         ],
         "view_events": [
@@ -1433,6 +2123,7 @@ class PostgresRepository:
             ("viewer_user_id", "text", "viewerUserId"),
             ("view_type", "text", "viewType"),
             ("anonymous_id", "text", "anonymousId"),
+            ("visitor_identity_id", "text", "visitorIdentityId"),
             ("share_id", "text", "shareId"),
             ("share_from_user_id", "text", "shareFromUserId"),
             ("scene", "text", "scene"),
@@ -1465,8 +2156,10 @@ class PostgresRepository:
             ("owner_user_id", "text", "ownerUserId"),
             ("card_id", "text", "cardId"),
             ("viewer_user_id", "text", "viewerUserId"),
+            ("visitor_identity_id", "text", "visitorIdentityId"),
             ("status", "text", "status"),
             ("contacted_at", "timestamptz", "contactedAt"),
+            ("version", "integer", "version"),
         ],
         "customer_actions": [
             ("owner_user_id", "text", "ownerUserId"),
@@ -1474,6 +2167,7 @@ class PostgresRepository:
             ("source_card_id", "text", "sourceCardId"),
             ("viewer_user_id", "text", "viewerUserId"),
             ("anonymous_id", "text", "anonymousId"),
+            ("visitor_identity_id", "text", "visitorIdentityId"),
             ("action_key", "text", "actionKey"),
         ],
         "message_threads": [
@@ -1557,6 +2251,36 @@ class PostgresRepository:
             ("model_provider", "text", "modelProvider"),
             ("started_at", "timestamptz", "startedAt"),
             ("ended_at", "timestamptz", "endedAt"),
+        ],
+        "automation_devices": [
+            ("name", "text", "name"),
+            ("platform", "text", "platform"),
+            ("hid_device_id", "text", "hidDeviceId"),
+            ("status", "text", "status"),
+            ("active_wechat_account_id", "text", "activeWechatAccountId"),
+            ("last_heartbeat_at", "timestamptz", "lastHeartbeatAt"),
+        ],
+        "automation_tasks": [
+            ("function_id", "text", "functionId"),
+            ("device_id", "text", "deviceId"),
+            ("target_wechat_account_id", "text", "targetWechatAccountId"),
+            ("status", "text", "status"),
+            ("attempts", "integer", "attempts"),
+            ("lease_token", "text", "leaseToken"),
+            ("lease_expires_at", "timestamptz", "leaseExpiresAt"),
+            ("idempotency_key", "text", "idempotencyKey"),
+            ("started_at", "timestamptz", "startedAt"),
+            ("finished_at", "timestamptz", "finishedAt"),
+        ],
+        "automation_group_candidates": [
+            ("device_id", "text", "deviceId"),
+            ("wechat_account_id", "text", "wechatAccountId"),
+            ("group_qr_code", "text", "groupQRCode"),
+            ("group_name", "text", "groupName"),
+            ("saved_at", "timestamptz", "savedAt"),
+            ("join_status", "text", "joinStatus"),
+            ("can_send", "boolean", "canSend"),
+            ("idempotency_key", "text", "idempotencyKey"),
         ],
         "wecom_archive_cursors": [
             ("corp_id", "text", "corpId"),
@@ -1692,6 +2416,65 @@ class PostgresRepository:
             ("status", "text", "status"),
             ("created_at_index", "timestamptz", "createdAt"),
         ],
+        "membership_orders": [
+            ("user_id", "text", "userId"),
+            ("status", "text", "status"),
+            ("payment_transaction_id", "text", "paymentTransactionId"),
+            ("paid_at", "timestamptz", "paidAt"),
+        ],
+        "membership_entitlements": [
+            ("user_id", "text", "userId"),
+            ("entitlement_key", "text", "entitlementKey"),
+            ("status", "text", "status"),
+            ("expires_at", "timestamptz", "expiresAt"),
+        ],
+        "notification_preferences": [
+            ("user_id", "text", "userId"),
+            ("important_customer_view_enabled", "boolean", "importantCustomerViewEnabled"),
+            ("ordinary_anonymous_view_enabled", "boolean", "ordinaryAnonymousViewEnabled"),
+            ("updated_at_source", "timestamptz", "updatedAt"),
+        ],
+        "wechat_subscription_grants": [
+            ("user_id", "text", "userId"),
+            ("template_id", "text", "templateId"),
+            ("request_id", "text", "requestId"),
+            ("status", "text", "status"),
+            ("source", "text", "source"),
+            ("authorized_at", "timestamptz", "authorizedAt"),
+            ("reserved_at", "timestamptz", "reservedAt"),
+            ("consumed_at", "timestamptz", "consumedAt"),
+            ("invalid_at", "timestamptz", "invalidAt"),
+        ],
+        "wechat_subscription_deliveries": [
+            ("owner_user_id", "text", "ownerUserId"),
+            ("grant_id", "text", "grantId"),
+            ("template_id", "text", "templateId"),
+            ("resource_type", "text", "resourceType"),
+            ("resource_id", "text", "resourceId"),
+            ("viewer_type", "text", "viewerType"),
+            ("dedupe_key", "text", "dedupeKey"),
+            ("status", "text", "status"),
+            ("sent_at", "timestamptz", "sentAt"),
+        ],
+        "referral_relations": [
+            ("inviter_user_id", "text", "inviterUserId"),
+            ("invitee_user_id", "text", "inviteeUserId"),
+        ],
+        "referral_rewards": [
+            ("inviter_user_id", "text", "inviterUserId"),
+            ("invitee_user_id", "text", "inviteeUserId"),
+            ("source_order_id", "text", "sourceOrderId"),
+            ("status", "text", "status"),
+        ],
+        "referral_withdrawals": [
+            ("user_id", "text", "userId"),
+            ("status", "text", "status"),
+        ],
+        "same_style_generations": [
+            ("owner_user_id", "text", "ownerUserId"),
+            ("idempotency_key", "text", "idempotencyKey"),
+            ("source_note_id", "text", "sourceNoteId"),
+        ],
     }
     INDEXES = {
         "import_batches": [
@@ -1702,6 +2485,15 @@ class PostgresRepository:
         "wecom_identity_bindings": [
             ("idx_wecom_identity_bindings_source_external", "source_type, external_user_id"),
             ("idx_wecom_identity_bindings_owner", "owner_user_id, updated_at"),
+        ],
+        "wecom_bind_card_tokens": [
+            ("idx_wecom_bind_card_tokens_welcome", "welcome_code_hash"),
+            ("idx_wecom_bind_card_tokens_external", "external_user_id, status"),
+            ("idx_wecom_bind_card_tokens_expiry", "expires_at"),
+        ],
+        "wecom_bind_card_assets": [
+            ("idx_wecom_bind_card_assets_status", "status, updated_at desc"),
+            ("idx_wecom_bind_card_assets_expiry", "media_id_expires_at"),
         ],
         "raw_messages": [
             ("idx_raw_messages_wecom_msg_id", "wecom_msg_id"),
@@ -1730,6 +2522,7 @@ class PostgresRepository:
             ("idx_view_events_card_date", "card_id, date_key"),
             ("idx_view_events_logged_viewer", "card_id, viewer_user_id"),
             ("idx_view_events_anonymous", "card_id, anonymous_id"),
+            ("idx_view_events_visitor_identity", "card_id, visitor_identity_id"),
             ("idx_view_events_share", "card_id, share_id, viewed_at"),
         ],
         "showcase_events": [
@@ -1797,6 +2590,19 @@ class PostgresRepository:
             ("idx_skill_runs_status_time", "status, started_at"),
             ("idx_skill_runs_skill_time", "skill_id, started_at"),
             ("idx_skill_runs_output_ref", "output_ref"),
+        ],
+        "automation_devices": [
+            ("idx_automation_devices_heartbeat", "status, last_heartbeat_at"),
+        ],
+        "automation_tasks": [
+            ("idx_automation_tasks_device_status", "device_id, status, created_at"),
+            ("idx_automation_tasks_ready", "device_id, status, created_at"),
+            ("idx_automation_tasks_idempotency", "idempotency_key"),
+        ],
+        "automation_group_candidates": [
+            ("idx_automation_group_candidates_account_time", "wechat_account_id, saved_at"),
+            ("idx_automation_group_candidates_qr", "group_qr_code"),
+            ("idx_automation_group_candidates_idempotency", "idempotency_key"),
         ],
         "wecom_archive_cursors": [
             ("idx_wecom_archive_cursors_corp", "corp_id"),
@@ -1870,6 +2676,37 @@ class PostgresRepository:
         "opportunity_push_digests": [
             ("idx_opportunity_push_owner_status", "owner_user_id, status, created_at_index"),
         ],
+        "membership_orders": [
+            ("idx_membership_orders_user_status", "user_id, status, updated_at"),
+            ("idx_membership_orders_transaction", "payment_transaction_id"),
+        ],
+        "membership_entitlements": [
+            ("idx_membership_entitlements_user_expiry", "user_id, status, expires_at"),
+        ],
+        "notification_preferences": [
+            ("idx_notification_preferences_user", "user_id"),
+        ],
+        "wechat_subscription_grants": [
+            ("idx_wechat_subscription_grants_user_status", "user_id, template_id, status, authorized_at"),
+        ],
+        "wechat_subscription_deliveries": [
+            ("idx_wechat_subscription_deliveries_owner_time", "owner_user_id, created_at"),
+            ("idx_wechat_subscription_deliveries_dedupe", "dedupe_key"),
+            ("idx_wechat_subscription_deliveries_status", "status, updated_at"),
+        ],
+        "referral_relations": [
+            ("idx_referral_relations_inviter", "inviter_user_id, created_at"),
+        ],
+        "referral_rewards": [
+            ("idx_referral_rewards_inviter_status", "inviter_user_id, status, updated_at"),
+            ("idx_referral_rewards_order", "source_order_id"),
+        ],
+        "referral_withdrawals": [
+            ("idx_referral_withdrawals_user_status", "user_id, status, updated_at"),
+        ],
+        "same_style_generations": [
+            ("idx_same_style_owner_time", "owner_user_id, created_at"),
+        ],
     }
 
     def __init__(self, database_url: str):
@@ -1930,6 +2767,89 @@ class PostgresRepository:
 
     def save_wecom_identity_binding(self, binding: WecomIdentityBinding) -> None:
         self._save_model("wecom_identity_bindings", binding)
+
+    def get_wecom_bind_card_token(self, token_hash: str) -> WecomBindCardToken | None:
+        rows = self._list_payloads(
+            "wecom_bind_card_tokens",
+            "token_hash = %s",
+            (token_hash,),
+            "updated_at desc, id desc",
+        )
+        return WecomBindCardToken.model_validate(rows[0]) if rows else None
+
+    def get_pending_wecom_bind_card_token(self, welcome_code_hash: str) -> WecomBindCardToken | None:
+        rows = self._list_payloads(
+            "wecom_bind_card_tokens",
+            "welcome_code_hash = %s",
+            (welcome_code_hash,),
+            "updated_at desc, id desc",
+        )
+        return WecomBindCardToken.model_validate(rows[0]) if rows else None
+
+    def save_wecom_bind_card_token(self, token: WecomBindCardToken) -> None:
+        self._save_model("wecom_bind_card_tokens", token)
+
+    def get_active_wecom_bind_card_asset(self) -> WecomBindCardAsset | None:
+        rows = self._list_payloads(
+            "wecom_bind_card_assets",
+            "status = %s",
+            ("active",),
+            "updated_at desc, id desc",
+        )
+        return WecomBindCardAsset.model_validate(rows[0]) if rows else None
+
+    def get_latest_wecom_bind_card_asset(self) -> WecomBindCardAsset | None:
+        rows = self._list_payloads(
+            "wecom_bind_card_assets",
+            "true",
+            (),
+            "updated_at desc, id desc",
+        )
+        return WecomBindCardAsset.model_validate(rows[0]) if rows else None
+
+    def save_wecom_bind_card_asset(self, asset: WecomBindCardAsset) -> None:
+        self._save_model("wecom_bind_card_assets", asset)
+
+    def consume_wecom_bind_card_token(
+        self,
+        token_hash: str,
+        owner_user_id: str,
+        owner_openid: str,
+        now: str,
+    ) -> WecomBindCardToken | None:
+        self._ensure_known_table("wecom_bind_card_tokens")
+        with psycopg.connect(self.database_url, row_factory=dict_row) as conn:
+            with conn.transaction():
+                row = conn.execute(
+                    """
+                    select payload
+                    from wecom_bind_card_tokens
+                    where token_hash = %s
+                    for update
+                    """,
+                    (token_hash,),
+                ).fetchone()
+                if not row:
+                    return None
+                token = WecomBindCardToken.model_validate(row["payload"])
+                if token.status != "issued" or token.deliveryStatus != "sent":
+                    return None
+                try:
+                    if parse_iso(token.expiresAt) <= parse_iso(now):
+                        return None
+                except Exception:
+                    return None
+                consumed = token.model_copy(
+                    update={
+                        "status": "consumed",
+                        "usedAt": now,
+                        "ownerUserId": owner_user_id,
+                        "ownerOpenid": owner_openid,
+                        "updatedAt": now,
+                    }
+                )
+                self._upsert_payload(conn, "wecom_bind_card_tokens", consumed.model_dump(mode="json"))
+                return consumed
 
     def list_import_batches(self, statuses: set[str] | None = None) -> list[ImportBatch]:
         if statuses:
@@ -1997,6 +2917,70 @@ class PostgresRepository:
 
     def save_showcase_page(self, showcase: ShowcasePage) -> None:
         self._save_model("showcase_pages", showcase)
+
+    def list_referral_relations(self) -> list[ReferralRelation]:
+        rows = self._list_payloads("referral_relations", "true", (), "created_at asc, id asc")
+        return [ReferralRelation.model_validate(row) for row in rows]
+
+    def find_same_style_generation(
+        self,
+        owner_user_id: str,
+        idempotency_key: str,
+    ) -> SameStyleGeneration | None:
+        rows = self._list_payloads(
+            "same_style_generations",
+            "owner_user_id = %s and idempotency_key = %s",
+            (owner_user_id, idempotency_key),
+            "created_at desc, id desc",
+        )
+        return SameStyleGeneration.model_validate(rows[0]) if rows else None
+
+    def find_latest_same_style_generation(
+        self,
+        owner_user_id: str,
+        mode: str,
+        source_note_id: str | None = None,
+        source_showcase_id: str | None = None,
+    ) -> SameStyleGeneration | None:
+        where_parts = ["owner_user_id = %s", "payload->>'mode' = %s"]
+        params: list[str] = [owner_user_id, mode]
+        if source_note_id:
+            where_parts.append("source_note_id = %s")
+            params.append(source_note_id)
+        else:
+            where_parts.append("source_note_id is null")
+        if source_showcase_id:
+            where_parts.append("payload->>'sourceShowcaseId' = %s")
+            params.append(source_showcase_id)
+        else:
+            where_parts.append("payload->>'sourceShowcaseId' is null")
+        rows = self._list_payloads(
+            "same_style_generations",
+            " and ".join(where_parts),
+            tuple(params),
+            "created_at desc, id desc",
+        )
+        return SameStyleGeneration.model_validate(rows[0]) if rows else None
+
+    def list_same_style_generations(self, owner_user_id: str) -> list[SameStyleGeneration]:
+        rows = self._list_payloads(
+            "same_style_generations",
+            "owner_user_id = %s",
+            (owner_user_id,),
+            "created_at desc, id desc",
+        )
+        return [SameStyleGeneration.model_validate(row) for row in rows]
+
+    def save_same_style_generation(
+        self,
+        generation: SameStyleGeneration,
+        referral_relation: ReferralRelation | None = None,
+    ) -> None:
+        with psycopg.connect(self.database_url) as conn:
+            with conn.transaction():
+                if referral_relation:
+                    self._upsert_payload(conn, "referral_relations", referral_relation.model_dump(mode="json"))
+                self._upsert_payload(conn, "same_style_generations", generation.model_dump(mode="json"))
 
     def delete_showcase_page(self, showcase_id: str) -> None:
         with psycopg.connect(self.database_url) as conn:
@@ -2130,12 +3114,64 @@ class PostgresRepository:
                     note.visibilityConfig = config
                     self._upsert_payload(conn, "user_notes", note.model_dump(mode="json"))
 
-    def list_view_events_for_card(self, card_id: str) -> list[dict]:
+    def list_view_events_for_card(
+        self,
+        card_id: str,
+        viewer_user_id: str | None = None,
+        anonymous_id: str | None = None,
+        visitor_identity_id: str | None = None,
+        limit: int | None = None,
+    ) -> list[dict]:
+        where_parts = ["card_id = %s"]
+        params: list[str] = [card_id]
+        identity_parts = []
+        if viewer_user_id:
+            identity_parts.append("viewer_user_id = %s")
+            params.append(viewer_user_id)
+        if anonymous_id:
+            identity_parts.append("anonymous_id = %s")
+            params.append(anonymous_id)
+        if visitor_identity_id:
+            identity_parts.append("visitor_identity_id = %s")
+            params.append(visitor_identity_id)
+        if identity_parts:
+            where_parts.append("(" + " or ".join(identity_parts) + ")")
+        limit_sql = ""
+        if limit is not None:
+            safe_limit = max(1, min(int(limit), 100))
+            limit_sql = f" limit {safe_limit}"
         rows = self._list_payloads(
             "view_events",
-            "card_id = %s",
-            (card_id,),
+            " and ".join(where_parts),
+            tuple(params),
             "viewed_at desc, id desc",
+            limit_sql=limit_sql,
+        )
+        return [ViewEvent.model_validate(row) for row in rows]
+
+    def list_view_events_for_cards(self, card_ids: set[str]) -> dict[str, list[ViewEvent]]:
+        if not card_ids:
+            return {}
+        rows = self._list_payloads(
+            "view_events",
+            "card_id = any(%s)",
+            (list(card_ids),),
+            "viewed_at desc, id desc",
+        )
+        grouped: dict[str, list[ViewEvent]] = {card_id: [] for card_id in card_ids}
+        for row in rows:
+            event = ViewEvent.model_validate(row)
+            grouped.setdefault(event.cardId, []).append(event)
+        return grouped
+
+    def list_view_events_for_viewer(self, viewer_user_id: str, limit: int = 1000) -> list[ViewEvent]:
+        safe_limit = max(1, min(int(limit or 1000), 1000))
+        rows = self._list_payloads(
+            "view_events",
+            "viewer_user_id = %s",
+            (viewer_user_id,),
+            "viewed_at desc, id desc",
+            limit_sql=f" limit {safe_limit}",
         )
         return [ViewEvent.model_validate(row) for row in rows]
 
@@ -2154,6 +3190,108 @@ class PostgresRepository:
         )
         return [ShowcaseEvent.model_validate(row) for row in rows]
 
+    def list_showcase_events_for_showcases(self, showcase_ids: set[str]) -> dict[str, list[ShowcaseEvent]]:
+        if not showcase_ids:
+            return {}
+        rows = self._list_payloads(
+            "showcase_events",
+            "showcase_id = any(%s)",
+            (list(showcase_ids),),
+            "created_at desc, id desc",
+        )
+        grouped: dict[str, list[ShowcaseEvent]] = {showcase_id: [] for showcase_id in showcase_ids}
+        for row in rows:
+            event = ShowcaseEvent.model_validate(row)
+            grouped.setdefault(event.showcaseId, []).append(event)
+        return grouped
+
+    def get_notification_preference(self, user_id: str) -> NotificationPreference | None:
+        rows = self._list_payloads("notification_preferences", "user_id = %s", (user_id,), "updated_at desc, id desc")
+        return NotificationPreference.model_validate(rows[0]) if rows else None
+
+    def save_notification_preference(self, preference: NotificationPreference) -> None:
+        self._save_model("notification_preferences", preference)
+
+    def list_wechat_subscription_grants(self, user_id: str, template_id: str | None = None) -> list[WechatSubscriptionGrant]:
+        where = "user_id = %s"
+        params: list[str] = [user_id]
+        if template_id:
+            where += " and template_id = %s"
+            params.append(template_id)
+        rows = self._list_payloads("wechat_subscription_grants", where, tuple(params), "authorized_at desc, id desc")
+        return [WechatSubscriptionGrant.model_validate(row) for row in rows]
+
+    def get_wechat_subscription_grant(self, grant_id: str) -> WechatSubscriptionGrant | None:
+        payload = self.get_payload_by_id("wechat_subscription_grants", grant_id)
+        return WechatSubscriptionGrant.model_validate(payload) if payload else None
+
+    def save_wechat_subscription_grant(self, grant: WechatSubscriptionGrant) -> None:
+        self._save_model("wechat_subscription_grants", grant)
+
+    def reserve_wechat_subscription_grant(self, user_id: str, template_id: str, now: str) -> WechatSubscriptionGrant | None:
+        with psycopg.connect(self.database_url, row_factory=dict_row) as conn:
+            with conn.transaction():
+                row = conn.execute(
+                    """
+                    with candidate as (
+                        select id
+                        from wechat_subscription_grants
+                        where user_id = %s and template_id = %s and status = 'available'
+                        order by authorized_at asc, id asc
+                        for update skip locked
+                        limit 1
+                    )
+                    update wechat_subscription_grants as grants
+                    set payload = jsonb_set(jsonb_set(grants.payload, '{status}', '"reserved"'::jsonb), '{reservedAt}', to_jsonb(%s::text)),
+                        status = 'reserved',
+                        reserved_at = %s::timestamptz,
+                        updated_at = %s::timestamptz
+                    where grants.id in (select id from candidate)
+                    returning grants.payload
+                    """,
+                    (user_id, template_id, now, now, now),
+                ).fetchone()
+        return WechatSubscriptionGrant.model_validate(row["payload"]) if row else None
+
+    def release_stale_wechat_subscription_grants(self, cutoff: str, now: str) -> int:
+        with psycopg.connect(self.database_url) as conn:
+            with conn.transaction():
+                result = conn.execute(
+                    """
+                    update wechat_subscription_grants
+                    set payload = jsonb_set(
+                        jsonb_set(payload - 'reservedAt', '{status}', '"available"'::jsonb),
+                        '{updatedAt}', to_jsonb(%s::text)
+                    ),
+                    status = 'available',
+                    reserved_at = null,
+                    updated_at = %s::timestamptz
+                    where status = 'reserved' and reserved_at <= %s::timestamptz
+                    """,
+                    (now, now, cutoff),
+                )
+                return result.rowcount
+
+    def list_wechat_subscription_deliveries(self, owner_user_id: str, limit: int = 100) -> list[WechatSubscriptionDelivery]:
+        rows = self._list_payloads(
+            "wechat_subscription_deliveries",
+            "owner_user_id = %s",
+            (owner_user_id,),
+            "created_at desc, id desc",
+        )
+        return [WechatSubscriptionDelivery.model_validate(row) for row in rows[:limit]]
+
+    def get_wechat_subscription_delivery(self, delivery_id: str) -> WechatSubscriptionDelivery | None:
+        payload = self.get_payload_by_id("wechat_subscription_deliveries", delivery_id)
+        return WechatSubscriptionDelivery.model_validate(payload) if payload else None
+
+    def find_wechat_subscription_delivery_by_dedupe_key(self, dedupe_key: str) -> WechatSubscriptionDelivery | None:
+        rows = self._list_payloads("wechat_subscription_deliveries", "dedupe_key = %s", (dedupe_key,), "created_at desc, id desc")
+        return WechatSubscriptionDelivery.model_validate(rows[0]) if rows else None
+
+    def save_wechat_subscription_delivery(self, delivery: WechatSubscriptionDelivery) -> None:
+        self._save_model("wechat_subscription_deliveries", delivery)
+
     def list_relay_entries_for_card(self, card_id: str, relay_status: str = "active") -> list[dict]:
         rows = self._list_payloads(
             "relay_entries",
@@ -2162,6 +3300,25 @@ class PostgresRepository:
             "created_at desc, id desc",
         )
         return [RelayEntry.model_validate(row) for row in rows]
+
+    def list_relay_entries_for_cards(
+        self,
+        card_ids: set[str],
+        relay_status: str | None = "active",
+    ) -> dict[str, list[RelayEntry]]:
+        if not card_ids:
+            return {}
+        where = "card_id = any(%s)"
+        params: list[object] = [list(card_ids)]
+        if relay_status:
+            where += " and status = %s"
+            params.append(relay_status)
+        rows = self._list_payloads("relay_entries", where, tuple(params), "created_at desc, id desc")
+        grouped: dict[str, list[RelayEntry]] = {card_id: [] for card_id in card_ids}
+        for row in rows:
+            relay = RelayEntry.model_validate(row)
+            grouped.setdefault(relay.cardId, []).append(relay)
+        return grouped
 
     def add_relay_entry(self, relay: RelayEntry) -> None:
         self._save_model("relay_entries", relay)
@@ -2206,6 +3363,22 @@ class PostgresRepository:
     def save_lead_reminder(self, reminder: LeadReminder) -> None:
         self._save_model("lead_reminders", reminder)
 
+    def save_lead_reminder_if_version(self, reminder: LeadReminder, expected_version: int) -> bool:
+        self._ensure_known_table("lead_reminders")
+        with psycopg.connect(self.database_url, row_factory=dict_row) as conn:
+            with conn.transaction():
+                row = conn.execute(
+                    "select payload from lead_reminders where id = %s for update",
+                    (reminder.id,),
+                ).fetchone()
+                if not row:
+                    return False
+                current = LeadReminder.model_validate(row["payload"])
+                if int(current.version or 0) != int(expected_version):
+                    return False
+                self._upsert_payload(conn, "lead_reminders", reminder.model_dump(mode="json"))
+                return True
+
     def delete_lead_reminder(self, reminder_id: str) -> None:
         with psycopg.connect(self.database_url) as conn:
             conn.execute("delete from lead_reminders where id = %s", (reminder_id,))
@@ -2218,22 +3391,50 @@ class PostgresRepository:
         note_id: str,
         viewer_user_id: str | None = None,
         anonymous_id: str | None = None,
+        visitor_identity_id: str | None = None,
+        limit: int | None = None,
     ) -> list[CustomerAction]:
         where_parts = ["note_id = %s"]
         params: list[str] = [note_id]
+        identity_parts = []
         if viewer_user_id:
-            where_parts.append("viewer_user_id = %s")
+            identity_parts.append("viewer_user_id = %s")
             params.append(viewer_user_id)
-        elif anonymous_id:
-            where_parts.append("anonymous_id = %s")
+        if anonymous_id:
+            identity_parts.append("anonymous_id = %s")
             params.append(anonymous_id)
+        if visitor_identity_id:
+            identity_parts.append("visitor_identity_id = %s")
+            params.append(visitor_identity_id)
+        if identity_parts:
+            where_parts.append("(" + " or ".join(identity_parts) + ")")
+        limit_sql = ""
+        if limit is not None:
+            safe_limit = max(1, min(int(limit), 100))
+            limit_sql = f" limit {safe_limit}"
         rows = self._list_payloads(
             "customer_actions",
             " and ".join(where_parts),
             tuple(params),
             "created_at desc, id desc",
+            limit_sql=limit_sql,
         )
         return [CustomerAction.model_validate(row) for row in rows]
+
+    def list_customer_actions_for_notes(self, note_ids: set[str]) -> dict[str, list[CustomerAction]]:
+        if not note_ids:
+            return {}
+        rows = self._list_payloads(
+            "customer_actions",
+            "note_id = any(%s)",
+            (list(note_ids),),
+            "created_at desc, id desc",
+        )
+        grouped: dict[str, list[CustomerAction]] = {note_id: [] for note_id in note_ids}
+        for row in rows:
+            action = CustomerAction.model_validate(row)
+            grouped.setdefault(action.noteId, []).append(action)
+        return grouped
 
     def get_customer_action(self, action_id: str) -> CustomerAction | None:
         payload = self.get_payload_by_id("customer_actions", action_id)
@@ -2480,8 +3681,12 @@ class PostgresRepository:
         rows = self._list_payloads("media_assets", "url = %s and status = 'active'", (url,), "updated_at desc, id desc")
         return MediaAsset.model_validate(rows[0]) if rows else None
 
-    def save_media_asset(self, asset: MediaAsset) -> None:
-        self._save_model("media_assets", asset)
+    def save_media_asset(self, asset: MediaAsset) -> bool:
+        try:
+            self._save_model("media_assets", asset)
+        except psycopg.errors.UniqueViolation:
+            return False
+        return True
 
     def save_media_asset_ref(self, ref: MediaAssetRef) -> None:
         self._save_model("media_asset_refs", ref)
@@ -2505,6 +3710,31 @@ class PostgresRepository:
             params.append(ref_id)
         rows = self._list_payloads("media_asset_refs", " and ".join(where_parts), tuple(params), "created_at desc, id desc")
         return [MediaAssetRef.model_validate(row) for row in rows]
+
+    def delete_media_asset_refs(
+        self,
+        asset_id: str,
+        ref_type: str | None = None,
+        ref_id: str | None = None,
+        usage: str | None = None,
+    ) -> int:
+        where_parts = ["asset_id = %s"]
+        params: list[str] = [asset_id]
+        if ref_type:
+            where_parts.append("ref_type = %s")
+            params.append(ref_type)
+        if ref_id:
+            where_parts.append("ref_id = %s")
+            params.append(ref_id)
+        if usage:
+            where_parts.append("usage = %s")
+            params.append(usage)
+        with psycopg.connect(self.database_url) as conn:
+            result = conn.execute(
+                f"delete from media_asset_refs where {' and '.join(where_parts)}",
+                tuple(params),
+            )
+        return int(result.rowcount or 0)
 
     def save_sync_task(self, task: SyncTask) -> None:
         self._save_model("sync_tasks", task)
@@ -2601,6 +3831,163 @@ class PostgresRepository:
         )
         return [SkillRun.model_validate(row) for row in rows]
 
+    def get_automation_device(self, device_id: str) -> AutomationDevice | None:
+        payload = self.get_payload_by_id("automation_devices", device_id)
+        return AutomationDevice.model_validate(payload) if payload else None
+
+    def list_automation_devices(self, limit: int = 100) -> list[AutomationDevice]:
+        rows = self._list_payloads(
+            "automation_devices",
+            "true",
+            (),
+            "updated_at desc, id desc limit %s" % int(limit),
+        )
+        return [AutomationDevice.model_validate(row) for row in rows]
+
+    def save_automation_device(self, device: AutomationDevice) -> None:
+        self._save_model("automation_devices", device)
+
+    def get_automation_task(self, task_id: str) -> AutomationTask | None:
+        payload = self.get_payload_by_id("automation_tasks", task_id)
+        return AutomationTask.model_validate(payload) if payload else None
+
+    def find_automation_task_by_idempotency_key(self, idempotency_key: str) -> AutomationTask | None:
+        key = str(idempotency_key or "").strip()
+        if not key:
+            return None
+        rows = self._list_payloads(
+            "automation_tasks",
+            "idempotency_key = %s",
+            (key,),
+            "created_at desc, id desc",
+        )
+        return AutomationTask.model_validate(rows[0]) if rows else None
+
+    def save_automation_task(self, task: AutomationTask) -> None:
+        self._save_model("automation_tasks", task)
+
+    def list_automation_tasks(
+        self,
+        device_id: str | None = None,
+        statuses: set[str] | None = None,
+        limit: int = 50,
+    ) -> list[AutomationTask]:
+        where_parts = ["true"]
+        params: list[object] = []
+        if device_id:
+            where_parts.append("device_id = %s")
+            params.append(device_id)
+        if statuses:
+            where_parts.append("status = any(%s)")
+            params.append(list(statuses))
+        rows = self._list_payloads(
+            "automation_tasks",
+            " and ".join(where_parts),
+            tuple(params),
+            "created_at desc, id desc limit %s" % int(limit),
+        )
+        return [AutomationTask.model_validate(row) for row in rows]
+
+    def claim_next_automation_task(
+        self,
+        device_id: str,
+        active_wechat_account_id: str | None,
+        now: str,
+        lease_expires_at: str,
+        lease_token: str,
+    ) -> AutomationTask | None:
+        with psycopg.connect(self.database_url, row_factory=dict_row) as conn:
+            with conn.transaction():
+                active = conn.execute(
+                    """
+                    select id
+                    from automation_tasks
+                    where device_id = %s
+                      and status = 'running'
+                      and (lease_expires_at is null or lease_expires_at > %s::timestamptz)
+                    limit 1
+                    for update
+                    """,
+                    (device_id, now),
+                ).fetchone()
+                if active:
+                    return None
+                row = conn.execute(
+                    """
+                    select payload
+                    from automation_tasks
+                    where device_id = %s
+                      and (
+                        status = 'pending'
+                        or (status = 'running' and lease_expires_at is not null and lease_expires_at <= %s::timestamptz)
+                      )
+                      and (
+                        target_wechat_account_id is null
+                        or target_wechat_account_id = %s
+                        or function_id = 'wechat.switch_account'
+                      )
+                    order by created_at asc, id asc
+                    limit 1
+                    for update skip locked
+                    """,
+                    (device_id, now, active_wechat_account_id),
+                ).fetchone()
+                if not row:
+                    return None
+                task = AutomationTask.model_validate(row["payload"])
+                updated = task.model_copy(
+                    update={
+                        "status": "running",
+                        "attempts": task.attempts + 1,
+                        "leaseToken": lease_token,
+                        "leaseExpiresAt": lease_expires_at,
+                        "startedAt": task.startedAt or now,
+                        "updatedAt": now,
+                    }
+                )
+                self._upsert_payload(conn, "automation_tasks", updated.model_dump(mode="json"))
+                return updated
+
+    def get_automation_group_candidate(self, candidate_id: str) -> AutomationGroupCandidate | None:
+        payload = self.get_payload_by_id("automation_group_candidates", candidate_id)
+        return AutomationGroupCandidate.model_validate(payload) if payload else None
+
+    def find_automation_group_candidate_by_idempotency_key(self, idempotency_key: str) -> AutomationGroupCandidate | None:
+        key = str(idempotency_key or "").strip()
+        if not key:
+            return None
+        rows = self._list_payloads(
+            "automation_group_candidates",
+            "idempotency_key = %s",
+            (key,),
+            "saved_at desc, id desc",
+        )
+        return AutomationGroupCandidate.model_validate(rows[0]) if rows else None
+
+    def save_automation_group_candidate(self, candidate: AutomationGroupCandidate) -> None:
+        self._save_model("automation_group_candidates", candidate)
+
+    def list_automation_group_candidates(
+        self,
+        wechat_account_id: str | None = None,
+        limit: int = 100,
+    ) -> list[AutomationGroupCandidate]:
+        if wechat_account_id:
+            rows = self._list_payloads(
+                "automation_group_candidates",
+                "wechat_account_id = %s",
+                (wechat_account_id,),
+                "saved_at desc, id desc limit %s" % int(limit),
+            )
+        else:
+            rows = self._list_payloads(
+                "automation_group_candidates",
+                "true",
+                (),
+                "saved_at desc, id desc limit %s" % int(limit),
+            )
+        return [AutomationGroupCandidate.model_validate(row) for row in rows]
+
     def get_wecom_archive_cursor(self, corp_id: str) -> WecomArchiveCursor | None:
         rows = self._list_payloads(
             "wecom_archive_cursors",
@@ -2628,6 +4015,33 @@ class PostgresRepository:
                 (list(msg_ids),),
             ).fetchall()
         return {row["msg_id"] for row in rows if row["msg_id"]}
+
+    def get_wecom_archive_message_by_msg_id(self, msg_id: str) -> WecomArchiveMessage | None:
+        rows = self._list_payloads(
+            "wecom_archive_messages",
+            "msg_id = %s",
+            (msg_id,),
+            "seq desc, created_at desc, id desc",
+        )
+        return WecomArchiveMessage.model_validate(rows[0]) if rows else None
+
+    def get_wecom_archive_message_by_generated_note_id(self, note_id: str) -> WecomArchiveMessage | None:
+        rows = self._list_payloads(
+            "wecom_archive_messages",
+            "generated_note_id = %s",
+            (note_id,),
+            "seq desc, created_at desc, id desc",
+        )
+        return WecomArchiveMessage.model_validate(rows[0]) if rows else None
+
+    def list_wecom_archive_messages_by_generated_note_id(self, note_id: str) -> list[WecomArchiveMessage]:
+        rows = self._list_payloads(
+            "wecom_archive_messages",
+            "generated_note_id = %s",
+            (note_id,),
+            "seq asc, created_at asc, id asc",
+        )
+        return [WecomArchiveMessage.model_validate(row) for row in rows]
 
     def list_wecom_archive_messages(self, limit: int = 100) -> list[WecomArchiveMessage]:
         rows = self._list_payloads(
@@ -2912,6 +4326,17 @@ class PostgresRepository:
                         conn.execute(f"create index if not exists {index_name} on {table_name} ({expression})")
                 conn.execute(
                     """
+                    create table if not exists ops_feature_flags (
+                        key text primary key,
+                        enabled boolean not null,
+                        payment_required boolean not null,
+                        updated_at timestamptz not null default now(),
+                        updated_by text
+                    )
+                    """
+                )
+                conn.execute(
+                    """
                     create unique index if not exists uq_users_openid
                     on users (openid)
                     where openid is not null
@@ -2922,6 +4347,20 @@ class PostgresRepository:
                     create unique index if not exists uq_raw_messages_wecom_msg_id
                     on raw_messages (wecom_msg_id)
                     where wecom_msg_id is not null
+                    """
+                )
+                conn.execute(
+                    """
+                    create unique index if not exists uq_wecom_bind_card_tokens_token_hash
+                    on wecom_bind_card_tokens (token_hash)
+                    where token_hash is not null
+                    """
+                )
+                conn.execute(
+                    """
+                    create unique index if not exists uq_wecom_bind_card_tokens_welcome_hash
+                    on wecom_bind_card_tokens (welcome_code_hash)
+                    where welcome_code_hash is not null
                     """
                 )
                 conn.execute(
@@ -2981,6 +4420,64 @@ class PostgresRepository:
                     on opportunity_lead_saves (lead_id, user_id)
                     """
                 )
+                conn.execute(
+                    """
+                    create unique index if not exists uq_membership_orders_transaction
+                    on membership_orders (payment_transaction_id)
+                    where payment_transaction_id is not null
+                    """
+                )
+                conn.execute(
+                    """
+                    create unique index if not exists uq_referral_relations_invitee
+                    on referral_relations (invitee_user_id)
+                    """
+                )
+                conn.execute(
+                    """
+                    create unique index if not exists uq_referral_rewards_order
+                    on referral_rewards (source_order_id)
+                    """
+                )
+                conn.execute(
+                    """
+                    create unique index if not exists uq_same_style_owner_key
+                    on same_style_generations (owner_user_id, idempotency_key)
+                    """
+                )
+                conn.execute(
+                    """
+                    create unique index if not exists uq_user_notes_owner_idempotency
+                    on user_notes (owner_user_id, idempotency_key)
+                    where idempotency_key is not null
+                    """
+                )
+                conn.execute(
+                    """
+                    create unique index if not exists uq_showcase_pages_owner_idempotency
+                    on showcase_pages (owner_user_id, idempotency_key)
+                    where idempotency_key is not null
+                    """
+                )
+                conn.execute(
+                    """
+                    create unique index if not exists uq_notification_preferences_user
+                    on notification_preferences (user_id)
+                    """
+                )
+                conn.execute(
+                    """
+                    create unique index if not exists uq_wechat_subscription_deliveries_dedupe
+                    on wechat_subscription_deliveries (dedupe_key)
+                    """
+                )
+                conn.execute(
+                    """
+                    create unique index if not exists uq_wechat_subscription_grants_request
+                    on wechat_subscription_grants (user_id, template_id, request_id)
+                    where request_id is not null and request_id <> ''
+                    """
+                )
 
     def _upsert_payload(self, conn, table_name: str, payload: dict) -> None:
         payload = strip_unicode_surrogates(payload)
@@ -3012,11 +4509,18 @@ class PostgresRepository:
             with conn.transaction():
                 self._upsert_payload(conn, table_name, item.model_dump(mode="json"))
 
-    def _list_payloads(self, table_name: str, where_sql: str, params: tuple, order_sql: str) -> list[dict]:
+    def _list_payloads(
+        self,
+        table_name: str,
+        where_sql: str,
+        params: tuple,
+        order_sql: str,
+        limit_sql: str = "",
+    ) -> list[dict]:
         self._ensure_known_table(table_name)
         with psycopg.connect(self.database_url, row_factory=dict_row) as conn:
             rows = conn.execute(
-                f"select payload from {table_name} where {where_sql} order by {order_sql}",
+                f"select payload from {table_name} where {where_sql} order by {order_sql}{limit_sql}",
                 params,
             ).fetchall()
         return [row["payload"] for row in rows]

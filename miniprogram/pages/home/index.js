@@ -1,5 +1,6 @@
 const resourceStore = require("../../stores/resource-store");
 const api = require("../../services/api");
+const customerIntelligenceStore = require("../../stores/customer-intelligence-store");
 const { buildDashboard, getCurrentUser } = require("../../utils/dashboard");
 const { navigateToResourceView } = require("../../utils/resource-navigation");
 const { getModeConfig } = require("../../utils/workspace-mode");
@@ -350,8 +351,12 @@ function buildHomeRadarEntry(dashboard = {}) {
   const alerts = dashboard.opportunityAlerts || [];
   const profiles = dashboard.radarProfiles || [];
   const revivalAlerts = dashboard.revivalAlerts || [];
+  const todaySummary = dashboard.todayBusinessSummary || {};
   return {
     alertCount: alerts.length,
+    todayShareCount: Number(todaySummary.shareCount || 0),
+    todayOpenCount: Number(todaySummary.visitorCount || 0),
+    todayFollowupCount: Number(todaySummary.pendingLeadCount || 0),
     highIntentCount: summary.todayHighIntentCount || summary.highIntentCount || profiles.filter((item) => item.intentLevel === "高").length || 0,
     pendingFollowupCount: summary.pendingFollowupCount || alerts.length || 0,
     revivalCount: summary.revivalCount || revivalAlerts.length || 0,
@@ -373,6 +378,182 @@ function buildHomeStats(dashboard = {}, homeUi = HOME_UI_BY_MODE.property) {
   ];
 }
 
+function getSalesRangeSummary(intelligence = {}, dashboard = {}, range = "total") {
+  const rangeSummaries = dashboard.rangeSummaries || {};
+  if (rangeSummaries[range]) return rangeSummaries[range];
+  if (range === "today") return dashboard.todayBusinessSummary || {};
+  return dashboard.businessSummary || intelligence.summary || {};
+}
+
+function getFeedbackRangeTitle(range = "total") {
+  if (range === "today") return "今日数据";
+  if (range === "last7") return "近7日数据";
+  return "累计数据";
+}
+
+function buildSalesHomeState(cards = [], intelligence = {}, dashboard = {}, range = "total") {
+  const summary = intelligence.summary || {};
+  const alerts = dashboard.opportunityAlerts || [];
+  const rangeSummary = getSalesRangeSummary(intelligence, dashboard, range);
+  const hasRangeSummary = Boolean(rangeSummary && Object.prototype.hasOwnProperty.call(rangeSummary, "shareCount"));
+  const pendingCount = hasRangeSummary ? Number(rangeSummary.pendingLeadCount || 0) : Number(summary.pendingLeadCount || 0);
+  const visitorCount = hasRangeSummary ? Number(rangeSummary.visitorCount || 0) : Number(summary.visitorCount || dashboard.totalUv || 0);
+  const repeatCount = Number(summary.repeatVisitorCount || 0);
+  const interactionCount = hasRangeSummary
+    ? Number(rangeSummary.consultCount || rangeSummary.todayActionCount || 0)
+    : Number(summary.newInteractionCount || dashboard.totalCustomerActivity || 0);
+  const signalCount = visitorCount + interactionCount;
+  const sentCount = hasRangeSummary ? Number(rangeSummary.shareCount || 0) : Math.max(
+    cards.filter((card) => Number(((card.stats || {}).shareCount) || 0) > 0 || Number(((card.stats || {}).pv) || 0) > 0).length,
+    Number(summary.feedbackResourceCount || 0)
+  );
+  const incompleteCount = cards.filter((card) => card.salesCheck && card.salesCheck.tone === "warn").length;
+  const firstAlert = alerts[0] || null;
+
+  if (!cards.length) {
+    return {
+      key: "empty",
+      eyebrow: "从第一份资料开始",
+      title: "先做一份能发给客户的资料",
+      desc: "粘贴文案、图片或链接，整理好后直接分享到客户。",
+      action: "添加第一份资料",
+      actionKey: "add",
+      step: 0,
+      sentCount,
+      visitorCount,
+      repeatCount,
+      interactionCount,
+      signalCount,
+      pendingCount,
+      incompleteCount
+    };
+  }
+  if (pendingCount > 0 || firstAlert) {
+    const locked = intelligence.locked === true;
+    return {
+      key: "followup",
+      eyebrow: `当前有 ${pendingCount || 1} 条值得处理`,
+      title: firstAlert ? (firstAlert.message || "有客户正在认真看资料") : "先处理最值得联系的客户",
+      desc: firstAlert ? (firstAlert.reason || firstAlert.suggestedAction || "查看客户关注点，再决定怎么联系。") : "查看客户最近看了什么，以及下一步建议。",
+      action: locked ? "解锁并跟进" : "查看并跟进",
+      actionKey: locked ? "membership" : "radar",
+      step: 3,
+      sentCount,
+      visitorCount,
+      repeatCount,
+      interactionCount,
+      signalCount,
+      pendingCount,
+      incompleteCount
+    };
+  }
+  if (signalCount > 0) {
+    const locked = intelligence.locked === true;
+    return {
+      key: "signal",
+      eyebrow: "客户反馈已回来",
+      title: repeatCount ? `有 ${repeatCount} 位访客重复查看` : `已有 ${visitorCount || interactionCount} 条客户反馈`,
+      desc: locked ? "反馈已安全记录，开通后可查看身份、联系方式和完整轨迹。" : "查看他们关注的资料和完整访问轨迹。",
+      action: locked ? "解锁客户信息链" : "查看客户反馈",
+      actionKey: locked ? "membership" : "radar",
+      step: 2,
+      sentCount,
+      visitorCount,
+      repeatCount,
+      interactionCount,
+      signalCount,
+      pendingCount,
+      incompleteCount
+    };
+  }
+  if (sentCount > 0) {
+    return {
+      key: "waiting",
+      eyebrow: `${sentCount} 份资料已经发出`,
+      title: "等客户打开，反馈会回到这里",
+      desc: "你也可以继续发一份更匹配客户需求的资料。",
+      action: "再选一份发客户",
+      actionKey: "library",
+      step: 1,
+      sentCount,
+      visitorCount,
+      repeatCount,
+      interactionCount,
+      signalCount,
+      pendingCount,
+      incompleteCount
+    };
+  }
+  return {
+    key: "ready",
+    eyebrow: `已有 ${cards.length} 份资料可用`,
+    title: incompleteCount === cards.length ? "先完善一份，再发给客户" : "选一份资料，发给今天要跟的客户",
+    desc: incompleteCount ? `其中 ${incompleteCount} 份还可补强，完善标题、图片或联系方式后更容易获得回复。` : "客户打开后，访客和动作会自动回到首页。",
+    action: incompleteCount === cards.length ? "去完善资料" : "选择资料发客户",
+    actionKey: "library",
+    step: 0,
+    sentCount,
+    visitorCount,
+    repeatCount,
+    interactionCount,
+    signalCount,
+    pendingCount,
+    incompleteCount
+  };
+}
+
+function buildFeedbackSummary(intelligence = {}, dashboard = {}, range = "total", cards = []) {
+  const rangeSummary = getSalesRangeSummary(intelligence, dashboard, range);
+  const hasRangeSummary = Boolean(rangeSummary && Object.prototype.hasOwnProperty.call(rangeSummary, "shareCount"));
+  return {
+    sentCount: hasRangeSummary
+      ? Number(rangeSummary.shareCount || 0)
+      : Math.max(
+        cards.filter((card) => Number(((card.stats || {}).shareCount) || 0) > 0 || Number(((card.stats || {}).pv) || 0) > 0).length,
+        Number((intelligence.summary || {}).feedbackResourceCount || 0)
+      ),
+    visitorCount: hasRangeSummary
+      ? Number(rangeSummary.visitorCount || 0)
+      : Number((intelligence.summary || {}).visitorCount || dashboard.totalUv || 0),
+    pendingCount: hasRangeSummary
+      ? Number(rangeSummary.pendingLeadCount || 0)
+      : Number((intelligence.summary || {}).pendingLeadCount || 0),
+  };
+}
+
+function buildPriorityCustomer(intelligence = {}, dashboard = {}) {
+  const locked = intelligence.locked === true;
+  const alert = (dashboard.opportunityAlerts || [])[0] || null;
+  const preview = (intelligence.signalPreview || [])[0] || null;
+  if (!alert && !preview) return { visible: false };
+  if (locked) {
+    return {
+      visible: true,
+      locked: true,
+      eyebrow: "最高优先级客户",
+      name: (preview && preview.identityLabel) || "一位客户",
+      avatarText: "?",
+      signal: (preview && preview.signal) || "正在查看你的资料",
+      source: preview && preview.noteCount ? `查看了 ${preview.noteCount} 份资料` : "客户身份和来源资料已安全记录",
+      suggestion: "解锁后查看身份、联系方式、完整轨迹和跟进建议。",
+      primaryAction: "解锁身份与轨迹"
+    };
+  }
+  const name = alert.nickname || alert.customerName || alert.name || "一位客户";
+  const source = alert.noteTitle || ((alert.noteTitles || [])[0]) || alert.sourceTitle || "客户资料";
+  return {
+    visible: true,
+    locked: false,
+    eyebrow: "最高优先级客户",
+    name,
+    avatarText: String(name).slice(0, 1),
+    signal: alert.message || alert.reason || "有新的客户行为值得关注",
+    source: `最近查看：${source}`,
+    suggestion: alert.suggestedAction || alert.reason || "查看完整轨迹，再决定怎么联系。",
+    primaryAction: "立即跟进"
+  };
+}
+
 function captureUrl(workspaceMode, scene) {
   const params = [
     ["workspaceMode", workspaceMode || "notes"],
@@ -382,7 +563,59 @@ function captureUrl(workspaceMode, scene) {
     .filter((item) => item[1])
     .map((item) => `${item[0]}=${encodeURIComponent(item[1])}`)
     .join("&");
-  return `/pages/resource-create/index?${params}`;
+  return `/subpackages/workbench/resource-create/index?${params}`;
+}
+
+function openProtectedPage(url) {
+  const currentUser = getCurrentUser();
+  if (currentUser && currentUser.id) {
+    wx.navigateTo({ url });
+    return;
+  }
+  wx.navigateTo({
+    url: `/pages/login/index?returnUrl=${encodeURIComponent(url)}`
+  });
+}
+
+function anonymousHomeState() {
+  return {
+    loading: false,
+    homeDashboard: null,
+    cards: [],
+    businessSummary: {},
+    todayBusinessSummary: {},
+    radarProfiles: [],
+    contentInsights: [],
+    revivalAlerts: [],
+    groupbuyOrderSummary: {},
+    statCards: [],
+    taskCards: [],
+    pendingItems: [],
+    totalResources: 0,
+    totalPv: 0,
+    totalUv: 0,
+    totalRelay: 0,
+    totalCustomerActivity: 0,
+    customerAlerts: [],
+    opportunityAlerts: [],
+    opportunitySummary: {},
+    homeOpportunity: buildHomeOpportunity({}, UNIFIED_HOME_UI),
+    homeRadarEntry: buildHomeRadarEntry(),
+    feedbackRangeReady: false,
+    feedbackRangeTitle: "累计数据",
+    feedbackSummary: buildFeedbackSummary({}, {}, "total"),
+    homeStats: buildHomeStats({}, UNIFIED_HOME_UI),
+    viewers: [],
+    hotResources: [],
+    intelligenceLocked: true,
+    signalPreview: [],
+    salesHomeState: buildSalesHomeState([], {}, {}),
+    priorityCustomer: { visible: false },
+    recentResources: [],
+    assistantBindModalVisible: false,
+    assistantBindMessage: "",
+    assistantBindCopied: false
+  };
 }
 
 Page({
@@ -396,12 +629,16 @@ Page({
     modeOptions: [],
     homeQuickTools: HOME_QUICK_TOOLS,
     propertyContactPluginId: "3bf7435f594f0d6ca83a9a185ea201e5",
-    overviewRange: "today",
+    overviewRange: "total",
     overviewRangeOptions: [
       { key: "today", label: "今日" },
+      { key: "last7", label: "近7日" },
       { key: "total", label: "累计" }
     ],
     homeDashboard: null,
+    feedbackRangeReady: false,
+    feedbackRangeTitle: "累计数据",
+    feedbackSummary: buildFeedbackSummary({}, {}, "total"),
     statCards: [],
     taskCards: [],
     pendingItems: [],
@@ -422,16 +659,25 @@ Page({
     assistantBindModalVisible: false,
     assistantBindMessage: "",
     assistantBindCopied: false,
+    assistantContactPlugid: "df29f3fd3ddc95bfec70e60cef93730c",
     assistantBindQrImage: "/static/wecom/assistant-qrcode.png",
     viewers: [],
-    hotResources: []
+    hotResources: [],
+    intelligenceLocked: true,
+    signalPreview: [],
+    salesHomeState: buildSalesHomeState([], {}, {}, "total"),
+    priorityCustomer: { visible: false },
+    recentResources: []
   },
   onShow() {
     const currentUser = getCurrentUser();
     if (!currentUser) {
-      wx.reLaunch({ url: `/pages/login/index?returnUrl=${encodeURIComponent("/pages/home/index")}` });
+      this.dashboardUserId = "";
+      this.refreshMode(null);
+      this.setData(anonymousHomeState());
       return;
     }
+    this.dashboardUserId = currentUser.id;
     this.refreshMode(currentUser);
     this.loadDashboard();
   },
@@ -453,34 +699,107 @@ Page({
   },
   async loadDashboard() {
     const currentUser = getCurrentUser();
+    const requestUserId = currentUser && currentUser.id;
+    if (!requestUserId) return;
     const modeConfig = this.data.modeConfig || getModeConfig("notes");
     const homeUi = UNIFIED_HOME_UI;
-    this.setData({ loading: true });
+    const cachedCards = resourceStore.peekCards(requestUserId);
+    if (resourceStore.hasCardsCache(requestUserId)) {
+      // The home tab must have a useful first paint even when membership,
+      // customer intelligence, orders, or archive status are still loading.
+      // This snapshot is scoped to the current user and contains no anonymous
+      // or cross-user radar payload.
+      const cachedDashboard = buildDashboard(cachedCards || []);
+      this.setData({
+        ...cachedDashboard,
+        homeDashboard: cachedDashboard,
+        statCards: statCardsForMode(modeConfig, cachedDashboard, this.data.overviewRange),
+        feedbackRangeReady: Boolean(cachedDashboard.rangeSummaries && cachedDashboard.rangeSummaries.today && cachedDashboard.rangeSummaries.last7 && cachedDashboard.rangeSummaries.total),
+        feedbackRangeTitle: getFeedbackRangeTitle(this.data.overviewRange),
+        feedbackSummary: buildFeedbackSummary({}, cachedDashboard, this.data.overviewRange, cachedDashboard.cards || []),
+        recentResources: (cachedDashboard.hotResources || []).slice(0, 3),
+        loading: false
+      });
+    }
+    // Never keep the previous user's radar numbers visible while the current
+    // user's customer intelligence request is in flight.
+    this.setData({
+      loading: true,
+      homeRadarEntry: buildHomeRadarEntry(),
+      feedbackRangeReady: false,
+      feedbackRangeTitle: "累计数据",
+      feedbackSummary: buildFeedbackSummary({}, {}, "total")
+    });
     try {
+      const cardsPromise = resourceStore.listCards({ ownerUserId: currentUser.id, allowStale: true }).then((rows) => {
+        // Revalidate metadata without making the first paint wait for the
+        // archive worker or the customer dashboard.
+        resourceStore.refreshCards({ ownerUserId: currentUser.id }).catch(() => {});
+        return rows;
+      });
+      cardsPromise.then((cards) => {
+        if (this.dashboardUserId !== requestUserId || (getCurrentUser() || {}).id !== requestUserId) return;
+        const cardDashboard = buildDashboard(cards || []);
+        this.setData({
+          ...cardDashboard,
+          homeDashboard: cardDashboard,
+          statCards: statCardsForMode(modeConfig, cardDashboard, this.data.overviewRange),
+          feedbackRangeReady: false,
+          feedbackRangeTitle: getFeedbackRangeTitle(this.data.overviewRange),
+          feedbackSummary: buildFeedbackSummary({}, cardDashboard, this.data.overviewRange, cardDashboard.cards || []),
+          homeOpportunity: buildHomeOpportunity(cardDashboard, homeUi),
+          homeRadarEntry: buildHomeRadarEntry(cardDashboard),
+          homeStats: buildHomeStats(cardDashboard, homeUi),
+          salesHomeState: buildSalesHomeState(cardDashboard.cards || [], {}, cardDashboard, this.data.overviewRange),
+          recentResources: (cardDashboard.hotResources || []).slice(0, 3),
+          loading: false
+        });
+      }).catch(() => {});
       const [cards, businessDashboard, groupbuyOrders, pendingImports, showcases] = await Promise.all([
-        resourceStore.listCards({ ownerUserId: currentUser.id }),
-        api.fetchBusinessDashboard(currentUser.id, currentUser.id, "property").catch(() => null),
+        cardsPromise,
+        api.fetchMembership(currentUser.id).then((membershipRes) => {
+          const membership = (membershipRes && membershipRes.data) || {};
+          if (membership.featureEnabled === false) {
+            return { data: { featureEnabled: false, locked: true, summary: {}, signalPreview: [] } };
+          }
+          return customerIntelligenceStore.getOrFetchForAccessMode(
+            currentUser.id,
+            "property",
+            membership.paymentRequired !== false,
+            () => api.fetchCustomerIntelligence(currentUser.id, currentUser.id, "property")
+          );
+        }).catch(() => null),
         api.fetchOrders({ userId: currentUser.id, role: "seller" }).catch(() => null),
         api.fetchPendingImports().catch(() => ({ data: [] })),
         api.fetchShowcases(currentUser.id).catch(() => ({ data: [] }))
       ]);
+      if (this.dashboardUserId !== requestUserId || (getCurrentUser() || {}).id !== requestUserId) return;
       const scopedCards = cards || [];
       const dashboard = buildDashboard(scopedCards);
-      if (businessDashboard && businessDashboard.data && businessDashboard.data.summary) {
-        dashboard.businessSummary = businessDashboard.data.summary;
-        dashboard.todayBusinessSummary = businessDashboard.data.todaySummary || {};
-        dashboard.opportunitySummary = businessDashboard.data.opportunitySummary || {};
-        dashboard.opportunityAlerts = businessDashboard.data.opportunityAlerts || [];
-        dashboard.radarProfiles = businessDashboard.data.radarProfiles || [];
-        dashboard.contentInsights = businessDashboard.data.contentInsights || [];
-        dashboard.revivalAlerts = businessDashboard.data.revivalAlerts || [];
+      const intelligence = (businessDashboard && businessDashboard.data) || {};
+      const unlockedDashboard = intelligence.dashboard || {};
+      if (unlockedDashboard.summary) {
+        dashboard.businessSummary = unlockedDashboard.summary || dashboard.businessSummary || intelligence.rangeSummaries && intelligence.rangeSummaries.total || {};
+        dashboard.todayBusinessSummary = unlockedDashboard.todaySummary || intelligence.rangeSummaries && intelligence.rangeSummaries.today || {};
+        dashboard.rangeSummaries = unlockedDashboard.rangeSummaries || intelligence.rangeSummaries || {};
+        dashboard.opportunitySummary = unlockedDashboard.opportunitySummary || {};
+        dashboard.opportunityAlerts = unlockedDashboard.opportunityAlerts || [];
+        dashboard.radarProfiles = unlockedDashboard.radarProfiles || [];
+        dashboard.contentInsights = unlockedDashboard.contentInsights || [];
+        dashboard.revivalAlerts = unlockedDashboard.revivalAlerts || [];
       }
+      dashboard.rangeSummaries = dashboard.rangeSummaries || intelligence.rangeSummaries || {};
+      dashboard.businessSummary = dashboard.businessSummary || dashboard.rangeSummaries.total || {};
+      dashboard.todayBusinessSummary = dashboard.todayBusinessSummary || dashboard.rangeSummaries.today || {};
       if (groupbuyOrders && groupbuyOrders.data) {
         dashboard.groupbuyOrderSummary = summarizeGroupbuyOrders(groupbuyOrders.data);
       }
       this.setData({
         ...dashboard,
         homeDashboard: dashboard,
+        feedbackRangeReady: Boolean(dashboard.rangeSummaries && dashboard.rangeSummaries.today && dashboard.rangeSummaries.last7 && dashboard.rangeSummaries.total),
+        feedbackRangeTitle: getFeedbackRangeTitle(this.data.overviewRange),
+        feedbackSummary: buildFeedbackSummary(intelligence, dashboard, this.data.overviewRange, dashboard.cards || []),
         statCards: statCardsForMode(modeConfig, dashboard, this.data.overviewRange),
         taskCards: buildNotesTaskCards({
           cards: scopedCards,
@@ -491,12 +810,29 @@ Page({
         opportunityAlerts: (dashboard.opportunityAlerts || []).slice(0, 3),
         homeOpportunity: buildHomeOpportunity(dashboard, homeUi),
         homeRadarEntry: buildHomeRadarEntry(dashboard),
-        homeStats: buildHomeStats(dashboard, homeUi)
+        homeStats: intelligence.locked ? [
+          { key: "visitor", label: "访客", value: Number((intelligence.summary || {}).visitorCount || 0), valueClass: "" },
+          { key: "repeat", label: "复访", value: Number((intelligence.summary || {}).repeatVisitorCount || 0), valueClass: "" },
+          { key: "interaction", label: "新动作", value: Number((intelligence.summary || {}).newInteractionCount || 0), valueClass: "" },
+          { key: "feedback", label: "有反馈资料", value: Number((intelligence.summary || {}).feedbackResourceCount || 0), valueClass: "" }
+        ] : buildHomeStats(dashboard, homeUi),
+        intelligenceLocked: Boolean(businessDashboard && intelligence.locked === true),
+        signalPreview: intelligence.signalPreview || [],
+        salesHomeState: buildSalesHomeState(dashboard.cards || [], intelligence, dashboard, this.data.overviewRange),
+        priorityCustomer: buildPriorityCustomer(intelligence, dashboard),
+        recentResources: (dashboard.hotResources || []).slice(0, 3)
       });
     } catch (error) {
-      wx.showToast({ title: "首页数据加载失败", icon: "none" });
+      if (this.dashboardUserId !== requestUserId || (getCurrentUser() || {}).id !== requestUserId) return;
+      if (error && error.authExpired) return;
+      this.setData({
+        feedbackRangeReady: false,
+        feedbackRangeTitle: "累计数据",
+        feedbackSummary: buildFeedbackSummary({}, {}, "total")
+      });
+      wx.showToast({ title: error && error.detail ? error.detail : "首页数据加载失败", icon: "none" });
     } finally {
-      this.setData({ loading: false });
+      if (this.dashboardUserId === requestUserId) this.setData({ loading: false });
     }
   },
   handleOverviewRangeChange(event) {
@@ -504,7 +840,11 @@ Page({
     const dashboard = this.data.homeDashboard;
     this.setData({
       overviewRange: range,
-      statCards: dashboard ? statCardsForMode(this.data.modeConfig, dashboard, range) : this.data.statCards
+      feedbackRangeTitle: getFeedbackRangeTitle(range),
+      statCards: dashboard ? statCardsForMode(this.data.modeConfig, dashboard, range) : this.data.statCards,
+      feedbackSummary: dashboard
+        ? buildFeedbackSummary(this.data.intelligence || {}, dashboard, range, dashboard.cards || [])
+        : this.data.feedbackSummary
     });
   },
   handleChooseMode(event) {
@@ -534,23 +874,23 @@ Page({
       imports: () => wx.navigateTo({ url: "/pages/imports/index" }),
       notesPending: () => wx.navigateTo({ url: "/pages/notes/index?migrationPending=1" }),
       notesImagePending: () => wx.navigateTo({ url: "/pages/notes/index?sourceType=ocr&migrationPending=1" }),
-      showcases: () => wx.switchTab({ url: "/pages/showcases/index" })
+      showcases: () => wx.navigateTo({ url: "/pages/showcases/index" })
     };
     const run = routes[action] || routes.notesPending;
     run();
   },
   openAction(action) {
     const routes = {
-      capture: () => wx.navigateTo({ url: captureUrl("notes", "quick_note") }),
-      captureImage: () => wx.navigateTo({ url: captureUrl("notes", "image_note") }),
-      captureLink: () => wx.navigateTo({ url: captureUrl("notes", "link_note") }),
-      captureProperty: () => wx.navigateTo({ url: captureUrl("property", "property_listing") }),
-      capturePropertyNeed: () => wx.navigateTo({ url: captureUrl("property", "customer_need_note") }),
+      capture: () => openProtectedPage(captureUrl("notes", "quick_note")),
+      captureImage: () => openProtectedPage(captureUrl("notes", "image_note")),
+      captureLink: () => openProtectedPage(captureUrl("notes", "link_note")),
+      captureProperty: () => openProtectedPage(captureUrl("property", "property_listing")),
+      capturePropertyNeed: () => openProtectedPage(captureUrl("property", "customer_need_note")),
       openAssistant: () => this.openPropertyAssistant(),
-      generateSame: () => wx.navigateTo({ url: "/pages/property-same/index?sourceType=guide" }),
-      captureGroupbuy: () => wx.navigateTo({ url: captureUrl("groupbuy", "groupbuy_product") }),
-      captureGroupbuyMaterial: () => wx.navigateTo({ url: captureUrl("groupbuy", "groupbuy_material_note") }),
-      captureServiceNote: () => wx.navigateTo({ url: captureUrl("service", "service_material_note") }),
+      generateSame: () => openProtectedPage("/subpackages/workbench/property-same/index?sourceType=guide"),
+      captureGroupbuy: () => openProtectedPage(captureUrl("groupbuy", "groupbuy_product")),
+      captureGroupbuyMaterial: () => openProtectedPage(captureUrl("groupbuy", "groupbuy_material_note")),
+      captureServiceNote: () => openProtectedPage(captureUrl("service", "service_material_note")),
       imports: () => wx.navigateTo({ url: "/pages/imports/index" }),
       library: () => wx.switchTab({ url: "/pages/library/index" }),
       propertyLibrary: () => this.openPropertyLibrary(),
@@ -560,10 +900,10 @@ Page({
       dashboard: () => this.openDashboardForMode(),
       leads: () => wx.navigateTo({ url: "/pages/leads/index" }),
       orders: () => wx.navigateTo({ url: "/pages/orders/index?role=seller" }),
-      businessCard: () => wx.navigateTo({ url: "/pages/business-card-studio/index" }),
+      businessCard: () => openProtectedPage("/subpackages/workbench/business-card-studio/index"),
       businessCardLibrary: () => this.openBusinessCardLibrary(),
-      serviceOffer: () => wx.navigateTo({ url: "/pages/service-offer-studio/index" }),
-      serviceOpportunity: () => wx.navigateTo({ url: "/pages/service-offer-studio/index?template=service_business_opportunity" })
+      serviceOffer: () => openProtectedPage("/subpackages/workbench/service-offer-studio/index"),
+      serviceOpportunity: () => openProtectedPage("/subpackages/workbench/service-offer-studio/index?template=service_business_opportunity")
     };
     const run = routes[action] || routes.capture;
     run();
@@ -574,7 +914,9 @@ Page({
   handleAssistantBindTap() {
     const currentUser = getCurrentUser();
     if (!currentUser || !currentUser.id) {
-      wx.navigateTo({ url: "/pages/login/index" });
+      wx.navigateTo({
+        url: `/pages/login/index?returnUrl=${encodeURIComponent("/pages/home/index")}`
+      });
       return;
     }
     api.createWecomBindIntent(currentUser.id).then((response) => {
@@ -588,15 +930,20 @@ Page({
         });
         return;
       }
-      const bindMessage = data.bindMessage;
-      if (bindMessage) {
-        this.copyWecomBindMessage(bindMessage);
-        return;
-      }
-      wx.showToast({ title: "绑定码生成失败", icon: "none" });
+      this.setData({
+        assistantBindModalVisible: true,
+        assistantBindMessage: data.bindMessage || "",
+        assistantBindCopied: false
+      });
     }).catch((error) => {
       console.warn("wecom assistant bind intent failed", error);
-      wx.showToast({ title: "登录状态异常，请稍后再试", icon: "none" });
+      const statusCode = Number(error && error.statusCode);
+      const title = statusCode === 401
+        ? "登录已失效，请重新登录"
+        : statusCode === 404
+          ? "资料助手服务正在更新，请稍后重试"
+          : "资料助手暂时不可用，请稍后重试";
+      wx.showToast({ title, icon: "none" });
     });
   },
   copyWecomBindMessage(bindMessage) {
@@ -623,6 +970,17 @@ Page({
       }
     });
   },
+  handleAssistantContactStart() {
+    this.setData({ assistantContactStarted: true });
+  },
+  handleAssistantContactComplete(event = {}) {
+    const detail = event.detail || event || {};
+    if (Number(detail.errcode) === 0) {
+      wx.showToast({ title: "已添加，请复制绑定消息发送", icon: "none", duration: 2200 });
+      return;
+    }
+    wx.showToast({ title: "添加资料助手未完成", icon: "none" });
+  },
   handleCloseAssistantBindModal() {
     this.setData({ assistantBindModalVisible: false });
   },
@@ -632,16 +990,16 @@ Page({
     this.handleAssistantBindTap();
   },
   openShowcasesForMode() {
-    wx.switchTab({ url: "/pages/showcases/index" });
+    wx.navigateTo({ url: "/pages/showcases/index" });
   },
   openDashboardForMode(tab) {
     const mode = this.data.workspaceMode || "notes";
     const rangeParam = this.data.overviewRange === "today" ? "&range=today" : "";
     if (mode === "property") {
-      wx.navigateTo({ url: `/pages/business-dashboard/index?mode=property&tab=${tab || "followup"}${rangeParam}` });
+      wx.navigateTo({ url: `/subpackages/workbench/business-dashboard/index?mode=property&tab=${tab || "followup"}${rangeParam}` });
       return;
     }
-    wx.navigateTo({ url: `/pages/business-dashboard/index?mode=${encodeURIComponent(mode)}&tab=${tab || "showcasePackage"}` });
+    wx.navigateTo({ url: `/subpackages/workbench/business-dashboard/index?mode=${encodeURIComponent(mode)}&tab=${tab || "showcasePackage"}` });
   },
   openPropertyLibrary() {
     wx.setStorageSync(LIBRARY_ENTRY_FILTER_KEY, {
@@ -742,7 +1100,7 @@ Page({
       return;
     }
     if (key === "pv" || key === "uv") {
-      this.openRadarTab(key === "uv" ? "visitors" : "insights");
+      this.openRadarTab("visitors");
       return;
     }
     if (key === "customer" || key === "pending" || key === "highIntent") {
@@ -752,7 +1110,29 @@ Page({
     this.handleGoRadar();
   },
   handleQuickAdd() {
-    wx.navigateTo({ url: "/pages/resource-create/index" });
+    openProtectedPage("/subpackages/workbench/resource-create/index");
+  },
+  handlePrimaryAction() {
+    const action = (this.data.salesHomeState || {}).actionKey;
+    if (action === "radar") return this.handleGoRadar();
+    if (action === "membership") return this.handleOpenMembership();
+    if (action === "library") return this.handleGoLibrary();
+    return this.handleQuickAdd();
+  },
+  handleFeedbackStage(event) {
+    const stage = event.currentTarget.dataset.stage;
+    if (stage === "sent") {
+      wx.setStorageSync(LIBRARY_ENTRY_FILTER_KEY, { salesFilter: "sent", label: "已发客户", ts: Date.now() });
+      return this.handleGoLibrary();
+    }
+    this.openRadarTab(stage === "opened" ? "visitors" : "followup");
+  },
+  handlePriorityPrimary() {
+    if (this.data.priorityCustomer && this.data.priorityCustomer.locked) return this.handleOpenMembership();
+    this.openRadarTab("followup");
+  },
+  handlePriorityTrack() {
+    this.openRadarTab("visitors");
   },
   handleGoImports() {
     wx.navigateTo({ url: "/pages/imports/index" });
@@ -774,12 +1154,15 @@ Page({
   handleGoRadar() {
     this.openRadarTab("followup");
   },
+  handleOpenMembership() {
+    wx.navigateTo({ url: "/pages/membership/index" });
+  },
   openRadarTab(tab = "followup") {
     wx.setStorageSync(RADAR_ENTRY_TAB_KEY, tab);
     wx.switchTab({ url: "/pages/visits/index" });
   },
   handleGoCollections() {
-    wx.switchTab({ url: "/pages/showcases/index" });
+    wx.navigateTo({ url: "/pages/showcases/index" });
   },
   handleOpenResource(event) {
     const id = event.currentTarget.dataset.id;
