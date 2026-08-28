@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="750" height="1334" viewBox="0 0 750 1334">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#edf6ff"/>
+      <stop offset="1" stop-color="#fbfdff"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="10" stdDeviation="14" flood-color="#6e9ed0" flood-opacity=".16"/></filter>
+  </defs>
+  <rect width="750" height="1334" fill="url(#bg)"/>
+  <g font-family="-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif">
+    <text x="42" y="58" font-size="28" fill="#172033">‹</text>
+    <text x="375" y="58" text-anchor="middle" font-size="24" font-weight="800" fill="#172033">客户详情</text>
+    <rect x="44" y="88" width="662" height="132" rx="26" fill="#fff" filter="url(#shadow)"/>
+    <circle cx="106" cy="154" r="38" fill="#6f9ff0"/>
+    <text x="106" y="166" text-anchor="middle" font-size="28" font-weight="800" fill="#fff">客</text>
+    <text x="164" y="146" font-size="27" font-weight="800" fill="#172033">王先生</text>
+    <text x="164" y="181" font-size="17" fill="#718096">微信客户 · 最近活跃 2 小时前</text>
+    <rect x="552" y="128" width="112" height="40" rx="20" fill="#eff7f1"/>
+    <text x="608" y="154" text-anchor="middle" font-size="16" font-weight="800" fill="#16884d">高意向</text>
+
+    <rect x="44" y="250" width="662" height="316" rx="26" fill="#fff" filter="url(#shadow)"/>
+    <text x="74" y="296" font-size="24" font-weight="800" fill="#172033">客户联系方式</text>
+    <text x="676" y="296" text-anchor="end" font-size="15" fill="#718096">已授权展示</text>
+    <line x1="74" y1="322" x2="676" y2="322" stroke="#edf1f6" stroke-width="2"/>
+
+    <text x="74" y="368" font-size="18" fill="#718096">电话</text>
+    <text x="178" y="368" font-size="20" font-weight="700" fill="#172033">138 0013 8000</text>
+    <rect x="492" y="338" width="76" height="42" rx="16" fill="#eff6ff" stroke="#cfe0ff" stroke-width="2"/>
+    <text x="530" y="365" text-anchor="middle" font-size="16" font-weight="800" fill="#1677ff">拨打</text>
+    <rect x="580" y="338" width="76" height="42" rx="16" fill="#1677ff"/>
+    <text x="618" y="365" text-anchor="middle" font-size="16" font-weight="800" fill="#fff">复制</text>
+    <text x="178" y="394" font-size="14" fill="#9aa8b8">来源：客户个人小程序资料</text>
+    <line x1="74" y1="420" x2="676" y2="420" stroke="#edf1f6" stroke-width="2"/>
+
+    <text x="74" y="468" font-size="18" fill="#718096">微信号</text>
+    <text x="178" y="468" font-size="20" font-weight="700" fill="#172033">kaopu_house</text>
+    <rect x="580" y="438" width="76" height="42" rx="16" fill="#1677ff"/>
+    <text x="618" y="465" text-anchor="middle" font-size="16" font-weight="800" fill="#fff">复制</text>
+    <line x1="74" y1="500" x2="676" y2="500" stroke="#edf1f6" stroke-width="2"/>
+
+    <text x="74" y="548" font-size="18" fill="#718096">邮箱</text>
+    <text x="178" y="548" font-size="19" font-weight="700" fill="#172033">wang@example.com</text>
+    <rect x="580" y="518" width="76" height="42" rx="16" fill="#1677ff"/>
+    <text x="618" y="545" text-anchor="middle" font-size="16" font-weight="800" fill="#fff">复制</text>
+
+    <rect x="44" y="596" width="662" height="112" rx="26" fill="#eff7f1" stroke="#b7e4c7" stroke-width="2"/>
+    <text x="74" y="638" font-size="19" font-weight="800" fill="#16884d">联系方式优先用于当前跟进</text>
+    <text x="74" y="674" font-size="16" fill="#5f806d">客户主动提交或个人资料授权后才会显示</text>
+
+    <rect x="44" y="738" width="662" height="180" rx="26" fill="#fff" filter="url(#shadow)"/>
+    <text x="74" y="782" font-size="24" font-weight="800" fill="#172033">没有联系方式时</text>
+    <text x="74" y="824" font-size="18" fill="#718096">客户暂未留下电话、微信号或邮箱</text>
+    <rect x="74" y="846" width="272" height="48" rx="15" fill="#f5f8fc" stroke="#d9e4f1" stroke-width="2"/>
+    <text x="210" y="877" text-anchor="middle" font-size="16" font-weight="800" fill="#52647b">复制首句继续建立联系</text>
+
+    <rect x="44" y="974" width="662" height="70" rx="19" fill="#1677ff"/>
+    <text x="375" y="1018" text-anchor="middle" font-size="20" font-weight="800" fill="#fff">开始跟进</text>
+    <text x="375" y="1100" text-anchor="middle" font-size="16" fill="#718096">详情页直接看到联系方式，旁边提供复制操作</text>
+  </g>
+</svg>

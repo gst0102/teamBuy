@@ -4,6 +4,7 @@ import asyncio
 
 from app.core.config import BACKEND_DIR, settings
 from app.services.app_service import AppService
+from app.services.automation_control_service import AutomationControlService
 from app.services.background_task_worker import BackgroundTaskWorker
 from app.services.bootstrap import seed_runtime_state
 from app.services.card_parser_service import CardParserService
@@ -13,20 +14,27 @@ from app.services.media_storage_service import MediaStorageService
 from app.services.media_processing_service import MediaProcessingService
 from app.services.message_aggregator import MessageAggregator
 from app.services.ops_console_store import OpsConsoleStore
-from app.services.repository import build_repository
+from app.services.repository import PostgresRepository, build_repository
 from app.services.skill_router_service import SkillRouterService
 from app.services.sync_task_queue import SyncTaskQueue
-from app.services.wecom_archive_client import WecomArchiveClient
+from app.services.wecom_archive_client import SharedWecomArchiveMediaClient, WecomArchiveClient
 from app.services.wecom_archive_worker import WecomArchiveWorker
 from app.services.wecom_client import WecomClient
 from app.services.wecom_message_normalizer import WecomMessageNormalizer
 from app.services.wecom_mock_service import WecomMockService
+from app.services.wechat_miniapp_client import WechatMiniappClient
 
 
 _repo = build_repository(settings.database_backend, settings.database_url, settings.data_file)
 seed_runtime_state(_repo, BACKEND_DIR / "mock")
 _wecom_mock_service = WecomMockService(BACKEND_DIR / "mock")
+_wechat_miniapp_client = WechatMiniappClient(settings)
 _skill_router_service = SkillRouterService()
+_ops_console_store = OpsConsoleStore(
+    settings.data_file.parent / "ops-console-state.json",
+    default_customer_info_chain_enabled=settings.customer_info_chain_default_enabled,
+    database_url=settings.database_url if isinstance(_repo, PostgresRepository) else None,
+)
 _service = AppService(
     repo=_repo,
     wecom_mock_service=_wecom_mock_service,
@@ -34,6 +42,7 @@ _service = AppService(
         storage_mode=settings.storage_mode,
         storage_dir=settings.media_storage_dir,
         public_url_prefix=settings.media_public_url_prefix,
+        public_base_url=settings.public_base_url,
         object_storage_endpoint=settings.object_storage_endpoint,
         object_storage_region=settings.object_storage_region,
         object_storage_bucket=settings.object_storage_bucket,
@@ -48,6 +57,7 @@ _service = AppService(
     normalizer=WecomMessageNormalizer(),
     skill_router_service=_skill_router_service,
     content_object_adapter=ContentObjectAdapter(),
+    wechat_miniapp_client=_wechat_miniapp_client,
     media_processing_service=MediaProcessingService(
         image_max_edge=settings.media_image_max_edge,
         image_quality=settings.media_image_quality,
@@ -55,7 +65,9 @@ _service = AppService(
         video_crf=settings.media_video_crf,
         ffmpeg_bin=settings.ffmpeg_bin,
     ),
+    ops_console_store=_ops_console_store,
 )
+_automation_control_service = AutomationControlService(_repo)
 _wecom_client = WecomClient(settings)
 _wecom_archive_client = WecomArchiveClient(
     corp_id=settings.wecom_corp_id,
@@ -65,23 +77,33 @@ _wecom_archive_client = WecomArchiveClient(
     proxy=settings.wecom_archive_proxy,
     proxy_password=settings.wecom_archive_proxy_password,
     timeout_seconds=settings.wecom_archive_sdk_timeout_seconds,
+    max_download_bytes=settings.media_max_video_bytes,
+)
+_wecom_archive_processing_client = (
+    SharedWecomArchiveMediaClient(
+        base_url=settings.wecom_archive_core_media_base_url,
+        project_id=settings.wecom_archive_core_project_id,
+        project_token=settings.wecom_archive_core_project_token,
+        timeout_seconds=settings.wecom_archive_sdk_timeout_seconds,
+        max_download_bytes=settings.media_max_video_bytes,
+    )
+    if settings.wecom_archive_source == "shared"
+    else _wecom_archive_client
 )
 _sync_task_queue = SyncTaskQueue(
     _repo,
     lock_timeout_seconds=settings.wecom_sync_lock_timeout_seconds,
     auto_schedule=settings.sync_task_auto_schedule,
 )
-OCR_TASK_NAMES = {"ocr-recognize-note", "property-table-ocr"}
+OCR_TASK_NAMES = {"ocr-recognize-note", "property-table-ocr", "wechat-subscription-send"}
 _ocr_task_worker = BackgroundTaskWorker(
     _sync_task_queue,
     enabled=settings.sync_task_worker_enabled,
     interval_seconds=settings.sync_task_worker_interval_seconds,
     task_names=OCR_TASK_NAMES,
     max_running=max(settings.ocr_task_concurrency, 1),
+    maintenance_callback=_service.recover_stale_subscription_grants,
 )
-_ops_console_store = OpsConsoleStore(settings.data_file.parent / "ops-console-state.json")
-
-
 async def _run_ocr_recognize_task(payload: dict) -> dict:
     note_id = str(payload.get("noteId") or "")
     owner_user_id = str(payload.get("ownerUserId") or "")
@@ -98,9 +120,14 @@ async def _run_property_table_ocr_task(payload: dict) -> dict:
     return await asyncio.to_thread(_service.recognize_property_table_ocr_note_image, note_id, owner_user_id)
 
 
+async def _run_wechat_subscription_send_task(payload: dict) -> dict:
+    return await _service.send_wechat_subscription_task(payload)
+
+
 def register_background_task_handlers() -> None:
     _sync_task_queue.register("ocr-recognize-note", _run_ocr_recognize_task)
     _sync_task_queue.register("property-table-ocr", _run_property_table_ocr_task)
+    _sync_task_queue.register("wechat-subscription-send", _run_wechat_subscription_send_task)
 
 
 register_background_task_handlers()
@@ -147,10 +174,11 @@ async def _send_archive_import_notifications(notifications: list[dict]) -> list[
 
 _wecom_archive_worker = WecomArchiveWorker(
     _service,
-    _wecom_archive_client,
+    _wecom_archive_processing_client,
     enabled=settings.wecom_archive_worker_enabled,
     interval_seconds=settings.wecom_archive_worker_interval_seconds,
     pull_limit=settings.wecom_archive_pull_limit,
+    source=settings.wecom_archive_source,
     notification_sender=_send_archive_import_notifications,
 )
 
@@ -159,12 +187,20 @@ def get_app_service() -> AppService:
     return _service
 
 
+def get_automation_control_service() -> AutomationControlService:
+    return _automation_control_service
+
+
 def get_wecom_client() -> WecomClient:
     return _wecom_client
 
 
 def get_wecom_archive_client() -> WecomArchiveClient:
     return _wecom_archive_client
+
+
+def get_wecom_archive_media_client() -> WecomArchiveClient | SharedWecomArchiveMediaClient:
+    return _wecom_archive_processing_client
 
 
 def get_wecom_mock_service() -> WecomMockService:
@@ -189,3 +225,12 @@ def get_skill_router_service() -> SkillRouterService:
 
 def get_ops_console_store() -> OpsConsoleStore:
     return _ops_console_store
+
+
+def close_repository() -> None:
+    if isinstance(_repo, PostgresRepository):
+        _repo.close()
+
+
+def close_ops_console_store() -> None:
+    _ops_console_store.close()

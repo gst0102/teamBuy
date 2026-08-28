@@ -6,6 +6,8 @@
       </view>
     </view>
     <view class="custom-nav__title">{{resolvedTitle || title}}</view>
-    <view class="custom-nav__side" style="width: {{nav.sideWidth}};"></view>
+    <view class="custom-nav__side custom-nav__side--right" style="width: {{nav.sideWidth}};">
+      <text wx:if="{{rightText}}" class="custom-nav__right-text" style="right: {{nav.sideWidth}};">{{rightText}}</text>
+    </view>
   </view>
 </view>

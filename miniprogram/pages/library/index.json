@@ -3,6 +3,7 @@
   "navigationStyle": "custom",
   "usingComponents": {
     "custom-nav": "/components/custom-nav/index",
-    "card-preview": "/components/card-preview/index"
+    "card-preview": "/components/card-preview/index",
+    "contact-cell": "plugin://contactPlugin/cell"
   }
 }

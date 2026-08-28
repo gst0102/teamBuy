@@ -1,0 +1,7 @@
+{
+  "navigationBarTitleText": "编辑链接资料",
+  "navigationStyle": "custom",
+  "usingComponents": {
+    "custom-nav": "/components/custom-nav/index"
+  }
+}

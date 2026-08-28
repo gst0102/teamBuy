@@ -5,17 +5,20 @@ const {
 } = require("../../utils/business-card-share");
 const {
   cleanImagePrimaryText,
-  getPrimaryImageUrl,
   imagePrimaryTitle,
   isImagePrimaryNote
 } = require("../../utils/note-display");
 
 const SNAPSHOT_STATUS_READY = "ready";
-// v7 keeps original-media direct share for non-business cards with a real
-// primary image, and gives every no-image typed card a fixed information-card
-// layout. A missing imageUrl must never make WeChat screenshot the current
-// library/detail page.
-const SHARE_CARD_STYLE_VERSION = "share_card_v7";
+// v10 uses one fixed 5:4 JPG contract with two non-business presentations:
+// image-first when a real cover exists, and info-first when it does not. The
+// snapshot is exported and persisted before native sharing is enabled, so a
+// missing imageUrl can never fall through to a library-page screenshot.
+const SHARE_CARD_STYLE_VERSION = "share_card_v10";
+// Keep the public style id stable for the already deployed v10 API, but make
+// a visual-template change invalidate every older v10 snapshot. This is the
+// migration boundary for the approved business-card and collection templates.
+const SHARE_CARD_TEMPLATE_REVISION = "share_template_business_collection_v4";
 const shareSnapshotInFlight = {};
 const shareSnapshotMemory = {};
 const shareSnapshotFailures = {};
@@ -23,18 +26,12 @@ const SHARE_MEMORY_TTL_MS = 10 * 60 * 1000;
 const SHARE_MEMORY_MAX_ENTRIES = 64;
 const SHARE_FAILURE_TTL_MS = 30 * 1000;
 const SHARE_CARD_CANVAS_ID = "shareCardCanvas";
-const DEFAULT_SHARE_PATH = "/pages/home/index";
 
 function isShareImageUrl(value) {
   const url = String(value || "").trim();
   if (!url || /^(wxfile|file|blob|data|ftp):/i.test(url)) return false;
   if (/^https?:\/\//i.test(url)) return /^https:\/\//i.test(url);
   return url.startsWith("/");
-}
-
-function isRenderableImageSource(value) {
-  const url = String(value || "").trim();
-  return Boolean(url) && !/^(http:\/\/|blob:|data:|ftp:)/i.test(url);
 }
 
 function setShareMenuEnabled(enabled) {
@@ -56,11 +53,51 @@ function buildShareCardTitle(title, fallback = "资料整理助手") {
 function normalizeShareCardSource(source = {}) {
   return {
     title: cleanShareText(source.title, "资料整理助手"),
-    summary: cleanShareText(source.summary || source.subtitle, "打开小程序查看完整资料"),
+    // Do not inject a second “open the mini program” CTA into the JPG. The
+    // native share title and the template footer already provide the action;
+    // the body should contain only real source content.
+    summary: cleanShareText(source.summary || source.subtitle),
     badge: cleanShareText(source.badge || source.categoryName, "资料"),
-    coverUrl: cleanShareText(source.coverUrl || source.coverDisplayUrl || source.imageUrl, ""),
-    path: cleanShareText(source.path, DEFAULT_SHARE_PATH),
+    // A share callback must provide its real destination explicitly. Falling
+    // back to home (or a list page) is how WeChat ends up showing an unrelated
+    // page screenshot when a snapshot is missing.
+    path: cleanShareText(source.path),
     shareTargetLabel: cleanShareText(source.shareTargetLabel || source.badge, "资料")
+  };
+}
+
+function buildShowcaseShareSource(item = {}) {
+  const items = Array.isArray(item.items) ? item.items : (Array.isArray(item.notes) ? item.notes : []);
+  const firstImageFromItem = (row = {}) => [
+    row.primaryImageUrl,
+    row.coverUrl,
+    row.coverDisplayUrl,
+    ...(Array.isArray(row.media) ? row.media
+      .filter((media) => media && media.type === "image")
+      .flatMap((media) => [media.url, media.displayUrl]) : [])
+  ]
+    .map((value) => String(value || "").trim())
+    .find((value) => isShareImageUrl(value)) || "";
+  const primaryImageUrl = items
+    .filter((row) => row && row.visible !== false)
+    .map((row) => firstImageFromItem(row))
+    .concat(item.shareCoverUrl || "", item.bannerUrl || "")
+    .map((value) => String(value || "").trim())
+    .find((value) => isShareImageUrl(value)) || "";
+  return {
+    title: item.shareTitle || item.name || "合集",
+    badge: "合集",
+    layoutId: "showcase_info",
+    templateKind: "showcase",
+    collectionData: {
+      description: item.description || item.shareDescription || "",
+      itemCount: Number(item.itemCount || items.length || 0),
+      sceneType: item.sceneType || "notes"
+    },
+    primaryImageUrl,
+    hint: "打开小程序查看完整合集",
+    growthHint: "我也想做同款",
+    shareTargetLabel: "合集"
   };
 }
 
@@ -85,7 +122,6 @@ async function prepareShareCardImage(page, source = {}) {
         title: share.title,
         summary: share.summary,
         badge: share.badge,
-        coverUrl: isShareImageUrl(share.coverUrl) ? share.coverUrl : "",
         hint: share.summary,
         growthHint: "点击生成同款",
         shareTargetLabel: share.shareTargetLabel
@@ -119,17 +155,17 @@ function buildShareCardMessage(page, source = {}) {
     ...(data.shareCardSource || {}),
     ...(source || {})
   });
-  const directImage = isShareImageUrl(source.imageUrl) ? String(source.imageUrl).trim() : "";
-  const imageUrl = directImage || (data.shareCardReady && isShareImageUrl(data.shareCardImage)
+  const imageUrl = data.shareCardReady && isShareImageUrl(data.shareCardImage)
     ? String(data.shareCardImage).trim()
-    : "");
-  if (!imageUrl) {
+    : "";
+  const path = share.path;
+  if (!imageUrl || !path || path.indexOf("/pages/library/index") === 0) {
     setShareMenuEnabled(false);
     return null;
   }
   return {
     title: buildShareCardTitle(share.title),
-    path: share.path || DEFAULT_SHARE_PATH,
+    path,
     imageUrl
   };
 }
@@ -168,6 +204,7 @@ function createShareSnapshotFingerprint(entityType, entityId, sourceRevision, st
     entityId,
     sourceRevision: String(sourceRevision || ""),
     styleId: styleId || "default",
+    templateRevision: SHARE_CARD_TEMPLATE_REVISION,
     source
   }));
   return `v2:${compactFingerprint(canonical)}`;
@@ -287,6 +324,7 @@ function normalizePropertyShareData(note = {}, data = {}) {
     address: String(data.address || data.businessArea || "").trim(),
     orientation: String(data.orientation || data.direction || "").trim(),
     floor: String(data.floor || data.floorInfo || "").trim(),
+    coverUrl: String(data.coverUrl || data.imageUrl || data.mainImageUrl || note.coverUrl || note.coverDisplayUrl || "").trim(),
     // The property editor and backend use moveInTime as the canonical field.
     moveIn: String(data.moveIn || data.moveInTime || data.availableTime || data.checkIn || "").trim()
   };
@@ -305,6 +343,52 @@ function formatProductSharePrice(value) {
   return /^\d+(?:\.\d+)?$/.test(text) ? `${text}元` : text;
 }
 
+function formatFenPrice(value) {
+  if (value === null || value === undefined || String(value).trim() === "") return "";
+  const fen = Number(value);
+  if (!Number.isFinite(fen) || fen < 0) return "";
+  const yuan = (fen / 100).toFixed(2).replace(/\.00$/, "").replace(/(\.\d)0$/, "$1");
+  return `¥${yuan}`;
+}
+
+function parseYuanAmount(value) {
+  const text = String(value || "").trim();
+  if (!text) return null;
+  const match = text.replace(/,/g, "").match(/\d+(?:\.\d+)?/);
+  if (!match) return null;
+  const amount = Number(match[0]);
+  return Number.isFinite(amount) && amount >= 0 ? amount : null;
+}
+
+function getProductSharePrice(data = {}) {
+  const variants = Array.isArray(data.variants) ? data.variants : [];
+  const pricedVariants = variants
+    .filter((item) => item && item.priceFen !== null && item.priceFen !== undefined && String(item.priceFen).trim() !== "")
+    .map((item) => ({ price: Number(item.priceFen), soldOut: item.stockStatus === "sold_out" }))
+    .filter((item) => Number.isFinite(item.price) && item.price >= 0);
+  const availableVariants = pricedVariants.filter((item) => !item.soldOut);
+  const canonicalCandidates = availableVariants.length ? availableVariants : pricedVariants;
+  if (canonicalCandidates.length) {
+    const minimum = Math.min(...canonicalCandidates.map((item) => item.price));
+    return `${formatFenPrice(minimum)}${canonicalCandidates.length > 1 ? " 起" : ""}`;
+  }
+
+  const legacySkus = (((data || {}).skuConfig || {}).skus || []);
+  const legacyPrices = legacySkus
+    .filter((item) => item && !item.soldOut)
+    .map((item) => parseYuanAmount(item.price))
+    .filter((item) => item !== null);
+  const fallbackLegacyPrices = legacyPrices.length ? legacyPrices : legacySkus
+    .map((item) => parseYuanAmount(item && item.price))
+    .filter((item) => item !== null);
+  if (fallbackLegacyPrices.length) {
+    const minimum = Math.min(...fallbackLegacyPrices);
+    const text = Number.isInteger(minimum) ? String(minimum) : minimum.toFixed(2).replace(/0$/, "");
+    return `¥${text}${fallbackLegacyPrices.length > 1 ? " 起" : ""}`;
+  }
+  return formatProductSharePrice(data.price);
+}
+
 function buildNoteShareTitle(note = {}, user = {}) {
   const plan = buildNoteSharePlan(note, user);
   const source = plan.source || {};
@@ -321,7 +405,7 @@ function buildNoteShareTitle(note = {}, user = {}) {
     return [property.community || source.title || "房源资料", details.join(" · ")].filter(Boolean).join("\n");
   }
   if (plan.kind === "product") {
-    const price = formatProductSharePrice((source.facts || [])[0]);
+    const price = String((source.facts || [])[0] || "").trim();
     return [price, source.title || "商品资料"].filter(Boolean).join(" ");
   }
   return source.title || note.title || "资料详情";
@@ -357,6 +441,31 @@ function buildNoteContentBlocks(note = {}) {
   return blocks;
 }
 
+function getNoteSharePrimaryImage(note = {}, data = {}, source = {}, blocks = []) {
+  const candidates = [
+    source.primaryImageUrl,
+    source.coverUrl,
+    source.coverDisplayUrl,
+    data.coverUrl,
+    data.coverDisplayUrl,
+    data.primaryImageUrl,
+    data.imageUrl,
+    source.linkData && source.linkData.sourceCoverUrl,
+    source.serviceData && source.serviceData.coverUrl,
+    source.propertyData && source.propertyData.coverUrl,
+    source.productData && source.productData.coverUrl,
+    ...(blocks || []).filter((item) => item && item.type === "image").map((item) => item.url),
+    ...(Array.isArray(note.media) ? note.media : [])
+      .filter((item) => item && item.type === "image")
+      .map((item) => item.url || item.displayUrl),
+    note.coverUrl,
+    note.coverDisplayUrl
+  ];
+  return candidates
+    .map((item) => String(item || "").trim())
+    .find((item) => isShareImageUrl(item)) || "";
+}
+
 function buildNoteSharePlan(note = {}, user = {}) {
   const config = note.visibilityConfig || {};
   const data = config.structuredData || note.structuredData || {};
@@ -368,7 +477,7 @@ function buildNoteSharePlan(note = {}, user = {}) {
     title: note.title || "资料详情",
     badge: shareCardBadge(kind),
     blocks,
-    primaryImageUrl: blocks.find((item) => item.type === "image")?.url || "",
+    primaryImageUrl: "",
     facts: []
   };
 
@@ -392,76 +501,78 @@ function buildNoteSharePlan(note = {}, user = {}) {
     const preview = note.serviceOfferPreview || {};
     const title = note.title || preview.title || data.serviceName || "服务方案";
     const headline = preview.headline || data.headline || note.summary || "";
-    const primaryImageUrl = preview.coverUrl || note.coverDisplayUrl || note.coverUrl || data.coverUrl || source.primaryImageUrl || "";
     const serviceData = {
       serviceName: title,
       headline,
       detailText: data.detailText || data.serviceScope || "",
       targetAudience: preview.targetAudience || data.targetAudience || "",
       pricingNote: preview.pricingNote || data.pricingNote || data.pricingOrTerms || "",
-      scene: data.scene || preview.scene || ""
+      scene: data.scene || preview.scene || "",
+      coverUrl: data.coverUrl || data.imageUrl || preview.coverUrl || note.coverUrl || note.coverDisplayUrl || ""
     };
     source = {
       ...source,
       ...preview,
       ...data,
-      layoutId: isRenderableImageSource(primaryImageUrl) ? "original_media" : "service_info",
+      layoutId: "service_info",
       templateKind: "service_offer",
       serviceData,
       title,
       badge: shareCardBadge(kind),
       summary: headline,
       blocks: headline ? [{ id: "service_headline", type: "text", text: headline, sortOrder: 0 }] : [],
-      primaryImageUrl,
+      primaryImageUrl: "",
       facts: [serviceData.targetAudience, serviceData.pricingNote].filter(Boolean)
     };
   } else if (kind === "property") {
-    const primaryImageUrl = note.coverDisplayUrl || note.coverUrl || data.coverUrl || source.primaryImageUrl || "";
     const propertyData = normalizePropertyShareData(note, data);
     source = {
       ...source,
-      layoutId: isRenderableImageSource(primaryImageUrl) ? "original_media" : "property_info",
+      layoutId: "property_info",
       templateKind: "property",
       propertyData,
       title: propertyData.community || "房源资料",
       summary: Array.isArray(data.highlights)
         ? data.highlights.filter(Boolean).join(" · ")
         : data.highlights || note.summary || "",
-      primaryImageUrl,
+      primaryImageUrl: "",
       facts: [propertyData.price, propertyData.layout, propertyData.area, propertyData.address].filter(Boolean)
     };
   } else if (kind === "product") {
-    const primaryImageUrl = note.coverDisplayUrl || note.coverUrl || data.coverUrl || source.primaryImageUrl;
+    const variants = Array.isArray(data.variants) ? data.variants : [];
+    const firstVariant = variants.find((item) => item && item.name) || {};
+    const productPrice = getProductSharePrice(data);
     const productData = {
       productName: note.title || data.productName || "商品资料",
       headline: data.headline || note.summary || "",
-      price: data.price || "",
-      spec: data.spec || data.variantName || "",
+      price: productPrice,
+      spec: data.spec || data.variantName || firstVariant.name || "",
       pickupMethod: data.pickupMethod || (data.fulfillment || {}).methods?.[0] || "",
       stockStatus: data.stockStatus || "",
-      highlights: Array.isArray(data.highlights) ? data.highlights : []
+      highlights: Array.isArray(data.highlights) ? data.highlights : [],
+      coverUrl: data.coverUrl || data.imageUrl || note.coverUrl || note.coverDisplayUrl || ""
     };
     source = {
       ...source,
-      layoutId: isRenderableImageSource(primaryImageUrl) ? "original_media" : "product_info",
+      layoutId: "product_info",
       templateKind: "product",
       productData,
       title: productData.productName,
       summary: productData.headline,
-      primaryImageUrl,
+      primaryImageUrl: "",
       facts: [productData.price, productData.spec, productData.pickupMethod, productData.stockStatus].filter(Boolean)
     };
   } else if (kind === "link") {
     const linkData = normalizeLinkShareData(note, data);
     source = {
       ...source,
-      layoutId: isRenderableImageSource(linkData.sourceCoverUrl) ? "original_media" : "link_info",
+      layoutId: "link_info",
       templateKind: "link",
       linkData,
       title: linkData.sourceTitle || "网页链接",
       summary: linkData.sourceDescription,
       badge: shareCardBadge(kind),
-      primaryImageUrl: linkData.sourceCoverUrl,
+      primaryImageUrl: "",
       facts: [linkData.sourceName, linkData.sourceDomain].filter(Boolean),
       blocks: linkData.sourceDescription
         ? [{ id: "link_description", type: "text", text: linkData.sourceDescription, sortOrder: 0 }]
@@ -471,10 +582,9 @@ function buildNoteSharePlan(note = {}, user = {}) {
     const imageCaption = kind === "image_ocr"
       ? cleanImagePrimaryText(note.body || data.rawText || (data.ocr || {}).text || note.summary || "")
       : "";
-    const hasPrimaryImage = isRenderableImageSource(getPrimaryImageUrl(note));
     source = {
       ...source,
-      layoutId: hasPrimaryImage ? "original_media" : noImageLayoutForKind(kind),
+      layoutId: noImageLayoutForKind(kind),
       templateKind: kind,
       title: kind === "image_ocr" ? imagePrimaryTitle(note, imageCaption) : note.title || "资料详情",
       badge: shareCardBadge(kind),
@@ -482,13 +592,12 @@ function buildNoteSharePlan(note = {}, user = {}) {
       blocks: kind === "image_ocr" && imageCaption && !blocks.some((item) => item.type === "text")
         ? [{ id: "image_caption", type: "text", text: imageCaption, sortOrder: 0 }, ...blocks]
         : blocks,
-      primaryImageUrl: isRenderableImageSource(
-        kind === "image_ocr" ? getPrimaryImageUrl(note) : source.primaryImageUrl || note.coverDisplayUrl || note.coverUrl || data.coverUrl || ""
-      )
-        ? (kind === "image_ocr" ? getPrimaryImageUrl(note) : source.primaryImageUrl || note.coverDisplayUrl || note.coverUrl || data.coverUrl || "")
-        : ""
+      primaryImageUrl: ""
     };
-    if (isRenderableImageSource(source.primaryImageUrl)) source.layoutId = "original_media";
+  }
+
+  if (kind !== "business_card") {
+    source.primaryImageUrl = getNoteSharePrimaryImage(note, data, source, blocks);
   }
 
   const styleId = SHARE_CARD_STYLE_VERSION;
@@ -512,20 +621,7 @@ function isCurrentNoteShareSnapshot(note = {}, snapshot = {}, user = {}) {
     && String(snapshot.styleId || "") === plan.styleId;
 }
 
-function isDirectSharePlan(plan = {}) {
-  // Non-business scenes with a real registered primary image use the native
-  // WeChat card path with that image.  Without an image, stay inside the
-  // plugin and generate a typed information card so WeChat never screenshots the
-  // current library/detail page.
-  return plan.kind !== "business_card"
-    && isShareImageUrl(plan.source && plan.source.primaryImageUrl);
-}
-
 function getShareImageUrlFromState(state = {}) {
-  if (state.direct) {
-    const directUrl = state.source && state.source.primaryImageUrl;
-    return isShareImageUrl(directUrl) ? String(directUrl).trim() : "";
-  }
   return state.status === "ready" && state.snapshot && isShareImageUrl(state.snapshot.url)
     ? String(state.snapshot.url).trim()
     : "";
@@ -538,7 +634,6 @@ function noteShareRequestKey(note, ownerUserId, user = {}) {
 
 function getNoteShareSnapshotState(note = {}, ownerUserId = "", user = {}) {
   const plan = buildNoteSharePlan(note, user);
-  if (isDirectSharePlan(plan)) return { status: "ready", direct: true, snapshot: null, ...plan };
   const snapshot = getNoteShareSnapshot(note);
   const requestKey = shareSnapshotRequestKey("note", plan.entity.id, ownerUserId, plan.sourceRevision, plan.styleId, plan.fingerprint);
   if (isShareSnapshotReady(snapshot, plan.sourceRevision, plan.fingerprint) && String(snapshot.styleId || "") === plan.styleId) {
@@ -554,7 +649,6 @@ function getNoteShareSnapshotState(note = {}, ownerUserId = "", user = {}) {
 
 async function prepareNoteShareSnapshot({ page, canvasId, note, ownerUserId, user = {} }) {
   const plan = buildNoteSharePlan(note, user);
-  if (isDirectSharePlan(plan)) return { ...plan, direct: true, snapshot: null, entity: plan.entity };
   const requestKey = shareSnapshotRequestKey("note", plan.entity.id, ownerUserId, plan.sourceRevision, plan.styleId, plan.fingerprint);
   try {
     const result = await ensureShareSnapshot({
@@ -582,27 +676,26 @@ async function prepareNoteShareSnapshot({ page, canvasId, note, ownerUserId, use
 
 async function renderShareCard({ page, canvasId, source = {}, variant = "resource", upload = false, ownerUserId = "" }) {
   const options = { upload, ownerUserId };
-  // Only business cards retain a dedicated renderer. Every other scene with
-  // media uses the same original-media path; CSS/WXML wrappers cannot be
-  // carried into a native WeChat share card.
+  // Every scene uses the same fixed information-card geometry. Business cards
+  // retain their dedicated content layout inside that fixed 5:4 contract.
   let modelSource = source;
   if (!source.layoutId && variant === "business_card") {
     modelSource = { ...source, layoutId: "business_card", businessCard: source };
   } else if (!source.layoutId) {
-    modelSource = { ...source, layoutId: source.primaryImageUrl || source.coverUrl ? "original_media" : "text_info" };
+    modelSource = { ...source, layoutId: "text_info" };
   }
   return generateUnifiedShareCardImage(page, canvasId, modelSource, options);
 }
 
-function buildShareMessage({ title, path, snapshot, sourceRevision, fingerprint, styleId, direct = false, imageUrl = "" }) {
-  if (direct && !isShareImageUrl(imageUrl)) return null;
-  if (!direct && !isShareSnapshotReady(snapshot, sourceRevision, fingerprint)) return null;
-  if (!direct && styleId && String(snapshot.styleId || "") !== String(styleId)) return null;
-  const directImageUrl = direct && isShareImageUrl(imageUrl) ? String(imageUrl).trim() : "";
+function buildShareMessage({ title, path, snapshot, sourceRevision, fingerprint, styleId }) {
+  if (!isShareSnapshotReady(snapshot, sourceRevision, fingerprint)) return null;
+  if (styleId && String(snapshot.styleId || "") !== String(styleId)) return null;
+  const targetPath = String(path || "").trim();
+  if (!targetPath || targetPath.indexOf("/pages/library/index") === 0) return null;
   return {
     title: title || "资料详情",
-    path: path || "/pages/home/index",
-    imageUrl: direct ? directImageUrl : snapshot.url
+    path: targetPath,
+    imageUrl: snapshot.url
   };
 }
 
@@ -708,6 +801,7 @@ async function ensureShareSnapshot({
 module.exports = {
   SHARE_CARD_CANVAS_ID,
   SHARE_CARD_STYLE_VERSION,
+  SHARE_CARD_TEMPLATE_REVISION,
   buildShareCardMessage,
   buildShareCardTitle,
   buildShareMessage,
@@ -720,12 +814,12 @@ module.exports = {
   getShareSnapshot,
   getShareSourceRevision,
   getShareImageUrlFromState,
-  isDirectSharePlan,
   isShareImageUrl,
   isCurrentNoteShareSnapshot,
   isShareSnapshotReady,
   noteShareRequestKey,
   normalizeShareCardSource,
+  buildShowcaseShareSource,
   prepareShareCardImage,
   prepareNoteShareSnapshot,
   renderShareCard,

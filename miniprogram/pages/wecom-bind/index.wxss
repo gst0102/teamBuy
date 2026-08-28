@@ -1,0 +1,73 @@
+page {
+  background: #f3f7fc;
+}
+
+.page {
+  min-height: 100vh;
+  padding: 160rpx 40rpx 80rpx;
+  box-sizing: border-box;
+}
+
+.card {
+  padding: 72rpx 48rpx 56rpx;
+  border-radius: 28rpx;
+  background: #ffffff;
+  text-align: center;
+  box-shadow: 0 16rpx 48rpx rgba(25, 71, 126, 0.08);
+}
+
+.icon {
+  width: 112rpx;
+  height: 112rpx;
+  margin: 0 auto 32rpx;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  background: #1677ff;
+  font-size: 64rpx;
+  font-weight: 700;
+}
+
+.icon.success {
+  background: #1da66a;
+}
+
+.icon.failed {
+  background: #e65b57;
+}
+
+.title {
+  color: #172238;
+  font-size: 40rpx;
+  font-weight: 700;
+}
+
+.message {
+  min-height: 96rpx;
+  margin: 24rpx 0 48rpx;
+  color: #71809a;
+  font-size: 28rpx;
+  line-height: 1.7;
+}
+
+button {
+  height: 88rpx;
+  margin: 20rpx 0 0;
+  border-radius: 44rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 30rpx;
+}
+
+.primary {
+  color: #ffffff;
+  background: #1677ff;
+}
+
+.secondary {
+  color: #3974c7;
+  background: #edf4ff;
+}

@@ -273,6 +273,22 @@ function invalidateNoteListCaches(ownerUserId) {
   }
 }
 
+// The resource library has a separate metadata cache from the note list
+// cache. Require it lazily so the store's dependency on this API module does
+// not create an initialization cycle.
+function invalidateResourceStoreCards(ownerUserId) {
+  if (!ownerUserId) return;
+  try {
+    const resourceStore = require("../stores/resource-store");
+    if (resourceStore && typeof resourceStore.invalidateCards === "function") {
+      resourceStore.invalidateCards(ownerUserId);
+    }
+  } catch (error) {
+    // The API remains the source of truth if the optional cache cannot be
+    // invalidated.
+  }
+}
+
 function getCachedNotes(params = {}, options = {}) {
   return readCache(noteListCacheKey(params), options) || [];
 }
@@ -474,6 +490,7 @@ function createManualNoteDraft(payload) {
   })).then((res) => {
     writeNoteItemCache(res.data);
     invalidateNoteListCaches(payload.ownerUserId);
+    invalidateResourceStoreCards(payload.ownerUserId);
     return res;
   });
 }
@@ -489,6 +506,7 @@ function createQuickNoteCapture(payload) {
   })).then((res) => {
     writeNoteItemCache(res.data);
     invalidateNoteListCaches(payload.ownerUserId);
+    invalidateResourceStoreCards(payload.ownerUserId);
     return res;
   });
 }
@@ -504,6 +522,7 @@ function createLinkNoteCapture(payload) {
   })).then((res) => {
     writeNoteItemCache(res.data);
     invalidateNoteListCaches(payload.ownerUserId);
+    invalidateResourceStoreCards(payload.ownerUserId);
     return res;
   });
 }
@@ -532,6 +551,7 @@ function createPropertyBatch(payload) {
   })).then((res) => {
     invalidateNoteListCaches(payload.ownerUserId);
     invalidateShowcasesCache(payload.ownerUserId);
+    invalidateResourceStoreCards(payload.ownerUserId);
     return res;
   });
 }
@@ -571,6 +591,7 @@ function createDemoData(ownerUserId) {
   }).then((res) => {
     invalidateNoteListCaches(ownerUserId);
     invalidateShowcasesCache(ownerUserId);
+    invalidateResourceStoreCards(ownerUserId);
     return res;
   });
 }
@@ -582,6 +603,7 @@ function cleanupDemoData(ownerUserId) {
   }).then((res) => {
     invalidateNoteListCaches(ownerUserId);
     invalidateShowcasesCache(ownerUserId);
+    invalidateResourceStoreCards(ownerUserId);
     return res;
   });
 }
@@ -618,6 +640,7 @@ function addNoteToTopic(noteId, topicId, ownerUserId) {
   })).then((res) => {
     invalidateNoteListCaches(ownerUserId);
     invalidateTopicsCache(ownerUserId);
+    invalidateResourceStoreCards(ownerUserId);
     return res;
   });
 }
@@ -632,6 +655,7 @@ function removeNoteFromTopic(noteId, topicId, ownerUserId) {
   })).then((res) => {
     invalidateNoteListCaches(ownerUserId);
     invalidateTopicsCache(ownerUserId);
+    invalidateResourceStoreCards(ownerUserId);
     return res;
   });
 }
@@ -760,6 +784,7 @@ function updateNote(noteId, payload) {
     writeNoteItemCache(data);
     invalidateNoteListCaches(payload.ownerUserId);
     invalidateShowcasesCache(payload.ownerUserId);
+    invalidateResourceStoreCards(payload.ownerUserId);
     return { ...res, data };
   });
 }
@@ -773,6 +798,7 @@ function saveNoteShareSnapshot(noteId, payload) {
     const data = await normalizeAndCacheNote(res.data);
     writeNoteItemCache(data);
     invalidateNoteListCaches(payload.ownerUserId);
+    invalidateResourceStoreCards(payload.ownerUserId);
     return { ...res, data };
   });
 }
@@ -787,6 +813,7 @@ function publishNote(noteId, ownerUserId, expectedRevision) {
     writeNoteItemCache(data);
     invalidateNoteListCaches(ownerUserId);
     invalidateShowcasesCache(ownerUserId);
+    invalidateResourceStoreCards(ownerUserId);
     return { ...res, data };
   });
 }
@@ -802,6 +829,7 @@ function revokeNote(noteId, ownerUserId) {
   })).then((res) => {
     invalidateNoteListCaches(ownerUserId);
     invalidateShowcasesCache(ownerUserId);
+    invalidateResourceStoreCards(ownerUserId);
     return res;
   });
 }
@@ -817,6 +845,7 @@ function duplicateNote(noteId, ownerUserId) {
   })).then((res) => {
     writeNoteItemCache(res.data);
     invalidateNoteListCaches(ownerUserId);
+    invalidateResourceStoreCards(ownerUserId);
     return res;
   });
 }
@@ -850,6 +879,7 @@ function clonePropertySame(payload) {
   }).then((res) => {
     invalidateNoteListCaches(payload.ownerUserId);
     invalidateShowcasesCache(payload.ownerUserId);
+    invalidateResourceStoreCards(payload.ownerUserId);
     return res;
   });
 }
@@ -864,6 +894,7 @@ function organizeNote(noteId, ownerUserId) {
   })).then((res) => {
     writeNoteItemCache(res.data);
     invalidateNoteListCaches(ownerUserId);
+    invalidateResourceStoreCards(ownerUserId);
     return res;
   });
 }
@@ -878,6 +909,7 @@ function generateNote(noteId, ownerUserId) {
   })).then((res) => {
     writeNoteItemCache(res.data);
     invalidateNoteListCaches(ownerUserId);
+    invalidateResourceStoreCards(ownerUserId);
     return res;
   });
 }
@@ -891,6 +923,7 @@ function confirmNoteType(noteId, payload) {
     const data = await normalizeAndCacheNote(res.data);
     writeNoteItemCache(data);
     invalidateNoteListCaches(payload.ownerUserId);
+    invalidateResourceStoreCards(payload.ownerUserId);
     return { ...res, data };
   });
 }
@@ -902,6 +935,7 @@ function deleteNote(noteId, ownerUserId) {
   }).then((res) => {
     invalidateNoteListCaches(ownerUserId);
     invalidateShowcasesCache(ownerUserId);
+    invalidateResourceStoreCards(ownerUserId);
     return res;
   });
 }
@@ -969,7 +1003,10 @@ function createCard(payload) {
   }).then(async (res) => ({
     ...res,
     data: await normalizeAndCacheCard(res.data)
-  }));
+  })).then((res) => {
+    invalidateResourceStoreCards(payload.ownerUserId);
+    return res;
+  });
 }
 
 function uploadAsset({ filePath, mediaType = "image", ownerUserId = "" }) {
@@ -1014,6 +1051,44 @@ function uploadAsset({ filePath, mediaType = "image", ownerUserId = "" }) {
   });
 }
 
+function uploadShareSnapshot({ filePath, ownerUserId = "" }) {
+  return new Promise((resolve, reject) => {
+    wx.uploadFile({
+      url: buildApiUrl("/api/uploads/share-snapshot"),
+      filePath,
+      name: "file",
+      header: authHeader(),
+      formData: { ownerUserId },
+      success(res) {
+        let data = {};
+        try {
+          data = JSON.parse(res.data);
+        } catch (error) {
+          reject({ detail: "分享图上传返回解析失败" });
+          return;
+        }
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          const asset = data && data.data;
+          if (!asset || !asset.url) {
+            reject({ detail: (data && (data.message || data.detail)) || "分享图上传成功但未返回地址" });
+            return;
+          }
+          resolve({
+            ...asset,
+            url: toAbsoluteUrl(asset.url),
+            displayUrl: toAbsoluteUrl(asset.url)
+          });
+          return;
+        }
+        reject({ ...data, detail: data.detail || data.message || `分享图上传失败（${res.statusCode || "无状态码"}）` });
+      },
+      fail(err) {
+        reject({ ...err, detail: "分享图上传失败，请检查网络后重试" });
+      }
+    });
+  });
+}
+
 function uploadImageNote({ filePath, ownerUserId = "" }) {
   const app = getApp();
   return new Promise((resolve, reject) => {
@@ -1034,6 +1109,8 @@ function uploadImageNote({ filePath, ownerUserId = "" }) {
           return;
         }
         if (res.statusCode >= 200 && res.statusCode < 300) {
+          invalidateNoteListCaches(ownerUserId);
+          invalidateResourceStoreCards(ownerUserId);
           resolve({
             ...data.data,
             note: normalizeNotePayload(data.data && data.data.note)
@@ -1058,7 +1135,11 @@ function recognizeNoteImage(noteId, ownerUserId) {
       ...res.data,
       note: await normalizeAndCacheNote(res.data && res.data.note)
     }
-  }));
+  })).then((res) => {
+    invalidateNoteListCaches(ownerUserId);
+    invalidateResourceStoreCards(ownerUserId);
+    return res;
+  });
 }
 
 function getCachedShowcases(ownerUserId) {
@@ -1437,13 +1518,19 @@ function updateCard(cardId, payload) {
   }).then(async (res) => ({
     ...res,
     data: await normalizeAndCacheCard(res.data)
-  }));
+  })).then((res) => {
+    invalidateResourceStoreCards(payload.ownerUserId);
+    return res;
+  });
 }
 
 function deleteCard(cardId, ownerUserId) {
   return request({
     url: `/api/cards/${cardId}?ownerUserId=${ownerUserId}`,
     method: "DELETE"
+  }).then((res) => {
+    invalidateResourceStoreCards(ownerUserId);
+    return res;
   });
 }
 
@@ -1455,7 +1542,10 @@ function publishCard(cardId, userId) {
   }).then(async (res) => ({
     ...res,
     data: await normalizeAndCacheCard(res.data)
-  }));
+  })).then((res) => {
+    invalidateResourceStoreCards(userId);
+    return res;
+  });
 }
 
 function duplicateCard(cardId, userId) {
@@ -1466,7 +1556,10 @@ function duplicateCard(cardId, userId) {
   }).then(async (res) => ({
     ...res,
     data: await normalizeAndCacheCard(res.data)
-  }));
+  })).then((res) => {
+    invalidateResourceStoreCards(userId);
+    return res;
+  });
 }
 
 function recordView(cardId, payload) {
@@ -1828,6 +1921,7 @@ module.exports = {
   deleteCategory,
   createCard,
   uploadAsset,
+  uploadShareSnapshot,
   uploadImageNote,
   recognizeNoteImage,
   getCachedShowcases,

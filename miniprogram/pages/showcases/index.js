@@ -1,6 +1,6 @@
 const api = require("../../services/api");
 const { avatarText, formatTime, getCurrentUser, safeAvatarUrl } = require("../../utils/dashboard");
-const { createShareSnapshotFingerprint, ensureShareSnapshot, getShareSnapshot, getShareSourceRevision, isShareImageUrl, renderShareCard, setShareMenuEnabled, SHARE_CARD_STYLE_VERSION } = require("../../plugins/share-snapshot/index");
+const { buildShowcaseShareSource, createShareSnapshotFingerprint, ensureShareSnapshot, getShareSnapshot, getShareSourceRevision, isShareImageUrl, renderShareCard, setShareMenuEnabled, SHARE_CARD_STYLE_VERSION } = require("../../plugins/share-snapshot/index");
 const { getModeConfig, readWorkspaceMode } = require("../../utils/workspace-mode");
 const { buildTitleCoverData } = require("../../utils/title-cover");
 const cachePolicy = require("../../utils/cache-policy");
@@ -87,56 +87,43 @@ function buildCustomerShareTitle(title) {
   return `${cleanTitle}｜点开查看完整资料`;
 }
 
-function buildShowcaseShareSource(item = {}) {
-  const coverUrl = item.shareCoverUrl || item.bannerUrl || "";
-  const items = Array.isArray(item.items) ? item.items : (Array.isArray(item.notes) ? item.notes : []);
-  return {
-    title: item.shareTitle || item.name || "合集",
-    badge: "合集",
-    coverUrl,
-    primaryImageUrl: coverUrl,
-    layoutId: isShareImageUrl(coverUrl) ? "original_media" : "showcase_info",
-    templateKind: "showcase",
-    collectionData: {
-      description: item.description || item.shareDescription || "",
-      itemCount: Number(item.itemCount || items.length || 0),
-      sceneType: item.sceneType || "notes"
-    },
-    hint: "打开小程序查看完整合集",
-    growthHint: "我也想做同款",
-    shareTargetLabel: "合集"
-  };
-}
-
-function isDirectShowcaseShare(item = {}) {
-  return isShareImageUrl(buildShowcaseShareSource(item).coverUrl);
-}
-
 function hasCurrentShowcaseSnapshot(item = {}) {
   const snapshot = getShareSnapshot("showcase", item);
+  const sourceRevision = getShareSourceRevision("showcase", item);
+  const expectedFingerprint = item.id
+    ? createShareSnapshotFingerprint("showcase", item.id, sourceRevision, SHARE_CARD_STYLE_VERSION, buildShowcaseShareSource(item))
+    : "";
   return Boolean(
     snapshot
       && snapshot.status === "ready"
       && isShareImageUrl(snapshot.url)
-      && String(snapshot.sourceRevision || "") === getShareSourceRevision("showcase", item)
+      && String(snapshot.sourceRevision || "") === sourceRevision
       && String(snapshot.styleId || "") === SHARE_CARD_STYLE_VERSION
+      && String(snapshot.fingerprint || "") === expectedFingerprint
   );
 }
 
 function getLocalShowcaseShareImage(item = {}, shareImages = {}) {
   const entry = shareImages[item.id];
   const snapshot = getShareSnapshot("showcase", item);
+  const sourceRevision = getShareSourceRevision("showcase", item);
+  const expectedFingerprint = item.id
+    ? createShareSnapshotFingerprint("showcase", item.id, sourceRevision, SHARE_CARD_STYLE_VERSION, buildShowcaseShareSource(item))
+    : "";
   if (entry && typeof entry === "object") {
-    const sameSource = String(entry.sourceRevision || "") === getShareSourceRevision("showcase", item);
+    const sameSource = String(entry.sourceRevision || "") === sourceRevision;
     const sameSnapshot = !snapshot || (
       snapshot.url === entry.url
       && snapshot.fingerprint === entry.fingerprint
       && String(snapshot.styleId || "") === SHARE_CARD_STYLE_VERSION
+      && String(snapshot.fingerprint || "") === expectedFingerprint
     );
     return sameSource && sameSnapshot && isShareImageUrl(entry.url) ? entry.url : "";
   }
   return entry && snapshot && snapshot.url === entry
-    && String(snapshot.sourceRevision || "") === getShareSourceRevision("showcase", item)
+    && String(snapshot.sourceRevision || "") === sourceRevision
+    && String(snapshot.styleId || "") === SHARE_CARD_STYLE_VERSION
+    && String(snapshot.fingerprint || "") === expectedFingerprint
     && isShareImageUrl(entry)
     ? entry
     : "";
@@ -283,8 +270,24 @@ function findLatestPublished(showcases = []) {
   return showcases.find((item) => item.status === "published") || null;
 }
 
+function parseShowcaseActivityTimestamp(value) {
+  const parsed = typeof value === "number" ? value : Date.parse(String(value || ""));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function getShowcaseActivityTimestamp(item = {}) {
+  const summary = ((item.analytics || {}).summary) || {};
+  return Math.max(
+    parseShowcaseActivityTimestamp(summary.latestShareAt),
+    parseShowcaseActivityTimestamp(item.updatedAt),
+    parseShowcaseActivityTimestamp(item.createdAt)
+  );
+}
+
 function sortShowcases(items = []) {
   return items.slice().sort((a, b) => {
+    const activityDiff = getShowcaseActivityTimestamp(b) - getShowcaseActivityTimestamp(a);
+    if (activityDiff) return activityDiff;
     const sameStyleRank = Number(Boolean(b.isSameStyle)) - Number(Boolean(a.isSameStyle));
     if (sameStyleRank) return sameStyleRank;
     const left = a.isSameStyle ? a.sameStyleGeneratedAt : (a.updatedAt || a.createdAt || "");
@@ -324,7 +327,7 @@ function filterShowcases(items = [], options = {}) {
       const diff = score(b) - score(a);
       if (diff) return diff;
     }
-    return String(b.updatedAt || b.createdAt || "").localeCompare(String(a.updatedAt || a.createdAt || ""));
+    return getShowcaseActivityTimestamp(b) - getShowcaseActivityTimestamp(a);
   });
 }
 
@@ -642,15 +645,12 @@ Page({
     const item = (this.data.allShowcases || []).find((row) => row && row.id === dataset.id) || {};
     const source = buildShowcaseShareSource(item.id ? item : dataset);
     const persistedSnapshot = hasCurrentShowcaseSnapshot(item) ? getShareSnapshot("showcase", item) : null;
-    const directImage = isDirectShowcaseShare(item) ? source.primaryImageUrl : "";
-    const existingImage = directImage || getLocalShowcaseShareImage(item, this.data.showcaseShareImages || {}) || (persistedSnapshot && persistedSnapshot.url) || "";
-    const directShareReady = isDirectShowcaseShare(item);
+    const existingImage = getLocalShowcaseShareImage(item, this.data.showcaseShareImages || {}) || (persistedSnapshot && persistedSnapshot.url) || "";
     const pendingShare = {
       id: dataset.id || "",
       title: dataset.title || "合集",
       banner: dataset.banner || "",
       imageUrl: existingImage,
-      direct: directShareReady,
       sourceRevision: getShareSourceRevision("showcase", item)
     };
     this.setData({ pendingShare });
@@ -660,11 +660,6 @@ Page({
       shareStatusText: "正在准备"
     });
     if (existingImage) {
-      subscription.requestViewNotificationSubscription("showcase_share");
-      this.updateShowcaseShareState(dataset.id, { shareImageReady: true, shareDisabled: false, shareStatusText: "发客户" });
-      return;
-    }
-    if (directShareReady) {
       subscription.requestViewNotificationSubscription("showcase_share");
       this.updateShowcaseShareState(dataset.id, { shareImageReady: true, shareDisabled: false, shareStatusText: "发客户" });
       return;
@@ -730,7 +725,7 @@ Page({
     return (items || []).map((item) => {
       const snapshot = hasCurrentShowcaseSnapshot(item) ? getShareSnapshot("showcase", item) : null;
       const source = buildShowcaseShareSource(item);
-      const ready = (isDirectShowcaseShare(item) && isShareImageUrl(source.primaryImageUrl)) || Boolean(getLocalShowcaseShareImage(item, images) || (snapshot && snapshot.url));
+      const ready = Boolean(getLocalShowcaseShareImage(item, images) || (snapshot && snapshot.url));
       return {
         ...item,
         shareImageReady: ready,
@@ -740,7 +735,7 @@ Page({
     });
   },
   async prepareShowcaseShareImages(items = []) {
-    const pending = (items || []).filter((item) => item && item.status === "published" && item.id && !isDirectShowcaseShare(item) && !hasCurrentShowcaseSnapshot(item));
+    const pending = (items || []).filter((item) => item && item.status === "published" && item.id && !hasCurrentShowcaseSnapshot(item));
     if (!pending.length) return;
     this.showcaseShareGenerating = this.showcaseShareGenerating || {};
     for (const item of pending) {
@@ -814,7 +809,13 @@ Page({
         }
       };
     };
-    const allShowcases = (this.data.allShowcases || []).map(updateItem);
+    const allShowcases = sortShowcases((this.data.allShowcases || []).map(updateItem));
+    const user = this.data.user || getCurrentUser();
+    const mode = this.data.mode || "notes";
+    const cached = user && readShowcaseCache(user.id, mode);
+    if (user && cached && Array.isArray(cached.items)) {
+      writeShowcaseCache(user.id, mode, sortShowcases(cached.items.map(updateItem)));
+    }
     this.setData({
       allShowcases,
       showcases: this.withShowcaseShareState(this.filterVisibleShowcases(allShowcases)),
@@ -902,8 +903,7 @@ Page({
     const row = (this.data.allShowcases || []).find((item) => item && item.id === id) || {};
     const persistedSnapshot = hasCurrentShowcaseSnapshot(row) ? getShareSnapshot("showcase", row) : null;
     const pendingImage = pending.sourceRevision === getShareSourceRevision("showcase", row) ? pending.imageUrl : "";
-    const directImage = isDirectShowcaseShare(row) ? buildShowcaseShareSource(row).primaryImageUrl : "";
-    const imageUrl = pendingImage || directImage || getLocalShowcaseShareImage(row, this.data.showcaseShareImages || {}) || (persistedSnapshot && persistedSnapshot.url) || "";
+    const imageUrl = pendingImage || getLocalShowcaseShareImage(row, this.data.showcaseShareImages || {}) || (persistedSnapshot && persistedSnapshot.url) || "";
     const user = this.data.user || getCurrentUser();
     if (!id) {
       wx.showToast({ title: "请重新点击发给客户", icon: "none" });

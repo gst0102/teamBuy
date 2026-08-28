@@ -1,0 +1,784 @@
+<view class="page-shell">
+  <custom-nav title="{{isPlainNote ? '编辑文字资料' : '资料详情'}}" showBack="{{true}}" />
+
+  <view class="bookmark-article" wx:if="{{isBookmark}}">
+    <image wx:if="{{form.coverUrl}}" class="bookmark-cover" src="{{form.coverUrl}}" mode="aspectFill"></image>
+    <view class="bookmark-main">
+      <view class="bookmark-source">{{bookmark.sourceLabel}} · {{bookmark.sourceName}}</view>
+      <view class="bookmark-title">{{form.title}}</view>
+      <view class="bookmark-summary">{{form.summary || '已收藏，待整理。'}}</view>
+    </view>
+    <view class="bookmark-info">
+      <view>
+        <text>分类</text>
+        <text>{{bookmark.category}}</text>
+      </view>
+      <view>
+        <text>上传时间</text>
+        <text>{{uploadDateText || '刚刚'}}</text>
+      </view>
+      <view>
+        <text>来源</text>
+        <text>{{bookmark.sourceName}}</text>
+      </view>
+    </view>
+    <view class="bookmark-tags" wx:if="{{bookmark.tags.length}}">
+      <block wx:for="{{bookmark.tags}}" wx:key="*this">
+        <text>{{item}}</text>
+      </block>
+    </view>
+    <view class="bookmark-buttons">
+      <button class="open-btn" bindtap="handleOpenSource">打开原文</button>
+      <button class="organize-btn" loading="{{saving}}" bindtap="handleOrganize">整理为笔记</button>
+    </view>
+  </view>
+
+  <block wx:if="{{!isBookmark}}">
+    <block wx:if="{{isPlainNote}}">
+      <view class="text-editor-content">
+        <view class="text-preview-card">
+          <view class="text-section-head">
+            <view><text class="text-step">1</text><text class="text-section-title">客户看到的效果</text></view>
+            <view class="text-preview-link" bindtap="handlePlainPreview">完整预览 ›</view>
+          </view>
+          <view class="text-paper-preview">
+            <view class="text-paper-label">文字资料</view>
+            <view class="text-paper-title {{form.title ? '' : 'is-placeholder'}}">{{form.title || '填写资料标题'}}</view>
+            <view class="text-paper-body {{form.body ? '' : 'is-placeholder'}}">{{form.body || '输入正文后，这里会展示客户阅读效果。'}}</view>
+            <view wx:if="{{mediaItems.length}}" class="text-paper-media">
+              <block wx:for="{{mediaItems}}" wx:key="key">
+                <image wx:if="{{item.type === 'image'}}" class="text-paper-media-image" src="{{item.displayUrl || item.url}}" mode="aspectFill" />
+              </block>
+            </view>
+          </view>
+        </view>
+
+        <view class="text-editor-card">
+          <view class="text-section-head"><view><text class="text-step">2</text><text class="text-section-title">资料内容</text></view></view>
+          <view class="text-field">
+            <view class="text-field-label">标题</view>
+            <input class="text-title-input" value="{{form.title}}" data-key="title" bindinput="handleInput" placeholder="请输入资料标题" placeholder-class="text-input-placeholder" />
+          </view>
+          <view class="text-field">
+            <view class="text-field-label">正文</view>
+            <textarea class="text-body-input" value="{{form.body}}" data-key="body" bindinput="handleInput" maxlength="5000" placeholder="输入或粘贴要整理的内容" placeholder-class="text-input-placeholder" />
+            <view class="text-count">{{plainBodyCount}}/5000</view>
+          </view>
+          <view wx:if="{{contactCandidates.length}}" id="contact-review" class="contact-review-panel">
+            <view class="contact-review-head">
+              <view>
+                <view class="contact-review-title">发现正文中的手机号</view>
+                <view class="contact-review-hint">逐个确认归属后才能发给客户；号码只显示部分内容。</view>
+              </view>
+              <view class="contact-review-count">{{contactCandidates.length}} 个</view>
+            </view>
+            <view wx:for="{{contactCandidates}}" wx:key="phone" class="contact-review-row">
+              <view class="contact-review-main"><text class="contact-review-phone">{{item.masked}}</text><text class="contact-review-status {{item.status}}">{{item.statusLabel}}</text></view>
+              <view class="contact-review-actions">
+                <button class="contact-review-btn public" data-phone="{{item.phone}}" data-decision="public" bindtap="handleContactDecision">公开电话</button>
+                <button class="contact-review-btn private" data-phone="{{item.phone}}" data-decision="private" bindtap="handleContactDecision">仅自己保存</button>
+                <button class="contact-review-btn remove" data-phone="{{item.phone}}" data-decision="remove" bindtap="handleContactDecision">移出正文</button>
+              </view>
+            </view>
+            <view class="contact-review-foot">公开电话会出现在客户页的联系入口；“仅自己保存”不会进入客户页；移出正文后不保留该号码。</view>
+          </view>
+          <button wx:if="{{form.body}}" class="text-organize-button" loading="{{saving}}" bindtap="handleOrganize">帮我整理</button>
+          <view wx:else class="text-organize-hint">输入正文后，可以让系统帮你整理标题和排版。</view>
+        </view>
+
+        <view class="text-editor-card text-attachment-card">
+          <view class="text-section-head text-tappable" bindtap="handleTogglePlainAttachments">
+            <view><text class="text-step">3</text><text class="text-section-title">补充资料</text><text class="text-optional">（选填）</text></view>
+            <text class="text-preview-link">{{plainAttachmentsOpen ? '收起' : '展开'}} ›</text>
+          </view>
+          <view class="text-attachment-summary">可添加图片、PDF 或外部链接</view>
+          <block wx:if="{{plainAttachmentsOpen}}">
+            <view wx:if="{{mediaItems.length}}" class="text-attachment-list">
+              <view wx:for="{{mediaItems}}" wx:key="key" class="text-attachment-row">
+                <image wx:if="{{item.type === 'image'}}" class="text-attachment-thumb" src="{{item.displayUrl || item.url}}" mode="aspectFill" data-index="{{index}}" bindtap="handleOpenPlainAttachment" />
+                <view wx:else class="text-attachment-mark {{item.type}}" data-index="{{index}}" bindtap="handleOpenPlainAttachment">{{item.type === 'pdf' ? 'PDF' : '链'}}</view>
+                <view class="text-attachment-copy"><view>{{item.name || item.title || (item.type === 'image' ? '资料图片' : item.type === 'pdf' ? 'PDF 文件' : '外部链接')}}</view><text>{{item.type === 'image' ? (item.label === '封面' ? '当前封面' : '客户可查看图片') : item.url}}</text></view>
+                <view class="text-attachment-delete" data-source="{{item.source}}" data-index="{{item.index}}" bindtap="handleDeleteMedia">删除</view>
+              </view>
+            </view>
+            <button class="text-add-attachment" loading="{{uploadingMedia}}" bindtap="handleChooseMediaUpload">＋ 添加图片 / PDF / 链接</button>
+          </block>
+        </view>
+      </view>
+
+      <view class="text-bottom-bar">
+        <button class="text-delete-button" bindtap="handleDelete">删除资料</button>
+          <button class="text-save-button" loading="{{saving}}" bindtap="handlePublish">发客户</button>
+      </view>
+    </block>
+
+    <block wx:else>
+    <view class="workbench-hero {{isGroupbuy ? 'groupbuy' : ''}} {{isServiceCard ? 'service' : ''}}" wx:if="{{isProperty || isGroupbuy || isServiceCard}}">
+      <view class="hero-topline">
+        <text>{{isProperty ? '房源工作台' : isGroupbuy ? '团购/商品工作台' : isBusinessCard ? '电子名片工作台' : '服务方案工作台'}}</text>
+        <text>{{uploadDateText}}</text>
+      </view>
+      <view wx:if="{{isBusinessCard && businessCardHero}}" class="namecard-hero-card">
+        <view class="namecard-shine"></view>
+        <image wx:if="{{businessCardHero.avatarUrl}}" class="namecard-avatar-img" src="{{businessCardHero.avatarUrl}}" mode="aspectFill"></image>
+        <view wx:else class="namecard-avatar-img placeholder">{{businessCardHero.initial}}</view>
+        <view class="namecard-main">
+          <view class="namecard-name">{{businessCardHero.name}}</view>
+          <view class="namecard-role">{{businessCardHero.role}}</view>
+          <view class="namecard-org">{{businessCardHero.company}}</view>
+          <view class="namecard-service">{{businessCardHero.serviceScope}}</view>
+          <view class="namecard-contact">{{businessCardHero.contactLine}}</view>
+        </view>
+      </view>
+      <block wx:else>
+        <view class="hero-title">{{displayTitle}}</view>
+        <view class="hero-subtitle">{{displaySubtitle}}</view>
+      </block>
+      <view class="template-chip" wx:if="{{displayTemplateName}}">{{displayTemplateName}}</view>
+      <block wx:if="{{isProperty}}">
+        <view class="property-hero-actions">
+          <button class="hero-action-btn primary" bindtap="handlePublish"><text>发客户</text></button>
+          <button class="hero-action-btn" bindtap="handlePreviewPage"><text>客户页预览</text></button>
+        </view>
+        <view class="hero-weak-actions">
+          <view class="poster-weak-action" bindtap="handleCopyShareText">复制房源文案</view>
+          <view class="poster-weak-action" bindtap="handlePosterEntry">保存分享图</view>
+          <view class="poster-weak-action" bindtap="handleCopyCustomerTalk">复制客户话术</view>
+        </view>
+      </block>
+      <block wx:else>
+        <view class="hero-actions">
+          <button class="hero-action-btn" bindtap="handleCopyShareText"><text>分享文案</text></button>
+          <button class="hero-action-btn" bindtap="handlePublish"><text>发客户</text></button>
+          <button class="hero-action-btn" bindtap="handlePreviewPage"><text>客户页预览</text></button>
+        </view>
+        <view class="hero-weak-actions">
+          <view class="poster-weak-action" bindtap="handlePosterEntry">保存分享图</view>
+          <view class="poster-weak-action" bindtap="handleCopyCustomerTalk">复制客户话术</view>
+        </view>
+      </block>
+    </view>
+
+    <view class="note-hero" wx:else>
+      <view class="note-type-line">
+        <text>{{isPlainNote ? '普通笔记' : cardTypeLabel}}</text>
+        <text>{{uploadDateText}}</text>
+      </view>
+      <view class="note-hero-title">{{form.title || '未命名资料'}}</view>
+      <view class="note-hero-summary">{{isPlainNote ? '保存为普通笔记，先把内容记清楚。' : (form.summary || '普通笔记，可按需添加功能组。')}}</view>
+    </view>
+
+    <view class="miniapp-panel" wx:if="{{miniappInfo.visible}}">
+      <view class="miniapp-mark">原小程序房源</view>
+      <view class="miniapp-title">{{miniappInfo.title || form.title}}</view>
+      <view class="miniapp-source">{{miniappInfo.sourceName}}</view>
+      <view class="miniapp-code" wx:if="{{miniappInfo.houseCode}}">房源编码 {{miniappInfo.houseCode}}</view>
+      <view class="miniapp-actions">
+        <button bindtap="handleOpenMiniapp">{{miniappInfo.buttonText}}</button>
+        <button bindtap="handlePreviewPage">客户页预览</button>
+      </view>
+    </view>
+
+    <view class="ocr-panel" wx:if="{{ocrInfo.visible}}">
+      <view class="ocr-head">
+        <view>
+          <view class="ocr-mark">图片资料</view>
+          <view class="ocr-title">{{ocrInfo.title}}</view>
+          <view class="ocr-hint">{{ocrInfo.hint}}</view>
+        </view>
+        <button class="ocr-action" loading="{{ocrRecognizing}}" disabled="{{ocrRecognizing}}" bindtap="handleRecognizeOcr">{{ocrInfo.buttonText}}</button>
+      </view>
+      <view class="ocr-meta" wx:if="{{ocrInfo.provider || ocrInfo.reason}}">
+        <text wx:if="{{ocrInfo.provider}}">引擎 {{ocrInfo.provider}}</text>
+        <text wx:if="{{ocrInfo.reason}}">{{ocrInfo.reason}}</text>
+      </view>
+      <view class="ocr-text" wx:if="{{ocrInfo.textPreview}}">{{ocrInfo.textPreview}}</view>
+    </view>
+
+    <view class="image-content-panel" wx:if="{{isImageNote}}">
+      <view class="image-content-head">
+        <text class="image-content-label">资料正文</text>
+        <text>文字和图片会一起展示给客户</text>
+      </view>
+      <view class="image-content-field">
+        <view class="image-content-field-label">标题</view>
+        <input class="image-content-title-input" value="{{form.title}}" data-key="title" bindinput="handleInput" placeholder="请输入资料标题" />
+      </view>
+      <view class="image-content-field">
+        <view class="image-content-field-label">正文说明</view>
+        <textarea class="image-content-caption-input" value="{{form.body}}" data-key="body" bindinput="handleInput" maxlength="5000" placeholder="可填写图片说明，这段文字会和图片一起显示" />
+      </view>
+      <block wx:for="{{imageContentItems}}" wx:key="key">
+        <image class="image-content-image" src="{{item.displayUrl || item.url}}" mode="widthFix" data-url="{{item.displayUrl || item.url}}" bindtap="handlePreviewMedia" />
+      </block>
+    </view>
+
+    <view class="property-detail-tabs {{isGroupbuy ? 'groupbuy' : ''}}" wx:if="{{isProperty || isGroupbuy}}">
+      <text class="{{activePropertyDetailTab === 'operate' ? 'active' : ''}}" data-tab="operate" bindtap="handlePropertyDetailTab">{{isGroupbuy ? '发群' : '发客户'}}</text>
+      <text class="{{activePropertyDetailTab === 'edit' ? 'active' : ''}}" data-tab="edit" bindtap="handlePropertyDetailTab">{{isGroupbuy ? '编辑商品' : '编辑资料'}}</text>
+    </view>
+
+    <view class="suggest-panel" wx:if="{{showOperationalControls && !isProperty && !isGroupbuy && !isServiceCard && suggestionButtons.length}}">
+      <view class="suggest-title">这条资料像是？</view>
+      <view class="suggest-text">{{recognitionExplanation.summary || '识别结果不够确定，点一下即可切成对应工作台。'}}</view>
+      <view class="suggest-actions">
+        <block wx:for="{{suggestionButtons}}" wx:key="cardType">
+          <button class="suggest-action" data-type="{{item.cardType}}" bindtap="handleConvertType">
+            <text class="suggest-action-title">{{item.label}}</text>
+            <text class="suggest-action-meta" wx:if="{{item.signalsText}}">{{item.signalsText}}</text>
+            <text class="suggest-action-meta" wx:elif="{{item.confidenceText}}">置信度 {{item.confidenceText}}</text>
+          </button>
+        </block>
+        <button class="suggest-action muted" data-type="text_note" bindtap="handleConvertType">
+          <text class="suggest-action-title">普通笔记</text>
+          <text class="suggest-action-meta">保留原文</text>
+        </button>
+      </view>
+    </view>
+
+    <view class="form-panel block-panel property-customer-preview-panel" wx:if="{{isProperty && activePropertyDetailTab === 'operate'}}">
+      <view class="block-head">
+        <view>
+          <view class="section-title">客户视角预览</view>
+          <view class="section-hint">发出去前先看客户第一眼是否清楚。</view>
+        </view>
+        <button class="text-btn" bindtap="handlePreviewPage">打开预览</button>
+      </view>
+      <view class="property-preview-card">
+        <image wx:if="{{propertyCustomerPreview.coverUrl}}" class="property-preview-cover" src="{{propertyCustomerPreview.coverUrl}}" mode="aspectFill"></image>
+        <view wx:else class="property-preview-cover placeholder">图</view>
+        <view class="property-preview-main">
+          <view class="property-preview-title">{{propertyCustomerPreview.title}}</view>
+          <view class="property-preview-location">{{propertyCustomerPreview.location}}</view>
+          <view class="property-preview-chips">
+            <text wx:for="{{propertyCustomerPreview.highlights}}" wx:key="*this">{{item}}</text>
+          </view>
+        </view>
+      </view>
+      <view class="property-preview-remark">{{propertyCustomerPreview.remark}}</view>
+      <view class="property-preview-actions">
+        <text wx:for="{{propertyCustomerPreview.actions}}" wx:key="*this">{{item}}</text>
+      </view>
+      <view class="property-check-list">
+        <view wx:for="{{propertyPublishChecks}}" wx:key="key" class="property-check-row {{item.tone}}">
+          <text class="check-status">{{item.statusText}}</text>
+          <view>
+            <view class="check-label">{{item.label}}</view>
+            <view class="check-fix" wx:if="{{!item.ok}}">{{item.fix}}</view>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <view class="form-panel block-panel property-customer-preview-panel product-customer-preview-panel" wx:if="{{isGroupbuy && activePropertyDetailTab === 'operate'}}">
+      <view class="block-head">
+        <view>
+          <view class="section-title">客户视角预览</view>
+          <view class="section-hint">发到群里前，先看客户第一眼是否能下单。</view>
+        </view>
+        <button class="text-btn" bindtap="handlePreviewPage">打开预览</button>
+      </view>
+      <view class="property-preview-card product-preview-card">
+        <image wx:if="{{productCustomerPreview.coverUrl}}" class="property-preview-cover" src="{{productCustomerPreview.coverUrl}}" mode="aspectFill"></image>
+        <view wx:else class="property-preview-cover placeholder">图</view>
+        <view class="property-preview-main">
+          <view class="property-preview-title">{{productCustomerPreview.title}}</view>
+          <view class="property-preview-location">{{productCustomerPreview.location}}</view>
+          <view class="property-preview-chips product-preview-chips">
+            <text wx:for="{{productCustomerPreview.highlights}}" wx:key="*this">{{item}}</text>
+          </view>
+        </view>
+      </view>
+      <view class="property-preview-remark">{{productCustomerPreview.remark}}</view>
+      <view class="property-preview-actions product-preview-actions">
+        <text wx:for="{{productCustomerPreview.actions}}" wx:key="*this">{{item}}</text>
+      </view>
+      <view class="property-check-list">
+        <view wx:for="{{productPublishChecks}}" wx:key="key" class="property-check-row {{item.tone}}">
+          <text class="check-status">{{item.statusText}}</text>
+          <view>
+            <view class="check-label">{{item.label}}</view>
+            <view class="check-fix" wx:if="{{!item.ok}}">{{item.fix}}</view>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <view class="form-panel block-panel priority-panel" wx:if="{{isProperty && activePropertyDetailTab === 'operate'}}">
+      <view class="block-head">
+        <view>
+          <view class="scrm-title-row">
+            <view class="section-title">客户反馈</view>
+            <view class="scrm-alert-dot" wx:if="{{scrmSummary.hasUnread}}"></view>
+          </view>
+          <view class="section-hint">先看这套房有没有浏览、预约、留言和待跟进。</view>
+        </view>
+        <button class="text-btn" data-section="scrm" bindtap="handleToggleSection">{{hiddenSections.scrm ? '恢复' : '隐藏'}}</button>
+      </view>
+      <view class="scrm-grid" wx:if="{{!hiddenSections.scrm}}">
+        <view><text>{{scrmSummary.total}}</text><text>客户动态</text></view>
+        <view><text>{{scrmSummary.leadContact}}</text><text>留言</text></view>
+        <view><text>{{scrmSummary.pending}}</text><text>待跟进</text></view>
+        <button class="scrm-entry {{scrmSummary.hasUnread ? 'is-hot' : ''}}" bindtap="handleOpenCustomerActions">
+          <text>查看这套房的客户</text>
+          <text>{{scrmSummary.latestText}}</text>
+          <view class="scrm-entry-dot" wx:if="{{scrmSummary.hasUnread}}"></view>
+        </button>
+        <message-entry class="scrm-entry-component" mode="center" variant="row" title="消息中心" desc="查看房源咨询和站内留言" />
+      </view>
+      <view class="hidden-tip" wx:else>这个板块已隐藏，客户页不展示。</view>
+    </view>
+
+    <view class="form-panel block-panel priority-panel product-feedback-panel" wx:if="{{isGroupbuy && activePropertyDetailTab === 'operate'}}">
+      <view class="block-head">
+        <view>
+          <view class="scrm-title-row">
+            <view class="section-title">接龙 / 买家反馈</view>
+            <view class="scrm-alert-dot" wx:if="{{scrmSummary.hasUnread}}"></view>
+          </view>
+          <view class="section-hint">先处理这条商品的接龙、下单和买家留言。</view>
+        </view>
+        <button class="text-btn" bindtap="handleOpenCustomerActions">查看名单</button>
+      </view>
+      <view class="scrm-grid">
+        <view><text>{{scrmSummary.orderIntent || 0}}</text><text>下单</text></view>
+        <view><text>{{scrmSummary.relayIntent || 0}}</text><text>接龙</text></view>
+        <view><text>{{scrmSummary.pending}}</text><text>待处理</text></view>
+        <button class="scrm-entry {{scrmSummary.hasUnread ? 'is-hot' : ''}}" bindtap="handleOpenCustomerActions">
+          <text>处理接龙/买家</text>
+          <text>{{scrmSummary.latestText}}</text>
+          <view class="scrm-entry-dot" wx:if="{{scrmSummary.hasUnread}}"></view>
+        </button>
+        <message-entry class="scrm-entry-component" mode="center" variant="row" title="消息中心" desc="查看买家站内留言与订单沟通" />
+      </view>
+    </view>
+
+    <view class="form-panel block-panel" wx:if="{{isProperty && activePropertyDetailTab === 'edit'}}">
+      <view class="block-head">
+        <view>
+          <view class="section-title">房源卡</view>
+          <view class="section-hint">这是客户第一眼看到的核心信息。</view>
+        </view>
+        <button class="text-btn" data-section="fieldCard" bindtap="handleToggleSection">{{hiddenSections.fieldCard ? '恢复' : '隐藏'}}</button>
+      </view>
+      <view wx:if="{{!hiddenSections.fieldCard}}">
+        <block wx:if="{{isProperty}}">
+          <block wx:for="{{propertyFields}}" wx:key="key">
+            <view class="field">
+              <view class="label">{{item.label}}</view>
+              <view class="unit-input-wrap" wx:if="{{item.unit}}">
+                <input class="input unit-input" type="{{item.inputType || 'text'}}" value="{{item.value}}" data-key="{{item.key}}" bindinput="handleStructuredInput" placeholder="{{item.placeholder}}" />
+                <text class="field-unit">{{item.unit}}</text>
+              </view>
+              <input wx:else class="input" type="{{item.inputType || 'text'}}" value="{{item.value}}" data-key="{{item.key}}" bindinput="handleStructuredInput" placeholder="{{item.placeholder}}" />
+              <view class="quick-options" wx:if="{{item.quickOptions.length}}">
+                <block wx:for="{{item.quickOptions}}" wx:for-item="option" wx:key="*this">
+                  <text data-key="{{item.key}}" data-value="{{option}}" bindtap="handleQuickFieldOption">{{option}}</text>
+                </block>
+              </view>
+              <view class="quick-options" wx:if="{{item.key === 'address'}}">
+                <text wx:if="{{!mapPreview.hasPoint}}" bindtap="handleResolveDefaultMap">用默认地址生成地图</text>
+                <text wx:if="{{mapPreview.hasPoint}}">已显示地图标记</text>
+              </view>
+              <view class="map-preview" wx:if="{{item.key === 'address' && (mapPreview.address || geocodingAddress)}}">
+                <map
+                  wx:if="{{mapPreview.hasPoint}}"
+                  latitude="{{mapPreview.latitude}}"
+                  longitude="{{mapPreview.longitude}}"
+                  markers="{{mapPreview.markers}}"
+                  scale="16"
+                  show-location="{{false}}"
+                ></map>
+                <view wx:else class="map-empty" bindtap="handleResolveDefaultMap">
+                  <text>{{geocodingAddress ? '正在匹配默认地址' : '用默认地址生成地图'}}</text>
+                  <text>{{geocodingAddress ? '匹配成功后会自动显示小房子标记' : '点这里按当前地址自动生成地图'}}</text>
+                </view>
+              </view>
+            </view>
+          </block>
+        </block>
+        <view class="field">
+          <view class="label">备注 / 亮点</view>
+          <textarea class="textarea small" value="{{structuredData.remark}}" data-key="remark" bindinput="handleStructuredInput" placeholder="补充客户需要知道的信息"></textarea>
+        </view>
+        <view class="field" wx:if="{{isProperty}}">
+          <view class="label">房源状态</view>
+          <view class="status-options">
+            <block wx:for="{{propertyStatusOptions}}" wx:key="value">
+              <text class="{{item.className}}" data-status="{{item.value}}" bindtap="handleSetPropertyStatus">{{item.label}}</text>
+            </block>
+          </view>
+        </view>
+      </view>
+      <view class="hidden-tip" wx:else>这个板块已隐藏，客户页不展示。</view>
+    </view>
+
+    <view class="form-panel block-panel upstream-private-panel" wx:if="{{isProperty && activePropertyDetailTab === 'edit'}}">
+      <view class="block-head">
+        <view>
+          <view class="section-title">仅自己可见：上游备注</view>
+          <view class="section-hint">上游联系方式、中介费、密码锁和看房备注只在你的账号里保存，客户页不展示。</view>
+        </view>
+        <button wx:if="{{upstreamPrivateInfo.copyText}}" class="text-btn upstream-copy-all" hover-class="copy-btn-active" data-scope="all" bindtap="handleCopyUpstreamPrivateInfo">复制全部</button>
+      </view>
+      <view class="upstream-private-list" wx:if="{{upstreamPrivateInfo.visible}}">
+        <view class="upstream-private-row" wx:for="{{upstreamPrivateInfo.rows}}" wx:key="key">
+          <view class="upstream-private-main">
+            <view class="upstream-private-label">{{item.label}}</view>
+            <view class="upstream-private-value">{{item.value}}</view>
+          </view>
+          <button class="upstream-copy-btn" hover-class="copy-btn-active" data-text="{{item.copyText}}" bindtap="handleCopyUpstreamPrivateInfo">复制</button>
+        </view>
+      </view>
+      <view class="upstream-private-edit-list">
+        <block wx:for="{{upstreamPrivateFields}}" wx:key="key">
+          <view class="field">
+            <view class="label">{{item.label}}</view>
+            <textarea wx:if="{{item.multiline}}" class="textarea small upstream-private-textarea" value="{{item.value}}" data-key="{{item.key}}" bindinput="handleUpstreamPrivateInput" placeholder="{{item.placeholder}}"></textarea>
+            <input wx:else class="input" value="{{item.value}}" data-key="{{item.key}}" bindinput="handleUpstreamPrivateInput" placeholder="{{item.placeholder}}" />
+          </view>
+        </block>
+      </view>
+      <view class="upstream-private-foot">这些内容不会进入客户预览、公开分享页或生成同款的公开资料。</view>
+    </view>
+
+    <view class="form-panel block-panel" wx:if="{{isGroupbuy && activePropertyDetailTab === 'edit'}}">
+      <view class="block-head">
+        <view>
+          <view class="section-title">商品信息</view>
+          <view class="section-hint">客户第一眼看到的商品标题和卖点，价格放到规格里。</view>
+        </view>
+        <button class="text-btn" data-section="fieldCard" bindtap="handleToggleSection">{{hiddenSections.fieldCard ? '恢复' : '隐藏'}}</button>
+      </view>
+      <view wx:if="{{!hiddenSections.fieldCard}}">
+        <block wx:for="{{productInfoFields}}" wx:key="key">
+          <view class="field">
+            <view class="label">{{item.label}}</view>
+            <input class="input" value="{{item.value}}" data-key="{{item.key}}" bindinput="handleStructuredInput" placeholder="{{item.placeholder}}" />
+          </view>
+        </block>
+        <view class="field">
+          <view class="label">商品简介 / 卖点</view>
+          <textarea class="textarea small" value="{{structuredData.remark}}" data-key="remark" bindinput="handleStructuredInput" placeholder="例如：新鲜现摘、按规格选择、售罄 SKU 不可接龙"></textarea>
+        </view>
+      </view>
+      <view class="hidden-tip" wx:else>这个板块已隐藏，客户页不展示。</view>
+    </view>
+
+    <view class="form-panel block-panel" wx:if="{{isBusinessCard}}">
+      <view class="block-head">
+        <view>
+          <view class="section-title">电子名片</view>
+          <view class="section-hint">客户第一眼看到的是人、身份和服务范围。</view>
+        </view>
+        <button class="text-btn" data-section="fieldCard" bindtap="handleToggleSection">{{hiddenSections.fieldCard ? '恢复' : '隐藏'}}</button>
+      </view>
+      <view wx:if="{{!hiddenSections.fieldCard}}">
+        <view class="business-studio-entry">
+          <view>
+            <view class="label">名片风格</view>
+            <view class="template-switch-hint">去电子名片工作台查看卡片预览、详情预览，并实时切换风格。</view>
+          </view>
+          <button bindtap="handleOpenBusinessCardStudio">设置名片风格</button>
+        </view>
+        <view class="business-card-image-row">
+          <view class="business-card-image-box">
+            <view class="label">头像</view>
+            <image wx:if="{{businessCardImages.hasAvatar}}" src="{{businessCardImages.avatarUrl}}" mode="aspectFill" data-url="{{businessCardImages.avatarUrl}}" bindtap="handlePreviewMedia"></image>
+            <view wx:else class="business-card-image-placeholder">头像</view>
+            <text>从素材区选择图片设为头像</text>
+          </view>
+          <view class="business-card-image-box">
+            <view class="label">微信二维码</view>
+            <image wx:if="{{businessCardImages.hasQrCode}}" src="{{businessCardImages.qrCodeUrl}}" mode="aspectFill" data-url="{{businessCardImages.qrCodeUrl}}" bindtap="handlePreviewMedia"></image>
+            <view wx:else class="business-card-image-placeholder">二维码</view>
+            <text>上传二维码后点“设二维码”</text>
+          </view>
+        </view>
+        <block wx:for="{{businessCardFields}}" wx:key="key">
+          <view class="field">
+            <view class="label">{{item.label}}</view>
+            <input class="input" value="{{item.value}}" data-key="{{item.key}}" bindinput="handleStructuredInput" placeholder="{{item.placeholder}}" />
+          </view>
+        </block>
+        <view class="field">
+          <view class="label">个人介绍</view>
+          <textarea class="textarea small" value="{{structuredData.bio}}" data-key="bio" bindinput="handleStructuredInput" placeholder="写给客户看的个人介绍、擅长领域或服务承诺"></textarea>
+        </view>
+      </view>
+      <view class="hidden-tip" wx:else>这个板块已隐藏，客户页不展示。</view>
+    </view>
+
+    <view class="form-panel block-panel" wx:if="{{isServiceOffer}}">
+      <view class="block-head">
+        <view>
+          <view class="section-title">服务方案</view>
+          <view class="section-hint">突出服务价值、适合人群、流程和报价说明。</view>
+        </view>
+        <button class="text-btn" data-section="fieldCard" bindtap="handleToggleSection">{{hiddenSections.fieldCard ? '恢复' : '隐藏'}}</button>
+      </view>
+      <view wx:if="{{!hiddenSections.fieldCard}}">
+        <view class="business-studio-entry">
+          <view>
+            <view class="label">服务方案样式</view>
+            <view class="template-switch-hint">去服务方案工作台查看卡片预览、详情预览，并实时切换模板。</view>
+          </view>
+          <button bindtap="handleOpenServiceOfferStudio">设置方案样式</button>
+        </view>
+        <block wx:for="{{serviceOfferFields}}" wx:key="key">
+          <view class="field">
+            <view class="label">{{item.label}}</view>
+            <input class="input" value="{{item.value}}" data-key="{{item.key}}" bindinput="handleStructuredInput" placeholder="{{item.placeholder}}" />
+          </view>
+        </block>
+        <view class="field">
+          <view class="label">服务内容</view>
+          <textarea class="textarea small" value="{{structuredData.serviceContent}}" data-key="serviceContent" bindinput="handleStructuredInput" placeholder="说明服务包含什么、能解决什么问题"></textarea>
+        </view>
+        <view class="field">
+          <view class="label">服务流程</view>
+          <textarea class="textarea small" value="{{structuredData.serviceProcess}}" data-key="serviceProcess" bindinput="handleStructuredInput" placeholder="例如：咨询 - 方案 - 执行 - 复盘"></textarea>
+        </view>
+        <view class="field">
+          <view class="label">案例 / 成果</view>
+          <textarea class="textarea small" value="{{structuredData.caseHighlights}}" data-key="caseHighlights" bindinput="handleStructuredInput" placeholder="可写客户案例、成果、保障或注意事项"></textarea>
+        </view>
+      </view>
+      <view class="hidden-tip" wx:else>这个板块已隐藏，客户页不展示。</view>
+    </view>
+
+    <view class="form-panel block-panel" wx:if="{{!isBookmark}}">
+      <view class="block-head">
+        <view>
+          <view class="section-title">图片、PDF 与链接</view>
+          <view class="section-hint">{{mediaCountText}}</view>
+        </view>
+        <view class="media-head-actions">
+          <button wx:if="{{!hiddenSections.media}}" class="text-btn upload-btn" loading="{{uploadingMedia}}" disabled="{{uploadingMedia}}" bindtap="handleChooseMediaUpload">添加</button>
+          <button class="text-btn" data-section="media" bindtap="handleToggleSection">{{hiddenSections.media ? '恢复' : '隐藏'}}</button>
+        </view>
+      </view>
+      <view class="media-grid" wx:if="{{!hiddenSections.media && attachmentMediaItems.length}}">
+        <block wx:for="{{attachmentMediaItems}}" wx:key="key">
+          <view class="media-card">
+            <image wx:if="{{item.type === 'image'}}" src="{{item.url}}" mode="aspectFill" data-url="{{item.url}}" bindtap="handlePreviewMedia"></image>
+            <video wx:elif="{{item.type === 'video'}}" src="{{item.url}}" controls object-fit="cover"></video>
+            <view wx:else class="media-video">{{item.type === 'pdf' ? 'PDF' : item.type === 'link' ? '链接' : '素材'}}</view>
+            <view class="media-badge {{item.label === '封面' ? 'is-cover-badge' : ''}}">{{item.label}}</view>
+            <view class="media-actions">
+              <text wx:if="{{isBusinessCard && item.type === 'image'}}" data-url="{{item.url}}" data-field="avatarUrl" bindtap="handleSetBusinessCardImage">设头像</text>
+              <text wx:if="{{isBusinessCard && item.type === 'image'}}" data-url="{{item.url}}" data-field="qrCodeUrl" bindtap="handleSetBusinessCardImage">设二维码</text>
+              <text wx:if="{{item.type === 'image' && item.source !== 'cover'}}" data-url="{{item.url}}" bindtap="handleSetCover">设封面</text>
+              <text wx:if="{{item.source === 'media' && item.canMoveUp}}" data-index="{{item.index}}" data-direction="up" bindtap="handleMoveMedia">上移</text>
+              <text wx:if="{{item.source === 'media' && item.canMoveDown}}" data-index="{{item.index}}" data-direction="down" bindtap="handleMoveMedia">下移</text>
+              <text class="danger" data-source="{{item.source}}" data-index="{{item.index}}" bindtap="handleDeleteMedia">删除</text>
+            </view>
+          </view>
+        </block>
+      </view>
+      <view class="media-upload-empty" wx:if="{{!hiddenSections.media && !attachmentMediaItems.length}}" bindtap="handleChooseMediaUpload">
+        <text>添加图片 / PDF / 外部链接</text>
+        <text>图片最多9张，PDF与链接各5个，总计最多12个。</text>
+      </view>
+      <view class="hidden-tip" wx:if="{{hiddenSections.media}}">这个板块已隐藏，客户页不展示。</view>
+    </view>
+
+    <view class="form-panel block-panel" wx:if="{{isGroupbuy && activePropertyDetailTab === 'edit'}}">
+      <view class="block-head">
+        <view>
+          <view class="section-title">规格与价格</view>
+          <view class="section-hint">有 SKU 时按组合展示价格；没有 SKU 时使用单一价格。</view>
+        </view>
+      </view>
+      <view class="sku-panel">
+        <view class="sku-head">
+          <view>
+            <view class="sku-title">SKU 属性组合</view>
+            <view class="sku-hint">例如：口味、规格、配送方式。</view>
+          </view>
+          <button class="text-btn" bindtap="handleAddSkuGroup">加属性</button>
+        </view>
+        <block wx:for="{{structuredData.skuConfig.attributeGroups}}" wx:key="id" wx:for-index="groupIndex">
+          <view class="sku-group">
+            <view class="sku-group-head">
+              <input value="{{item.name}}" data-index="{{groupIndex}}" bindinput="handleSkuGroupName" placeholder="属性名，例如：口味" />
+              <text data-index="{{groupIndex}}" bindtap="handleDeleteSkuGroup">删除</text>
+            </view>
+            <block wx:for="{{item.options}}" wx:key="id" wx:for-item="option" wx:for-index="optionIndex">
+              <view class="sku-option-row">
+                <input value="{{option.label}}" data-group-index="{{groupIndex}}" data-option-index="{{optionIndex}}" bindinput="handleSkuOptionLabel" placeholder="选项名，例如：甜口" />
+                <text data-group-index="{{groupIndex}}" data-option-index="{{optionIndex}}" bindtap="handleDeleteSkuOption">删除</text>
+              </view>
+            </block>
+            <button class="plain-mini-btn" data-group-index="{{groupIndex}}" bindtap="handleAddSkuOption">+ 加选项</button>
+          </view>
+        </block>
+        <view class="single-price-field" wx:if="{{!structuredData.skuConfig.attributeGroups.length}}">
+          <view class="label">单一价格</view>
+          <input class="input" value="{{structuredData.price}}" data-key="price" bindinput="handleStructuredInput" placeholder="没有 SKU 时填写，例如：58" />
+        </view>
+        <view class="sku-list-title" wx:if="{{structuredData.skuConfig.skus.length}}">组合 SKU</view>
+        <block wx:for="{{structuredData.skuConfig.skus}}" wx:key="id">
+          <view class="sku-card">
+            <view class="sku-name">{{item.name}}</view>
+            <view class="sku-grid">
+              <input value="{{item.price}}" data-index="{{index}}" data-key="price" bindinput="handleSkuFieldInput" placeholder="价格" />
+              <input value="{{item.description}}" data-index="{{index}}" data-key="description" bindinput="handleSkuFieldInput" placeholder="说明，可选" />
+            </view>
+            <view class="sku-soldout">
+              <text>售罄</text>
+              <switch checked="{{item.soldOut}}" color="#11924d" data-index="{{index}}" bindchange="handleSkuSoldOut" />
+            </view>
+          </view>
+        </block>
+        <view class="sku-empty" wx:if="{{!structuredData.skuConfig.attributeGroups.length}}">未添加 SKU 属性时，客户页只展示单一价格。</view>
+      </view>
+    </view>
+
+    <view class="form-panel block-panel" wx:if="{{isGroupbuy && activePropertyDetailTab === 'edit'}}">
+      <view class="block-head">
+        <view>
+          <view class="section-title">自提 / 配送</view>
+          <view class="section-hint">填写取货、配送、截止时间和联系方式；截止时间可选。</view>
+        </view>
+      </view>
+      <block wx:for="{{productFulfillmentFields}}" wx:key="key">
+        <view class="field">
+          <view class="label">{{item.label}}</view>
+          <input class="input" value="{{item.value}}" data-key="{{item.key}}" bindinput="handleStructuredInput" placeholder="{{item.placeholder}}" />
+          <view class="quick-options" wx:if="{{item.quickOptions.length}}">
+            <block wx:for="{{item.quickOptions}}" wx:for-item="option" wx:key="*this">
+              <text data-key="{{item.key}}" data-value="{{option}}" bindtap="handleQuickFieldOption">{{option}}</text>
+            </block>
+          </view>
+        </view>
+      </block>
+    </view>
+
+    <view class="form-panel block-panel" wx:if="{{isGroupbuy && activePropertyDetailTab === 'edit'}}">
+      <view class="block-head">
+        <view>
+          <view class="scrm-title-row">
+            <view class="section-title">下单 / 接龙</view>
+            <view class="scrm-alert-dot" wx:if="{{scrmSummary.hasUnread}}"></view>
+          </view>
+          <view class="section-hint">客户默认可选 SKU 下单；打开接龙后，下单会进入接龙名单，不进入 SCRM。</view>
+        </view>
+      </view>
+      <view class="switch-row">
+        <view class="switch-text">
+          <view class="switch-label">启用团购接龙</view>
+          <view class="switch-desc">关闭后仍可下单，团长在下单名单查看。</view>
+        </view>
+        <switch checked="{{conversionConfig.enableGroupRelay}}" color="#11924d" data-key="enableGroupRelay" bindchange="handleConversionToggle" />
+      </view>
+      <view class="scrm-grid">
+        <view><text>{{scrmSummary.orderIntent || 0}}</text><text>下单</text></view>
+        <view><text>{{scrmSummary.leadContact}}</text><text>留言</text></view>
+        <view><text>{{scrmSummary.pending}}</text><text>待跟进</text></view>
+        <button class="scrm-entry {{scrmSummary.hasUnread ? 'is-hot' : ''}}" bindtap="handleOpenCustomerActions">
+          <text>查看下单 / 接龙名单</text>
+          <text>{{scrmSummary.latestText}}</text>
+          <view class="scrm-entry-dot" wx:if="{{scrmSummary.hasUnread}}"></view>
+        </button>
+        <message-entry class="scrm-entry-component" mode="center" variant="row" title="消息中心" desc="查看买家站内留言与订单沟通" />
+      </view>
+    </view>
+
+    <view class="form-panel block-panel" wx:if="{{isServiceCard}}">
+      <view class="block-head">
+        <view>
+          <view class="scrm-title-row">
+            <view class="section-title">客户反馈</view>
+            <view class="scrm-alert-dot" wx:if="{{scrmSummary.hasUnread}}"></view>
+          </view>
+          <view class="section-hint">记录咨询、留言、预约沟通和待跟进客户。</view>
+        </view>
+        <button class="text-btn" data-section="scrm" bindtap="handleToggleSection">{{hiddenSections.scrm ? '恢复' : '隐藏'}}</button>
+      </view>
+      <view class="scrm-grid" wx:if="{{!hiddenSections.scrm}}">
+        <view><text>{{scrmSummary.total}}</text><text>客户动态</text></view>
+        <view><text>{{scrmSummary.leadContact}}</text><text>留言</text></view>
+        <view><text>{{scrmSummary.pending}}</text><text>待跟进</text></view>
+        <button class="scrm-entry {{scrmSummary.hasUnread ? 'is-hot' : ''}}" bindtap="handleOpenCustomerActions">
+          <text>查看客户反馈</text>
+          <text>{{scrmSummary.latestText}}</text>
+          <view class="scrm-entry-dot" wx:if="{{scrmSummary.hasUnread}}"></view>
+        </button>
+        <message-entry class="scrm-entry-component" mode="center" variant="row" title="消息中心" desc="查看客户咨询和站内留言" />
+      </view>
+      <view class="hidden-tip" wx:else>这个板块已隐藏，客户页不展示。</view>
+    </view>
+
+    <view class="form-panel" wx:if="{{!isProperty && !isGroupbuy && !isServiceCard && !isImageNote}}">
+      <view class="section-title">{{isPlainNote && !showOperationalControls ? '笔记内容' : '基础信息'}}</view>
+      <view class="field">
+        <view class="label">标题</view>
+        <input class="input" value="{{form.title}}" data-key="title" bindinput="handleInput" placeholder="请输入标题" />
+      </view>
+      <view class="field" wx:if="{{!isPlainNote || showOperationalControls}}">
+        <view class="label">摘要</view>
+        <textarea class="textarea small" value="{{form.summary}}" data-key="summary" bindinput="handleInput" placeholder="一句话概括这条资料"></textarea>
+      </view>
+      <view class="field">
+        <view class="label">{{isPlainNote && !showOperationalControls ? '内容' : '正文'}}</view>
+        <textarea class="textarea" value="{{form.body}}" data-key="body" bindinput="handleInput" placeholder="{{isPlainNote && !showOperationalControls ? '记录正文内容' : '保留原始说明或补充描述'}}"></textarea>
+      </view>
+    </view>
+
+    <view class="plain-note-ops" wx:if="{{isPlainNote}}">
+      <view>
+        <view class="plain-note-ops-title">整理与归档</view>
+        <view class="plain-note-ops-sub">先把内容记清楚，需要时再加入合集。</view>
+      </view>
+      <view class="plain-note-action-row">
+        <button loading="{{saving}}" bindtap="handleOrganize">一键整理</button>
+        <button class="muted" bindtap="handleAddToShowcase">加入合集</button>
+      </view>
+    </view>
+
+    <view class="form-panel tag-topic-panel" wx:if="{{showTagTopicPanel}}">
+      <view class="block-head">
+        <view>
+          <view class="section-title">标签整理</view>
+          <view class="section-hint">{{isProperty ? '系统会自动整理房源标签；通常不用手动维护。' : '用于搜索和资料归类。'}}</view>
+        </view>
+        <button wx:if="{{isProperty}}" class="text-btn" bindtap="handleToggleTagTopic">{{tagTopicOpen ? '收起' : '调整'}}</button>
+      </view>
+      <view class="editable-tags compact-tags" wx:if="{{isProperty && bookmark.tags.length && !tagTopicOpen}}">
+        <block wx:for="{{bookmark.tags}}" wx:key="*this">
+          <text>{{item}}</text>
+        </block>
+      </view>
+      <view wx:if="{{!isProperty || tagTopicOpen}}">
+      <view class="editable-tags" wx:if="{{bookmark.tags.length}}">
+        <block wx:for="{{bookmark.tags}}" wx:key="*this">
+          <text data-tag="{{item}}" bindtap="handleRemoveTag">{{item}} ×</text>
+        </block>
+      </view>
+      <view class="quick-options" wx:if="{{suggestedTagOptions.length}}">
+        <block wx:for="{{suggestedTagOptions}}" wx:key="*this">
+          <text data-tag="{{item}}" bindtap="handleSuggestedTag">+ {{item}}</text>
+        </block>
+      </view>
+      <view class="tag-option-title" wx:if="{{commonTagOptions.length}}">常用标签</view>
+      <view class="quick-options common-tag-options" wx:if="{{commonTagOptions.length}}">
+        <block wx:for="{{commonTagOptions}}" wx:key="*this">
+          <text data-tag="{{item}}" bindtap="handleSuggestedTag">+ {{item}}</text>
+        </block>
+      </view>
+      <view class="inline-input">
+        <input value="{{tagDraft}}" placeholder="新增标签，例如：客户 / 重点 / 待跟进" bindinput="handleTagDraft" />
+        <button bindtap="handleAddTag">添加</button>
+      </view>
+      </view>
+    </view>
+
+    <view class="bottom-actions">
+      <button class="delete-btn" bindtap="handleDelete">删除</button>
+      <button class="save-btn" loading="{{saving}}" bindtap="handlePublish">发客户</button>
+    </view>
+    </block>
+  </block>
+  <canvas canvas-id="businessCardEditShareCanvas" class="business-card-share-canvas"></canvas>
+</view>

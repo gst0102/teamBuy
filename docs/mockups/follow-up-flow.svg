@@ -1,0 +1,88 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="860" viewBox="0 0 1440 860">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#edf6ff"/>
+      <stop offset="1" stop-color="#f9fcff"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="#6e9ed0" flood-opacity=".18"/>
+    </filter>
+  </defs>
+  <rect width="1440" height="860" fill="url(#bg)"/>
+  <text x="720" y="52" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif" font-size="30" font-weight="800" fill="#172033">待跟进客户的完整路径</text>
+  <text x="720" y="82" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif" font-size="16" fill="#718096">没有跟进档案时，第一次点击会先自动建立，再进入跟进记录</text>
+
+  <g filter="url(#shadow)">
+    <rect x="42" y="120" width="360" height="680" rx="34" fill="#f8fbff"/>
+    <rect x="522" y="120" width="360" height="680" rx="34" fill="#f8fbff"/>
+    <rect x="1002" y="120" width="360" height="680" rx="34" fill="#f8fbff"/>
+  </g>
+
+  <g font-family="-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif">
+    <!-- screen 1 -->
+    <text x="222" y="154" text-anchor="middle" font-size="14" fill="#95a3b8">步骤 1</text>
+    <text x="222" y="190" text-anchor="middle" font-size="24" font-weight="800" fill="#172033">客户雷达 · 待跟进</text>
+    <rect x="66" y="214" width="312" height="236" rx="24" fill="#fffdf4" stroke="#ebc84d" stroke-width="2"/>
+    <circle cx="103" cy="259" r="27" fill="#e9f2ff"/>
+    <text x="103" y="269" text-anchor="middle" font-size="22" font-weight="800" fill="#2674d5">匿</text>
+    <text x="145" y="254" font-size="21" font-weight="800" fill="#172033">匿名客户</text>
+    <text x="145" y="282" font-size="15" font-weight="700" fill="#a67909">高意向 · 待跟进</text>
+    <rect x="86" y="308" width="272" height="50" rx="14" fill="#f1f6fd"/>
+    <text x="105" y="340" font-size="16" fill="#52647b">最近查看：灰埠小区02户型</text>
+    <text x="86" y="388" font-size="15" font-weight="700" fill="#172033">为什么排在这里</text>
+    <text x="86" y="414" font-size="14" fill="#718096">查看资料并发生咨询行为</text>
+    <rect x="86" y="470" width="272" height="56" rx="17" fill="#1677ff"/>
+    <text x="222" y="506" text-anchor="middle" font-size="18" font-weight="800" fill="#fff">查看客户详情</text>
+    <rect x="86" y="544" width="272" height="56" rx="17" fill="#eff7f1" stroke="#b7e4c7" stroke-width="2"/>
+    <text x="222" y="580" text-anchor="middle" font-size="18" font-weight="800" fill="#16884d">复制首句</text>
+    <text x="222" y="688" text-anchor="middle" font-size="15" fill="#718096">点击“查看客户详情”</text>
+
+    <!-- arrow 1 -->
+    <path d="M424 455 H496" stroke="#72a4dc" stroke-width="4" stroke-linecap="round"/>
+    <path d="M482 441 L498 455 L482 469" fill="none" stroke="#72a4dc" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- screen 2 -->
+    <text x="702" y="154" text-anchor="middle" font-size="14" fill="#95a3b8">步骤 2</text>
+    <text x="702" y="190" text-anchor="middle" font-size="24" font-weight="800" fill="#172033">客户详情</text>
+    <rect x="546" y="214" width="312" height="96" rx="22" fill="#fff"/>
+    <circle cx="580" cy="262" r="28" fill="#6f9ff0"/>
+    <text x="580" y="271" text-anchor="middle" font-size="22" font-weight="800" fill="#fff">匿</text>
+    <text x="622" y="253" font-size="21" font-weight="800" fill="#172033">匿名客户</text>
+    <text x="622" y="280" font-size="14" fill="#718096">客户线索 · 最近活跃 9 小时前</text>
+    <rect x="546" y="330" width="312" height="162" rx="22" fill="#fff"/>
+    <text x="570" y="365" font-size="20" font-weight="800" fill="#172033">现在该做什么</text>
+    <text x="570" y="398" font-size="15" fill="#52647b">已经查看资料并发生咨询，建议尽快联系。</text>
+    <rect x="570" y="420" width="264" height="48" rx="15" fill="#effaf2" stroke="#b7e4c7" stroke-width="2"/>
+    <text x="702" y="451" text-anchor="middle" font-size="16" font-weight="800" fill="#16884d">下一步：立即跟进客户</text>
+    <rect x="546" y="516" width="312" height="92" rx="22" fill="#fff"/>
+    <text x="570" y="552" font-size="20" font-weight="800" fill="#172033">跟进状态</text>
+    <text x="570" y="580" font-size="15" fill="#718096">当前还没有跟进档案</text>
+    <rect x="570" y="622" width="264" height="60" rx="18" fill="#1677ff"/>
+    <text x="702" y="660" text-anchor="middle" font-size="19" font-weight="800" fill="#fff">开始跟进</text>
+    <text x="702" y="730" text-anchor="middle" font-size="14" fill="#718096">第一次点击会自动建立档案</text>
+
+    <!-- arrow 2 -->
+    <path d="M904 455 H976" stroke="#72a4dc" stroke-width="4" stroke-linecap="round"/>
+    <path d="M962 441 L978 455 L962 469" fill="none" stroke="#72a4dc" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- screen 3 -->
+    <text x="1182" y="154" text-anchor="middle" font-size="14" fill="#95a3b8">步骤 3</text>
+    <text x="1182" y="190" text-anchor="middle" font-size="24" font-weight="800" fill="#172033">线索详情</text>
+    <rect x="1026" y="214" width="312" height="80" rx="22" fill="#fff"/>
+    <text x="1050" y="250" font-size="21" font-weight="800" fill="#172033">匿名客户</text>
+    <rect x="1244" y="233" width="70" height="32" rx="16" fill="#fff4cc"/>
+    <text x="1279" y="255" text-anchor="middle" font-size="14" font-weight="800" fill="#a67909">待联系</text>
+    <text x="1050" y="277" font-size="14" fill="#718096">灰埠小区02户型 · 查看 1 次</text>
+    <rect x="1026" y="314" width="312" height="148" rx="22" fill="#fff"/>
+    <text x="1050" y="350" font-size="20" font-weight="800" fill="#172033">跟进记录</text>
+    <rect x="1050" y="368" width="264" height="54" rx="14" fill="#f5f8fc" stroke="#d9e4f1"/>
+    <text x="1070" y="402" font-size="15" fill="#9aa8b8">输入本次跟进内容</text>
+    <rect x="1026" y="482" width="312" height="96" rx="22" fill="#fff"/>
+    <text x="1050" y="518" font-size="20" font-weight="800" fill="#172033">下次跟进</text>
+    <text x="1050" y="550" font-size="15" fill="#52647b">选择日期 · 可选</text>
+    <rect x="1026" y="598" width="312" height="60" rx="18" fill="#1677ff"/>
+    <text x="1182" y="636" text-anchor="middle" font-size="19" font-weight="800" fill="#fff">保存跟进</text>
+    <rect x="1026" y="678" width="312" height="56" rx="18" fill="#eff7f1" stroke="#b7e4c7" stroke-width="2"/>
+    <text x="1182" y="714" text-anchor="middle" font-size="16" font-weight="800" fill="#16884d">标记已联系</text>
+  </g>
+</svg>

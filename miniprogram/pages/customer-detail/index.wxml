@@ -1,0 +1,220 @@
+<view class="page-shell customer-detail-page">
+  <custom-nav title="客户详情" showBack="{{true}}" />
+
+  <view class="customer-detail-state" wx:if="{{loading}}">
+    <view class="customer-detail-skeleton skeleton-title"></view>
+    <view class="customer-detail-skeleton skeleton-card"></view>
+    <view class="customer-detail-skeleton skeleton-card"></view>
+  </view>
+
+  <view class="customer-detail-error" wx:elif="{{error}}">
+    <view class="customer-detail-error-icon">!</view>
+    <view class="customer-detail-error-title">{{errorTitle}}</view>
+    <view class="customer-detail-error-desc">{{error}}</view>
+    <button wx:if="{{errorKind === 'retryable'}}" class="customer-detail-primary-btn" bindtap="handleRetry">{{errorActionText}}</button>
+    <button wx:else class="customer-detail-primary-btn" bindtap="handleBackToRadar">{{errorActionText}}</button>
+  </view>
+
+  <block wx:else>
+    <view class="customer-detail-identity panel">
+      <view class="customer-detail-avatar">
+        <image wx:if="{{profile.avatarUrl}}" src="{{profile.avatarUrl}}" mode="aspectFill"></image>
+        <text wx:else>{{profile.avatarText}}</text>
+      </view>
+      <view class="customer-detail-identity-main">
+        <view class="customer-detail-name-row">
+          <view class="customer-detail-name">{{profile.name}}</view>
+          <text class="customer-detail-intent">{{profile.intentLabel}}</text>
+          <text wx:if="{{profile.leadStatusText}}" class="customer-detail-lead-status">{{profile.leadStatusText}}</text>
+        </view>
+        <view class="customer-detail-meta">{{profile.identityLabel}} · 最近活跃 {{profile.lastActiveText}}</view>
+        <view class="customer-detail-source">{{profile.sourceLine}}</view>
+      </view>
+    </view>
+
+    <view class="customer-detail-evidence panel">
+      <view class="customer-detail-panel-heading">
+        <view class="customer-detail-heading-icon evidence-icon">◉</view>
+        <view class="customer-detail-section-title">客户刚刚看了什么</view>
+      </view>
+      <view class="customer-detail-section-subtitle">只展示归因到这个客户的真实浏览信号</view>
+      <view wx:if="{{profile.primaryMaterial}}" class="customer-detail-evidence-row" data-id="{{profile.primaryMaterial.id}}" bindtap="handleOpenMaterial">
+        <view class="customer-detail-evidence-thumb">
+          <image wx:if="{{profile.primaryMaterial.coverUrl}}" src="{{profile.primaryMaterial.coverUrl}}" mode="aspectFill"></image>
+          <text wx:else>资</text>
+        </view>
+        <view class="customer-detail-evidence-main">
+          <view class="customer-detail-evidence-title">{{profile.primaryMaterial.title}}</view>
+          <view class="customer-detail-evidence-count">查看 {{profile.viewCount}} 次</view>
+        </view>
+        <view class="customer-detail-evidence-link">查看资料 <text>›</text></view>
+      </view>
+      <view wx:else class="customer-detail-evidence-empty">暂时没有可归因的资料浏览记录。</view>
+    </view>
+
+    <view wx:if="{{profile.messageSummary.hasMessages}}" class="customer-detail-message panel">
+      <view class="customer-detail-message-head">
+        <view class="customer-detail-message-title-row">
+          <view class="customer-detail-heading-icon message-icon">聊</view>
+          <view class="customer-detail-section-title">客户留言</view>
+          <text wx:if="{{profile.messageSummary.unreadCount}}" class="customer-detail-message-unread">{{profile.messageSummary.unreadCount}} 条未读</text>
+        </view>
+        <view class="customer-detail-message-count">{{profile.messageSummary.threadCount}} 个会话</view>
+      </view>
+      <view wx:if="{{profile.messageSummary.latestMessage}}" class="customer-detail-message-preview">
+        <view class="customer-detail-message-note">关于《{{profile.messageSummary.latestMessage.noteTitle}}》</view>
+        <view class="customer-detail-message-content">{{profile.messageSummary.latestMessage.content}}</view>
+        <view class="customer-detail-message-time">{{profile.messageSummary.latestMessage.createdText}}</view>
+      </view>
+      <button class="customer-detail-message-button" bindtap="handleOpenCustomerMessage">查看并回复留言 <text>›</text></button>
+    </view>
+
+    <view class="customer-detail-action panel">
+      <view class="customer-detail-action-kicker">跟进判断</view>
+      <view class="customer-detail-section-head">
+        <view class="customer-detail-section-title">下一步怎么做</view>
+        <view class="customer-detail-evidence-label">↗ {{profile.intentLabel}} · 查看 {{profile.viewCount}} 次</view>
+      </view>
+      <view class="customer-detail-reason">{{profile.reason}}</view>
+      <view class="customer-detail-next-step">
+        <view class="customer-detail-next-icon">↗</view>
+        <view class="customer-detail-next-copy">
+          <view class="customer-detail-next-label">{{profile.nextAction}}</view>
+          <view class="customer-detail-next-hint">{{profile.nextActionHint}}</view>
+        </view>
+      </view>
+      <view class="customer-detail-action-buttons bottom-two-actions">
+        <button class="customer-detail-outline-btn" bindtap="handleCopyScript">复制话术</button>
+        <button class="customer-detail-primary-btn" wx:if="{{profile.canCompare}}" bindtap="handleGenerateCompare">生成对比</button>
+        <view wx:else class="customer-detail-action-placeholder"></view>
+      </view>
+    </view>
+
+    <view wx:if="{{followUpVisible}}" class="customer-detail-follow-up panel">
+      <view class="customer-detail-section-head">
+        <view>
+          <view class="customer-detail-section-title">跟进记录</view>
+          <view class="customer-detail-follow-up-sub">记录这次做了什么，下次打开就能接着处理</view>
+        </view>
+        <view class="customer-detail-follow-up-status">{{followUpStatusText}}</view>
+      </view>
+      <view wx:if="{{profile.tags.length}}" class="customer-detail-follow-up-block">
+        <view class="customer-detail-follow-up-label">系统识别标签</view>
+        <view class="customer-detail-tag-list">
+          <text class="customer-detail-tag" wx:for="{{profile.tags}}" wx:key="*this">{{item}}</text>
+        </view>
+      </view>
+      <view class="customer-detail-follow-up-block">
+        <view class="customer-detail-follow-up-label">本次跟进标签</view>
+        <view class="customer-detail-follow-up-tags">
+          <button wx:for="{{followUpTagOptions}}" wx:key="label" class="customer-detail-follow-up-tag {{item.selected ? 'selected' : ''}}" data-tag="{{item.label}}" bindtap="handleToggleFollowUpTag">{{item.selected ? '✓ ' : ''}}{{item.label}}</button>
+        </view>
+      </view>
+      <textarea class="customer-detail-follow-up-input" maxlength="500" placeholder="例如：已电话沟通，客户关注预算，准备发送两套方案" value="{{followUpText}}" bindinput="handleFollowUpChange"></textarea>
+      <picker mode="date" value="{{nextFollowUpAt}}" bindchange="handleNextFollowUpChange">
+        <view class="customer-detail-follow-up-date">
+          <text>下一次跟进时间</text>
+          <text class="{{nextFollowUpAt ? 'selected' : ''}}">{{nextFollowUpAt || '选择日期'}}</text>
+        </view>
+      </picker>
+      <view class="customer-detail-follow-up-submit-hint">填写标签、备注或下次时间后，点击底部按钮保存并返回雷达</view>
+      <view wx:if="{{followUpLogs.length}}" class="customer-detail-follow-up-history">
+        <view class="customer-detail-follow-up-history-title">最近记录</view>
+        <view class="customer-detail-follow-up-log" wx:for="{{followUpLogs}}" wx:for-item="record" wx:key="id">
+          <view class="customer-detail-follow-up-log-head">
+            <text class="customer-detail-follow-up-log-action">{{record.actionLabel}}</text>
+            <text class="customer-detail-follow-up-log-time">{{record.createdText}}</text>
+          </view>
+          <view wx:if="{{record.tags.length}}" class="customer-detail-follow-up-log-tags">
+            <text class="customer-detail-follow-up-log-tag" wx:for="{{record.tags}}" wx:for-item="tag" wx:key="*this">{{tag}}</text>
+          </view>
+          <view wx:if="{{record.note}}" class="customer-detail-follow-up-log-note">{{record.note}}</view>
+          <view wx:if="{{record.nextFollowUpText}}" class="customer-detail-follow-up-log-next">下次跟进：{{record.nextFollowUpText}}</view>
+        </view>
+      </view>
+    </view>
+
+    <view class="customer-detail-contact panel">
+      <view class="customer-detail-section-head">
+        <view class="customer-detail-contact-heading">
+          <view class="customer-detail-heading-icon contact-icon">⌕</view>
+          <view>
+            <view class="customer-detail-section-title">可联系渠道</view>
+            <view class="customer-detail-section-subtitle">优先使用客户主动留下或授权展示的方式</view>
+          </view>
+        </view>
+        <view class="customer-detail-contact-source">已授权展示</view>
+      </view>
+      <block wx:if="{{profile.phone || profile.wechat || profile.email}}">
+        <view class="customer-detail-contact-row" wx:if="{{profile.phone}}">
+          <view class="customer-detail-contact-main"><text class="customer-detail-contact-label">电话</text><text class="customer-detail-contact-value">{{profile.phone}}</text></view>
+          <view class="customer-detail-contact-actions"><button class="customer-detail-contact-light" catchtap="handleCallContact">拨打</button><button class="customer-detail-contact-copy" data-type="phone" catchtap="handleCopyContact">复制</button></view>
+        </view>
+        <view class="customer-detail-contact-row" wx:if="{{profile.wechat}}">
+          <view class="customer-detail-contact-main"><text class="customer-detail-contact-label">微信号</text><text class="customer-detail-contact-value">{{profile.wechat}}</text></view>
+          <view class="customer-detail-contact-actions"><button class="customer-detail-contact-copy wechat-copy" data-type="wechat" catchtap="handleCopyContact">复制微信号</button></view>
+        </view>
+        <view class="customer-detail-contact-row" wx:if="{{profile.email}}">
+          <view class="customer-detail-contact-main"><text class="customer-detail-contact-label">邮箱</text><text class="customer-detail-contact-value">{{profile.email}}</text></view>
+          <view class="customer-detail-contact-actions"><button class="customer-detail-contact-copy" data-type="email" catchtap="handleCopyContact">复制</button></view>
+        </view>
+        <view class="customer-detail-contact-hint">{{profile.contactSourceNote}}</view>
+      </block>
+      <view class="customer-detail-contact-empty" wx:else>客户暂未留下电话、微信号或邮箱。</view>
+    </view>
+
+    <view class="customer-detail-collapsible-group panel">
+      <view class="customer-detail-collapse-row" bindtap="handleToggleActivity">
+        <view class="customer-detail-collapse-icon activity-icon">◷</view>
+        <view class="customer-detail-collapse-main">
+          <view class="customer-detail-collapse-title">最近动态 <text>· {{profile.timeline.length}} 条</text></view>
+          <view class="customer-detail-collapse-hint">{{activityExpanded ? '收起客户最近行为' : '展开查看客户最近行为'}}</view>
+        </view>
+        <view class="customer-detail-collapse-chevron {{activityExpanded ? 'expanded' : ''}}">›</view>
+      </view>
+      <view wx:if="{{activityExpanded}}" class="customer-detail-collapse-content">
+        <view class="customer-detail-timeline-empty" wx:if="{{!profile.timeline.length}}">还没有可展示的动态。</view>
+        <view class="customer-detail-timeline-list" wx:else>
+          <view class="customer-detail-timeline-item" wx:for="{{profile.timeline}}" wx:key="id">
+            <view class="customer-detail-timeline-track"><view class="customer-detail-timeline-dot"></view></view>
+            <view class="customer-detail-timeline-copy">
+              <view class="customer-detail-timeline-title">{{item.title}}</view>
+              <view class="customer-detail-timeline-desc">{{item.desc}}</view>
+            </view>
+            <view class="customer-detail-timeline-time">{{item.timeText}}</view>
+          </view>
+        </view>
+      </view>
+      <view class="customer-detail-collapse-divider"></view>
+      <view class="customer-detail-collapse-row" bindtap="handleToggleMaterials">
+        <view class="customer-detail-collapse-icon materials-icon">▱</view>
+        <view class="customer-detail-collapse-main">
+          <view class="customer-detail-collapse-title">相关资料 <text>· {{profile.materials.length}} 份</text></view>
+          <view class="customer-detail-collapse-hint">{{materialsExpanded ? '收起客户看过的资料' : '展开查看客户关联资料'}}</view>
+        </view>
+        <view class="customer-detail-collapse-chevron {{materialsExpanded ? 'expanded' : ''}}">›</view>
+      </view>
+      <view wx:if="{{materialsExpanded}}" class="customer-detail-collapse-content">
+        <view class="customer-detail-material-empty" wx:if="{{!profile.materials.length}}">暂时没有可展示的来源资料。</view>
+        <view class="customer-detail-material-row" wx:for="{{profile.materials}}" wx:key="key" data-id="{{item.id}}" bindtap="handleOpenMaterial">
+          <view class="customer-detail-material-thumb">
+            <image wx:if="{{item.coverUrl}}" src="{{item.coverUrl}}" mode="aspectFill"></image>
+            <text wx:else>资</text>
+          </view>
+          <view class="customer-detail-material-main">
+            <view class="customer-detail-material-title">{{item.title}}</view>
+            <view class="customer-detail-material-meta"><text>{{item.type}}</text><text>{{item.meta}}</text></view>
+          </view>
+          <view class="customer-detail-chevron">›</view>
+        </view>
+      </view>
+    </view>
+
+    <view class="customer-detail-bottom">
+      <view class="customer-detail-bottom-actions bottom-two-actions">
+        <button class="customer-detail-primary-btn" loading="{{creatingFollowUp}}" disabled="{{creatingFollowUp || updatingFollowUpStatus}}" bindtap="handleRecordFollowUp">{{profile.hasLeadRecord ? '保存并继续跟进' : '保存并开始跟进'}}</button>
+        <button class="customer-detail-abandon-btn" loading="{{updatingFollowUpStatus}}" disabled="{{creatingFollowUp || updatingFollowUpStatus}}" bindtap="handleFollowUpStatusAction">{{profile.leadStatus === 'paused' ? '恢复跟进' : '放弃跟进'}}</button>
+      </view>
+    </view>
+  </block>
+</view>

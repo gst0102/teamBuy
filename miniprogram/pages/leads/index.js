@@ -1,6 +1,7 @@
 const api = require("../../services/api");
 const { getCurrentUser, formatTime } = require("../../utils/dashboard");
 const { navigateToResourceView } = require("../../utils/resource-navigation");
+const { getCustomerPaymentState } = require("../../utils/customer-access");
 
 function filterLeads(leads, filter) {
   if (filter === "pending") return leads.filter((item) => item.status === "pending");
@@ -148,12 +149,20 @@ function dueStateText(state) {
 function leadStatusText(status) {
   const map = {
     pending: "待联系",
+    following: "跟进中",
     contacted: "已联系",
     invalid: "无效",
     paused: "暂不跟进",
     completed: "已完成"
   };
   return map[status] || "待联系";
+}
+
+function openCustomerDetail(lead = {}) {
+  const customerId = lead.visitorIdentityId || lead.viewerUserId || "";
+  const params = [`leadId=${encodeURIComponent(lead.id || "")}`];
+  if (!lead.id && customerId) params.unshift(`customerId=${encodeURIComponent(customerId)}`);
+  wx.navigateTo({ url: `/pages/customer-detail/index?${params.join("&")}` });
 }
 
 Page({
@@ -215,6 +224,16 @@ Page({
   async loadLeads() {
     const currentUser = getCurrentUser();
     try {
+      const membershipRes = await api.fetchMembership(currentUser.id);
+      const paymentState = getCustomerPaymentState((membershipRes && membershipRes.data) || {});
+      if (paymentState === "unknown") {
+        wx.showToast({ title: "客户信息暂时无法读取，请重试", icon: "none" });
+        return;
+      }
+      if (paymentState === "payment_required") {
+        wx.navigateTo({ url: "/pages/membership/index" });
+        return;
+      }
       const res = await api.fetchLeadReminders(currentUser.id);
       const leads = (res.data || []).map((item) => ({
         ...item,
@@ -367,10 +386,16 @@ Page({
     navigateToResourceView(event.currentTarget.dataset.cardId);
   },
   handleOpenManager(event) {
-    wx.navigateTo({ url: `/pages/manager/index?id=${event.currentTarget.dataset.cardId}` });
+    wx.navigateTo({ url: `/subpackages/workbench/resource-analytics/index?resourceId=${encodeURIComponent(event.currentTarget.dataset.cardId || "")}` });
   },
   handleOpenLeadDetail(event) {
-    wx.navigateTo({ url: `/pages/lead-detail/index?id=${event.currentTarget.dataset.id}` });
+    const leadId = event.currentTarget.dataset.id;
+    const lead = [
+      ...(this.data.filteredLeads || []),
+      ...(this.data.leads || []),
+      ...(this.data.priorityLeads || [])
+    ].find((item) => item.id === leadId);
+    if (lead) openCustomerDetail(lead);
   },
   handleOpenLeadSheet(event) {
     const leadId = event.currentTarget.dataset.id;
@@ -391,7 +416,7 @@ Page({
   handleOpenSelectedLeadDetail() {
     const lead = this.data.selectedLead;
     if (!lead) return;
-    wx.navigateTo({ url: `/pages/lead-detail/index?id=${lead.id}` });
+    openCustomerDetail(lead);
   },
   handleOpenSelectedSource() {
     const lead = this.data.selectedLead;
@@ -416,7 +441,7 @@ Page({
       });
       return;
     }
-    wx.navigateTo({ url: `/pages/lead-detail/index?id=${lead.id}` });
+    openCustomerDetail(lead);
   },
   handleCallPhone(event) {
     const phone = event.currentTarget.dataset.phone;

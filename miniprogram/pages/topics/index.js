@@ -56,7 +56,7 @@ Page({
     const { id, name } = event.currentTarget.dataset;
     if (!id) return;
     wx.navigateTo({
-      url: `/pages/showcase-edit/index?mode=notes&topicId=${encodeURIComponent(id)}&topicName=${encodeURIComponent(name || "专题")}`
+      url: `/subpackages/workbench/showcase-edit/index?mode=notes&topicId=${encodeURIComponent(id)}&topicName=${encodeURIComponent(name || "专题")}`
     });
   },
   handleDelete(event) {

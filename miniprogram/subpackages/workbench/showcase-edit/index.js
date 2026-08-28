@@ -5,7 +5,7 @@ const {
   decorateNoteForShowcasePicker,
   decorateSelectedShowcaseItem
 } = require("../../../utils/note-display");
-const { createShareSnapshotFingerprint, ensureShareSnapshot, getShareSnapshot, getShareSourceRevision, isShareImageUrl, renderShareCard, setShareMenuEnabled, SHARE_CARD_STYLE_VERSION } = require("../../../plugins/share-snapshot/index");
+const { buildShowcaseShareSource, createShareSnapshotFingerprint, ensureShareSnapshot, getShareSnapshot, getShareSourceRevision, isShareImageUrl, renderShareCard, setShareMenuEnabled, SHARE_CARD_STYLE_VERSION } = require("../../../plugins/share-snapshot/index");
 const subscription = require("../../../services/subscription");
 
 const DEFAULT_GROUP_BY = "tag";
@@ -140,10 +140,20 @@ function createShareId(showcaseId) {
 
 function clearShowcaseCaches(userId) {
   if (!userId) return;
+  const app = getApp();
+  const globalData = (app && app.globalData) || {};
+  const scope = [globalData.environmentName, globalData.apiBaseUrl, globalData.apiRoutePrefix]
+    .join("|")
+    .replace(/[^a-zA-Z0-9_.:-]/g, "_");
   ["notes", "property", "service", "groupbuy"].forEach((mode) => {
-    try {
-      wx.removeStorageSync(`${SHOWCASE_CACHE_PREFIX}${userId}_${mode}`);
-    } catch (error) {}
+    [
+      `${SHOWCASE_CACHE_PREFIX}${userId}_${mode}`,
+      `teambuy_showcases_v2_${scope}_${userId}_${mode}`
+    ].forEach((key) => {
+      try {
+        wx.removeStorageSync(key);
+      } catch (error) {}
+    });
   });
 }
 
@@ -203,6 +213,21 @@ function inferDefaultCategory(options) {
   return (options.find((item) => item.value === "房产" && item.count) || options.find((item) => item.count) || { value: "全部" }).value;
 }
 
+function firstNoteImage(note = {}) {
+  const mediaImage = (Array.isArray(note.media) ? note.media : [])
+    .find((media) => media && media.type === "image" && (media.url || media.displayUrl));
+  const structuredData = note.structuredData || {};
+  return String(
+    note.coverUrl
+      || note.coverDisplayUrl
+      || note.primaryImageUrl
+      || (mediaImage && (mediaImage.url || mediaImage.displayUrl))
+      || structuredData.coverUrl
+      || structuredData.imageUrl
+      || ""
+  ).trim();
+}
+
 function selectedItemsFromNotes(notes, category) {
   return notes.filter((note) => noteMatchesCategory(note, category)).map((note, index) => ({
     noteId: note.id,
@@ -210,7 +235,8 @@ function selectedItemsFromNotes(notes, category) {
     sectionTitle: "",
     displayTitle: "",
     visible: true,
-    fieldConfig: {}
+    fieldConfig: {},
+    coverUrl: firstNoteImage(note)
   }));
 }
 
@@ -221,7 +247,8 @@ function selectedItemsFromNoteList(notes) {
     sectionTitle: "",
     displayTitle: "",
     visible: true,
-    fieldConfig: {}
+    fieldConfig: {},
+    coverUrl: firstNoteImage(note)
   }));
 }
 
@@ -269,6 +296,12 @@ function noteArea(note = {}) {
 
 function noteProductPrice(note = {}) {
   const data = note.structuredData || {};
+  const variants = Array.isArray(data.variants) ? data.variants : [];
+  const variantPricesFen = variants
+    .filter((variant) => variant && variant.priceFen !== null && variant.priceFen !== undefined && variant.stockStatus !== "sold_out")
+    .map((variant) => Number(variant.priceFen) / 100)
+    .filter((value) => Number.isFinite(value) && value > 0);
+  if (variantPricesFen.length) return Math.min(...variantPricesFen);
   const skuConfig = data.skuConfig || {};
   const skuPrices = (skuConfig.skus || [])
     .map((sku) => Number(String(sku.price || "").replace(/[^\d.]/g, "")))
@@ -356,9 +389,15 @@ function noteMatchesGroupbuyCondition(note = {}, filters = {}) {
 }
 
 function firstCover(notes, selectedItems) {
-  const selectedIds = new Set((selectedItems || []).map((item) => item.noteId));
-  const note = notes.find((item) => selectedIds.has(item.id) && item.coverUrl);
-  return note ? note.coverUrl : "";
+  const noteById = new Map((notes || []).map((item) => [item.id, item]));
+  const selected = (selectedItems || [])
+    .slice()
+    .sort((left, right) => Number(left.sortOrder || 0) - Number(right.sortOrder || 0));
+  for (const item of selected) {
+    const value = String(item.coverUrl || item.coverDisplayUrl || firstNoteImage(noteById.get(item.noteId) || {}) || "").trim();
+    if (value) return value;
+  }
+  return "";
 }
 
 function firstPhone(notes, selectedItems, user) {
@@ -525,7 +564,6 @@ Page({
     shareTitle: "",
     shareImageUrl: "",
     shareImageReady: false,
-    shareDirect: false,
     shareImageGenerating: false,
     shareStatusText: "正在准备",
     phone: "",
@@ -642,7 +680,6 @@ Page({
       loading: true,
       shareImageUrl: "",
       shareImageReady: false,
-      shareDirect: false,
       shareImageGenerating: false,
       shareStatusText: "正在准备"
     });
@@ -664,7 +701,8 @@ Page({
           sectionTitle: item.sectionTitle || "",
           displayTitle: item.displayTitle || "",
           visible: item.visible !== false,
-          fieldConfig: item.fieldConfig || {}
+          fieldConfig: item.fieldConfig || {},
+          coverUrl: item.coverUrl || item.coverDisplayUrl || ""
         }));
         this.setData({
           status: page.status || "draft",
@@ -700,10 +738,17 @@ Page({
       }
       const notesRes = await api.fetchNotes(noteParams, { metadataOnly: true });
       const notes = (notesRes.data || []).map((note) => decorateNoteForShowcasePicker(note, selectedItems));
+      // The detail endpoint intentionally returns the minimal persisted item
+      // shape. Enrich it locally from the note list so an old collection with
+      // media but no legacy coverUrl still selects its first real image.
+      selectedItems = selectedItems.map((item) => ({
+        ...item,
+        coverUrl: item.coverUrl || firstNoteImage(notes.find((note) => note.id === item.noteId) || {})
+      }));
       if (this.data.id && this.data.addNoteId && !selectedItems.some((item) => item.noteId === this.data.addNoteId)) {
         const extraNote = notes.find((note) => note.id === this.data.addNoteId);
         if (extraNote) {
-          selectedItems = [...selectedItems, { noteId: extraNote.id, sortOrder: selectedItems.length, sectionTitle: "", displayTitle: "", visible: true, fieldConfig: {} }];
+          selectedItems = [...selectedItems, { noteId: extraNote.id, sortOrder: selectedItems.length, sectionTitle: "", displayTitle: "", visible: true, fieldConfig: {}, coverUrl: firstNoteImage(extraNote) }];
         }
       }
       const categoryOptions = buildCategoryOptions(notes);
@@ -718,7 +763,8 @@ Page({
             sectionTitle: "",
             displayTitle: "",
             visible: true,
-            fieldConfig: {}
+            fieldConfig: {},
+            coverUrl: firstNoteImage(notes.find((note) => note.id === this.data.preselectNoteId) || {})
           }];
         } else if (this.data.preselectTopicId) {
           selectedItems = selectedItemsFromNoteList(notes);
@@ -759,7 +805,8 @@ Page({
         activeCategory,
         templateOptions: templateOptionsForScene(this.data.sceneType),
         sceneTexts: buildShowcaseSceneTexts(activeCategory),
-        generationMethods: buildGenerationMethods(activeCategory)
+        generationMethods: buildGenerationMethods(activeCategory),
+        selectedItems
       });
       this.refreshSelectionState();
       if (this.data.status === "published" && !this.data.unpublishedChanges) {
@@ -783,7 +830,6 @@ Page({
         unpublishedChanges: true,
         shareImageUrl: "",
         shareImageReady: false,
-        shareDirect: false,
         shareStatusText: "发布后可分享"
       };
     }
@@ -798,37 +844,31 @@ Page({
     const { id, status, unpublishedChanges } = this.data;
     if (!id || status !== "published" || unpublishedChanges) {
       setShareMenuEnabled(false);
-      this.setData({ shareImageUrl: "", shareImageReady: false, shareDirect: false });
+      this.setData({ shareImageUrl: "", shareImageReady: false });
       return;
     }
     if (this.data.shareImageGenerating) return;
     this.shareImageGenerationToken = `${id}_${Date.now()}`;
     const token = this.shareImageGenerationToken;
-    const coverUrl = this.data.bannerUrl || firstCover(this.data.notes || [], this.data.selectedItems || []);
     this.setData({
       shareImageUrl: "",
       shareImageReady: false,
-      shareDirect: false,
       shareImageGenerating: true,
       shareStatusText: "正在准备"
     });
     try {
-      const source = {
-        title: this.data.shareTitle || this.data.name || "资料合集",
-        badge: "合集",
-        coverUrl: coverUrl || "",
-        primaryImageUrl: coverUrl || "",
-        layoutId: isShareImageUrl(coverUrl) ? "original_media" : "showcase_info",
-        templateKind: "showcase",
-        collectionData: {
-          description: this.data.description || "",
-          itemCount: Number((this.data.selectedItems || []).length || 0),
-          sceneType: this.data.sceneType || "notes"
-        },
-        hint: "打开小程序查看完整合集",
-        growthHint: "我也想做同款",
-        shareTargetLabel: "合集"
-      };
+      const source = buildShowcaseShareSource({
+        name: this.data.name,
+        shareTitle: this.data.shareTitle,
+        description: this.data.description,
+        sceneType: this.data.sceneType,
+        itemCount: (this.data.selectedItems || []).filter((item) => item && item.visible !== false).length,
+        items: (this.data.selectedItems || []).map((item) => ({
+          ...item,
+          coverUrl: item.coverUrl || firstCover(this.data.notes, [item])
+        })),
+        bannerUrl: this.data.bannerUrl
+      });
       const entity = {
         id,
         status,
@@ -850,18 +890,17 @@ Page({
       if (imagePath) {
         this.setData({
           shareImageUrl: imagePath,
-          shareDirect: false,
           shareSnapshot: result.entity.shareSnapshot || result.snapshot,
           shareImageReady: true,
           shareStatusText: "分享合集"
         });
         setShareMenuEnabled(true);
       } else {
-        this.setData({ shareImageUrl: "", shareImageReady: false, shareDirect: false, shareStatusText: "重新准备" });
+        this.setData({ shareImageUrl: "", shareImageReady: false, shareStatusText: "重新准备" });
       }
     } catch (error) {
       if (token === this.shareImageGenerationToken && this.data.id === id) {
-        this.setData({ shareImageUrl: "", shareImageReady: false, shareDirect: false, shareStatusText: "重新准备" });
+        this.setData({ shareImageUrl: "", shareImageReady: false, shareStatusText: "重新准备" });
         setShareMenuEnabled(false);
       }
     } finally {
@@ -1121,7 +1160,8 @@ Page({
         sectionTitle: "",
         displayTitle: "",
         visible: true,
-        fieldConfig: {}
+        fieldConfig: {},
+        coverUrl: firstNoteImage((this.data.notes || []).find((note) => note.id === noteId) || {})
       });
     }
     this.setData(this.withUnpublishedChanges({ selectedItems: this.reindexItems(selectedItems) }));
@@ -1210,11 +1250,12 @@ Page({
     const normalizedDescription = String(description || "").trim() || defaultDescription(activeCategory, template);
     const normalizedShareTitle = String(shareTitle || "").trim() || normalizedName;
     const normalizedContactText = String(contactText || "").trim() || defaultContactText(activeCategory);
+    const resolvedBannerUrl = firstCover(notes, selectedItems) || String(bannerUrl || "").trim();
     return {
       ownerUserId: user.id,
       name: normalizedName,
       description: normalizedDescription,
-      bannerUrl,
+      bannerUrl: resolvedBannerUrl,
       shareTitle: normalizedShareTitle,
       sceneType,
       templateId: normalizeTemplateId(sceneType, activeTemplateId),
@@ -1311,7 +1352,6 @@ Page({
         unpublishedChanges: false,
         shareImageUrl: "",
         shareImageReady: false,
-        shareDirect: false,
         shareStatusText: "正在准备"
       });
       clearShowcaseCaches(this.data.user && this.data.user.id);

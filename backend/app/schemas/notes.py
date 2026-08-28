@@ -7,9 +7,11 @@ from app.schemas.skills import ContentMediaPayload
 
 class UserNoteUpdateRequest(BaseModel):
     ownerUserId: str
+    expectedRevision: int | None = None
     title: str
     summary: str | None = None
     body: str
+    contentBlocks: list[dict] | None = None
     coverUrl: str | None = None
     media: list[ContentMediaPayload] = Field(default_factory=list)
     categoryIds: list[str] = Field(default_factory=list)
@@ -24,6 +26,8 @@ class ManualNoteDraftRequest(BaseModel):
     inputMode: str
     rawText: str | None = None
     title: str | None = None
+    intakeId: str | None = None
+    idempotencyKey: str | None = None
 
 
 class PropertyBatchParseRequest(BaseModel):
@@ -50,12 +54,24 @@ class PropertyBatchCreateRequest(BaseModel):
     ownerUserId: str
     rawText: str
     candidates: list[PropertyBatchCandidatePayload] = Field(default_factory=list)
+    intakeId: str | None = None
+    idempotencyKey: str | None = None
 
 
 class QuickNoteCaptureRequest(BaseModel):
     ownerUserId: str
     rawText: str
     title: str | None = None
+    intakeId: str | None = None
+    idempotencyKey: str | None = None
+
+
+class LinkCaptureRequest(BaseModel):
+    ownerUserId: str
+    url: str
+    title: str | None = None
+    intakeId: str | None = None
+    idempotencyKey: str | None = None
 
 
 class TopicCreateRequest(BaseModel):
@@ -75,12 +91,29 @@ class NoteTypeConfirmRequest(BaseModel):
     source: str | None = None
 
 
+class NotePublishRequest(BaseModel):
+    ownerUserId: str
+    expectedRevision: int | None = None
+
+
 class CustomerActionSubmitRequest(BaseModel):
     viewerUserId: str | None = None
     anonymousId: str | None = None
     nickname: str | None = None
     avatarUrl: str | None = None
     payload: dict = Field(default_factory=dict)
+
+
+class NoteInteractionEventRequest(BaseModel):
+    eventType: str
+    attachmentId: str | None = None
+    viewerUserId: str | None = None
+    anonymousId: str | None = None
+    shareId: str | None = None
+    shareFromUserId: str | None = None
+    sessionId: str | None = None
+    scene: str = "note_preview"
+    metadata: dict = Field(default_factory=dict)
 
 
 class PropertySameCloneRequest(BaseModel):

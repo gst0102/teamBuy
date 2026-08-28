@@ -1,316 +1,197 @@
-<view class="page-shell">
-  <custom-nav title="资料" />
-  <view class="library-hero">
-    <view class="hero-copy">
-      <view class="hero-kicker">一个入口找全部资料</view>
-      <view class="hero-title">统一资料库</view>
-      <view class="hero-subtitle">房源、商机、服务、商品和日常资料都在这里。</view>
-    </view>
-    <view class="library-visual">库</view>
+<view class="page-shell library-page {{hasAnyCards ? 'has-cards' : 'is-empty'}}">
+  <custom-nav title="资料" show-back="{{false}}" />
+
+  <view class="library-mode-switch" aria-label="资料与合集切换">
+    <view class="library-mode active">资料</view>
+    <view class="library-mode" bindtap="handleOpenCollections">合集</view>
   </view>
 
-  <view class="library-sort-bar">
-    <view>默认全部</view>
-    <text>分类只是筛选，不再决定资料是否可见</text>
+  <view class="library-loading-state" wx:if="{{libraryLoading}}">
+    <view class="library-loading-dot"></view>
+    <view>正在整理资料库…</view>
   </view>
 
-  <view class="search-box">
-    <input class="search-input" placeholder="搜索标题 / 标签 / 来源" bindinput="handleKeywordChange" confirm-type="search" bindconfirm="handleSearch" />
-    <button class="search-btn" bindtap="handleSearch">搜索</button>
-  </view>
-
-  <view class="filter-title">资料类型</view>
-  <view class="chip-row type-filter-row">
-    <block wx:for="{{libraryTypeFilters}}" wx:key="key">
-      <view class="chip type-chip {{activeLibraryType === item.key ? 'active' : ''}}" data-key="{{item.key}}" bindtap="handleLibraryTypeFilter">{{item.label}}</view>
-    </block>
-  </view>
-
-  <view class="library-tool-head">
-    <view class="quick-action" bindtap="handleManualAdd">
-      <view class="quick-icon blue">+</view>
-      <view>新增资料</view>
-    </view>
-    <view class="quick-action muted-action" bindtap="handleToggleTools">
-      <view class="quick-icon gray">•••</view>
-      <view>{{toolsOpen ? '收起工具' : '更多工具'}}</view>
-    </view>
-  </view>
-
-  <view class="quick-actions more-tools" wx:if="{{toolsOpen}}">
-    <view class="quick-action" bindtap="handleOpenPendingImports">
-      <view class="quick-icon green">认</view>
-      <view>待认领</view>
-    </view>
-    <view class="quick-action" bindtap="handleTagPlaceholder">
-      <view class="quick-icon orange">签</view>
-      <view>标签设置</view>
-    </view>
-    <view class="quick-action" bindtap="handleOpenNotes">
-      <view class="quick-icon purple">记</view>
-      <view>我的笔记</view>
-    </view>
-  </view>
-
-  <view class="property-filter-panel" wx:if="{{showPropertyFilters}}">
-    <view class="property-filter-head">
-      <view>
-        <view class="property-filter-title">房源筛选</view>
-        <view class="property-filter-sub">按价格、户型、地铁、电梯和状态找房源。</view>
+  <block wx:elif="{{hasAnyCards}}">
+    <view class="library-search-row">
+      <view class="library-search-box">
+        <text class="library-search-icon">⌕</text>
+        <input class="library-search-input" value="{{keyword}}" placeholder="搜索资料、标签或来源" bindinput="handleKeywordChange" confirm-type="search" bindconfirm="handleSearch" />
       </view>
-      <button class="property-filter-toggle" bindtap="handleTogglePropertyFilters">{{propertyFiltersOpen ? '收起' : '展开'}}</button>
-    </view>
-    <view wx:if="{{propertyFiltersOpen}}">
-      <view class="price-range-row">
-        <input class="price-input" type="number" value="{{propertyPriceMin}}" data-key="propertyPriceMin" bindinput="handlePropertyPriceInput" placeholder="最低价" />
-        <text>至</text>
-        <input class="price-input" type="number" value="{{propertyPriceMax}}" data-key="propertyPriceMax" bindinput="handlePropertyPriceInput" placeholder="最高价" />
-        <text>元</text>
-      </view>
-      <view class="filter-chip-row">
-        <text wx:for="{{propertyPricePresets}}" wx:key="key" class="filter-chip {{propertyPricePreset === item.key ? 'active' : ''}}" data-key="{{item.key}}" bindtap="handlePropertyPricePreset">{{item.label}}</text>
-      </view>
-      <view class="filter-line-title">户型</view>
-      <view class="filter-chip-row">
-        <text wx:for="{{propertyLayoutFilters}}" wx:key="*this" class="filter-chip {{propertyLayoutFilter === item ? 'active' : ''}}" data-key="propertyLayoutFilter" data-value="{{item}}" bindtap="handlePropertyQuickFilter">{{item}}</text>
-      </view>
-      <view class="filter-line-title">位置 / 楼层</view>
-      <view class="filter-chip-row">
-        <text wx:for="{{propertyMetroFilters}}" wx:key="*this" class="filter-chip {{propertyMetroFilter === item ? 'active' : ''}}" data-key="propertyMetroFilter" data-value="{{item}}" bindtap="handlePropertyQuickFilter">{{item}}</text>
-        <text wx:for="{{propertyElevatorFilters}}" wx:key="*this" class="filter-chip {{propertyElevatorFilter === item ? 'active' : ''}}" data-key="propertyElevatorFilter" data-value="{{item}}" bindtap="handlePropertyQuickFilter">{{item}}</text>
-      </view>
-      <view class="filter-line-title">面积 / 押付 / 入住</view>
-      <view class="filter-chip-row">
-        <text wx:for="{{propertyAreaFilters}}" wx:key="*this" class="filter-chip {{propertyAreaFilter === item ? 'active' : ''}}" data-key="propertyAreaFilter" data-value="{{item}}" bindtap="handlePropertyQuickFilter">{{item}}</text>
-        <text wx:for="{{propertyPaymentFilters}}" wx:key="*this" class="filter-chip {{propertyPaymentFilter === item ? 'active' : ''}}" data-key="propertyPaymentFilter" data-value="{{item}}" bindtap="handlePropertyQuickFilter">{{item}}</text>
-        <text wx:for="{{propertyMoveInFilters}}" wx:key="*this" class="filter-chip {{propertyMoveInFilter === item ? 'active' : ''}}" data-key="propertyMoveInFilter" data-value="{{item}}" bindtap="handlePropertyQuickFilter">{{item}}</text>
-      </view>
-      <view class="filter-line-title">状态</view>
-      <view class="filter-chip-row">
-        <text wx:for="{{propertyStatusFilters}}" wx:key="*this" class="filter-chip {{propertyStatusFilter === item ? 'active' : ''}}" data-key="propertyStatusFilter" data-value="{{item}}" bindtap="handlePropertyQuickFilter">{{item}}</text>
-      </view>
-      <button class="filter-reset-btn" bindtap="handleResetPropertyFilters">重置筛选</button>
-      <button class="filter-create-showcase-btn" bindtap="handleCreateShowcaseFromCurrentFilter">用当前筛选生成合集</button>
-    </view>
-  </view>
-
-  <view class="property-filter-panel product-filter-panel" wx:if="{{showGroupbuyFilters}}">
-    <view class="property-filter-head">
-      <view>
-        <view class="property-filter-title">商品筛选</view>
-        <view class="property-filter-sub">按价格、取货、截止和接龙状态找商品。</view>
-      </view>
-      <button class="property-filter-toggle product" bindtap="handleToggleGroupbuyFilters">{{groupbuyFiltersOpen ? '收起' : '展开'}}</button>
-    </view>
-    <view wx:if="{{groupbuyFiltersOpen}}">
-      <view class="price-range-row">
-        <input class="price-input" type="digit" value="{{groupbuyPriceMin}}" data-key="groupbuyPriceMin" bindinput="handleGroupbuyPriceInput" placeholder="最低价" />
-        <text>至</text>
-        <input class="price-input" type="digit" value="{{groupbuyPriceMax}}" data-key="groupbuyPriceMax" bindinput="handleGroupbuyPriceInput" placeholder="最高价" />
-        <text>元</text>
-      </view>
-      <view class="filter-chip-row">
-        <text wx:for="{{groupbuyPricePresets}}" wx:key="key" class="filter-chip product {{groupbuyPricePreset === item.key ? 'active' : ''}}" data-key="{{item.key}}" bindtap="handleGroupbuyPricePreset">{{item.label}}</text>
-      </view>
-      <view class="filter-line-title">取货方式</view>
-      <view class="filter-chip-row">
-        <text wx:for="{{groupbuyPickupFilters}}" wx:key="*this" class="filter-chip product {{groupbuyPickupFilter === item ? 'active' : ''}}" data-key="groupbuyPickupFilter" data-value="{{item}}" bindtap="handleGroupbuyQuickFilter">{{item}}</text>
-      </view>
-      <view class="filter-line-title">截止 / 状态</view>
-      <view class="filter-chip-row">
-        <text wx:for="{{groupbuyDeadlineFilters}}" wx:key="*this" class="filter-chip product {{groupbuyDeadlineFilter === item ? 'active' : ''}}" data-key="groupbuyDeadlineFilter" data-value="{{item}}" bindtap="handleGroupbuyQuickFilter">{{item}}</text>
-        <text wx:for="{{groupbuyStatusFilters}}" wx:key="*this" class="filter-chip product {{groupbuyStatusFilter === item ? 'active' : ''}}" data-key="groupbuyStatusFilter" data-value="{{item}}" bindtap="handleGroupbuyQuickFilter">{{item}}</text>
-      </view>
-      <button class="filter-reset-btn product" bindtap="handleResetGroupbuyFilters">重置筛选</button>
-      <button class="filter-create-showcase-btn product" bindtap="handleCreateGroupbuyShowcaseFromCurrentFilter">用当前筛选生成商品合集</button>
-    </view>
-  </view>
-
-  <view class="filter-title">发客户状态</view>
-  <view class="chip-row delivery-filter-row">
-    <block wx:for="{{deliveryFilters}}" wx:key="key">
-      <view class="chip status-chip {{activeDeliveryFilter === item.key ? 'active' : ''}}" data-key="{{item.key}}" bindtap="handleDeliveryFilter">{{item.label}}</view>
-    </block>
-  </view>
-
-  <view class="advanced-filter-panel" wx:if="{{toolsOpen || entryFilter || activeCategory !== '全部' || activeTag !== '全部'}}">
-    <view class="filter-title">分类筛选</view>
-    <view class="entry-filter-card" wx:if="{{entryFilter}}">
-      <view>
-        <view class="entry-filter-title">{{entryFilterText}}</view>
-        <view class="entry-filter-desc">{{entryFilter.cardType === 'business_card' ? '只看电子名片' : entryFilter.cardType === 'service_offer' ? '只看服务方案' : entryFilter.cardType === 'notes_workspace' ? '只看日常资料' : entryFilter.cardType === 'groupbuy_product' ? '只看商品资料' : entryFilter.cardType === 'service_workspace' ? '只看名片/服务方案' : '只看房源资料'}}</view>
-      </view>
-      <button class="entry-filter-clear" bindtap="handleClearEntryFilter">全部</button>
-    </view>
-    <view class="chip-row">
-      <block wx:for="{{categoryFilters}}" wx:key="name">
-        <view class="chip {{activeCategory === item.name ? 'active' : ''}}" data-filter="{{item.name}}" bindtap="handleFilter">{{item.name}} {{item.count}}</view>
-      </block>
+      <button class="library-filter-trigger {{filterPanelVisible || activeLibraryType !== 'all' || activeDeliveryFilter !== 'all' || activeCategory !== '全部' || activeTag !== '全部' ? 'active' : ''}}" bindtap="handleToggleFilterPanel" aria-label="打开筛选">
+        <text class="filter-line top"></text>
+        <text class="filter-line middle"></text>
+        <text class="filter-line bottom"></text>
+        <text class="library-filter-trigger-label">筛选</text>
+      </button>
     </view>
 
-    <view class="filter-title" wx:if="{{tagFilters.length > 1}}">标签筛选</view>
-    <view class="tag-row" wx:if="{{tagFilters.length > 1}}">
-      <block wx:for="{{tagFilters}}" wx:key="name">
-        <text class="tag {{activeTag === item.name ? 'active' : ''}}" data-tag="{{item.name}}" bindtap="handleTagFilter">{{item.name}} {{item.count}}</text>
-      </block>
-    </view>
-  </view>
+    <scroll-view scroll-x class="library-sales-scroll" enable-flex>
+      <view class="library-sales-row">
+        <view class="library-sales-chip {{activeSalesFilter === item.key ? 'active' : ''}}" wx:for="{{salesFilters}}" wx:key="key" data-key="{{item.key}}" bindtap="handleSalesFilter">{{item.label}}</view>
+      </view>
+    </scroll-view>
 
-  <view class="panel library-summary-panel">
-    <view class="stat-grid">
-      <view class="stat-item">
-        <view class="stat-icon blue">资</view>
-        <text class="stat-value">{{stats.total}}</text>
-        <text class="stat-label">资料总数</text>
-      </view>
-      <view class="stat-item">
-        <view class="stat-icon green">筛</view>
-        <text class="stat-value">{{displayCards.length}}</text>
-        <text class="stat-label">当前筛选</text>
-      </view>
-      <view class="stat-item">
-        <view class="stat-icon purple">访</view>
-        <text class="stat-value">{{stats.visitors}}</text>
-        <text class="stat-label">访客</text>
-      </view>
-      <view class="stat-item">
-        <view class="stat-icon orange">客</view>
-        <text class="stat-value">{{stats.customerActivity}}</text>
-        <text class="stat-label">{{entryFilter && entryFilter.cardType === 'notes_workspace' ? '反馈' : '客户动态'}}</text>
-      </view>
+    <view class="library-entry-filter" wx:if="{{entryFilterText}}">
+      <text>{{entryFilterText}}</text>
+      <text bindtap="handleClearEntryFilter">清除</text>
     </view>
-  </view>
 
-  <view class="library-list-head" wx:if="{{displayCards.length}}">
-    <view>
-      <view class="filter-title">资料列表</view>
-      <view class="list-count">当前 {{displayCards.length}} 条</view>
+    <view class="library-section-head">
+      <view class="library-section-title">{{activeSalesFilter === 'recent' ? '最近使用' : activeSalesFilter === 'frequent' ? '常发资料' : activeSalesFilter === 'feedback' ? '高反馈资料' : '待完善资料'}}</view>
+      <view class="library-section-meta">已加载 {{filteredCards.length}} 份 <text class="library-manage-link" bindtap="handleToggleFilterPanel">管理</text></view>
     </view>
-    <view class="view-switch">
-      <text class="{{viewMode === 'list' ? 'active' : ''}}" data-mode="list" bindtap="handleViewModeChange">列表</text>
-      <text class="{{viewMode === 'grid' ? 'active' : ''}}" data-mode="grid" bindtap="handleViewModeChange">双列</text>
-    </view>
-  </view>
 
-  <view class="card-grid {{viewMode === 'list' ? 'list-mode' : 'grid-mode'}}" wx:if="{{displayCards.length}}">
-    <block wx:for="{{displayCards}}" wx:key="id">
-      <view class="resource-card {{viewMode === 'list' ? 'list-card' : 'grid-card'}}">
-        <view class="resource-hot-dot" wx:if="{{item.hasHotCustomerSignal}}"></view>
-        <image wx:if="{{item.coverUrl}}" class="resource-cover" src="{{item.coverDisplayUrl || item.coverUrl}}" mode="aspectFill" data-id="{{item.id}}" bindtap="handleView"></image>
-        <view wx:else class="resource-cover placeholder tone-{{item.titleCover.tone}} {{!item.isProperty && !item.isGroupbuy ? 'lite' : ''}}" data-id="{{item.id}}" bindtap="handleView">
-          <view class="title-cover-badge">{{item.titleCover.badge}}</view>
-          <view class="title-cover-line">{{item.titleCover.line1}}</view>
-          <view class="title-cover-line second" wx:if="{{item.titleCover.line2}}">{{item.titleCover.line2}}</view>
-          <view class="title-cover-hint" wx:if="{{!item.isProperty && !item.isGroupbuy}}">轻设计卡</view>
+    <view class="library-card-list" wx:if="{{displayCards.length}}">
+      <view class="library-resource-card" wx:for="{{displayCards}}" wx:key="id" data-id="{{item.id}}" bindtap="handleView">
+        <image wx:if="{{item.coverUrl}}" class="library-resource-cover" src="{{item.coverDisplayUrl || item.coverUrl}}" mode="aspectFill"></image>
+        <view wx:else class="library-resource-cover generated tone-{{item.titleCover.tone}}">
+          <view class="library-cover-badge">{{item.titleCover.badge}}</view>
+          <view class="library-cover-title">{{item.titleCover.line1}}</view>
         </view>
-        <view class="resource-body">
-          <view class="resource-title">{{item.title}}</view>
-          <view class="property-status-line" wx:if="{{item.isProperty && item.propertyFollowStatus}}">
-            <text class="property-status-badge {{item.propertyFollowStatus.tone}}">{{item.propertyFollowStatus.text}}</text>
-            <text class="property-status-hint">{{item.propertyFollowStatus.hint}}</text>
+
+        <view class="library-resource-main">
+          <view class="library-resource-title">{{item.title}}</view>
+          <view wx:if="{{item.isBusinessCardResource && (item.businessCardRole || item.businessCardCompany)}}" class="library-card-identity">{{item.businessCardRole}}<text wx:if="{{item.businessCardRole && item.businessCardCompany}}"> · </text>{{item.businessCardCompany}}</view>
+          <view wx:if="{{item.isBusinessCardResource && item.businessCardHeadline}}" class="library-card-headline">{{item.businessCardHeadline}}</view>
+          <view class="library-resource-tags" wx:if="{{item.libraryTags.length}}">
+            <text class="library-resource-tag tone-{{item.libraryTone}}" wx:for="{{item.libraryTags}}" wx:for-item="tag" wx:key="*this">{{tag}}</text>
           </view>
-          <view class="property-subtitle-line" wx:if="{{item.isProperty && item.propertyHighlightChips.length}}">
-            <block wx:for="{{item.propertyHighlightChips}}" wx:key="*this">
-              <text wx:if="{{index > 0}}" class="subtitle-dot">·</text>
-              <text class="subtitle-value">{{item}}</text>
-            </block>
-          </view>
-          <view class="property-info-line" wx:if="{{item.isProperty && item.propertyInfoLine}}">{{item.propertyInfoLine}}</view>
-          <view class="property-status-line" wx:if="{{item.isGroupbuy && item.productFollowStatus}}">
-            <text class="property-status-badge product {{item.productFollowStatus.tone}}">{{item.productFollowStatus.text}}</text>
-            <text class="property-status-hint">{{item.productFollowStatus.hint}}</text>
-          </view>
-          <view class="product-subtitle-line" wx:if="{{item.isGroupbuy && item.productHighlightChips.length}}">
-            <block wx:for="{{item.productHighlightChips}}" wx:key="*this">
-              <text wx:if="{{index > 0}}" class="subtitle-dot">·</text>
-              <text class="subtitle-value">{{item}}</text>
-            </block>
-          </view>
-          <view class="property-info-line product-info-line" wx:if="{{item.isGroupbuy && item.productInfoLine}}">{{item.productInfoLine}}</view>
-          <view class="tag-list" wx:if="{{!item.isProperty && !item.isGroupbuy && item.tagNames.length}}">
-            <block wx:for="{{item.tagNames}}" wx:key="*this">
-              <text class="tag mini">{{item}}</text>
-            </block>
-          </view>
-          <view class="resource-source" wx:if="{{!item.isProperty && !item.isGroupbuy}}">来源：{{item.sourceLabel}}</view>
-          <view class="resource-meta" wx:if="{{!item.isProperty && !item.isGroupbuy}}">打开 {{item.stats.pv}} · 访客 {{item.stats.uv}} · 客户动态 {{item.customerActivity}}</view>
-          <view class="property-signal-row" wx:if="{{item.isProperty}}">
-            <text>打开 {{item.stats.pv}}</text>
-            <text>访客 {{item.stats.uv}}</text>
-            <text class="{{item.customerActivity ? 'hot' : ''}}">客户动态 {{item.customerActivity}}</text>
-            <text wx:if="{{item.createdText}}">{{item.createdText}}</text>
-          </view>
-          <view class="property-signal-row product-signal-row" wx:if="{{item.isGroupbuy}}">
-            <text>打开 {{item.stats.pv}}</text>
-            <text>访客 {{item.stats.uv}}</text>
-            <text class="{{item.customerActivity ? 'hot' : ''}}">接龙/下单 {{item.customerActivity}}</text>
-            <text wx:if="{{item.createdText}}">{{item.createdText}}</text>
-          </view>
-          <view class="resource-insight-row {{item.hasCustomerSignal ? 'active' : ''}}" wx:if="{{!item.isProperty && !item.isGroupbuy}}">
-            <text class="{{item.hasHotCustomerSignal ? 'hot' : ''}}" data-id="{{item.id}}" bindtap="handleManage">{{item.customerLabel}}</text>
-            <text bindtap="handleOpenMessages">留言</text>
-          </view>
-          <view class="property-alert-row" wx:if="{{item.isProperty && item.propertyCustomerChips.length}}">
-            <text wx:for="{{item.propertyCustomerChips}}" wx:key="*this" class="{{item.hasHotCustomerSignal ? 'hot' : ''}}">{{item}}</text>
-          </view>
-          <view class="property-alert-row product-alert-row" wx:if="{{item.isGroupbuy && item.productCustomerChips.length}}">
-            <text wx:for="{{item.productCustomerChips}}" wx:key="*this" class="{{item.hasHotCustomerSignal ? 'hot' : ''}}">{{item}}</text>
-          </view>
-          <view class="resource-created-time" wx:if="{{item.createdText && !item.isProperty && !item.isGroupbuy}}">{{item.createdText}}</view>
-          <view class="compact-status-row" data-id="{{item.id}}" bindtap="handleOpen">
-            <text class="status-pill {{item.deliveryStatus.tone}}">{{item.deliveryStatus.text}}</text>
-            <text wx:if="{{item.salesCheck.tone === 'warn'}}" class="status-pill warn">{{item.salesCheck.text}}</text>
-          </view>
-          <view class="share-growth-tip">
-            <block wx:if="{{item.isProperty}}">
-              <text>打开小程序看完整房源 · 输入同款继续问</text>
-            </block>
-            <block wx:elif="{{item.isGroupbuy}}">
-              <text>打开小程序看完整商品 · 发群继续收接龙</text>
-            </block>
-            <block wx:else>
-              <text>打开小程序看完整资料 · 输入同款继续问</text>
-            </block>
-          </view>
-          <view class="property-card-actions {{item.hasCustomerSignal || item.customerActivity || item.propertyCustomerChips.length ? 'has-customer' : 'no-customer'}}" wx:if="{{item.isProperty}}">
-            <button wx:if="{{item.hasCustomerSignal || item.customerActivity || item.propertyCustomerChips.length}}" class="property-main-action hot" data-id="{{item.id}}" bindtap="handleManage">去雷达</button>
-            <button class="property-share-action" open-type="share" bindtap="prepareShare" data-id="{{item.id}}" data-note-id="{{item.sourceNoteId}}" data-title="{{item.title}}" data-cover="{{item.coverDisplayUrl || item.coverUrl}}" disabled="{{item.shareDisabled}}">{{item.shareStatusText || '发客户'}}</button>
-            <button class="property-more-action" data-id="{{item.id}}" bindtap="handleMoreCardActions">更多</button>
-          </view>
-          <view class="property-card-actions product-card-actions {{item.productHasOrders ? 'has-customer' : 'no-customer'}}" wx:if="{{item.isGroupbuy}}">
-            <button wx:if="{{item.productHasOrders}}" class="property-main-action product" data-id="{{item.id}}" bindtap="handleManage">{{item.productPrimaryAction}}</button>
-            <button class="property-share-action product" open-type="share" bindtap="prepareShare" data-id="{{item.id}}" data-note-id="{{item.sourceNoteId}}" data-title="{{item.title}}" data-cover="{{item.coverDisplayUrl || item.coverUrl}}" disabled="{{item.shareDisabled}}">{{item.shareStatusText || '发客户'}}</button>
-            <button class="property-more-action product" data-id="{{item.id}}" bindtap="handleMoreCardActions">更多</button>
-          </view>
-          <view class="property-card-actions service-card-actions" wx:if="{{item.isServiceResource}}">
-            <button class="property-share-action service" open-type="share" bindtap="prepareShare" data-id="{{item.id}}" data-note-id="{{item.sourceNoteId}}" data-title="{{item.title}}" data-cover="{{item.coverDisplayUrl || item.coverUrl}}" disabled="{{item.shareDisabled}}">{{item.shareStatusText || '发客户'}}</button>
-            <button class="property-more-action service" data-id="{{item.id}}" bindtap="handleMoreCardActions">更多</button>
-          </view>
-          <view class="card-actions" wx:elif="{{!item.isProperty && !item.isGroupbuy}}">
-            <button class="primary-text-action" open-type="share" bindtap="prepareShare" data-id="{{item.id}}" data-note-id="{{item.sourceNoteId}}" data-title="{{item.title}}" data-cover="{{item.coverDisplayUrl || item.coverUrl}}" disabled="{{item.shareDisabled}}">{{item.shareStatusText || '发客户'}}</button>
-            <text class="secondary-text-action" data-id="{{item.id}}" bindtap="handleMoreCardActions">更多</text>
-          </view>
+          <view class="library-resource-meta">{{item.libraryMeta}}</view>
+          <view class="library-resource-signal" wx:if="{{item.hasCustomerSignal || item.customerActivity}}" data-id="{{item.id}}" catchtap="handleManage">{{item.customerLabel}} · 去资料运营</view>
+        </view>
+
+        <view class="library-resource-actions">
+          <button class="library-more-button" data-id="{{item.id}}" catchtap="handleMoreCardActions" aria-label="更多操作">•••</button>
+          <button wx:if="{{item.canShare && item.shareState !== 'revoked' && item.shareImageReady}}" class="library-send-button" open-type="share" catchtap="prepareShare" data-id="{{item.id}}" data-note-id="{{item.sourceNoteId}}" data-title="{{item.title}}">发客户</button>
+          <button wx:elif="{{item.canShare && item.shareState !== 'revoked'}}" class="library-send-button pending" data-id="{{item.id}}" catchtap="prepareShare">{{item.shareStatusText}}</button>
+          <button wx:elif="{{item.shareState === 'revoked'}}" class="library-send-button disabled" disabled="true">已停止分享</button>
+          <button wx:elif="{{item.canPublish}}" class="library-send-button publish" data-id="{{item.id}}" catchtap="handlePublish">发客户</button>
+          <button wx:else class="library-send-button edit" data-id="{{item.id}}" catchtap="handleOpen">完善</button>
         </view>
       </view>
-    </block>
+    </view>
+
+    <view class="library-filter-empty" wx:else>
+      <view class="library-filter-empty-icon">⌕</view>
+      <view class="library-filter-empty-title">没有符合条件的资料</view>
+      <view class="library-filter-empty-sub">换个关键词，或清除筛选后再找。</view>
+      <button class="library-filter-empty-reset" bindtap="handleResetLibraryFilters">清除筛选</button>
+    </view>
+
+    <view class="library-load-more" wx:if="{{hasMoreCards}}">{{loadingMoreCards ? '正在加载…' : '继续上滑加载更多'}}</view>
+    <view class="library-load-more done" wx:elif="{{filteredCards.length > 10}}">已加载全部 {{filteredCards.length}} 份</view>
+
+    <view class="library-bottom-spacer"></view>
+    <view class="library-fixed-actions">
+      <button class="library-fixed-primary" bindtap="handleManualAdd"><text>＋</text> 新建资料</button>
+      <button class="library-fixed-secondary" bindtap="handleAssistantBindTap">资料助手</button>
+    </view>
+  </block>
+
+  <view class="library-load-error" wx:elif="{{libraryLoadError}}">
+    <view class="library-load-error-icon">!</view>
+    <view class="library-load-error-title">资料暂时没有加载出来</view>
+    <view class="library-load-error-sub">这不是零数据，检查网络后可以重新加载。</view>
+    <button class="library-retry-button" bindtap="handleRetryLibrary">重新加载</button>
   </view>
 
-  <view class="empty-state library-empty" wx:else>
-    <view>{{showGroupbuyFilters ? '还没有商品资料。可以先手动新建商品，或把团购微信笔记发给企业微信导入。' : entryFilter.cardType === 'business_card' ? '还没有名片。先做一张我的名片。' : entryFilter.cardType === 'service_offer' ? '还没有服务方案。先补一个服务介绍页。' : entryFilter.cardType === 'service_workspace' ? '还没有名片或服务方案。可以先做名片，再补一个服务介绍页。' : '暂无资料。可以先新增一条资料。'}}</view>
-    <view class="empty-actions" wx:if="{{showGroupbuyFilters}}">
-      <button class="empty-primary" bindtap="handleManualAdd">新建商品</button>
-      <button class="empty-secondary" bindtap="handleCreateGroupbuyShowcaseFromCurrentFilter">商品合集</button>
+  <view class="library-first-empty" wx:else>
+    <view class="library-first-illustration">
+      <view class="empty-folder-back"></view>
+      <view class="empty-folder-front"><text class="empty-folder-plus">＋</text></view>
+      <view class="empty-spark one">✦</view>
+      <view class="empty-spark two">✦</view>
     </view>
-    <view class="empty-actions" wx:elif="{{entryFilter.cardType === 'service_workspace'}}">
-      <button class="empty-primary" bindtap="handleOpenBusinessCardStudio">做名片</button>
-      <button class="empty-secondary" bindtap="handleOpenServiceOfferStudio">做方案</button>
+    <view class="library-first-title">先添加第一份资料</view>
+    <view class="library-first-sub">以后发给客户的内容，都从这里开始。</view>
+    <button class="library-first-cta" bindtap="handleManualAdd"><text class="library-first-cta-icon">＋</text> 新建资料</button>
+
+    <view class="library-assistant-card" bindtap="handleAssistantBindTap">
+      <view class="library-assistant-icon">微</view>
+      <view class="library-assistant-copy">
+        <view class="library-assistant-title">添加资料助手 <text class="library-assistant-chip">推荐</text></view>
+        <text class="library-assistant-desc">微信内容转发进资料库</text>
+      </view>
+      <view class="library-assistant-arrow">›</view>
     </view>
-    <view class="empty-actions" wx:elif="{{entryFilter.cardType === 'business_card'}}">
-      <button class="empty-primary" bindtap="handleOpenBusinessCardStudio">做我的名片</button>
-    </view>
-    <view class="empty-actions" wx:elif="{{entryFilter.cardType === 'service_offer'}}">
-      <button class="empty-primary" bindtap="handleOpenServiceOfferStudio">做服务方案</button>
+
+    <view class="library-collection-empty" bindtap="handleOpenCollections">
+      <view class="collection-empty-icon">▱</view>
+      <view><text class="collection-empty-title">合集</text><text class="collection-empty-desc">{{collectionCount}} 个 · 资料添加后，可组合成合集</text></view>
+      <text class="collection-empty-arrow">›</text>
     </view>
   </view>
+
+  <view wx:if="{{filterPanelVisible}}" class="library-filter-mask" catchtouchmove="noop" catchtap="handleCloseFilterPanel">
+    <view class="library-filter-sheet" catchtap="noop">
+      <view class="library-filter-sheet-handle"></view>
+      <view class="library-filter-sheet-head">
+        <view>
+          <view>筛选资料</view>
+          <view class="library-filter-sheet-sub">按资料类型、客户进度和标签精准筛选</view>
+        </view>
+        <view class="library-filter-close" bindtap="handleCloseFilterPanel">×</view>
+      </view>
+      <view class="library-filter-current">
+        <text class="library-filter-current-label">当前筛选</text>
+        <text class="library-filter-current-value">{{filterSummaryText}}</text>
+      </view>
+      <view class="library-filter-label">资料类型</view>
+      <view class="library-filter-chips">
+        <text wx:for="{{libraryTypeFilters}}" wx:key="key" class="library-filter-chip {{activeLibraryType === item.key ? 'active' : ''}}" data-key="{{item.key}}" bindtap="handleLibraryTypeFilter">{{item.label}} {{item.count}}</text>
+      </view>
+      <view class="library-filter-label">客户进度</view>
+      <view class="library-filter-chips">
+        <text wx:for="{{deliveryFilters}}" wx:key="key" class="library-filter-chip {{activeDeliveryFilter === item.key ? 'active' : ''}}" data-key="{{item.key}}" bindtap="handleDeliveryFilter">{{item.label}} {{item.count}}</text>
+      </view>
+      <block wx:if="{{tagFilters.length > 1}}">
+        <view class="library-filter-label">标签</view>
+        <view class="library-filter-tag-search">
+          <text class="library-filter-tag-search-icon">⌕</text>
+          <input value="{{tagKeyword}}" placeholder="搜索标签" bindinput="handleTagKeywordChange" />
+        </view>
+        <view class="library-filter-chips">
+          <text wx:for="{{visibleTagFilters}}" wx:key="name" class="library-filter-chip {{activeTag === item.name ? 'active' : ''}}" data-tag="{{item.name}}" bindtap="handleTagFilter">{{item.name}} {{item.count}}</text>
+        </view>
+        <text class="library-filter-all-tags" bindtap="handleShowAllTags">{{showAllTags ? '收起标签' : '查看全部标签'}} ›</text>
+      </block>
+      <view class="library-filter-actions">
+        <button class="library-filter-reset" bindtap="handleResetLibraryFilters">重置</button>
+        <button class="library-filter-apply" bindtap="handleCloseFilterPanel">完成（{{filteredCards.length}}）</button>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{assistantBindModalVisible}}" class="bind-guide-mask" catchtouchmove="noop">
+    <view class="bind-guide-sheet">
+      <view class="bind-guide-head">
+        <view><view class="bind-guide-kicker">添加资料助手</view><view class="bind-guide-title">添加后发送消息，完成绑定</view></view>
+        <view class="bind-guide-close" catchtap="handleCloseAssistantBindModal">×</view>
+      </view>
+      <view class="bind-guide-qr">
+        <contact-cell
+          plugid="{{assistantContactPlugid}}"
+          bind:startmessage="handleAssistantContactStart"
+          bind:completemessage="handleAssistantContactComplete"
+        />
+      </view>
+      <view class="bind-guide-foot">点击按钮添加企业微信“资料助手”，添加成功后复制下面的完整消息发送给它。</view>
+      <view wx:if="{{assistantBindMessage}}" class="bind-guide-code">
+        <view class="bind-guide-code-label">请复制下面这段完整消息，发送给企业微信资料助手</view>
+        <view class="bind-guide-code-text">{{assistantBindMessage}}</view>
+      </view>
+      <view class="bind-guide-steps">
+        <view class="bind-guide-step"><view class="bind-guide-step-index">1</view><view><view class="bind-guide-step-title">点击上方按钮，添加资料助手</view><view class="bind-guide-step-desc">添加完成后返回这里。</view></view></view>
+        <view class="bind-guide-step"><view class="bind-guide-step-index">2</view><view><view class="bind-guide-step-title">复制下面的完整绑定消息</view><view class="bind-guide-step-desc">不要只复制口令，整段消息一起发送。</view></view></view>
+        <view class="bind-guide-step"><view class="bind-guide-step-index">3</view><view><view class="bind-guide-step-title">粘贴发送给企业微信资料助手</view><view class="bind-guide-step-desc">会话存档收到口令后完成绑定，之后再发资料即可自动进入资料库。</view></view></view>
+      </view>
+      <view class="bind-guide-actions">
+        <button wx:if="{{assistantBindMessage}}" class="bind-guide-secondary" catchtap="handleCopyAssistantBindMessage">复制绑定消息</button>
+        <button class="bind-guide-primary" catchtap="handleCloseAssistantBindModal">知道了</button>
+      </view>
+      <view class="bind-guide-foot">如果口令过期，请重新打开资料助手生成一条新的。</view>
+    </view>
+  </view>
+
   <canvas canvas-id="libraryShareCanvas" class="share-image-canvas"></canvas>
 </view>

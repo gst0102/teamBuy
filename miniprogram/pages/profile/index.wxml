@@ -1,133 +1,159 @@
 <view class="page-shell">
   <custom-nav title="我的" />
 
+  <!-- 身份卡 -->
   <view class="profile-card" wx:if="{{user}}">
     <view class="profile-card-top">
       <view class="profile-avatar-shell" bindtap="handleOpenProfileEditor">
         <image class="profile-avatar" wx:if="{{user.avatarUrl}}" src="{{user.avatarUrl}}" mode="aspectFill"></image>
-        <view class="profile-avatar fallback" wx:else>{{user.avatarText}}</view>
+        <image class="profile-avatar" wx:else src="/static/images/avatar-default.png" mode="aspectFill"></image>
       </view>
       <view class="profile-main">
-        <view class="profile-kicker">默认登录身份</view>
         <view class="profile-name">{{user.nickname}}</view>
-        <view class="profile-sub">资料、资源和消息。</view>
+        <view class="profile-sub">{{user.profileSubtitle}}</view>
       </view>
-      <view class="profile-edit-icon" bindtap="handleOpenProfileEditor">
-        <image class="profile-edit-icon-image" src="/static/icons/edit-profile.svg" mode="aspectFit"></image>
-      </view>
+      <button class="profile-edit-btn" bindtap="handleOpenProfileEditor">编辑</button>
     </view>
   </view>
 
-  <view class="namecard-entry" wx:if="{{workspaceMode === 'service'}}" bindtap="handleGoBusinessCards">
-    <view class="namecard-mark">名</view>
-    <view class="namecard-main">
-      <view class="namecard-title">我的名片</view>
-      <view class="namecard-sub">让客户先认识你，再看方案和案例</view>
+  <view class="profile-card profile-guest-card" wx:else>
+    <view class="profile-card-top">
+      <view class="profile-avatar-shell">
+        <image class="profile-avatar" src="/static/images/avatar-default.png" mode="aspectFill"></image>
+      </view>
+      <view class="profile-main">
+        <view class="profile-name">游客浏览</view>
+        <view class="profile-sub">先浏览资料，需要编辑或保存时再登录。</view>
+      </view>
+      <button class="profile-edit-btn" bindtap="handleOpenProfileEditor">登录</button>
     </view>
-    <view class="namecard-action">查看</view>
   </view>
 
+  <!-- 资产区 -->
   <view class="profile-section">
-    <view class="resource-hub-card">
-      <view class="resource-hub-top">
+    <view class="section-title">我的资产</view>
+    <view class="panel assets-panel">
+      <view class="asset-grid">
+        <view class="asset-item" bindtap="handleGoLibrary">
+          <image class="asset-icon" src="/static/icons/asset-library.svg" mode="aspectFit"></image>
+          <text>资料</text>
+        </view>
+        <view class="asset-item" bindtap="handleGoShowcases">
+          <image class="asset-icon" src="/static/icons/asset-showcase.svg" mode="aspectFit"></image>
+          <text>合集</text>
+        </view>
+        <button wx:if="{{businessCardShareReady}}" class="asset-item asset-share-button" open-type="share" catchtap="handleShareTap" hover-class="none">
+          <image class="asset-icon" src="/static/icons/asset-card.svg" mode="aspectFit"></image>
+          <text>发名片</text>
+        </button>
+        <view wx:elif="{{businessCardShareGenerating}}" class="asset-item asset-share-pending">
+          <image class="asset-icon" src="/static/icons/asset-card.svg" mode="aspectFit"></image>
+          <text>准备中</text>
+        </view>
+        <view wx:else class="asset-item" bindtap="handleBusinessCardAction">
+          <image class="asset-icon" src="/static/icons/asset-card.svg" mode="aspectFit"></image>
+          <text>{{businessCardActionLabel}}</text>
+        </view>
+      </view>
+      <view class="asset-message-row" bindtap="handleGoMessages">
+        <view class="asset-message-leading">
+          <image class="asset-message-icon" src="/static/icons/asset-message.svg" mode="aspectFit"></image>
+          <text>消息</text>
+          <view class="asset-unread" wx:if="{{messageUnread}}">{{messageUnread > 9 ? '9+' : messageUnread}}</view>
+        </view>
+        <view class="asset-arrow">›</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="profile-section view-history-section" wx:if="{{user}}">
+    <view class="section-title">最近看过</view>
+    <view class="panel view-history-panel">
+      <view class="view-history-empty" wx:if="{{viewHistoryLoading}}">正在读取浏览记录…</view>
+      <view class="view-history-empty retry" wx:elif="{{viewHistoryLoadError}}" bindtap="handleRetryViewHistory">最近看过暂时无法读取，点击重试</view>
+      <view class="view-history-empty" wx:elif="{{!viewHistory.length}}">暂时没有最近的记录</view>
+      <view class="view-history-item" wx:for="{{viewHistory}}" wx:key="historyKey" data-type="{{item.targetType}}" data-id="{{item.id}}" bindtap="handleOpenViewedItem">
+        <image class="view-history-cover" wx:if="{{item.coverUrl}}" src="{{item.coverUrl}}" mode="aspectFill"></image>
+        <image class="view-history-cover" wx:else src="/static/images/avatar-default.png" mode="aspectFill"></image>
+        <view class="view-history-main">
+          <view class="view-history-title">{{item.title}}</view>
+          <view class="view-history-time">{{item.viewedAtText}}</view>
+        </view>
+        <view class="view-history-arrow">›</view>
+      </view>
+      <view class="view-history-more" wx:if="{{viewHistoryHasMore}}" bindtap="handleOpenViewHistory">
+        <text>查看全部浏览记录</text>
+        <text class="view-history-more-arrow">›</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 没有客户信号时不展示会员和推广入口 -->
+  <view class="profile-section sales-scrm-section" wx:if="{{membershipVisible}}">
+    <view class="customer-signal-entry" bindtap="handleOpenMembership">
+      <view class="customer-signal-copy">
+        <view class="customer-signal-title">已有客户信号</view>
+        <view class="customer-signal-sub">查看客户权益</view>
+      </view>
+      <view class="customer-signal-arrow">›</view>
+    </view>
+  </view>
+
+  <view class="profile-section referral-section" wx:if="{{user}}">
+    <view class="referral-entry" bindtap="handleOpenReferralCenter">
+      <view class="referral-entry-leading">
+        <image class="referral-entry-icon" src="/static/icons/referral.svg" mode="aspectFit"></image>
         <view>
-          <view class="resource-hub-title">资源工具</view>
-          <view class="resource-hub-sub">找渠道，查客户。</view>
-        </view>
-        <view class="resource-score-box">
-          <view class="resource-score-main"><text>{{resourcePoints}}</text> 积分</view>
-          <view class="resource-score-sub" wx:if="{{frozenResourcePoints}}">冻结 {{frozenResourcePoints}}</view>
-          <view class="resource-rule-btn" bindtap="handleOpenResourceRules">积分规则</view>
+          <view class="referral-entry-title">推广奖励</view>
+          <view class="referral-entry-sub">查看分佣规则、申请提现和提现记录</view>
         </view>
       </view>
-      <view class="resource-tool-grid">
-        <view class="resource-tool-card open" bindtap="handleOpenResourceHub">
-          <view class="resource-tool-icon green">群</view>
-          <view class="resource-tool-title">群资源库</view>
-          <view class="resource-tool-desc">找渠道</view>
-        </view>
-        <view class="resource-tool-card open" bindtap="handleOpenEnterpriseSearch">
-          <view class="resource-tool-icon blue">企</view>
-          <view class="resource-tool-title">企业资源搜索</view>
-          <view class="resource-tool-desc">找客户 / 合作方</view>
-        </view>
-        <view class="resource-tool-card muted">
-          <view class="resource-tool-icon orange">黄</view>
-          <view class="resource-tool-title">行业黄页</view>
-          <view class="resource-tool-desc">找名单 · 近期开放</view>
-        </view>
-        <view class="resource-tool-card open" bindtap="handleOpenOpportunityRadar">
-          <view class="resource-tool-icon green">商</view>
-          <view class="resource-tool-title">商机线索</view>
-          <view class="resource-tool-desc">找机会</view>
-        </view>
+      <view class="referral-entry-trailing">
+        <view class="referral-entry-value">去查看</view>
+        <view class="referral-entry-arrow">›</view>
       </view>
     </view>
   </view>
 
-  <view class="profile-section">
-    <view class="section-title">当前使用场景</view>
-    <view class="panel scene-card">
-      <view class="scene-card-top">
-        <view class="scene-card-main">
-          <view class="scene-current-title">{{modeConfig.name}}</view>
-          <view class="scene-current-sub">方便客户联系你。</view>
-        </view>
-        <button class="scene-edit-btn" bindtap="handleOpenProfileEditor">完善资料</button>
-      </view>
-      <view class="mode-choice-grid compact">
-        <view wx:for="{{modeOptions}}" wx:key="key" class="mode-choice {{item.activeClass}}" data-mode="{{item.key}}" bindtap="handleModeTap">
-          <view class="mode-choice-icon">{{item.icon}}</view>
-          <view class="mode-choice-name">{{item.shortName}}</view>
-        </view>
-      </view>
-    </view>
-  </view>
-
-  <view class="profile-section">
-    <view class="section-title">我的内容</view>
-    <view class="panel content-grid">
-      <view class="content-item" bindtap="handleGoLibrary">
-        <view class="icon-badge blue">库</view>
-        <text>资料</text>
-      </view>
-      <view class="content-item" bindtap="handleGoShowcases">
-        <view class="icon-badge blue">展</view>
-        <text>合集</text>
-      </view>
-      <view class="content-item" bindtap="handleGoMessages">
-        <view class="icon-badge green">
-          信
-          <view class="icon-badge-dot" wx:if="{{messageUnread}}">{{messageUnread > 9 ? '9+' : messageUnread}}</view>
-        </view>
-        <text>消息</text>
-      </view>
-    </view>
-  </view>
-
+  <!-- 设置与帮助 -->
   <view class="profile-section">
     <view class="section-title">设置与帮助</view>
     <view class="panel settings-panel">
       <view class="settings-row" bindtap="handleOpenProfileEditor">
-        <view>
+        <view class="settings-leading">
+          <image class="settings-icon" src="/static/icons/settings-profile.svg" mode="aspectFit"></image>
           <view class="settings-title">个人资料</view>
-          <view class="settings-desc">修改头像、昵称、微信号和手机号</view>
+        </view>
+        <view class="settings-arrow">›</view>
+      </view>
+      <view class="settings-row" bindtap="handleOpenPrivacy">
+        <view class="settings-leading">
+          <image class="settings-icon" src="/static/icons/settings-privacy.svg" mode="aspectFit"></image>
+          <view>
+            <view class="settings-title">隐私说明</view>
+            <view class="settings-desc">查看我们使用的用户信息</view>
+          </view>
         </view>
         <view class="settings-arrow">›</view>
       </view>
       <view class="settings-row" bindtap="handleOpenHelp">
-        <view>
+        <view class="settings-leading">
+          <image class="settings-icon" src="/static/icons/settings-help.svg" mode="aspectFit"></image>
           <view class="settings-title">帮助与反馈</view>
-          <view class="settings-desc">提 Bug 和建议，采纳后奖励 100-1000 积分</view>
         </view>
         <view class="settings-arrow">›</view>
       </view>
-      <view class="settings-row danger" bindtap="handleLogout">
-        <view class="settings-title">退出登录</view>
+      <view class="settings-row danger" wx:if="{{user}}" bindtap="handleLogout">
+        <view class="settings-leading">
+          <image class="settings-icon" src="/static/icons/settings-logout.svg" mode="aspectFit"></image>
+          <view class="settings-title">退出登录</view>
+        </view>
         <view class="settings-arrow">›</view>
       </view>
     </view>
   </view>
+
+  <!-- 资源工具整块本轮隐藏（代码保留，后续恢复时取消注释渲染） -->
 
   <view class="profile-editor-mask" wx:if="{{showProfileEditor}}" bindtap="handleCloseProfileEditor">
     <view class="profile-editor" catchtap="noop">
@@ -140,10 +166,11 @@
       </view>
 
       <view class="editor-avatar-row">
-        <view class="editor-avatar-button" bindtap="handleChooseAvatarFallback">
+        <button class="editor-avatar-button" type="default" bindtap="handleChooseAvatarFromAlbum" hover-class="editor-avatar-button-hover">
           <image class="editor-avatar" wx:if="{{profileDraft.avatarUrl}}" src="{{profileDraft.avatarUrl}}" mode="aspectFill"></image>
-          <view class="editor-avatar fallback" wx:else>{{user.avatarText}}</view>
-        </view>
+          <image class="editor-avatar" wx:else src="/static/images/avatar-default.png" mode="aspectFill"></image>
+          <view class="editor-avatar-action-text">点击从相册更换</view>
+        </button>
       </view>
 
       <view class="form-field">
@@ -157,7 +184,7 @@
       <view class="form-field">
         <view class="field-label-row">
           <view class="field-label">微信号</view>
-          <button class="same-phone-btn" hover-class="none" bindtap="handleUsePhoneAsWechat">手机微信同号</button>
+          <view class="same-phone-btn" catchtap="handleUsePhoneAsWechat">同号</view>
         </view>
         <input class="field-input" value="{{profileDraft.wechat}}" placeholder="填写你的微信号，可不填" bindinput="handleProfileWechatInput" />
       </view>
@@ -190,4 +217,6 @@
       <button class="editor-primary rule-modal-btn" bindtap="handleCloseResourceRules">知道了</button>
     </view>
   </view>
+
+  <canvas canvas-id="profileBusinessCardShareCanvas" class="profile-business-card-share-canvas"></canvas>
 </view>

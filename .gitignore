@@ -19,6 +19,7 @@ miniprogram/project.private.config.json
 !.env.example
 *.pem
 *.key
+automation/ascript/**/local_config.py
 
 # OS / editor
 .DS_Store

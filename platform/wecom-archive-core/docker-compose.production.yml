@@ -1,0 +1,66 @@
+services:
+  archive-core:
+    build: .
+    image: wecom-archive-core:production
+    env_file:
+      - /etc/wecom-archive-core/core.env
+    environment:
+      WECOM_ARCHIVE_CORE_WORKER_ENABLED: "false"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - default
+      - teambuy_default
+      - petlove_default
+    ports:
+      - "127.0.0.1:8050:8050"
+    volumes:
+      - ${WECOM_ARCHIVE_CORE_SECRETS_HOST_DIR:-/etc/wecom-archive-core/secrets}:/app/secrets:ro
+      - ${WECOM_ARCHIVE_CORE_SDK_HOST_DIR:-/opt/wecom-sdk}:/opt/wecom-sdk:ro
+    depends_on:
+      archive-core-postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  archive-core-worker:
+    image: wecom-archive-core:production
+    env_file:
+      - /etc/wecom-archive-core/core.env
+    environment:
+      WECOM_ARCHIVE_CORE_WORKER_ENABLED: "true"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - default
+      - teambuy_default
+      - petlove_default
+    volumes:
+      - ${WECOM_ARCHIVE_CORE_SECRETS_HOST_DIR:-/etc/wecom-archive-core/secrets}:/app/secrets:ro
+      - ${WECOM_ARCHIVE_CORE_SDK_HOST_DIR:-/opt/wecom-sdk}:/opt/wecom-sdk:ro
+    command: ["python", "-m", "app.worker"]
+    depends_on:
+      archive-core-postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  archive-core-postgres:
+    image: postgres:16-alpine
+    env_file:
+      - /etc/wecom-archive-core/core.env
+    volumes:
+      - archive_core_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U archive_core -d archive_core"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+volumes:
+  archive_core_postgres_data:
+
+networks:
+  teambuy_default:
+    external: true
+  petlove_default:
+    external: true

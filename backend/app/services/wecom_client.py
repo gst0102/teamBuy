@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timedelta, timezone
 
 import httpx
@@ -30,13 +31,13 @@ class WecomClient:
     async def get_access_token(self) -> str:
         if self._access_token and datetime.now(timezone.utc) < self._expires_at:
             return self._access_token
-        if not self.settings.wecom_corp_id or not self.settings.wecom_secret:
-            raise WecomClientError("缺少 WECOM_CORP_ID 或 WECOM_SECRET")
+        if not self.settings.wecom_corp_id or not self.settings.wecom_kf_secret:
+            raise WecomClientError("缺少 WECOM_CORP_ID 或 WECOM_KF_SECRET")
 
         async with httpx.AsyncClient(base_url=self.settings.wecom_api_base_url, timeout=15) as client:
             response = await client.get(
                 "/cgi-bin/gettoken",
-                params={"corpid": self.settings.wecom_corp_id, "corpsecret": self.settings.wecom_secret},
+                params={"corpid": self.settings.wecom_corp_id, "corpsecret": self.settings.wecom_kf_secret},
             )
             data = response.json()
         if data.get("errcode") != 0:
@@ -71,22 +72,59 @@ class WecomClient:
 
     async def download_media(self, media_id: str) -> DownloadedMedia:
         access_token = await self.get_access_token()
+        max_bytes = max(int(getattr(self.settings, "media_max_video_bytes", 50 * 1024 * 1024)), 1)
         async with httpx.AsyncClient(base_url=self.settings.wecom_api_base_url, timeout=30) as client:
-            response = await client.get(
+            async with client.stream(
+                "GET",
                 "/cgi-bin/media/get",
                 params={"access_token": access_token, "media_id": media_id},
-            )
-        content_type = response.headers.get("content-type", "")
-        if "application/json" in content_type:
-            data = response.json()
-            if data.get("errcode") != 0:
-                raise WecomClientError(f"download media failed: {data}")
-        response.raise_for_status()
+            ) as response:
+                content_type = response.headers.get("content-type", "")
+                if "application/json" in content_type:
+                    data = (await response.aread()).decode("utf-8", errors="replace")
+                    try:
+                        payload = json.loads(data)
+                    except ValueError:
+                        payload = {"errmsg": data[:200]}
+                    if payload.get("errcode") != 0:
+                        raise WecomClientError(f"download media failed: {payload}")
+                response.raise_for_status()
+                content_length = response.headers.get("content-length")
+                try:
+                    declared_length = int(content_length) if content_length else None
+                except ValueError:
+                    declared_length = None
+                if declared_length and declared_length > max_bytes:
+                    raise WecomClientError("企业微信媒体超过服务器允许的大小")
+                filename = self._filename_from_disposition(response.headers.get("content-disposition", ""))
+                chunks: list[bytes] = []
+                total = 0
+                async for chunk in response.aiter_bytes():
+                    total += len(chunk)
+                    if total > max_bytes:
+                        raise WecomClientError("企业微信媒体超过服务器允许的大小")
+                    chunks.append(chunk)
+                content = b"".join(chunks)
         return DownloadedMedia(
-            content=response.content,
+            content=content,
             content_type=content_type,
-            filename=self._filename_from_disposition(response.headers.get("content-disposition", "")),
+            filename=filename,
         )
+
+    async def upload_image(self, content: bytes, filename: str, content_type: str = "image/png") -> dict:
+        if not content:
+            raise WecomClientError("上传企业微信素材不能为空")
+        access_token = await self.get_access_token()
+        async with httpx.AsyncClient(base_url=self.settings.wecom_api_base_url, timeout=30) as client:
+            response = await client.post(
+                "/cgi-bin/media/upload",
+                params={"access_token": access_token, "type": "image"},
+                files={"media": (filename or "wecom-bind-card.png", content, content_type)},
+            )
+            data = response.json()
+        if data.get("errcode") != 0 or not data.get("media_id"):
+            raise WecomClientError(f"上传企业微信绑定卡片封面失败: {data}")
+        return data
 
     async def send_customer_service_text(self, external_user_id: str, content: str, open_kfid: str | None = None) -> dict:
         access_token = await self.get_access_token()
@@ -105,6 +143,46 @@ class WecomClient:
             data = response.json()
         if data.get("errcode") != 0:
             raise WecomClientError(f"send customer service text failed: {data}")
+        return data
+
+    async def send_contact_welcome_mini_program(
+        self,
+        *,
+        welcome_code: str,
+        appid: str,
+        page: str,
+        title: str,
+        pic_media_id: str,
+        text_content: str | None = None,
+    ) -> dict:
+        """Send a welcome text and one-time mini-program card after an add event.
+
+        Enterprise WeChat only accepts ``welcome_code`` for a short window and
+        consumes it after one successful send, so this must stay synchronous at
+        the callback boundary rather than enter the normal background queue.
+        """
+        if not welcome_code or not appid or not page or not pic_media_id:
+            raise WecomClientError("发送绑定小程序卡片缺少 welcome_code、appid、page 或 pic_media_id")
+        access_token = await self.get_access_token()
+        payload = {
+            "welcome_code": welcome_code,
+            "text": {"content": (text_content or "").strip()[:2048]},
+            "miniprogram": {
+                "title": title[:40],
+                "pic_media_id": pic_media_id,
+                "appid": appid,
+                "page": page,
+            },
+        }
+        async with httpx.AsyncClient(base_url=self.settings.wecom_api_base_url, timeout=15) as client:
+            response = await client.post(
+                "/cgi-bin/externalcontact/send_welcome_msg",
+                params={"access_token": access_token},
+                json=payload,
+            )
+            data = response.json()
+        if data.get("errcode") != 0:
+            raise WecomClientError(f"send contact welcome mini program failed: {data}")
         return data
 
     async def create_group_join_way(

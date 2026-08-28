@@ -174,9 +174,9 @@
 
 - `WECOM_ADMIN_TOKEN`
 - `WECOM_CORP_ID`
-- `WECOM_CALLBACK_TOKEN`
-- `WECOM_SECRET`
-- `WECOM_ENCODING_AES_KEY`
+- `WECOM_KF_CALLBACK_TOKEN`
+- `WECOM_KF_SECRET`
+- `WECOM_KF_ENCODING_AES_KEY`
 - `WECOM_OPEN_KFID`
 - `WECOM_ARCHIVE_SECRET`
 - `WECOM_ARCHIVE_PRIVATE_KEY_PATH`
@@ -378,4 +378,3 @@ environmentName: "test"
 
 - 这次阶段成果已经在远端仓库里了
 - 你现在把这份文档给另一个项目开发，他既可以看文档，也可以直接拉这个分支参考代码
-

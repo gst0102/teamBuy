@@ -1,0 +1,45 @@
+<view class="page-shell view-history-page">
+  <custom-nav title="浏览记录" show-back="{{true}}" />
+
+  <view class="view-history-intro">
+    <view class="view-history-intro-title">最近打开过的资料</view>
+    <view class="view-history-intro-sub">只保留当前仍公开的资料</view>
+  </view>
+
+  <view class="view-history-state" wx:if="{{!user}}">
+    <image class="view-history-state-icon" src="/static/images/avatar-default.png" mode="aspectFill"></image>
+    <view class="view-history-state-title">登录后保存浏览记录</view>
+    <view class="view-history-state-sub">登录不是浏览公开资料的前提，你可以按需选择登录。</view>
+    <button class="view-history-primary" bindtap="handleGoLogin">去登录</button>
+    <button class="view-history-secondary" bindtap="handleBack">返回</button>
+  </view>
+
+  <view class="view-history-state" wx:elif="{{loading}}">
+    <view class="view-history-state-title">正在读取浏览记录…</view>
+  </view>
+
+  <view class="view-history-state" wx:elif="{{loadError}}">
+    <view class="view-history-state-icon text-icon">!</view>
+    <view class="view-history-state-title">浏览记录暂时加载失败</view>
+    <view class="view-history-state-sub">请检查网络后重试。</view>
+    <button class="view-history-primary" bindtap="handleRetry">重新加载</button>
+  </view>
+
+  <view class="view-history-state" wx:elif="{{!items.length}}">
+    <view class="view-history-state-icon text-icon">阅</view>
+    <view class="view-history-state-title">还没有浏览记录</view>
+    <view class="view-history-state-sub">打开别人分享的公开资料后，会显示在这里。</view>
+  </view>
+
+  <view class="view-history-list" wx:else>
+    <view class="view-history-row" wx:for="{{items}}" wx:key="historyKey" data-type="{{item.targetType}}" data-id="{{item.id}}" bindtap="handleOpenItem">
+      <image class="view-history-row-cover" wx:if="{{item.coverUrl}}" src="{{item.coverUrl}}" mode="aspectFill"></image>
+      <image class="view-history-row-cover" wx:else src="/static/images/avatar-default.png" mode="aspectFill"></image>
+      <view class="view-history-row-main">
+        <view class="view-history-row-title">{{item.title}}</view>
+        <view class="view-history-row-time">{{item.viewedAtText}}</view>
+      </view>
+      <view class="view-history-row-arrow">›</view>
+    </view>
+  </view>
+</view>

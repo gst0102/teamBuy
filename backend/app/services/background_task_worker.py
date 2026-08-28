@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+from collections.abc import Callable
 
 from app.services.sync_task_queue import SyncTaskQueue
 
@@ -19,12 +20,14 @@ class BackgroundTaskWorker:
         interval_seconds: int = 5,
         task_names: set[str] | None = None,
         max_running: int | None = None,
+        maintenance_callback: Callable[[], object] | None = None,
     ):
         self.queue = queue
         self.enabled = enabled
         self.interval_seconds = max(interval_seconds, 1)
         self.task_names = task_names
         self.max_running = max_running
+        self.maintenance_callback = maintenance_callback
         self._task: asyncio.Task | None = None
         self._stop_event = asyncio.Event()
 
@@ -51,6 +54,8 @@ class BackgroundTaskWorker:
     async def _run(self) -> None:
         while not self._stop_event.is_set():
             try:
+                if self.maintenance_callback:
+                    self.maintenance_callback()
                 scheduled = self.queue.start_pending(
                     names=self.task_names,
                     max_to_schedule=1 if self.max_running else None,

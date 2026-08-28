@@ -41,6 +41,12 @@ services:
       postgres:
         condition: service_healthy
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import json,sys,urllib.request; data=json.load(urllib.request.urlopen('http://127.0.0.1:8000/health/db', timeout=3)); sys.exit(0 if data.get('connected') else 1)\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
   backend-worker:
     build:
@@ -69,6 +75,12 @@ services:
       postgres:
         condition: service_healthy
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "test -r /proc/1/cmdline && tr '\\000' ' ' < /proc/1/cmdline | grep -q 'app.worker'"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
   archive-worker:
     build:
@@ -96,6 +108,12 @@ services:
       postgres:
         condition: service_healthy
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "test -r /proc/1/cmdline && tr '\\000' ' ' < /proc/1/cmdline | grep -q 'app.worker'"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
 volumes:
   postgres_data:

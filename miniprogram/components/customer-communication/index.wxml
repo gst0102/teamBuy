@@ -1,0 +1,28 @@
+<view class="unified-communication" wx:if="{{actions.length || shareReady}}">
+  <view class="unified-communication-head">
+    <view>方便沟通</view>
+    <text>{{hint}}</text>
+  </view>
+  <view class="unified-communication-grid">
+    <block wx:for="{{actions}}" wx:key="key">
+      <view class="unified-communication-action {{item.key}}" data-key="{{item.key}}" bindtap="handleAction">
+        <view class="unified-communication-icon">{{item.icon}}</view>
+        <view class="unified-communication-title">{{item.title}}</view>
+        <text>{{item.desc}}</text>
+      </view>
+    </block>
+    <button wx:if="{{shareReady}}" class="unified-communication-action share" open-type="share" catchtap="handleShare">
+      <view class="unified-communication-icon">享</view>
+      <view class="unified-communication-title">{{shareTitle}}</view>
+      <text>{{shareDesc}}</text>
+    </button>
+  </view>
+  <view class="unified-communication-primary" wx:if="{{primaryAction}}" data-key="{{primaryAction.key}}" bindtap="handleAction">
+    <view class="unified-communication-primary-icon">{{primaryAction.icon}}</view>
+    <view class="unified-communication-primary-copy">
+      <view>{{primaryAction.primaryTitle}}</view>
+      <text>{{primaryAction.desc}}</text>
+    </view>
+    <text class="unified-communication-arrow">›</text>
+  </view>
+</view>

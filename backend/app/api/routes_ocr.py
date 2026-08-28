@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 
@@ -7,6 +9,8 @@ from app.api.dependencies import get_app_service, get_sync_task_queue
 from app.schemas.common import ApiResponse
 from app.services.app_service import AppService
 from app.services.sync_task_queue import SyncTaskQueue
+from app.api.upload_utils import read_upload_with_limit
+from app.core.config import settings
 
 
 router = APIRouter(prefix="/api/ocr", tags=["ocr"])
@@ -19,25 +23,30 @@ class OcrRecognizeRequest(BaseModel):
 @router.post("/images", response_model=ApiResponse[dict])
 async def save_image_note(
     ownerUserId: str = Form(...),
+    intakeId: str | None = Form(default=None),
+    idempotencyKey: str | None = Form(default=None),
     file: UploadFile = File(...),
     service: AppService = Depends(get_app_service),
     sync_task_queue: SyncTaskQueue = Depends(get_sync_task_queue),
 ):
     if not file.content_type or not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="请上传图片文件")
-    content = await file.read()
-    data = service.create_image_note_from_upload(
+    content = await read_upload_with_limit(file, settings.media_max_image_bytes, "图片不能超过10MB")
+    data = await asyncio.to_thread(
+        service.create_image_note_from_upload,
         owner_user_id=ownerUserId,
         content=content,
         filename=file.filename,
         content_type=file.content_type,
+        intake_id=intakeId,
+        idempotency_key=idempotencyKey,
     )
     task = sync_task_queue.enqueue(
         "ocr-recognize-note",
         {"noteId": data["note"]["id"], "ownerUserId": ownerUserId},
         max_attempts=2,
     )
-    queued = service.mark_ocr_note_queued(data["note"]["id"], ownerUserId, task.id)
+    queued = await asyncio.to_thread(service.mark_ocr_note_queued, data["note"]["id"], ownerUserId, task.id)
     queued["syncTask"] = task.model_dump()
     return ApiResponse(data=queued, message="image note queued for ocr")
 
@@ -54,7 +63,7 @@ async def recognize_note_image(
         {"noteId": note_id, "ownerUserId": payload.ownerUserId},
         max_attempts=2,
     )
-    data = service.mark_ocr_note_queued(note_id, payload.ownerUserId, task.id)
+    data = await asyncio.to_thread(service.mark_ocr_note_queued, note_id, payload.ownerUserId, task.id)
     data["syncTask"] = task.model_dump()
     return ApiResponse(data=data, message="ocr recognition queued")
 
@@ -62,24 +71,29 @@ async def recognize_note_image(
 @router.post("/image-to-note", response_model=ApiResponse[dict])
 async def image_to_note(
     ownerUserId: str = Form(...),
+    intakeId: str | None = Form(default=None),
+    idempotencyKey: str | None = Form(default=None),
     file: UploadFile = File(...),
     service: AppService = Depends(get_app_service),
     sync_task_queue: SyncTaskQueue = Depends(get_sync_task_queue),
 ):
     if not file.content_type or not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="请上传图片文件")
-    content = await file.read()
-    data = service.create_image_note_from_upload(
+    content = await read_upload_with_limit(file, settings.media_max_image_bytes, "图片不能超过10MB")
+    data = await asyncio.to_thread(
+        service.create_image_note_from_upload,
         owner_user_id=ownerUserId,
         content=content,
         filename=file.filename,
         content_type=file.content_type,
+        intake_id=intakeId,
+        idempotency_key=idempotencyKey,
     )
     task = sync_task_queue.enqueue(
         "ocr-recognize-note",
         {"noteId": data["note"]["id"], "ownerUserId": ownerUserId},
         max_attempts=2,
     )
-    queued = service.mark_ocr_note_queued(data["note"]["id"], ownerUserId, task.id)
+    queued = await asyncio.to_thread(service.mark_ocr_note_queued, data["note"]["id"], ownerUserId, task.id)
     queued["syncTask"] = task.model_dump()
     return ApiResponse(data=queued, message="ocr note queued")

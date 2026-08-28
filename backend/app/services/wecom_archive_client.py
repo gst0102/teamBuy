@@ -4,6 +4,9 @@ import ctypes
 import base64
 import json
 from pathlib import Path
+from urllib.parse import quote
+
+import httpx
 
 from Crypto.Cipher import PKCS1_v1_5
 from Crypto.PublicKey import RSA
@@ -25,6 +28,7 @@ class WecomArchiveClient:
         proxy: str = "",
         proxy_password: str = "",
         timeout_seconds: int = 30,
+        max_download_bytes: int = 50 * 1024 * 1024,
     ):
         self.corp_id = corp_id
         self.secret = secret
@@ -33,6 +37,7 @@ class WecomArchiveClient:
         self.proxy = proxy
         self.proxy_password = proxy_password
         self.timeout_seconds = timeout_seconds
+        self.max_download_bytes = max(int(max_download_bytes), 1)
 
     def is_configured(self) -> bool:
         return bool(
@@ -99,6 +104,7 @@ class WecomArchiveClient:
                 proxy=self.proxy,
                 proxy_password=self.proxy_password,
                 timeout_seconds=self.timeout_seconds,
+                max_bytes=self.max_download_bytes,
             )
         finally:
             sdk.close()
@@ -135,6 +141,77 @@ class WecomArchiveClient:
         if decrypted is None:
             raise WecomArchiveClientError("encrypt_random_key 解密失败")
         return decrypted.decode("utf-8")
+
+
+class SharedWecomArchiveMediaClient:
+    """Media-only adapter for messages delivered by wecom-archive-core."""
+
+    def __init__(
+        self,
+        base_url: str,
+        project_id: str,
+        project_token: str,
+        timeout_seconds: int = 30,
+        max_download_bytes: int = 50 * 1024 * 1024,
+    ):
+        self.base_url = base_url.rstrip("/")
+        self.project_id = project_id
+        self.project_token = project_token
+        self.timeout_seconds = timeout_seconds
+        self.max_download_bytes = max(int(max_download_bytes), 1)
+
+    def missing_fields(self) -> list[str]:
+        missing: list[str] = []
+        if not self.base_url:
+            missing.append("WECOM_ARCHIVE_CORE_MEDIA_BASE_URL")
+        if not self.project_id:
+            missing.append("WECOM_ARCHIVE_CORE_PROJECT_ID")
+        if not self.project_token:
+            missing.append("WECOM_ARCHIVE_CORE_PROJECT_TOKEN")
+        return missing
+
+    def download_media(self, media_id: str) -> DownloadedMedia:
+        if ":" not in media_id:
+            raise WecomArchiveClientError("共享归档媒体 ID 缺少事件上下文")
+        event_id, opaque_media_id = media_id.split(":", 1)
+        missing = self.missing_fields()
+        if missing:
+            raise WecomArchiveClientError("共享归档媒体配置不完整: " + ", ".join(missing))
+        url = (
+            f"{self.base_url}/v1/projects/{quote(self.project_id, safe='')}"
+            f"/media/{quote(event_id, safe='')}/{quote(opaque_media_id, safe='')}"
+        )
+        try:
+            with httpx.stream(
+                "GET",
+                url,
+                headers={"X-WeCom-Archive-Project-Token": self.project_token},
+                timeout=max(self.timeout_seconds, 120),
+            ) as response:
+                response.raise_for_status()
+                content_length = response.headers.get("content-length")
+                try:
+                    declared_length = int(content_length) if content_length else None
+                except ValueError:
+                    declared_length = None
+                if declared_length and declared_length > self.max_download_bytes:
+                    raise WecomArchiveClientError("共享归档媒体超过服务器允许的大小")
+                content_type = response.headers.get("content-type")
+                chunks: list[bytes] = []
+                total = 0
+                for chunk in response.iter_bytes():
+                    total += len(chunk)
+                    if total > self.max_download_bytes:
+                        raise WecomArchiveClientError("共享归档媒体超过服务器允许的大小")
+                    chunks.append(chunk)
+                content = b"".join(chunks)
+        except httpx.HTTPError as exc:
+            raise WecomArchiveClientError("共享归档媒体读取失败") from exc
+        return DownloadedMedia(
+            content=content,
+            content_type=content_type,
+            filename=None,
+        )
 
 
 class _FinanceSdk:
@@ -223,9 +300,17 @@ class _FinanceSdk:
         finally:
             self.lib.FreeSlice(output)
 
-    def get_media_data(self, sdk_file_id: str, proxy: str, proxy_password: str, timeout_seconds: int) -> bytes:
+    def get_media_data(
+        self,
+        sdk_file_id: str,
+        proxy: str,
+        proxy_password: str,
+        timeout_seconds: int,
+        max_bytes: int = 50 * 1024 * 1024,
+    ) -> bytes:
         index_buf = b""
         chunks: list[bytes] = []
+        total_bytes = 0
         for _ in range(10000):
             media_data = self.lib.NewMediaData()
             try:
@@ -244,7 +329,11 @@ class _FinanceSdk:
                 if data_len > 0:
                     data_ptr = self.lib.GetData(media_data)
                     if data_ptr:
-                        chunks.append(ctypes.string_at(data_ptr, data_len))
+                        chunk = ctypes.string_at(data_ptr, data_len)
+                        total_bytes += len(chunk)
+                        if total_bytes > max_bytes:
+                            raise WecomArchiveClientError("会话存档媒体超过服务器允许的大小")
+                        chunks.append(chunk)
                 if self.lib.IsMediaDataFinish(media_data):
                     return b"".join(chunks)
                 index_len = self.lib.GetIndexLen(media_data)

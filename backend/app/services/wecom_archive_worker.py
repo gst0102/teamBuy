@@ -21,6 +21,7 @@ class WecomArchiveWorker:
         enabled: bool,
         interval_seconds: int,
         pull_limit: int,
+        source: str = "direct",
         notification_sender: Callable[[list[dict]], Awaitable[list[dict]]] | None = None,
     ):
         self.service = service
@@ -28,6 +29,7 @@ class WecomArchiveWorker:
         self.enabled = enabled
         self.interval_seconds = max(interval_seconds, 10)
         self.pull_limit = pull_limit
+        self.source = source
         self.notification_sender = notification_sender
         self._task: asyncio.Task | None = None
         self._stop_event = asyncio.Event()
@@ -53,11 +55,21 @@ class WecomArchiveWorker:
         logger.info("wecom archive worker stopped")
 
     async def run_once(self) -> dict:
-        pull_result = await asyncio.to_thread(
-            self.service.pull_wecom_archive_messages,
-            self.archive_client,
-            self.pull_limit,
-        )
+        result = {}
+        cleanup = getattr(self.service, "cleanup_expired_share_snapshots", None)
+        if callable(cleanup):
+            try:
+                result["shareSnapshotCleanup"] = await asyncio.to_thread(cleanup)
+            except Exception:
+                logger.exception("share snapshot cleanup failed")
+                result["shareSnapshotCleanup"] = {"failedFiles": 1}
+        pull_result = {"source": self.source, "skipped": self.source == "shared"}
+        if self.source != "shared":
+            pull_result = await asyncio.to_thread(
+                self.service.pull_wecom_archive_messages,
+                self.archive_client,
+                self.pull_limit,
+            )
         process_result = await asyncio.to_thread(
             self.service.process_wecom_archive_messages,
             self.pull_limit,
@@ -72,7 +84,8 @@ class WecomArchiveWorker:
         if notifications and self.notification_sender:
             notification_result = await self.notification_sender(notifications)
             process_result["notificationSendResults"] = notification_result
-        return {"pull": pull_result, "process": process_result}
+        result.update({"pull": pull_result, "process": process_result})
+        return result
 
     async def _run(self) -> None:
         while not self._stop_event.is_set():

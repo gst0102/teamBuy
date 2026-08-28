@@ -1,16 +1,24 @@
 const api = require("../../services/api");
 const messagePlugin = require("../../plugins/message-plugin/index");
-const { getCurrentUser, getRandomDefaultNickname, safeAvatarUrl } = require("../../utils/dashboard");
+const { getCurrentUser, safeAvatarUrl } = require("../../utils/dashboard");
 const { getSalesPageTemplate, templateToneClass } = require("../../utils/sales-page-templates");
-const { buildBusinessCardShareTitle, buildServiceOfferShareTitle, generatePropertyShareImage, generateBusinessCardShareImage, generateServiceOfferShareImage, generateTitleShareImage } = require("../../utils/business-card-share");
+const { buildBusinessCardShareTitle, buildServiceOfferShareTitle } = require("../../utils/business-card-share");
+const { buildNoteShareTitle, buildShareMessage, getNoteShareSnapshotState, getShareImageUrlFromState, prepareNoteShareSnapshot, setShareMenuEnabled, SHARE_CARD_STYLE_VERSION } = require("../../plugins/share-snapshot/index");
+const { cleanImagePrimaryText, getPrimaryImageUrl, imagePrimaryTitle, isImagePrimaryNote } = require("../../utils/note-display");
+const subscription = require("../../services/subscription");
+const { getAnonymousVisitorId } = require("../../utils/visitor-identity");
 
-const LAST_LEAD_PHONE_KEY = "teambuy:lastLeadPhone";
 const LAST_PROPERTY_CITY_KEY = "teambuy:lastPropertyCity";
-const SHARE_CARD_CANVAS_ID = "businessCardShareCanvas";
+let lastLeadPhoneInMemory = "";
 
 function buildCustomerShareTitle(title) {
   const cleanTitle = String(title || "这份资料").replace(/\s+/g, " ").trim();
   return `${cleanTitle}｜点开查看完整资料`;
+}
+
+function firstDistinctText(excluded, values) {
+  const seen = new Set((excluded || []).map((item) => String(item || "").trim()).filter(Boolean));
+  return (values || []).map((item) => String(item || "").trim()).find((item) => item && !seen.has(item)) || "";
 }
 
 function pad(num) {
@@ -64,31 +72,18 @@ function rememberPropertyCity(value) {
 }
 
 function readLastLeadPhone() {
-  try {
-    return wx.getStorageSync(LAST_LEAD_PHONE_KEY) || "";
-  } catch (error) {
-    return "";
-  }
+  return lastLeadPhoneInMemory;
 }
 
 function getNotePreviewAnonymousId() {
-  const key = "notePreviewAnonymousId";
-  try {
-    const stored = wx.getStorageSync(key);
-    if (stored) return stored;
-    const next = `note_anon_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
-    wx.setStorageSync(key, next);
-    return next;
-  } catch (error) {
-    return `note_anon_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
-  }
+  return getAnonymousVisitorId();
 }
 
 function buildViewerPayload(user, fallbackName) {
   if (user) {
     return {
       viewerUserId: user.id,
-      nickname: user.nickname || fallbackName || getRandomDefaultNickname(),
+      nickname: user.nickname || fallbackName || "微信用户",
       avatarUrl: safeAvatarUrl(user.avatarUrl)
     };
   }
@@ -125,11 +120,7 @@ function inferFocusSections(view = {}, maxScrollPercent = 0) {
 function rememberLeadPhone(value) {
   const phone = String(value || "").match(/1[3-9]\d{9}/);
   if (!phone) return;
-  try {
-    wx.setStorageSync(LAST_LEAD_PHONE_KEY, phone[0]);
-  } catch (error) {
-    // Local memory is only a convenience; ignore failures.
-  }
+  lastLeadPhoneInMemory = phone[0];
 }
 
 function normalizePropertyStatus(value) {
@@ -158,6 +149,20 @@ function buildAvailability(data, isProperty) {
 }
 
 function normalizeSkuConfig(data) {
+  const variants = Array.isArray((data || {}).variants) ? data.variants : [];
+  if (variants.length) {
+    return {
+      attributeGroups: [],
+      skus: variants.map((variant, index) => ({
+        id: variant.id || `variant_${index}`,
+        key: variant.id || `variant_${index}`,
+        name: variant.name || "默认规格",
+        price: Number.isFinite(Number(variant.priceFen)) ? `¥${(Number(variant.priceFen) / 100).toFixed(2).replace(/\.00$/, "").replace(/(\.\d)0$/, "$1")}` : "",
+        description: "",
+        soldOut: variant.stockStatus === "sold_out"
+      }))
+    };
+  }
   const source = (data && data.skuConfig) || {};
   const skus = Array.isArray(source.skus) ? source.skus : [];
   const attributeGroups = Array.isArray(source.attributeGroups)
@@ -251,10 +256,14 @@ function buildProductPriceText(skuConfig, fallback) {
     .filter((sku) => !sku.soldOut && sku.price)
     .map((sku) => String(sku.price || "").trim())
     .filter(Boolean);
-  const unique = Array.from(new Set(prices));
+  const unique = Array.from(new Set(prices)).sort((left, right) => {
+    const leftValue = Number(String(left).replace(/[^\d.]/g, ""));
+    const rightValue = Number(String(right).replace(/[^\d.]/g, ""));
+    return leftValue - rightValue;
+  });
   if (!unique.length) return fallback || "";
   if (unique.length === 1) return unique[0];
-  return `${unique[0]} - ${unique[unique.length - 1]}`;
+  return `${unique[0]} 起`;
 }
 
 function splitFeatureText(value) {
@@ -283,11 +292,17 @@ function buildSalesSections(data, note, isBusinessCard, isServiceOffer) {
     ].filter((item) => item.body);
   }
   if (isServiceOffer) {
+    const detailText = data.detailText || data.serviceContent || note.body || "";
+    const headline = data.serviceSummary || data.headline || "";
+    const serviceScope = data.serviceScope || data.serviceArea || "";
+    const pricingOrTerms = data.pricingOrTerms || data.cooperationTerms || data.pricingNote || "";
     return [
-      { key: "audience", title: "适合人群", body: data.targetAudience || "" },
-      { key: "content", title: "服务内容", body: data.serviceContent || note.body || "" },
+      { key: "audience", title: "适合谁", body: data.targetAudience || "" },
+      { key: "value", title: "能帮你什么", body: headline },
+      { key: "content", title: "服务内容", body: detailText },
+      { key: "scope", title: "服务范围", body: serviceScope },
       { key: "process", title: "服务流程", body: data.serviceProcess || "" },
-      { key: "pricing", title: "报价说明", body: data.pricingNote || "" },
+      { key: "pricing", title: "合作方式与报价", body: pricingOrTerms },
       { key: "cases", title: "案例 / 成果", body: data.caseHighlights || note.summary || "" },
       { key: "appointment", title: "预约说明", body: data.appointmentNote || "" }
     ].filter((item) => item.body);
@@ -304,57 +319,71 @@ function buildSalesHighlights(data, isBusinessCard, isServiceOffer) {
     ].filter((item) => item.value);
   }
   if (isServiceOffer) {
+    const serviceScope = data.serviceScope || data.serviceArea || "";
+    const pricingOrTerms = data.pricingOrTerms || data.cooperationTerms || data.pricingNote || "";
     return [
-      { label: "对象", value: data.targetAudience || "需要服务的客户" },
-      { label: "报价", value: data.pricingNote || "按需求沟通" },
-      { label: "地区", value: data.serviceArea || "线上 / 本地" }
+      { label: "服务对象", value: data.targetAudience || "按需求沟通" },
+      { label: "服务范围", value: serviceScope || "按需求定制" },
+      { label: "合作方式", value: pricingOrTerms || "沟通确认" }
     ].filter((item) => item.value);
   }
   return [];
 }
 
-function buildBusinessCardScopeItems(data) {
-  const labels = splitFeatureText(data.serviceScope || data.headline);
-  const fallback = ["专业咨询", "客户顾问", "长期跟进"];
-  const descs = [
-    "提供清晰建议",
-    "一对一沟通",
-    "持续响应需求"
-  ];
-  return (labels.length ? labels : fallback).slice(0, 3).map((label, index) => ({
-    label,
-    desc: descs[index] || "按需求服务"
-  }));
+function businessCardResourceTypeLabel(cardType) {
+  return ({
+    property_listing: "房源",
+    groupbuy_product: "商品",
+    service_offer: "服务",
+    text_note: "资料",
+    image_ocr: "图片",
+    pdf_document: "PDF",
+    link: "链接",
+    article: "文章"
+  })[cardType] || "资料";
 }
 
-function buildBusinessCardDetail(data, note, hero, galleryImages) {
+function buildBusinessCardDetail(data, note) {
   const phone = data.phone || note.phone || "";
   const wechat = data.wechat || data.contactWechat || "";
   const email = data.email || data.mail || "";
-  const explicitQr = data.qrCodeUrl || data.qrcodeUrl || data.qrUrl || data.wechatQrCodeUrl || data.wechatQrUrl || data.qrCode || "";
-  const mediaImages = Array.isArray(note.media) ? note.media.filter((item) => item && item.type === "image").map((item) => item.url) : [];
-  const candidateImages = [explicitQr, ...(galleryImages || []), ...mediaImages].filter(Boolean);
-  const qrCodeUrl = candidateImages.find((url) => url && url !== hero.avatarUrl && url !== data.avatarUrl) || explicitQr || "";
+  const qrCodeUrl = data.wechatQrUrl || data.qrCodeUrl || data.wechatQrCodeUrl || "";
+  const keywords = (Array.isArray(data.serviceKeywords) ? data.serviceKeywords : splitFeatureText(data.serviceKeywords || data.serviceScope)).filter(Boolean).slice(0, 6);
+  const featuredResources = (note.featuredResources || []).slice(0, 3).map((item) => ({
+    ...item,
+    typeLabel: businessCardResourceTypeLabel(item.cardType),
+    typeInitial: businessCardResourceTypeLabel(item.cardType).slice(0, 1)
+  }));
   return {
-    intro: data.bio || data.headline || note.body || note.summary || "我会根据你的具体需求，提供清晰建议、及时沟通和持续跟进。",
-    scopeText: data.serviceScope || hero.serviceScope || "咨询服务 / 客户顾问 / 长期跟进",
-    cityText: data.city || data.serviceArea || "本地服务",
+    headline: data.headline || "",
+    intro: data.bio || "",
+    keywords,
+    cityText: data.city || "",
     phone,
     wechat,
     email,
     website: data.website || data.companyWebsite || data.websiteUrl || data.url || "",
     qrCodeUrl,
-    scopeItems: buildBusinessCardScopeItems(data)
+    featuredResources
   };
 }
 
-function buildBusinessCardActions(detail) {
-  const actions = [];
-  if (detail.phone) actions.push({ key: "contact", icon: "电", title: "电话咨询", value: detail.phone, hint: "点击拨打电话" });
-  if (detail.wechat) actions.push({ key: "private", icon: "微", title: "微信咨询", value: detail.wechat, hint: "点击复制微信" });
-  if (detail.email) actions.push({ key: "email", icon: "邮", title: "邮箱", value: detail.email, hint: "点击复制邮箱" });
-  actions.push({ key: "lead", icon: "留", title: "留下电话/微信", value: "", hint: "方便发布者回访" });
-  return actions;
+function buildCommunicationActions(actions, context = {}) {
+  const labels = {
+    contact: { icon: "电", title: "打电话", primaryTitle: "立即电话", desc: "直接拨打发布者电话" },
+    private: { icon: "微", title: "微信沟通", primaryTitle: "添加微信", desc: "复制微信号或查看二维码" },
+    message: { icon: "聊", title: context.isGroupbuy ? "咨询购买" : "留言咨询", desc: "站内留言给发布者", primaryTitle: "立即咨询" },
+    lead: { icon: "留", title: "留下需求", primaryTitle: "留下需求", desc: "留下联系方式和需求" },
+    appointment: { icon: "约", title: context.isProperty ? "预约看房" : "预约沟通", primaryTitle: context.isProperty ? "预约看房" : "预约沟通", desc: "选择日期和时间" },
+    email: { icon: "邮", title: "邮箱联系", primaryTitle: "邮箱联系", desc: "复制邮箱地址" }
+  };
+  const orderedKeys = ["contact", "private", "message", "lead", "appointment", "email"];
+  return orderedKeys
+    .map((key) => {
+      const source = (actions || []).find((item) => item.key === key);
+      return source && labels[key] ? { ...source, ...labels[key], key } : null;
+    })
+    .filter(Boolean);
 }
 
 function buildServiceOfferMetricCards(templateId, audienceBullets, serviceBullets, processSteps, contactCount) {
@@ -389,64 +418,39 @@ function buildServiceOfferMetricCards(templateId, audienceBullets, serviceBullet
 function buildServiceOfferDetail(data, note, template, galleryImages) {
   const phone = data.phone || data.contactPhone || data.contact || note.phone || "";
   const wechat = data.wechat || data.contactWechat || "";
+  const qrCodeUrl = data.wechatQrUrl || data.qrCodeUrl || data.wechatQrCodeUrl || "";
   const email = data.email || data.mail || "";
   const website = data.website || data.companyWebsite || data.websiteUrl || "";
-  const templatePreview = (template && template.preview) || {};
-  const templateCoverUrl = templatePreview.coverUrl || "";
-  const templateCaseImageUrls = Array.isArray(templatePreview.caseImageUrls) ? templatePreview.caseImageUrls.filter(Boolean) : [];
-  const audienceBullets = splitFeatureText(data.targetAudience || templatePreview.bullets || "").slice(0, 3);
-  const serviceBullets = splitFeatureText(data.serviceContent || templatePreview.serviceItems || "").slice(0, 4);
-  const processSteps = splitFeatureText(data.serviceProcess || "").slice(0, 4);
-  const caseBullets = splitFeatureText(data.caseHighlights || (templatePreview.caseLabels || []).join(" / ")).slice(0, 3);
-  const pricingTags = splitFeatureText(data.pricingNote || (templatePreview.quoteTags || []).join(" / ")).slice(0, 3);
-  const supportChips = Array.from(new Set([
-    ...(templatePreview.chips || []),
-    data.serviceArea || note.locationText || "",
-    data.appointmentNote || ""
-  ].filter(Boolean))).slice(0, 4);
-  const contactCount = Math.max(1, [phone, wechat, email].filter(Boolean).length);
-  const coverUrl = data.coverUrl || note.coverUrl || galleryImages[0] || templateCoverUrl || "";
-  const caseImages = Array.from(new Set([
-    ...galleryImages,
-    ...templateCaseImageUrls,
-    (template && template.id) === "service_case_story" && coverUrl ? coverUrl : ""
-  ].filter(Boolean))).slice(0, 3);
+  const hasNewDetail = Object.prototype.hasOwnProperty.call(data, "detailText");
+  const legacyDetail = [
+    data.detailText,
+    data.serviceContent,
+    data.targetAudience,
+    data.serviceProcess,
+    data.caseHighlights,
+    data.appointmentNote
+  ].map((item) => String(item || "").trim()).filter(Boolean);
+  const detailText = Array.from(new Set(legacyDetail)).join("\n\n") || (hasNewDetail ? "" : note.body || "");
+  const serviceScope = data.serviceScope || data.serviceArea || "";
+  const pricingOrTerms = data.pricingOrTerms || data.cooperationTerms || data.pricingNote || "";
+  const coverUrl = data.coverUrl || note.coverUrl || galleryImages[0] || "";
   return {
-    templateId: (template && template.id) || "",
-    templateName: (template && template.name) || "服务方案",
-    scene: (template && template.scene) || "",
-    serviceName: data.serviceName || note.title || "服务方案",
-    headline: data.headline || note.summary || "",
-    targetAudience: data.targetAudience || "适合需要专业服务、想先了解方案的客户",
-    serviceContent: data.serviceContent || note.body || "",
-    pricingNote: data.pricingNote || "按需求沟通报价",
-    serviceProcess: data.serviceProcess || "提交需求 - 预约沟通 - 输出建议 - 后续跟进",
-    caseHighlights: data.caseHighlights || note.summary || "",
-    serviceArea: data.serviceArea || note.locationText || "",
-    appointmentNote: data.appointmentNote || "",
-    primaryAction: data.primaryAction || templatePreview.primaryAction || "电话咨询",
-    secondaryAction: data.secondaryAction || templatePreview.secondaryAction || "微信咨询",
+    serviceName: data.serviceName || note.title || "服务/合作",
+    headline: data.serviceSummary || data.headline || note.summary || "",
+    detailText,
+    serviceScope,
+    pricingOrTerms,
+    primaryAction: "consult",
     phone,
     wechat,
+    qrCodeUrl,
     email,
     website,
     coverUrl,
-    heroPortraitUrl: templatePreview.avatarUrl || "",
-    supportChips,
-    audienceBullets: audienceBullets.length ? audienceBullets : ["适合先了解服务价值，再决定是否深入沟通"],
-    serviceBullets: serviceBullets.length ? serviceBullets : ["需求梳理", "方案建议", "执行跟进"],
-    processSteps: processSteps.length ? processSteps : ["提交需求", "预约沟通", "输出建议", "后续跟进"],
-    caseBullets: caseBullets.length ? caseBullets : ["案例成果", "客户反馈", "交付亮点"],
-    caseImages,
-    pricingTags: pricingTags.length ? pricingTags : ["按项目报价", "按阶段报价", "定制方案"],
-    contentChips: splitFeatureText(data.serviceContent || "").slice(0, 4),
-    metricCards: buildServiceOfferMetricCards(
-      (template && template.id) || "",
-      audienceBullets.length ? audienceBullets : ["咨询客户"],
-      serviceBullets.length ? serviceBullets : ["服务内容"],
-      processSteps.length ? processSteps : ["服务流程"],
-      contactCount
-    )
+    publisherName: data.displayName || data.name || "发布者",
+    publisherRole: [data.jobTitle || data.title, data.company].filter(Boolean).join(" · "),
+    publisherAvatarUrl: data.avatarUrl || "",
+    publisherInitial: String(data.displayName || data.name || "发").slice(0, 1)
   };
 }
 
@@ -486,11 +490,12 @@ function buildBusinessCardHeroView(data, note, title, subtitle, templateName, av
   const wechat = data.wechat || data.contactWechat || "";
   const email = data.email || data.mail || "";
   return {
-    name: title || "电子名片",
-    role: data.title || "个人顾问",
-    company: data.company || "个人服务",
-    serviceScope: data.serviceScope || data.headline || subtitle || note.summary || "",
-    contactLine: [phone, wechat, email].filter(Boolean).join(" · ") || "电话 / 微信 / 邮箱",
+    layoutId: "business_card",
+    name: data.name || title || "",
+    role: data.title || "",
+    company: data.company || "",
+    serviceScope: data.headline || subtitle || note.summary || "",
+    contactLine: [phone, wechat, email].filter(Boolean).join(" · "),
     templateName: templateName || "电子名片",
     templateId: (template && template.id) || "",
     tone: (template && template.tone) || "",
@@ -510,49 +515,114 @@ function resolveSalesTemplate(config, isBusinessCard) {
 function buildView(note) {
   const config = note.visibilityConfig || {};
   const data = config.structuredData || {};
+  const candidateShareSnapshot = config.shareSnapshot || {};
+  const shareSnapshot = String(candidateShareSnapshot.styleId || "") === SHARE_CARD_STYLE_VERSION
+    ? candidateShareSnapshot
+    : {};
+  const ownerProfile = note.ownerProfile || {};
   const miniapp = buildMiniappInfo(data);
   const cardType = config.cardType || "text_note";
   const isProperty = cardType === "property_listing";
   const isGroupbuy = cardType === "groupbuy_product";
   const isBusinessCard = cardType === "business_card";
   const isServiceOffer = cardType === "service_offer";
+  const isArticle = cardType === "article";
   const isServiceCard = isBusinessCard || isServiceOffer;
-  const template = isServiceCard ? resolveSalesTemplate(config, isBusinessCard) : null;
+  const isImageNote = isImagePrimaryNote(note);
+  const contentBlocks = buildContentBlocks(note);
+  const isContentStream = !isProperty && !isGroupbuy && !isBusinessCard && !isServiceOffer && !isArticle
+    && contentBlocks.some((item) => item.type === "text" && String(item.text || "").trim())
+    && contentBlocks.some((item) => item.type === "image" && item.url);
+  const imageCaption = isImageNote
+    ? cleanImagePrimaryText(note.body || data.rawText || (data.ocr || {}).text || "")
+    : "";
+  const imageTitle = isImageNote ? imagePrimaryTitle(note, imageCaption) : "";
+  const propertyMode = ["sale", "sell", "出售"].includes(data.listingMode || data.dealType) ? "sale" : "rent";
+  const propertyPriceText = isProperty && data.price
+    ? (/元|万|\/月|每月/.test(String(data.price)) ? String(data.price) : `${data.price}${propertyMode === "sale" ? "万元" : "元/月"}`)
+    : "";
+  const identityData = isBusinessCard ? {
+    ...data,
+    name: ownerProfile.displayName || data.name,
+    title: ownerProfile.jobTitle || data.title,
+    company: ownerProfile.company || data.company,
+    city: ownerProfile.city || data.city,
+    avatarUrl: ownerProfile.avatarUrl || data.avatarUrl,
+    phone: ownerProfile.phone || data.phone,
+    wechat: ownerProfile.wechat || data.wechat,
+    wechatQrUrl: ownerProfile.wechatQrUrl || data.wechatQrUrl || data.qrCodeUrl,
+    email: ownerProfile.email || data.email,
+    website: ownerProfile.website || data.website
+  } : data;
+  const serviceIdentityData = isServiceOffer ? {
+    ...data,
+    displayName: ownerProfile.displayName || data.displayName,
+    jobTitle: ownerProfile.jobTitle || data.jobTitle,
+    company: ownerProfile.company || data.company,
+    avatarUrl: ownerProfile.avatarUrl || data.avatarUrl,
+    phone: ownerProfile.phone || data.phone,
+    wechat: ownerProfile.wechat || data.wechat,
+    wechatQrUrl: ownerProfile.wechatQrUrl || data.wechatQrUrl || data.qrCodeUrl,
+    email: ownerProfile.email || data.email,
+    website: ownerProfile.website || data.website,
+    city: ownerProfile.city || data.city
+  } : data;
+  const template = isServiceOffer ? resolveSalesTemplate(config, false) : null;
   const isMiniapp = miniapp.visible && config.sourceType === "miniapp";
   const skuConfig = normalizeSkuConfig(data);
   const productPriceText = buildProductPriceText(skuConfig, data.price);
+  const productSalesMode = data.salesMode === "relay" ? "relay" : "inquiry";
+  const fulfillment = data.fulfillment || {};
+  const pickupLocation = fulfillment.pickupLocation || {};
+  const fulfillmentLabels = (fulfillment.methods || []).map((item) => ({
+    shipping: "快递",
+    local_delivery: "同城配送",
+    store_pickup: "到店自提",
+    community_pickup: "小区自提",
+    offline_contact: "线下联系"
+  })[item]).filter(Boolean);
   const title = isProperty
     ? data.community || note.title
     : isGroupbuy
       ? data.productName || note.title
       : isBusinessCard
-        ? data.name || note.title
+        ? ownerProfile.displayName || data.name || note.title
         : isServiceOffer
           ? data.serviceName || note.title
-          : miniapp.title || note.title;
-  const subtitle = isProperty
-    ? [data.price, data.layout, data.area].filter(Boolean).join(" · ")
+          : isImageNote
+            ? imageTitle
+            : miniapp.title || note.title;
+  let subtitle = isProperty
+    ? [propertyPriceText, data.layout, data.area].filter(Boolean).join(" · ")
     : isGroupbuy
-      ? [productPriceText, data.spec, data.pickupMethod].filter(Boolean).join(" · ")
+      ? [productPriceText, data.headline, productSalesMode === "relay" ? "团购接龙" : "商品"].filter(Boolean).join(" · ")
       : isBusinessCard
-        ? [data.title, data.company, data.serviceScope].filter(Boolean).join(" · ")
+        ? [ownerProfile.jobTitle || data.title, ownerProfile.company || data.company, data.serviceScope].filter(Boolean).join(" · ")
         : isServiceOffer
-          ? [data.headline, data.pricingNote, data.serviceArea].filter(Boolean).join(" · ")
-          : isMiniapp ? [miniapp.sourceName, miniapp.houseCode ? `房源编码 ${miniapp.houseCode}` : ""].filter(Boolean).join(" · ") : note.summary || "";
-  const mapLocation = buildMapLocation(data);
-  const coverUrl = note.coverUrl || data.avatarUrl || data.qrCodeUrl || ((note.media || []).find((item) => item.type === "image") || {}).url || "";
+          ? [data.serviceSummary || data.headline, data.cooperationTerms || data.pricingNote, data.serviceScope || data.serviceArea].filter(Boolean).join(" · ")
+          : isImageNote
+            ? (imageCaption !== imageTitle ? imageCaption : "")
+            : isMiniapp ? [miniapp.sourceName, miniapp.houseCode ? `房源编码 ${miniapp.houseCode}` : ""].filter(Boolean).join(" · ") : note.summary || "";
+  if (String(subtitle || "").trim() === String(title || "").trim()) subtitle = "";
+  const mapLocation = isGroupbuy ? buildMapLocation({
+    mapLocation: pickupLocation,
+    address: pickupLocation.address || pickupLocation.name || ""
+  }) : buildMapLocation(data);
+  const coverUrl = isImageNote
+    ? getPrimaryImageUrl(note) || data.avatarUrl || data.qrCodeUrl || ""
+    : note.coverUrl || data.avatarUrl || data.qrCodeUrl || ((note.media || []).find((item) => item.type === "image") || {}).url || "";
   const galleryImages = buildGalleryImages(note, coverUrl);
   const galleryVideos = buildGalleryVideos(note);
-  const address = isProperty ? data.address || data.businessArea || "" : data.pickupLocation || "";
-  const contact = data.phone || data.contactPhone || data.contact || note.phone || "";
-  const wechat = data.wechat || data.contactWechat || "";
-  const email = data.email || data.mail || "";
-  const website = data.website || data.companyWebsite || data.websiteUrl || "";
+  const address = isProperty ? data.address || data.businessArea || "" : isGroupbuy ? pickupLocation.address || pickupLocation.name || data.pickupLocation || "" : "";
+  const contact = ownerProfile.phone || data.phone || data.contactPhone || data.contact || note.phone || "";
+  const wechat = ownerProfile.wechat || data.wechat || data.contactWechat || "";
+  const email = ownerProfile.email || data.email || data.mail || "";
+  const website = ownerProfile.website || data.website || data.companyWebsite || data.websiteUrl || "";
   const rows = isProperty
     ? [
         ["户型", data.layout],
         ["面积", data.area],
-        ["价格", data.price],
+        [propertyMode === "sale" ? "售价" : "租金", propertyPriceText],
         ["水电物业", data.utilities],
         ["位置", address],
         ["服务费", data.serviceFee]
@@ -560,34 +630,29 @@ function buildView(note) {
     : isGroupbuy
       ? [
           ["价格", productPriceText],
-          ["规格", data.spec],
-          ["取货方式", data.pickupMethod],
-          ["取货地点", data.pickupLocation],
-          ["截止时间", data.deadline],
-          ["库存", data.stockNote]
+          ["销售方式", productSalesMode === "relay" ? "团购接龙" : "商品"],
+          ["配送 / 自提", fulfillmentLabels.join("、") || data.pickupMethod],
+          ["自提位置", address],
+          ["可领取时间", fulfillment.availableTime],
+          ["截止时间", productSalesMode === "relay" ? (data.relayConfig || {}).deadlineAt || data.deadline : ""],
+          ["库存提示", productSalesMode === "relay" ? (data.relayConfig || {}).stockNote || data.stockNote : ""]
         ]
       : isBusinessCard
         ? [
-            ["职位", data.title],
-            ["公司 / 门店", data.company],
+            ["职位", ownerProfile.jobTitle || data.title],
+            ["公司 / 门店", ownerProfile.company || data.company],
             ["服务范围", data.serviceScope],
-            ["城市 / 区域", data.city],
-            ["电话", data.phone],
+            ["城市 / 区域", ownerProfile.city || data.city],
+            ["电话", contact],
             ["微信", wechat]
           ]
         : isServiceOffer
           ? [
-              ["适合人群", data.targetAudience],
-              ["服务内容", data.serviceContent],
-              ["报价说明", data.pricingNote],
-              ["服务流程", data.serviceProcess],
-              ["服务地区", data.serviceArea],
-              ["预约说明", data.appointmentNote],
-              ["电话", contact],
-              ["微信", wechat],
-              ["邮箱", email],
-              ["网址", website]
+              ["服务范围", data.serviceScope || data.serviceArea],
+              ["价格或合作条件", data.pricingOrTerms || data.cooperationTerms || data.pricingNote]
             ]
+          : isImageNote
+            ? [["说明", imageCaption]]
           : isMiniapp
             ? [["来源", miniapp.sourceName], ["房源编码", miniapp.houseCode], ["城市编码", miniapp.cityId]]
             : [["摘要", note.summary], ["正文", note.body]];
@@ -596,20 +661,28 @@ function buildView(note) {
   const canConvert = !availability;
   const actions = [];
   if (miniapp.visible) actions.push({ key: "miniapp", title: miniapp.buttonText, desc: "打开原小程序详情" });
-  if (canConvert && conversion.showContactPhone) actions.push({ key: "contact", title: "电话咨询", desc: contact ? "拨打或复制电话" : "复制联系方式" });
-  if (canConvert && conversion.collectLeads) actions.push({ key: "lead", title: "留下电话/微信", desc: "方便发布者回访" });
-  if (canConvert && conversion.enableAppointment) actions.push({ key: "appointment", title: isProperty ? "预约看房" : "预约沟通", desc: "选择日期和时间" });
-  if (canConvert && conversion.enablePrivateConsultation) actions.push({ key: "private", title: "微信咨询", desc: "复制发布者微信/电话" });
-  if (canConvert && isServiceOffer && email) actions.push({ key: "email", title: "邮箱联系", desc: "复制邮箱地址" });
-  if (canConvert && (isProperty || isGroupbuy || isServiceCard)) actions.push({ key: "message", title: "发消息", desc: "站内留言给发布者" });
-  if (isProperty && address) actions.push({ key: "map", title: "地图定位", desc: mapLocation.hasPoint ? "打开腾讯地图" : "按地址搜索" });
+  if (canConvert && conversion.showContactPhone && contact) actions.push({ key: "contact", title: "电话咨询", desc: "拨打或复制电话" });
+  const shouldCollectLeads = isBusinessCard || conversion.collectLeads;
+  if (canConvert && shouldCollectLeads) actions.push({ key: "lead", title: "留下电话/微信", desc: "方便发布者回访" });
+  if (canConvert && isProperty && conversion.enableAppointment) actions.push({ key: "appointment", title: "预约看房", desc: "选择日期和时间" });
+  if (canConvert && conversion.enablePrivateConsultation && (wechat || ownerProfile.wechatQrUrl || data.wechatQrUrl || data.qrCodeUrl)) actions.push({ key: "private", title: "微信咨询", desc: "复制发布者微信/电话" });
+  if (canConvert && isBusinessCard && email) actions.push({ key: "email", title: "邮箱联系", desc: "复制邮箱地址" });
+  if (canConvert && conversion.enableLightScrm) actions.push({ key: "message", title: isGroupbuy ? "咨询购买" : "留言咨询", desc: "站内留言给发布者" });
+  if ((isProperty || isGroupbuy) && address) actions.push({ key: "map", title: isGroupbuy ? "导航到自提点" : "地图定位", desc: mapLocation.hasPoint ? "打开腾讯地图" : "按地址搜索" });
+  const communicationKeys = new Set(["contact", "private", "message", "lead", "appointment", "email"]);
+  const communicationActions = buildCommunicationActions(actions, { isProperty, isGroupbuy });
+  const sceneActions = actions.filter((item) => !communicationKeys.has(item.key));
+  const primaryCommunicationAction = communicationActions.find((item) => item.key === "message")
+    || communicationActions.find((item) => item.key === "lead")
+    || communicationActions[0]
+    || null;
   const serviceTags = buildServiceTags(data, config, isBusinessCard, isServiceOffer);
   const salesSections = buildSalesSections(data, note, isBusinessCard, isServiceOffer);
   const salesHighlights = buildSalesHighlights(data, isBusinessCard, isServiceOffer);
   const templateName = config.displayTemplateName || (template && template.name) || "";
-  const businessCardHero = isBusinessCard ? buildBusinessCardHeroView(data, note, title, subtitle, templateName, coverUrl, template) : null;
-  const businessCardDetail = isBusinessCard ? buildBusinessCardDetail(data, note, businessCardHero, galleryImages) : null;
-  const serviceOfferDetail = isServiceOffer ? buildServiceOfferDetail(data, note, template, galleryImages) : null;
+  const businessCardHero = isBusinessCard ? buildBusinessCardHeroView(identityData, note, title, subtitle, templateName, coverUrl, template) : null;
+  const businessCardDetail = isBusinessCard ? buildBusinessCardDetail(identityData, note) : null;
+  const serviceOfferDetail = isServiceOffer ? buildServiceOfferDetail(serviceIdentityData, note, template, galleryImages) : null;
   const serviceOfferPrimaryActions = isServiceOffer ? buildServiceOfferPrimaryActions(actions, serviceOfferDetail || {}) : [];
   const serviceOfferSecondaryActions = isServiceOffer ? buildServiceOfferSecondaryActions(actions) : [];
   const shareTitle = isBusinessCard
@@ -618,21 +691,31 @@ function buildView(note) {
       ? [title, data.headline].filter(Boolean).join(" · ") || "服务方案"
       : isProperty
         ? buildPropertyShareTitle(title, data)
+      : isGroupbuy
+        ? buildProductShareTitle(title, data, productPriceText)
       : title || "资料详情";
   return {
     title,
     shareTitle,
     ownerUserId: note.ownerUserId || "",
+    revision: note.revision || 0,
+    shareSnapshotUrl: shareSnapshot.status === "ready" ? shareSnapshot.url || "" : "",
     subtitle,
     isProperty,
     isGroupbuy,
     isBusinessCard,
     isServiceOffer,
+    isArticle,
+    isImageNote,
+    isContentStream,
+    contentBlocks,
+    imageCaption,
+    isTextNote: cardType === "text_note" && !isImageNote,
     isServiceCard,
-    templateId: template ? template.id : "",
+    templateId: isBusinessCard ? ((config.displayConfig || {}).styleId || "business_blue") : template ? template.id : "",
     templateName,
     templateScene: config.displayTemplateScene || (template && template.scene) || "",
-    templateToneClass: template ? templateToneClass(template) : "",
+    templateToneClass: isBusinessCard ? `business-style-${((config.displayConfig || {}).styleId || "business_blue")}` : template ? templateToneClass(template) : "",
     serviceTags,
     salesSections,
     salesHighlights,
@@ -640,36 +723,64 @@ function buildView(note) {
     serviceOfferDetail,
     serviceOfferPrimaryActions,
     serviceOfferSecondaryActions,
-    businessCardActions: businessCardDetail ? buildBusinessCardActions(businessCardDetail) : [],
-    headline: data.headline || note.summary || "",
-    avatarUrl: data.avatarUrl || note.coverUrl || coverUrl || "",
+    headline: data.serviceSummary || data.headline || note.summary || "",
+    avatarUrl: ownerProfile.avatarUrl || data.avatarUrl || note.coverUrl || coverUrl || "",
     avatarInitial: String(title || "名").slice(0, 1),
     businessCardHero,
-    company: data.company || "",
-    position: data.title || "",
-    city: data.city || data.serviceArea || "",
-    enableGroupRelay: Boolean(conversion.enableGroupRelay),
-    orderButtonText: conversion.enableGroupRelay ? "下单并接龙" : "下单",
+    company: ownerProfile.company || data.company || "",
+    position: ownerProfile.jobTitle || data.title || "",
+    city: ownerProfile.city || data.city || data.serviceArea || "",
+    enableGroupRelay: productSalesMode === "relay",
+    orderButtonText: productSalesMode === "relay" ? "参加接龙" : "咨询购买",
     badge: isProperty ? "房源" : isGroupbuy ? "商品" : isBusinessCard ? "名片" : isServiceOffer ? "服务" : isMiniapp ? "小程序房源" : "资料",
-    propertyHighlightChips: isProperty ? [data.price ? `租金 ${data.price}` : "", data.layout ? `户型 ${data.layout}` : ""].filter(Boolean) : [],
+    articleDetail: isArticle ? {
+      sourceUrl: config.sourceUrl || data.url || "",
+      sourceName: config.sourceName || "网页链接",
+      sourceLabel: config.sourceLabel || "文章链接",
+      recommendation: data.salesRecommendation || data.recommendation || "",
+      description: data.contentDescription || data.description || note.summary || "",
+      coverUrl
+    } : null,
+    propertyHighlightChips: isProperty ? [propertyPriceText ? `${propertyMode === "sale" ? "售价" : "租金"} ${propertyPriceText}` : "", data.layout ? `户型 ${data.layout}` : ""].filter(Boolean) : [],
     coverUrl,
     galleryImages,
     galleryVideos,
-    rows: rows.filter((item) => item[1]).map(([label, value]) => ({ label, value })),
-    remark: data.bio || data.caseHighlights || data.remark || note.summary || note.body || "",
+    attachments: (note.media || []).filter((item) => {
+      if (!["image", "pdf", "link"].includes(item.type)) return false;
+      if (item.type !== "image") return true;
+      return !isImageNote && !isGroupbuy && !isProperty && !isServiceOffer;
+    }),
+    rows: rows.filter((item) => {
+      if (!item[1]) return false;
+      if (isProperty || isGroupbuy || isBusinessCard || isServiceOffer || isMiniapp) return true;
+      const value = String(item[1] || "").trim();
+      return value !== String(title || "").trim() && value !== String(subtitle || "").trim();
+    }).map(([label, value]) => ({ label, value })),
+    remark: firstDistinctText([title, subtitle], [data.bio, data.caseHighlights, data.remark, note.summary, note.body]),
     availability,
     actions,
-    hasMap: isProperty && Boolean(address),
+    communicationActions,
+    primaryCommunicationAction,
+    communicationHint: isProperty
+      ? "先电话或留言，房源详情还可以预约看房"
+      : isGroupbuy
+        ? "咨询规格、价格或配送方式"
+        : "电话、微信、留言都可以直接发起",
+    sceneActions,
+    hasMap: (isProperty || isGroupbuy) && Boolean(address),
     skuConfig,
     selectedSku: (skuConfig.skus || []).find((item) => !item.soldOut) || (skuConfig.skus || [])[0] || null,
     miniapp,
     contact,
     wechat,
-    publisherName: data.ownerName || data.agentName || data.contactName || "",
+    wechatQrUrl: ownerProfile.wechatQrUrl || data.wechatQrUrl || data.qrCodeUrl || data.wechatQrCodeUrl || "",
+    publisherName: ownerProfile.displayName || data.ownerName || data.agentName || data.contactName || "",
+    publisherRole: [ownerProfile.jobTitle, ownerProfile.company].filter(Boolean).join(" · "),
     email,
     website,
     address,
-    mapLocation
+    mapLocation,
+    mapCommunity: isProperty ? String(data.community || "") : ""
   };
 }
 
@@ -707,11 +818,38 @@ function buildPropertyShareTitle(title, data = {}) {
   return chips.length ? `${headline}\n${chips.join(" · ")}` : headline;
 }
 
+function buildProductShareTitle(title, data = {}, priceText = "") {
+  const price = String(priceText || data.price || "").trim();
+  const productName = title || data.productName || "商品资料";
+  return [price, productName].filter(Boolean).join(" ");
+}
+
 function buildGalleryVideos(note) {
   const urls = Array.isArray(note.media)
     ? note.media.filter((item) => item.type === "video").map((item) => item.url)
     : [];
   return Array.from(new Set(urls.filter(Boolean)));
+}
+
+function buildContentBlocks(note) {
+  const explicit = Array.isArray(note.contentBlocks) ? note.contentBlocks : [];
+  if (explicit.length) {
+    return explicit
+      .filter((item) => item && ["text", "image", "pdf", "link"].includes(item.type))
+      .map((item, index) => ({
+        ...item,
+        sortOrder: Number.isFinite(Number(item.sortOrder)) ? Number(item.sortOrder) : index
+      }))
+      .sort((a, b) => a.sortOrder - b.sortOrder);
+  }
+  const blocks = [];
+  const body = String(note.body || "").trim();
+  if (body) blocks.push({ id: "legacy-text", type: "text", text: body, sortOrder: 0 });
+  (Array.isArray(note.media) ? note.media : [])
+    .filter((item) => item && item.url && ["image", "pdf", "link"].includes(item.type))
+    .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0))
+    .forEach((item, index) => blocks.push({ ...item, sortOrder: blocks.length + index }));
+  return blocks;
 }
 
 function buildMapLocation(data) {
@@ -765,6 +903,30 @@ function buildMapLocation(data) {
   };
 }
 
+function simplifyMapAddress(value) {
+  return String(value || "")
+    .replace(/[，,]/g, " ")
+    .replace(/(?:\d+|[一二三四五六七八九十百]+)栋(?:\d+|[一二三四五六七八九十百]+)?(?:号|室)?[^\s]*$/u, "")
+    .replace(/(?:\d+|[一二三四五六七八九十百]+)(?:号|室)[^\s]*$/u, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function buildMapAddressCandidates(view = {}) {
+  const address = String(view.address || "").trim();
+  const location = view.mapLocation || {};
+  const candidates = [
+    address,
+    simplifyMapAddress(address),
+    String(location.address || "").trim(),
+    simplifyMapAddress(location.address || "")
+  ];
+  const community = String(view.mapCommunity || "").trim();
+  const simpleCommunity = community.replace(/\d+\s*(?:户型|房源|栋|号|室).*$/u, "").trim();
+  if (simpleCommunity) candidates.push(simpleCommunity);
+  return candidates.filter((item, index, items) => item && items.indexOf(item) === index);
+}
+
 function inferMapRegion(address) {
   const text = String(address || "");
   const remembered = readLastPropertyCity();
@@ -789,6 +951,7 @@ function enrichAddressWithCity(address) {
 Page({
   data: {
     noteId: "",
+    notePayload: null,
     user: null,
     view: null,
     viewRecorded: false,
@@ -816,10 +979,16 @@ Page({
     selectedSkuKey: "",
     selectedSkuOptions: {},
     skuSelectionGroups: [],
-    businessCardShareImage: "",
-    serviceOfferShareImage: "",
-    propertyShareImage: "",
+    shareImageReady: false,
+    shareImageState: "missing",
+    shareStatusText: "分享图准备中",
+    publicLoadError: false,
+    publicLoadErrorKind: "",
+    publicLoadErrorTitle: "",
+    publicLoadErrorMessage: "",
     openedStandalone: false,
+    isOwnerViewing: false,
+    pendingAction: "",
     relayDraft: {
       quantity: 1,
       receiverName: "",
@@ -832,6 +1001,7 @@ Page({
     submittingAction: ""
   },
   onLoad(options) {
+    setShareMenuEnabled(false);
     const pages = getCurrentPages ? getCurrentPages() : [];
     this.setData({
       noteId: options.id || "",
@@ -843,7 +1013,8 @@ Page({
       shareId: options.sid || "",
       shareFromUserId: options.from || "",
       shareScene: options.src || options.scene || "",
-      referrer: options.ref || ""
+      referrer: options.ref || "",
+      pendingAction: options.action || ""
     });
   },
   onShow() {
@@ -854,11 +1025,35 @@ Page({
   async loadNote() {
     const { noteId } = this.data;
     if (!noteId) return;
+    const requestSeq = (this._publicNoteRequestSeq || 0) + 1;
+    this._publicNoteRequestSeq = requestSeq;
+    const isCurrentRequest = () => requestSeq === this._publicNoteRequestSeq;
     try {
       const res = await api.fetchPublicNote(noteId);
+      if (!isCurrentRequest()) return;
       const view = buildView(res.data || {});
       rememberPropertyCity(`${view.address} ${view.title}`);
-      this.setData({ view, selectedContactCard: null, showLeadForm: false, showAppointmentForm: false }, () => {
+      const isOwnerViewing = Boolean(this.data.user && view.ownerUserId && this.data.user.id === view.ownerUserId);
+      this.setData({
+        view,
+        notePayload: res.data || {},
+        publicLoadError: false,
+        publicLoadErrorKind: "",
+        publicLoadErrorTitle: "",
+        publicLoadErrorMessage: "",
+        isOwnerViewing,
+        selectedContactCard: null,
+        showLeadForm: false,
+        showAppointmentForm: false,
+        // Do not trust the public payload's URL before the snapshot state is
+        // checked against the current v10 fingerprint. Legacy v10 images can
+        // still have a URL while using the old template.
+        shareImageReady: false,
+        shareImageState: "missing",
+        shareStatusText: isOwnerViewing ? "准备分享图" : "分享图准备中"
+      }, () => {
+        if (!isCurrentRequest()) return;
+        setShareMenuEnabled(false);
         const sku = view.selectedSku || {};
         const selectedSkuOptions = buildSelectedSkuOptions(view.skuConfig || {}, sku.key || "");
         this.setData({
@@ -868,13 +1063,54 @@ Page({
           "relayDraft.phone": readLastLeadPhone()
         });
         this.resolveMapFromAddress();
-        this.prepareSalesShareImage();
+        this.prepareShareSnapshot();
       });
-      await this.loadCustomerActionConfig();
+      await this.loadCustomerActionConfig(requestSeq);
+      if (!isCurrentRequest()) return;
       this.recordCurrentView();
+      this.bindReferralFromShare(view);
+      if (this.data.pendingAction === "message" && this.data.user && !isOwnerViewing) {
+        this.setData({ pendingAction: "" });
+        setTimeout(() => this.handleOpenMessage(), 0);
+      }
     } catch (error) {
-      wx.showToast({ title: error.detail || "客户页加载失败", icon: "none" });
+      if (!isCurrentRequest()) return;
+      setShareMenuEnabled(false);
+      const statusCode = Number(error && error.statusCode);
+      const detail = String(error && (error.detail || error.message) || "");
+      const unavailable = statusCode === 404 || /资料尚未发布|资料不存在|笔记不存在|停止分享/.test(detail);
+      const errorTitle = unavailable ? "资料已停止分享" : "客户页加载失败";
+      const errorMessage = unavailable
+        ? "这份资料已被更新或停止分享，请让发布者重新发布后再发送。"
+        : "请检查网络后重试。";
+      this.setData({
+        view: null,
+        notePayload: null,
+        publicLoadError: true,
+        publicLoadErrorKind: unavailable ? "unavailable" : "retryable",
+        publicLoadErrorTitle: errorTitle,
+        publicLoadErrorMessage: errorMessage,
+        shareImageReady: false,
+        shareImageState: "missing",
+        shareStatusText: unavailable ? "资料已停止分享" : "重新加载"
+      });
+      wx.showToast({ title: unavailable ? "资料已更新，请重新发送" : errorTitle, icon: "none" });
     }
+  },
+  handleRetryPublicNote() {
+    this.setData({
+      publicLoadError: false,
+      publicLoadErrorKind: "",
+      publicLoadErrorTitle: "",
+      publicLoadErrorMessage: ""
+    });
+    this.loadNote();
+  },
+  bindReferralFromShare(view) {
+    const user = this.data.user;
+    const inviterUserId = this.data.shareFromUserId;
+    if (!user || !inviterUserId || user.id === inviterUserId || !view || view.ownerUserId === user.id) return;
+    api.bindReferralFromShare(user.id, inviterUserId, this.data.shareScene || "share_link").catch(() => {});
   },
   async recordCurrentView() {
     const { noteId, user, viewRecorded, view } = this.data;
@@ -927,11 +1163,13 @@ Page({
   onUnload() {
     this.flushViewBehavior();
   },
-  async loadCustomerActionConfig() {
+  async loadCustomerActionConfig(requestSeq = this._publicNoteRequestSeq) {
     const { user, noteId } = this.data;
     if (!noteId) return;
+    const isCurrentRequest = () => requestSeq === this._publicNoteRequestSeq;
     try {
       const res = await api.fetchCustomerActionConfig(noteId, user ? { viewerUserId: user.id } : { anonymousId: getNotePreviewAnonymousId() });
+      if (!isCurrentRequest()) return;
       const actions = (res.data && res.data.actions) || [];
       const actionStatus = {};
       let submittedPayload = null;
@@ -969,103 +1207,101 @@ Page({
       }
       this.setData(updateData);
     } catch (error) {
+      if (!isCurrentRequest()) return;
       this.setData({ actionStatus: {} });
     }
   },
-  async prepareBusinessCardShareImage() {
-    const view = this.data.view || {};
-    if (!view.isBusinessCard || !view.businessCardHero) {
-      this.setData({ businessCardShareImage: "" });
-      return;
-    }
-    try {
-      const imagePath = await this.renderBusinessCardShareImage(view.businessCardHero);
-      if (imagePath) this.setData({ businessCardShareImage: imagePath });
-    } catch (error) {
-      this.setData({ businessCardShareImage: "" });
-    }
-  },
-  async renderBusinessCardShareImage(card) {
-    return generateBusinessCardShareImage(this, SHARE_CARD_CANVAS_ID, card);
-  },
-  async preparePropertyShareImage() {
-    const view = this.data.view || {};
-    if (!view.badge || view.badge !== "房源") {
-      this.setData({ propertyShareImage: "" });
-      return;
-    }
-    try {
-      const imagePath = await generatePropertyShareImage(this, SHARE_CARD_CANVAS_ID, {
-        title: view.title,
-        price: (view.propertyHighlightChips || []).find((item) => String(item).includes("租金")) || "",
-        layout: (view.propertyHighlightChips || []).find((item) => String(item).includes("户型")) || "",
-        area: (view.rows || []).find((item) => item.label === "面积") && (view.rows || []).find((item) => item.label === "面积").value,
-        address: view.address,
-        coverUrl: view.coverUrl
+  async prepareShareSnapshot() {
+    const note = this.data.notePayload || {};
+    const user = this.data.user || getCurrentUser() || {};
+    const ownerUserId = this.data.isOwnerViewing ? user.id : "";
+    if (!note.id) return;
+    const current = getNoteShareSnapshotState(note, ownerUserId, user);
+    const statusText = {
+      missing: "准备分享图",
+      stale: "重新生成分享图",
+      preparing: "分享图生成中",
+      failed: "重试分享图",
+      ready: "好友"
+    }[current.status] || "准备分享图";
+    if (current.status === "ready") {
+      const url = getShareImageUrlFromState(current);
+      const shareReady = Boolean(url);
+      this.setData({
+        shareImageReady: shareReady,
+        shareImageState: "ready",
+        shareStatusText: "好友",
+        view: { ...(this.data.view || {}), shareSnapshotUrl: url }
       });
-      if (imagePath) this.setData({ propertyShareImage: imagePath });
-    } catch (error) {
-      this.setData({ propertyShareImage: "" });
+      setShareMenuEnabled(shareReady);
+      return current;
     }
-  },
-  async prepareServiceOfferShareImage() {
-    const view = this.data.view || {};
-    if (!view.isServiceOffer || !view.serviceOfferDetail) {
-      this.setData({ serviceOfferShareImage: "" });
-      return;
+    if (!ownerUserId) {
+      this.setData({ shareImageReady: false, shareImageState: current.status, shareStatusText: statusText });
+      setShareMenuEnabled(false);
+      return current;
     }
+    if (current.status === "preparing") return current;
+    this.setData({ shareImageReady: false, shareImageState: "preparing", shareStatusText: "分享图生成中" });
+    setShareMenuEnabled(false);
     try {
-      const imagePath = await generateServiceOfferShareImage(this, SHARE_CARD_CANVAS_ID, {
-        ...view.serviceOfferDetail,
-        templateId: view.templateId,
-        templateName: view.templateName,
-        title: view.title,
-        summary: view.subtitle
+      const result = await prepareNoteShareSnapshot({
+        page: this,
+        canvasId: "businessCardShareCanvas",
+        note,
+        ownerUserId,
+        user
       });
-      if (imagePath) this.setData({ serviceOfferShareImage: imagePath });
-    } catch (error) {
-      this.setData({ serviceOfferShareImage: "" });
-    }
-  },
-  async prepareGenericShareImage() {
-    const view = this.data.view || {};
-    if (!view || view.isBusinessCard || view.isServiceOffer || view.cardType === "property_listing") {
-      this.setData({ genericShareImage: "" });
-      return;
-    }
-    try {
-      const imagePath = await generateTitleShareImage(this, SHARE_CARD_CANVAS_ID, {
-        title: view.shareTitle || view.title || "资料详情",
-        summary: view.summary || view.subtitle || "",
-        badge: view.categoryName || (view.cardType === "groupbuy_product" ? "商品" : "资料"),
-        coverUrl: view.coverUrl || "",
-        hint: "打开小程序查看完整资料",
-        growthHint: "我也想做同款"
+      const url = result.snapshot && result.snapshot.url || "";
+      const shareReady = Boolean(url);
+      if (!shareReady) throw new Error("分享图地址为空");
+      const nextNote = {
+        ...note,
+        revision: result.sourceRevision,
+        visibilityConfig: result.entity && result.entity.visibilityConfig
+          ? result.entity.visibilityConfig
+          : note.visibilityConfig
+      };
+      this.setData({
+        notePayload: nextNote,
+        view: { ...(this.data.view || {}), shareSnapshotUrl: url },
+        shareImageReady: shareReady,
+        shareImageState: "ready",
+        shareStatusText: "好友",
       });
-      if (imagePath) this.setData({ genericShareImage: imagePath });
+      setShareMenuEnabled(shareReady);
+      return result;
     } catch (error) {
-      this.setData({ genericShareImage: "" });
+      this.setData({ shareImageReady: false, shareImageState: "failed", shareStatusText: "重试分享图" });
+      setShareMenuEnabled(false);
+      return null;
     }
-  },
-  prepareSalesShareImage() {
-    this.preparePropertyShareImage();
-    this.prepareBusinessCardShareImage();
-    this.prepareServiceOfferShareImage();
-    this.prepareGenericShareImage();
   },
   async resolveMapFromAddress() {
     const view = this.data.view || {};
     const location = view.mapLocation || {};
     if (this.data.resolvingMap || location.hasPoint || !view.address || !view.hasMap) return;
-    const mapAddress = enrichAddressWithCity(view.address);
+    const candidates = buildMapAddressCandidates(view).map(enrichAddressWithCity).filter(Boolean);
+    const region = inferMapRegion(view.address);
     this.setData({ resolvingMap: true });
     try {
-      const res = await api.geocodeAddress({
-        address: mapAddress,
-        region: inferMapRegion(mapAddress)
-      });
-      const data = (res && res.data) || {};
-      if (!data.found || !data.latitude || !data.longitude) return;
+      let data = null;
+      const regions = region ? [region, ""] : [""];
+      for (let regionIndex = 0; regionIndex < regions.length && !data; regionIndex += 1) {
+        for (let index = 0; index < candidates.length; index += 1) {
+          const res = await api.geocodeAddress({
+            address: candidates[index],
+            region: regions[regionIndex]
+          });
+          const candidate = (res && res.data) || {};
+          if (candidate.found && Number.isFinite(Number(candidate.latitude)) && Number.isFinite(Number(candidate.longitude))) {
+            data = candidate;
+            break;
+          }
+        }
+      }
+      if (!data) return;
+      const mapAddress = candidates[0] || view.address;
       this.setData({
         "view.mapLocation": buildMapLocation({
           address: view.address,
@@ -1108,7 +1344,20 @@ Page({
       return;
     }
     if (key === "lead") {
-      this.setData({ showLeadForm: !this.data.showLeadForm });
+      const showLeadForm = !this.data.showLeadForm;
+      this.setData({ showLeadForm }, () => {
+        if (!showLeadForm || !wx.createSelectorQuery) return;
+        const query = wx.createSelectorQuery();
+        query.select("#leadForm").boundingClientRect();
+        query.selectViewport().scrollOffset();
+        query.exec(([rect, viewport]) => {
+          if (!rect || !viewport) return;
+          wx.pageScrollTo({
+            scrollTop: Math.max(0, viewport.scrollTop + rect.top - 32),
+            duration: 240
+          });
+        });
+      });
       return;
     }
     if (key === "appointment") {
@@ -1126,6 +1375,17 @@ Page({
     if (key === "relay") {
       this.setData({ showRelayForm: !this.data.showRelayForm });
     }
+  },
+  handleCommunicationAction(event) {
+    const key = event.detail && event.detail.key;
+    if (!key) return;
+    this.handleAction({ currentTarget: { dataset: { key } } });
+  },
+  handleOpenFeaturedResource(event) {
+    const id = event.currentTarget.dataset.id;
+    if (!id) return;
+    this.recordInteraction("featured_note_open", "", { featuredNoteId: id });
+    wx.navigateTo({ url: `/pages/note-preview/index?id=${id}` });
   },
   noop() {},
   handleBackHome() {
@@ -1262,8 +1522,20 @@ Page({
   async handleOpenMessage() {
     const { user, noteId } = this.data;
     if (!noteId) return;
+    this.recordInteraction("contact_click");
     if (!user) {
-      wx.showToast({ title: "登录后可发消息", icon: "none" });
+      const query = [
+        `id=${encodeURIComponent(noteId)}`,
+        this.data.shareId ? `sid=${encodeURIComponent(this.data.shareId)}` : "",
+        this.data.shareFromUserId ? `from=${encodeURIComponent(this.data.shareFromUserId)}` : "",
+        this.data.shareScene ? `src=${encodeURIComponent(this.data.shareScene)}` : "",
+        this.data.referrer ? `ref=${encodeURIComponent(this.data.referrer)}` : "",
+        "action=message"
+      ].filter(Boolean).join("&");
+      const returnUrl = `/pages/note-preview/index?${query}`;
+      wx.reLaunch({
+        url: `/pages/login/index?returnUrl=${encodeURIComponent(returnUrl)}`
+      });
       return;
     }
     await messagePlugin.openMessageThread({ noteId, buyerUserId: user.id });
@@ -1309,11 +1581,21 @@ Page({
     const rawPhone = (view.businessCardDetail && view.businessCardDetail.phone) || view.contact || "";
     const phone = String(rawPhone || "").replace(/[^\d+]/g, "");
     const wechat = (view.businessCardDetail && view.businessCardDetail.wechat) || view.wechat || "";
+    const qrCodeUrl = (view.businessCardDetail && view.businessCardDetail.qrCodeUrl)
+      || (view.serviceOfferDetail && view.serviceOfferDetail.qrCodeUrl)
+      || view.wechatQrUrl
+      || "";
+    this.recordInteraction(kind === "private" ? "contact_click" : "phone_click");
     if (kind === "private") {
       const value = wechat || phone;
       if (value) {
         this.setData({ selectedContactCard: { label: wechat ? "微信" : "电话", value, hint: wechat ? "微信号已复制，可添加咨询" : "电话已复制" } });
         wx.setClipboardData({ data: value, success: () => wx.showToast({ title: wechat ? "微信已复制" : "电话已复制", icon: "success" }) });
+        return;
+      }
+      if (qrCodeUrl) {
+        this.recordInteraction("wechat_qr_open");
+        wx.previewImage({ current: qrCodeUrl, urls: [qrCodeUrl] });
         return;
       }
       wx.showToast({ title: "暂无微信", icon: "none" });
@@ -1445,6 +1727,7 @@ Page({
   },
   async handleOpenMap() {
     const view = this.data.view || {};
+    this.recordInteraction("map_open");
     let location = view.mapLocation || {};
     await this.resolveMapFromAddress();
     const nextView = this.data.view || view;
@@ -1498,8 +1781,8 @@ Page({
   },
   handleTimelineHint() {
     wx.showModal({
-      title: "发朋友圈",
-      content: "请点击右上角菜单，选择分享到朋友圈。",
+      title: "朋友圈",
+      content: "受微信限制，小程序内不能直接打开朋友圈发布页。请点击右上角菜单，选择“分享到朋友圈”；也可以先保存分享图再发布。",
       showCancel: false,
       confirmColor: "#11924d"
     });
@@ -1508,26 +1791,88 @@ Page({
     const url = event.currentTarget.dataset.url;
     const view = this.data.view || {};
     const serviceOfferDetail = view.serviceOfferDetail || {};
+    const isBusinessQr = Boolean(view.isBusinessCard && view.businessCardDetail && url === view.businessCardDetail.qrCodeUrl);
     const urls = [
+      isBusinessQr ? url : "",
       serviceOfferDetail.coverUrl,
       ...(serviceOfferDetail.caseImages || []),
       view.coverUrl,
       ...(view.galleryImages || [])
     ].filter(Boolean);
     if (!url || !urls.length) return;
+    if (isBusinessQr) this.recordInteraction("wechat_qr_open");
+    const attachment = (view.attachments || []).find((item) => item.url === url);
+    if (attachment) this.recordInteraction("image_open", attachment.id);
     wx.previewImage({ current: url, urls });
   },
+  recordInteraction(eventType, attachmentId = "", metadata = {}) {
+    const { noteId, user } = this.data;
+    if (!noteId) return;
+    api.recordNoteInteraction(noteId, {
+      eventType,
+      attachmentId: attachmentId || null,
+      ...buildViewerPayload(user, "微信客户"),
+      shareId: this.data.shareId || "",
+      shareFromUserId: this.data.shareFromUserId || "",
+      sessionId: this.data.viewSessionId,
+      scene: this.data.shareScene || "public_note",
+      metadata
+    }).catch(() => {});
+  },
+  handleAttachment(event) {
+    const item = (this.data.view.attachments || [])[Number(event.currentTarget.dataset.index)];
+    if (!item) return;
+    if (item.type === "image") {
+      this.recordInteraction("image_open", item.id);
+      wx.previewImage({ current: item.url, urls: this.data.view.attachments.filter((row) => row.type === "image").map((row) => row.url) });
+      return;
+    }
+    this.recordInteraction(item.type === "pdf" ? "pdf_open" : "link_open", item.id);
+    if (item.type === "pdf") {
+      wx.downloadFile({ url: item.url, success: ({ tempFilePath }) => wx.openDocument({ filePath: tempFilePath, fileType: "pdf", showMenu: true }), fail: () => wx.showToast({ title: "PDF 打开失败", icon: "none" }) });
+      return;
+    }
+    wx.setClipboardData({ data: item.url, success: () => wx.showToast({ title: "链接已复制，请在浏览器打开", icon: "none" }) });
+  },
+  handleOpenArticleSource() {
+    const detail = ((this.data.view || {}).articleDetail || {});
+    const url = detail.sourceUrl || "";
+    if (!url) {
+      wx.showToast({ title: "暂无原文链接", icon: "none" });
+      return;
+    }
+    this.recordInteraction("source_open");
+    if (/mp\.weixin\.qq\.com/i.test(url) && typeof wx.openOfficialAccountArticle === "function") {
+      wx.openOfficialAccountArticle({ url, fail: () => wx.setClipboardData({ data: url, success: () => wx.showToast({ title: "原文链接已复制", icon: "success" }) }) });
+      return;
+    }
+    wx.setClipboardData({ data: url, success: () => wx.showToast({ title: "原文链接已复制，请在浏览器打开", icon: "none" }) });
+  },
   handleGenerateSame() {
-    const view = this.data.view || {};
-    const publisherName = view.publisherName || view.wechat || view.contact || "原发布中介";
-    const query = [
-      "sourceType=note",
-      this.data.noteId ? `sourceId=${encodeURIComponent(this.data.noteId)}` : "",
-      view.title ? `sourceTitle=${encodeURIComponent(view.title)}` : "",
-      publisherName ? `publisherName=${encodeURIComponent(publisherName)}` : "",
-      (view.wechat || view.contact || publisherName) ? `upstreamContact=${encodeURIComponent(view.wechat || view.contact || publisherName)}` : ""
-    ].filter(Boolean).join("&");
-    wx.navigateTo({ url: `/pages/property-same/index?${query}` });
+    const user = this.data.user || getCurrentUser();
+    if (!user) {
+      wx.navigateTo({ url: `/pages/login/index?returnUrl=${encodeURIComponent(`/pages/note-preview/index?id=${this.data.noteId}`)}` });
+      return;
+    }
+    if (this.data.generatingSame) return;
+    this.setData({ generatingSame: true });
+    wx.showLoading({ title: "生成同款" });
+    api.generateSameStyle({
+      ownerUserId: user.id,
+      mode: "reuse_content",
+      sourceNoteId: this.data.noteId,
+      ownNoteIds: [],
+      idempotencyKey: `public-${user.id}-${this.data.noteId}`
+    }).then((response) => {
+      const generation = ((response.data || {}).generation || {});
+      if (!generation.generatedNoteId) throw new Error("生成结果缺少资料ID");
+      const { navigateToNoteEditor } = require("../../utils/resource-navigation");
+      navigateToNoteEditor(generation.generatedNoteId);
+    }).catch((error) => wx.showToast({ title: error.detail || error.message || "生成失败", icon: "none" }))
+      .finally(() => { wx.hideLoading(); this.setData({ generatingSame: false }); });
+  },
+  handleShareTap() {
+    subscription.requestViewNotificationSubscription("note_preview_share");
   },
   onShareAppMessage() {
     const view = this.data.view || {};
@@ -1535,6 +1880,27 @@ Page({
     const shareId = createShareId(this.data.noteId);
     const shareFromUserId = user ? user.id : (this.data.shareFromUserId || "");
     const scene = "note_preview_share";
+    const rawTitle = view.isBusinessCard && view.businessCardHero
+      ? buildBusinessCardShareTitle(view.businessCardHero)
+      : view.isServiceOffer
+        ? buildServiceOfferShareTitle(view.serviceOfferDetail || view)
+        : buildNoteShareTitle(this.data.notePayload || {}, user || {}) || view.shareTitle || view.title || "资料详情";
+    const shareState = getNoteShareSnapshotState(this.data.notePayload || {}, this.data.isOwnerViewing && user ? user.id : "", user || {});
+    const sharePath = `/pages/note-preview/index?id=${this.data.noteId}&sid=${shareId}&from=${shareFromUserId}&src=${scene}&ref=${this.data.shareId || ""}`;
+    const shareMessage = buildShareMessage({
+      title: buildCustomerShareTitle(rawTitle),
+      path: sharePath,
+      snapshot: shareState.snapshot,
+      sourceRevision: shareState.sourceRevision,
+      fingerprint: shareState.fingerprint,
+      styleId: shareState.styleId,
+      imageUrl: getShareImageUrlFromState(shareState)
+    });
+    if (!shareMessage) {
+      wx.showToast({ title: "资料分享图正在准备，请稍后再发", icon: "none" });
+      setShareMenuEnabled(false);
+      return null;
+    }
     if (this.data.noteId && shareFromUserId) {
       api.recordNoteView(this.data.noteId, {
         eventType: "share",
@@ -1545,12 +1911,7 @@ Page({
         referrer: this.data.shareId || ""
       }).catch(() => {});
     }
-    const rawTitle = view.isBusinessCard && view.businessCardHero ? buildBusinessCardShareTitle(view.businessCardHero) : view.isServiceOffer ? buildServiceOfferShareTitle(view.serviceOfferDetail || view) : (view.shareTitle || view.title || "资料详情");
-    return {
-      title: buildCustomerShareTitle(rawTitle),
-      path: `/pages/note-preview/index?id=${this.data.noteId}&sid=${shareId}&from=${shareFromUserId}&src=${scene}&ref=${this.data.shareId || ""}`,
-      imageUrl: this.data.businessCardShareImage || this.data.serviceOfferShareImage || this.data.propertyShareImage || this.data.genericShareImage || ""
-    };
+    return shareMessage;
   },
   onShareTimeline() {
     const view = this.data.view || {};
@@ -1568,11 +1929,22 @@ Page({
         referrer: this.data.shareId || ""
       }).catch(() => {});
     }
-    const rawTitle = view.isBusinessCard && view.businessCardHero ? buildBusinessCardShareTitle(view.businessCardHero) : view.isServiceOffer ? buildServiceOfferShareTitle(view.serviceOfferDetail || view) : (view.shareTitle || view.title || "资料详情");
+    const rawTitle = view.isBusinessCard && view.businessCardHero
+      ? buildBusinessCardShareTitle(view.businessCardHero)
+      : view.isServiceOffer
+        ? buildServiceOfferShareTitle(view.serviceOfferDetail || view)
+        : buildNoteShareTitle(this.data.notePayload || {}, user || {}) || view.shareTitle || view.title || "资料详情";
+    const shareState = getNoteShareSnapshotState(this.data.notePayload || {}, this.data.isOwnerViewing && user ? user.id : "", user || {});
+    const shareImage = getShareImageUrlFromState(shareState);
+    if (!shareImage) {
+      wx.showToast({ title: "资料分享图正在准备，请稍后再发", icon: "none" });
+      setShareMenuEnabled(false);
+      return null;
+    }
     return {
       title: buildCustomerShareTitle(rawTitle),
       query: `id=${this.data.noteId}&sid=${shareId}&from=${shareFromUserId}&src=${scene}&ref=${this.data.shareId || ""}`,
-      imageUrl: this.data.businessCardShareImage || this.data.serviceOfferShareImage || this.data.propertyShareImage || this.data.genericShareImage || ""
+      imageUrl: shareImage
     };
   }
 });

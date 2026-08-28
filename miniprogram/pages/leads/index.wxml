@@ -171,7 +171,7 @@
         <view wx:if="{{item.conclusionReason}}" class="brief-line">归档原因：{{item.conclusionReason}}</view>
       </view>
       <view class="card-actions">
-        <text data-id="{{item.id}}" bindtap="handleOpenLeadDetail">查看线索</text>
+        <text data-id="{{item.id}}" bindtap="handleOpenLeadDetail">客户详情</text>
         <text data-card-id="{{item.cardId}}" bindtap="handleOpenDetail">资源详情</text>
         <text data-card-id="{{item.cardId}}" bindtap="handleOpenManager">线索管理</text>
         <text wx:if="{{item.status === 'pending'}}" data-id="{{item.id}}" bindtap="handleMarkContacted">标记已联系</text>
@@ -222,7 +222,7 @@
       </view>
 
       <view class="detail-actions">
-        <button class="detail-secondary" catchtap="handleOpenSelectedLeadDetail">查看线索</button>
+        <button class="detail-secondary" catchtap="handleOpenSelectedLeadDetail">客户详情</button>
         <button class="detail-secondary" catchtap="handleOpenSelectedSource">来源资料</button>
         <button class="detail-primary" catchtap="handleSelectedLeadPrimaryAction">立即处理</button>
       </view>

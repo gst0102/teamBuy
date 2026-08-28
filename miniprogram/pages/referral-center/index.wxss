@@ -1,0 +1,52 @@
+.referral-page { padding-bottom:60rpx; }
+.referral-hero { margin-top:18rpx;padding:32rpx;border-radius:30rpx;background:linear-gradient(135deg,#172554,#155eef);color:#fff;box-shadow:0 18rpx 42rpx rgba(21,94,239,.18); }
+.referral-kicker { color:#93c5fd;font-size:22rpx;font-weight:900; }
+.referral-title { margin-top:12rpx;font-size:38rpx;font-weight:900; }
+.referral-sub { margin-top:14rpx;font-size:22rpx;line-height:1.6;color:#dbeafe; }
+.share-attribution-pill { display:flex;align-items:center;justify-content:center;margin-top:24rpx;padding:16rpx 20rpx;border-radius:16rpx;background:rgba(255,255,255,.14);color:#dbeafe;font-size:22rpx;font-weight:800; }
+.eligibility-pill { margin-top:12rpx;color:#dcfce7;font-size:20rpx;text-align:center; }.eligibility-pill.muted { color:#bfdbfe; }
+.withdraw-btn { display:flex;align-items:center;justify-content:center;width:100%;height:76rpx;margin-top:18rpx;padding:0;border:0;border-radius:20rpx;background:#fff;color:#155eef;font-size:25rpx;font-weight:900;line-height:1; }
+.withdraw-btn::after { border:0; }
+.rules-card { margin-top:18rpx;padding:24rpx;border:1rpx solid #dbeafe;border-radius:24rpx;background:#fff;box-shadow:0 12rpx 30rpx rgba(31,88,168,.06); }
+.payout-rules-card { border-color:#ccebdd;box-shadow:0 12rpx 30rpx rgba(16,145,100,.06); }
+.rules-card-title { color:#172033;font-size:28rpx;font-weight:900; }
+.rules-card-row { display:flex;align-items:flex-start;gap:16rpx;margin-top:20rpx; }
+.rules-card-mark { display:flex;align-items:center;justify-content:center;flex:0 0 54rpx;width:54rpx;height:54rpx;border-radius:16rpx;font-size:22rpx;font-weight:900; }
+.rules-card-mark.green { color:#12834c;background:#e5f8ee; }.rules-card-mark.blue { color:#1677ff;background:#e6f0ff; }.rules-card-mark.gray { color:#64748b;background:#f0f3f7; }.rules-card-mark.teal { color:#0e907b;background:#e3faf3; }
+.rules-card-label { color:#27354c;font-size:24rpx;font-weight:800; }.rules-card-copy { margin-top:5rpx;color:#718096;font-size:21rpx;line-height:1.5; }
+.reward-grid { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12rpx;margin-top:18rpx; }
+.reward-grid view { display:flex;flex-direction:column;align-items:center;padding:22rpx 8rpx;border:1rpx solid #dbeafe;border-radius:20rpx;background:#fff; }
+.reward-grid strong { font-size:31rpx; }.reward-grid text { margin-top:7rpx;color:#718096;font-size:20rpx; }
+.withdraw-btn { background:#155eef;color:#fff; }
+.balance-card { margin-top:18rpx; padding:28rpx 30rpx; border-radius:26rpx; background:#172554; color:#fff; box-shadow:0 16rpx 34rpx rgba(23,37,84,.18); }
+.balance-label { color:#bfdbfe; font-size:23rpx; font-weight:800; }
+.balance-amount { margin-top:8rpx; font-size:56rpx; line-height:1.1; font-weight:900; letter-spacing:1rpx; }
+.balance-note { margin-top:14rpx; color:#dbeafe; font-size:23rpx; line-height:1.5; }
+.withdraw-amount-card { margin-top:18rpx; padding:26rpx 24rpx 22rpx; border:1rpx solid #dbeafe; border-radius:24rpx; background:#fff; box-shadow:0 12rpx 30rpx rgba(31,88,168,.06); }
+.withdraw-amount-head { display:flex; align-items:center; justify-content:space-between; gap:16rpx; }
+.withdraw-amount-title { color:#172033; font-size:31rpx; font-weight:900; }
+.withdraw-amount-available { color:#1677ff; font-size:23rpx; font-weight:800; white-space:nowrap; }
+.withdraw-option-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14rpx; margin-top:20rpx; }
+.withdraw-option { display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:112rpx; padding:14rpx 8rpx; border:2rpx solid #e2e8f0; border-radius:18rpx; background:#f8fafc; box-sizing:border-box; }
+.withdraw-option.selected { border-color:#155eef; background:#edf4ff; box-shadow:0 0 0 2rpx rgba(21,94,239,.08); }
+.withdraw-option.disabled { opacity:.48; }
+.withdraw-option-amount { color:#172033; font-size:35rpx; font-weight:900; line-height:1.15; }
+.withdraw-option.selected .withdraw-option-amount { color:#155eef; }
+.withdraw-option-state { margin-top:8rpx; color:#718096; font-size:21rpx; line-height:1; }
+.withdraw-option.selected .withdraw-option-state { color:#155eef; font-weight:800; }
+.withdraw-selection-hint { margin-top:16rpx; color:#718096; font-size:22rpx; line-height:1.5; text-align:center; }
+.withdraw-hint { margin-top:10rpx; color:#718096; font-size:22rpx; text-align:center; }
+.withdrawals-card { margin-top:8rpx; }
+.withdrawal-row { display:flex;align-items:center;justify-content:space-between;gap:18rpx;margin-top:12rpx;padding:20rpx;border-radius:18rpx;background:#fff; }
+.withdrawal-main { flex:1;min-width:0; }.withdrawal-amount { color:#172033;font-size:34rpx;font-weight:900; }.withdrawal-meta { margin-top:8rpx;color:#64748b;font-size:21rpx;line-height:1.4; }.withdrawal-meta.paid-time { color:#12834c; }
+.withdrawal-side { display:flex;flex-direction:column;align-items:flex-end;gap:8rpx;max-width:54%; }.withdrawal-status { color:#1677ff;font-size:21rpx;font-weight:800;white-space:nowrap; }.withdrawal-status.status-paid { color:#12834c; }.withdrawal-status.status-failed,.withdrawal-status.status-cancelled,.withdrawal-status.status-rejected { color:#b45309; }.withdrawal-status.status-processing,.withdrawal-status.status-waiting_user_confirm { color:#1677ff; }
+.confirm-transfer-btn { display:flex;align-items:center;justify-content:center;width:170rpx;height:54rpx;margin:0;padding:0;border:0;border-radius:14rpx;background:#155eef;color:#fff;font-size:21rpx;font-weight:800;line-height:1;white-space:nowrap; }.confirm-transfer-btn::after { border:0; }
+.withdrawal-failure { color:#b45309;font-size:21rpx;text-align:right; }
+.reward-title { margin-top:30rpx;font-size:32rpx;font-weight:900; }
+.reward-row { display:flex;justify-content:space-between;align-items:center;margin-top:12rpx;padding:20rpx;border-radius:18rpx;background:#fff; }
+.reward-row view { display:flex;flex-direction:column;gap:8rpx; }.reward-row strong { color:#f59e0b; font-size:31rpx; }.reward-row text { color:#718096;font-size:21rpx; }.reward-row > text { white-space:nowrap; }
+.commission-rules-card { margin-top:28rpx; }
+.rules-card-title { font-size:32rpx; }
+.rules-card-label { font-size:27rpx; }
+.rules-card-copy { font-size:23rpx; line-height:1.6; }
+.rules-card-mark { font-size:23rpx; }

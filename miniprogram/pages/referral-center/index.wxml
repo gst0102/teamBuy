@@ -1,0 +1,61 @@
+<view class="page-shell referral-page">
+  <custom-nav showBack="{{true}}" title="推广奖励" />
+  <view class="referral-hero">
+    <view class="referral-kicker">分享内容自动归因</view>
+    <view class="referral-title">好友使用，你获得 50%</view>
+    <view class="referral-sub">分享商品、资料或合集后，系统会自动记住分享者。好友后续完成有效会员付费，按规则结算推广奖励。</view>
+    <view class="share-attribution-pill">无需邀请码 · 首次分享归因</view>
+    <view class="eligibility-pill" wx:if="{{center.eligibleForRewards}}">当前会员有效 · 可享受符合条件的分佣</view>
+    <view class="eligibility-pill muted" wx:else>当前未开通会员 · 仍可分享，但暂不享受分佣</view>
+  </view>
+  <view class="balance-card">
+    <view class="balance-label">当前可提现</view>
+    <view class="balance-amount">¥{{center.totals.availableYuan || "0.00"}}</view>
+    <view class="balance-note">最低提现 ¥{{center.minimumWithdrawalYuan || "10.00"}} · 每日最多 {{center.dailyWithdrawalLimit || 1}} 次</view>
+  </view>
+  <view class="rules-card payout-rules-card">
+    <view class="rules-card-title">提现规则</view>
+    <view class="rules-card-row"><view class="rules-card-mark blue">额</view><view><view class="rules-card-label">可提现额度</view><view class="rules-card-copy">当前余额满 ¥{{center.withdrawalRules.minimumWithdrawalYuan || center.minimumWithdrawalYuan}} 才可申请，页面会明确显示可选金额。</view></view></view>
+    <view class="rules-card-row"><view class="rules-card-mark blue">次</view><view><view class="rules-card-label">每日提现次数</view><view class="rules-card-copy">每日最多提现 {{center.withdrawalRules.dailyWithdrawalLimit || center.dailyWithdrawalLimit || 1}} 次，按北京时间自然日计算。</view></view></view>
+    <view class="rules-card-row"><view class="rules-card-mark gray">时</view><view><view class="rules-card-label">提现时间</view><view class="rules-card-copy">每日 00:00–24:00 均可提交申请；提交后进入平台审核。</view></view></view>
+    <view class="rules-card-row"><view class="rules-card-mark teal">到</view><view><view class="rules-card-label">到账时间</view><view class="rules-card-copy">审核通过并完成微信确认后，以微信实际到账时间为准，基本秒到。</view></view></view>
+    <view class="rules-card-row"><view class="rules-card-mark gray">退</view><view><view class="rules-card-label">失败与撤销</view><view class="rules-card-copy">转账失败或撤销成功后，冻结佣金会退回可提现余额；状态以微信回调或查单结果为准。</view></view></view>
+  </view>
+  <view class="withdraw-amount-card">
+    <view class="withdraw-amount-head"><view class="withdraw-amount-title">选择提现金额</view><view class="withdraw-amount-available">可提现 ¥{{center.totals.availableYuan || "0.00"}}</view></view>
+    <view class="withdraw-option-grid">
+      <view wx:for="{{center.withdrawalOptions}}" wx:key="amountFen" class="withdraw-option {{item.selected ? 'selected' : ''}} {{item.selectable ? '' : 'disabled'}}" data-amount-fen="{{item.amountFen}}" bindtap="handleSelectWithdrawalAmount">
+        <text class="withdraw-option-amount">¥{{item.amountYuan}}</text>
+        <text class="withdraw-option-state">{{item.selectable ? '可申请' : '余额不足'}}</text>
+      </view>
+    </view>
+    <view class="withdraw-selection-hint" wx:if="{{selectedWithdrawalFen}}">已选择 ¥{{selectedWithdrawalYuan}}，提交后会冻结对应奖励</view>
+    <view class="withdraw-selection-hint" wx:else>余额达到最低 ¥{{center.minimumWithdrawalYuan || "10.00"}} 后，可选择提现金额</view>
+  </view>
+  <view class="reward-grid">
+    <view><strong>{{center.inviteeCount || 0}}</strong><text>邀请用户</text></view>
+    <view><strong>{{center.paidInviteeCount || 0}}</strong><text>付费用户</text></view>
+    <view><strong>¥{{center.totals.availableYuan || "0.00"}}</strong><text>可提现</text></view>
+  </view>
+  <button class="withdraw-btn" bindtap="handleWithdraw">申请提现（手续费 0）</button>
+  <view class="withdraw-hint">以微信实际到账时间为准，基本秒到</view>
+  <view class="withdrawals-card" wx:if="{{center.withdrawals.length}}">
+    <view class="reward-title">提现记录</view>
+    <view class="withdrawal-row" wx:for="{{center.withdrawals}}" wx:key="id">
+      <view class="withdrawal-main"><view class="withdrawal-amount">¥{{item.amountYuan}}</view><view class="withdrawal-meta">申请时间 {{item.createdAtText}}</view><view wx:if="{{item.paidAtText}}" class="withdrawal-meta paid-time">到账时间 {{item.paidAtText}}</view></view>
+      <view class="withdrawal-side"><view class="withdrawal-status status-{{item.displayStatus}}">{{item.statusLabel}}</view><button wx:if="{{item.canConfirm}}" class="confirm-transfer-btn" data-withdrawal-id="{{item.id}}" bindtap="handleConfirmTransfer">确认收款</button><view wx:if="{{item.failureReason}}" class="withdrawal-failure">{{item.failureReason}}</view></view>
+    </view>
+  </view>
+  <view class="rules-card commission-rules-card">
+    <view class="rules-card-title">分佣规则</view>
+    <view class="rules-card-row"><view class="rules-card-mark green">链</view><view><view class="rules-card-label">分享归因</view><view class="rules-card-copy">好友通过你的商品、资料或合集链接进入并使用，系统自动将你记为直接推广人，无需复制邀请码。</view></view></view>
+    <view class="rules-card-row"><view class="rules-card-mark blue">会</view><view><view class="rules-card-label">会员资格</view><view class="rules-card-copy">只有好友付费时你仍是有效会员，才有资格获得这笔奖励；会员到期期间不产生奖励。</view></view></view>
+    <view class="rules-card-row"><view class="rules-card-mark green">50%</view><view><view class="rules-card-label">奖励比例</view><view class="rules-card-copy">有效首购和续费按好友实际支付金额的 50% 计算，优惠和订单结果优先。</view></view></view>
+    <view class="rules-card-row"><view class="rules-card-mark blue">1</view><view><view class="rules-card-label">邀请层级</view><view class="rules-card-copy">只计算一级直接推广，不产生二级自动奖励。</view></view></view>
+    <view class="rules-card-row"><view class="rules-card-mark gray">退</view><view><view class="rules-card-label">异常处理</view><view class="rules-card-copy">退款、刷单或异常交易会撤销或冻结对应奖励；未补发错过的奖励。</view></view></view>
+    <view class="rules-card-row"><view class="rules-card-mark teal">0</view><view><view class="rules-card-label">提现手续费</view><view class="rules-card-copy">当前手续费为 0；可提现金额和到账状态以记录为准。</view></view></view>
+  </view>
+  <view class="reward-title">奖励记录</view>
+  <view class="reward-row" wx:for="{{center.rewards}}" wx:key="id"><view><strong>+¥{{item.amountYuan}}</strong><text>{{item.statusLabel}}</text></view><text>{{item.createdAtText}}</text></view>
+  <view class="empty-state" wx:if="{{!center.rewards.length}}">分享商品、资料或合集，好友完成有效会员付费后会显示奖励。</view>
+</view>

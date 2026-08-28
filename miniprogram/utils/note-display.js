@@ -77,9 +77,10 @@ function resolveCardType(config) {
 
 const LEGACY_IMAGE_TRANSFER_NOTICE = "收到image素材，媒体稍后转存。";
 // Keep legacy image-note snapshot validation aligned with the single share
-// plugin version. Older v3 images are intentionally stale after the typed
-// fixed-layout templates were introduced.
-const SHARE_CARD_IMAGE_STYLE = "share_card_v7";
+// plugin version. Older pre-v8 images are intentionally stale after the typed
+// fixed-layout templates were introduced. v10 also routes every card through
+// the JPG fixed-template pipeline, using an image-first presentation when a
+// real cover exists and an info-first presentation when it does not.
 
 function cleanImagePrimaryText(value) {
   return String(value || "")
@@ -118,11 +119,6 @@ function getPrimaryImageUrl(note = {}) {
     || note.coverDisplayUrl
     || ((note.visibilityConfig || {}).structuredData || {}).coverUrl
     || "";
-}
-
-function isCurrentImageNoteShareSnapshot(note = {}, snapshot = {}) {
-  if (!isImagePrimaryNote(note)) return true;
-  return String(snapshot.styleId || "") === SHARE_CARD_IMAGE_STYLE;
 }
 
 function imagePrimaryTitle(note = {}, caption = "") {
@@ -467,6 +463,5 @@ module.exports = {
   getPrimaryImageUrl,
   imagePrimaryTitle,
   isImagePrimaryNote,
-  isCurrentImageNoteShareSnapshot,
   isUsefulLabel
 };

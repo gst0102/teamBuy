@@ -30,6 +30,7 @@ class SyncTaskQueue:
         self.auto_schedule = auto_schedule
         self.handlers: dict[str, TaskHandler] = {}
         self._scheduled_task_ids: set[str] = set()
+        self._delayed_task_ids: set[str] = set()
 
     def register(self, name: str, handler: TaskHandler) -> None:
         self.handlers[name] = handler
@@ -88,8 +89,8 @@ class SyncTaskQueue:
                     break
             elif task.status in {"queued", "retrying"} and task.nextRunAt:
                 delay = max(1, int((parse_iso(task.nextRunAt) - parse_iso(now_iso())).total_seconds()))
-                asyncio.create_task(self._schedule_after_delay(task.id, delay))
-                scheduled += 1
+                if self._schedule_after_delay_once(task.id, delay):
+                    scheduled += 1
                 if max_to_schedule is not None and scheduled >= max_to_schedule:
                     break
         return scheduled
@@ -151,11 +152,21 @@ class SyncTaskQueue:
             {"attempts": task.attempts, "maxAttempts": task.maxAttempts, "nextRunAt": task.nextRunAt},
         )
         if can_retry:
-            asyncio.create_task(self._schedule_after_delay(task.id, self.retry_delay_seconds))
+            self._schedule_after_delay_once(task.id, self.retry_delay_seconds)
+
+    def _schedule_after_delay_once(self, task_id: str, delay_seconds: int) -> bool:
+        if task_id in self._delayed_task_ids:
+            return False
+        self._delayed_task_ids.add(task_id)
+        asyncio.create_task(self._schedule_after_delay(task_id, delay_seconds))
+        return True
 
     async def _schedule_after_delay(self, task_id: str, delay_seconds: int) -> None:
-        await asyncio.sleep(delay_seconds)
-        self._schedule(task_id)
+        try:
+            await asyncio.sleep(delay_seconds)
+            self._schedule(task_id)
+        finally:
+            self._delayed_task_ids.discard(task_id)
 
     def _is_ready(self, task: SyncTask) -> bool:
         if task.status == "running":

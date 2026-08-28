@@ -5,6 +5,8 @@ from app.services.helpers import new_id
 from app.services.time_utils import now_iso, parse_iso
 
 
+# A business note is a fixed window measured from its first message.  Do not
+# turn this into a rolling window: t=0, t=59 and t=118 must produce two notes.
 WINDOW_SECONDS = 60
 
 
@@ -53,13 +55,13 @@ class MessageAggregator:
         current: list[RawMessage] = [ordered[0]]
 
         for message in ordered[1:]:
-            last_message = current[-1]
+            first_message = current[0]
             is_same_source = (
-                message.externalUserId == last_message.externalUserId
-                and message.conversationId == last_message.conversationId
+                message.externalUserId == first_message.externalUserId
+                and message.conversationId == first_message.conversationId
             )
             within_window = (
-                parse_iso(message.receivedAt) - parse_iso(last_message.receivedAt)
+                parse_iso(message.receivedAt) - parse_iso(first_message.receivedAt)
             ).total_seconds() <= WINDOW_SECONDS
             if is_same_source and within_window:
                 current.append(message)

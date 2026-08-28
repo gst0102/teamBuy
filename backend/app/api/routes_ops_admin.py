@@ -8,11 +8,13 @@ from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query
 from fastapi.responses import FileResponse, Response
 
 from app.api.dependencies import get_app_service, get_ops_console_store, get_sync_task_queue, get_wecom_client
+from app.api.upload_utils import read_upload_with_limit
 from app.core.config import settings
 from app.schemas.common import ApiResponse
 from app.schemas.ops_admin import (
     FeedbackTicketCreateRequest,
     FeedbackTicketUpdateRequest,
+    CustomerInfoChainToggleRequest,
     GroupBotChannelUpsertRequest,
     GroupUploadCreateRequest,
     GroupUploadPreviewRequest,
@@ -28,10 +30,16 @@ from app.services.ops_console_store import OpsConsoleStore
 from app.services.sync_task_queue import SyncTaskQueue
 from app.services.time_utils import SHANGHAI, parse_iso
 from app.services.wecom_client import WecomClient, WecomClientError
+from app.services.wecom_bind_card_asset_service import WecomBindCardAssetService
 
 
 router = APIRouter(tags=["ops-admin"])
 OPS_INDEX_FILE = Path(__file__).resolve().parents[1] / "static" / "ops-admin" / "index.html"
+OPS_PERIODS = {
+    "today": (1, "今日"),
+    "7d": (7, "近 7 日"),
+    "30d": (30, "近 30 日"),
+}
 
 
 def _verify_admin_token(provided_token: str | None) -> None:
@@ -39,6 +47,63 @@ def _verify_admin_token(provided_token: str | None) -> None:
         raise HTTPException(status_code=403, detail="WECOM_ADMIN_TOKEN is not configured")
     if provided_token != settings.admin_token:
         raise HTTPException(status_code=403, detail="admin token verification failed")
+
+
+@router.get("/api/ops-admin/referral-withdrawals", response_model=ApiResponse[dict])
+def list_ops_referral_withdrawals(
+    status: str | None = Query(default=None),
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+):
+    _verify_admin_token(x_admin_token)
+    return ApiResponse(
+        data={
+            "items": service.list_referral_withdrawals(status=status),
+            "minimumWithdrawalFen": service.referral_withdrawal_min_amount_fen(),
+        }
+    )
+
+
+@router.post("/api/ops-admin/referral-withdrawals/{withdrawal_id}/approve", response_model=ApiResponse[dict])
+def approve_ops_referral_withdrawal(
+    withdrawal_id: str,
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+):
+    _verify_admin_token(x_admin_token)
+    return ApiResponse(data=service.approve_referral_withdrawal(withdrawal_id))
+
+
+@router.post("/api/ops-admin/referral-withdrawals/{withdrawal_id}/query", response_model=ApiResponse[dict])
+def query_ops_referral_withdrawal(
+    withdrawal_id: str,
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+):
+    _verify_admin_token(x_admin_token)
+    return ApiResponse(data=service.query_referral_withdrawal(withdrawal_id))
+
+
+@router.post("/api/ops-admin/referral-withdrawals/{withdrawal_id}/settle", response_model=ApiResponse[dict])
+def settle_ops_referral_withdrawal(
+    withdrawal_id: str,
+    reason: str = Query(default="已核实微信到账"),
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+):
+    _verify_admin_token(x_admin_token)
+    return ApiResponse(data=service.settle_referral_withdrawal_manually(withdrawal_id, reason))
+
+
+@router.post("/api/ops-admin/referral-withdrawals/{withdrawal_id}/cancel", response_model=ApiResponse[dict])
+def cancel_ops_referral_withdrawal(
+    withdrawal_id: str,
+    reason: str = Query(default="运营人工撤销"),
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+):
+    _verify_admin_token(x_admin_token)
+    return ApiResponse(data=service.cancel_referral_withdrawal(withdrawal_id, reason))
 
 
 def _parse_datetime(value: str | None) -> datetime | None:
@@ -55,9 +120,45 @@ def _today_start() -> datetime:
     return now.replace(hour=0, minute=0, second=0, microsecond=0)
 
 
+def _period_config(period: str | None) -> tuple[str, int, str]:
+    key = str(period or "today").strip().lower()
+    if key not in OPS_PERIODS:
+        raise HTTPException(status_code=400, detail="时间范围只支持 today、7d 或 30d")
+    days, label = OPS_PERIODS[key]
+    return key, days, label
+
+
+def _period_start(period: str | None) -> tuple[str, int, str, datetime]:
+    key, days, label = _period_config(period)
+    return key, days, label, _today_start() - timedelta(days=days - 1)
+
+
+def _period_metadata(period_key: str, period_days: int, period_label: str, period_start: datetime) -> dict:
+    now = datetime.now(tz=SHANGHAI)
+    if period_key == "today":
+        range_label = f"{period_start:%Y-%m-%d} 00:00—{now:%H:%M}"
+    else:
+        range_label = f"{period_start:%Y-%m-%d}—{now:%Y-%m-%d}"
+    return {
+        "key": period_key,
+        "days": period_days,
+        "label": period_label,
+        "startAt": period_start.isoformat(),
+        "endAt": now.isoformat(),
+        "rangeLabel": range_label,
+        "generatedAt": now.isoformat(),
+    }
+
+
 def _is_since(value: str | None, start: datetime) -> bool:
     parsed = _parse_datetime(value)
     return bool(parsed and parsed >= start)
+
+
+def _is_note_updated_since(note, start: datetime) -> bool:
+    updated_at = _parse_datetime(note.updatedAt)
+    created_at = _parse_datetime(note.createdAt)
+    return bool(updated_at and updated_at >= start and created_at and updated_at > created_at)
 
 
 def _last_days_keys(days: int = 7) -> list[str]:
@@ -73,6 +174,7 @@ def _build_trend(days: int, state) -> list[dict]:
         "showcases": Counter(),
         "actions": Counter(),
         "showcaseViews": Counter(),
+        "anonymousVisitors": defaultdict(set),
     }
     for user in state.users:
         parsed = _parse_datetime(user.createdAt)
@@ -96,6 +198,8 @@ def _build_trend(days: int, state) -> list[dict]:
         parsed = _parse_datetime(event.createdAt)
         if parsed:
             counters["showcaseViews"][parsed.date().isoformat()] += 1
+            if not event.viewerUserId and event.anonymousId:
+                counters["anonymousVisitors"][parsed.date().isoformat()].add(event.anonymousId)
     return [
         {
             "date": date_key,
@@ -104,6 +208,7 @@ def _build_trend(days: int, state) -> list[dict]:
             "showcases": counters["showcases"][date_key],
             "actions": counters["actions"][date_key],
             "showcaseViews": counters["showcaseViews"][date_key],
+            "anonymousVisitors": len(counters["anonymousVisitors"][date_key]),
         }
         for date_key in keys
     ]
@@ -137,28 +242,396 @@ def _system_queue(service: AppService, sync_task_queue: SyncTaskQueue) -> dict:
     }
 
 
+def _visitor_key(event) -> str:
+    return str(event.viewerUserId or event.anonymousId or event.sessionId or event.id)
+
+
+def _visitor_stats(items: list) -> dict:
+    visitor_keys = Counter(_visitor_key(item) for item in items)
+    anonymous_keys = {
+        str(item.anonymousId)
+        for item in items
+        if not item.viewerUserId and item.anonymousId
+    }
+    return {
+        "views": len(items),
+        "uniqueVisitors": len(visitor_keys),
+        "anonymousUniqueVisitors": len(anonymous_keys),
+        "repeatVisitors": sum(1 for count in visitor_keys.values() if count >= 2),
+    }
+
+
+def _build_activation_funnel(state, period_start: datetime, anonymous_unique_visitors: int) -> dict:
+    users_in_period = {
+        item.id
+        for item in state.users
+        if _is_since(item.createdAt, period_start)
+    }
+    notes_in_period = [
+        item for item in state.user_notes if _is_since(item.createdAt, period_start)
+    ]
+    showcases_in_period = [
+        item for item in state.showcase_pages if _is_since(item.createdAt, period_start)
+    ]
+
+    first_note_at: dict[str, datetime] = {}
+    for note in state.user_notes:
+        parsed = _parse_datetime(note.createdAt)
+        if not parsed:
+            continue
+        current = first_note_at.get(note.ownerUserId)
+        if current is None or parsed < current:
+            first_note_at[note.ownerUserId] = parsed
+
+    first_showcase_at: dict[str, datetime] = {}
+    for showcase in state.showcase_pages:
+        parsed = _parse_datetime(showcase.createdAt)
+        if not parsed:
+            continue
+        current = first_showcase_at.get(showcase.ownerUserId)
+        if current is None or parsed < current:
+            first_showcase_at[showcase.ownerUserId] = parsed
+
+    first_note_users = {
+        owner_id for owner_id, created_at in first_note_at.items()
+        if created_at >= period_start and owner_id in users_in_period
+    }
+    first_showcase_users = {
+        owner_id for owner_id, created_at in first_showcase_at.items()
+        if created_at >= period_start and owner_id in users_in_period
+    }
+    first_content_users = first_note_users | first_showcase_users
+    published_users = {
+        item.ownerUserId for item in notes_in_period
+        if item.shareState == "published"
+    }
+    published_users.update(
+        item.ownerUserId for item in showcases_in_period
+        if item.status == "published" or item.publishedAt
+    )
+    published_users &= users_in_period
+    shared_users = {
+        item.ownerUserId for item in state.showcase_events
+        if item.eventType == "share"
+        and _is_since(item.createdAt, period_start)
+        and item.ownerUserId in users_in_period
+    }
+    high_intent_keys = {"lead-contact", "appointment", "order-intent", "relay-intent", "consult-click"}
+    signal_users = {
+        item.ownerUserId for item in state.customer_actions
+        if item.actionKey in high_intent_keys
+        and _is_since(item.createdAt, period_start)
+        and item.ownerUserId in users_in_period
+    }
+
+    values = [
+        ("anonymousVisitors", "匿名独立访客", anonymous_unique_visitors),
+        ("newUsers", "新增注册用户", len(users_in_period)),
+        ("firstContentUsers", "首次创建内容", len(first_content_users)),
+        ("publishedUsers", "首次发布", len(published_users)),
+        ("sharedUsers", "首次发客户", len(shared_users)),
+        ("signalUsers", "产生客户信号", len(signal_users)),
+    ]
+    stages = []
+    for index, (key, label, value) in enumerate(values):
+        previous = values[index - 1][2] if index else 0
+        stages.append({
+            "key": key,
+            "label": label,
+            "value": value,
+            "conversionRate": round(value / previous * 100, 1) if previous else None,
+        })
+    return {
+        "stages": stages,
+        "branches": [
+            {"key": "firstNotes", "label": "首次新建资料", "value": len(first_note_users)},
+            {"key": "firstShowcases", "label": "首次新建合集", "value": len(first_showcase_users)},
+        ],
+        "attributionNote": "匿名访客按匿名 ID 去重；匿名访客与注册用户尚未做跨身份合并，首段比例仅作参考。",
+    }
+
+
+def _customer_operations(state, store: OpsConsoleStore, period: str = "today") -> dict:
+    """Build operator metrics from persisted customer, order and queue facts.
+
+    This deliberately returns counts and follow-up work, not customer contact
+    fields.  The PC console is for operating the product; it should not become
+    an unbounded export endpoint for phone numbers or WeChat IDs.
+    """
+    period_key, period_days, period_label, selected_start = _period_start(period)
+    now = datetime.now(tz=SHANGHAI)
+    today_start = _today_start()
+    seven_days_start = today_start - timedelta(days=6)
+    view_events = [item for item in state.showcase_events if item.eventType == "view"]
+    today_views = [item for item in view_events if _is_since(item.createdAt, today_start)]
+    seven_day_views = [item for item in view_events if _is_since(item.createdAt, seven_days_start)]
+    selected_views = [item for item in view_events if _is_since(item.createdAt, selected_start)]
+
+    high_intent_keys = {"lead-contact", "appointment", "order-intent", "relay-intent", "consult-click"}
+    today_actions = [item for item in state.customer_actions if _is_since(item.createdAt, today_start)]
+    seven_day_actions = [item for item in state.customer_actions if _is_since(item.createdAt, seven_days_start)]
+    selected_actions = [item for item in state.customer_actions if _is_since(item.createdAt, selected_start)]
+    today_high_intent = [item for item in today_actions if str(item.actionKey) in high_intent_keys]
+    selected_high_intent = [item for item in selected_actions if str(item.actionKey) in high_intent_keys]
+    pending_followups = [item for item in state.lead_reminders if item.status in {"pending", "following", "contacted"}]
+    due_followups = []
+    for item in pending_followups:
+        follow_up_at = _parse_datetime(item.nextFollowUpAt)
+        if follow_up_at and follow_up_at <= now:
+            due_followups.append(item)
+    user_labels = _user_label_map(state)
+    follow_up_rows = sorted(
+        pending_followups,
+        key=lambda item: item.nextFollowUpAt or item.updatedAt or item.createdAt,
+    )[:20]
+
+    def paid_at_today(order) -> bool:
+        return bool(order.paymentChannel == "wechat_pay" and order.status == "paid" and _is_since(order.paidAt, today_start))
+
+    def paid_at_seven_days(order) -> bool:
+        return bool(order.paymentChannel == "wechat_pay" and order.status == "paid" and _is_since(order.paidAt, seven_days_start))
+
+    wechat_order_ids = {
+        item.id for item in state.membership_orders if item.paymentChannel == "wechat_pay"
+    }
+    orders_today = [
+        item for item in state.membership_orders
+        if item.paymentChannel == "wechat_pay" and _is_since(item.createdAt, today_start)
+    ]
+    period_orders = [
+        item for item in state.membership_orders
+        if item.paymentChannel == "wechat_pay" and _is_since(item.createdAt, selected_start)
+    ]
+    paid_today = [item for item in state.membership_orders if paid_at_today(item)]
+    paid_seven_days = [item for item in state.membership_orders if paid_at_seven_days(item)]
+    period_paid = [
+        item for item in state.membership_orders
+        if item.paymentChannel == "wechat_pay"
+        and item.status == "paid"
+        and _is_since(item.paidAt, selected_start)
+    ]
+    active_member_ids = {
+        item.userId
+        for item in state.membership_entitlements
+        if item.status == "active"
+        and item.sourceOrderId in wechat_order_ids
+        and (_parse_datetime(item.expiresAt) or now) > now
+    }
+    subscription_counts = Counter(item.status for item in state.wechat_subscription_deliveries)
+    archive_unprocessed = [item for item in state.wecom_archive_messages if not item.processedAt]
+    archive_failed = [item for item in state.wecom_archive_messages if item.processError]
+    today_media_assets = [item for item in state.media_assets if _is_since(item.createdAt, today_start)]
+    period_media_assets = [item for item in state.media_assets if _is_since(item.createdAt, selected_start)]
+    total_original_bytes = sum(int(item.originalSize or 0) for item in state.media_assets)
+    total_stored_bytes = sum(int(item.storedSize or 0) for item in state.media_assets)
+
+    return {
+        "feature": store.get_customer_info_chain_config(),
+        "period": {
+            **_period_metadata(period_key, period_days, period_label, selected_start),
+            **_visitor_stats(selected_views),
+            "customerActions": len(selected_actions),
+            "highIntentActions": len(selected_high_intent),
+            "paidOrders": len(period_paid),
+            "paidRevenueFen": sum(int(item.amountFen or 0) for item in period_paid),
+            "mediaAssets": len(period_media_assets),
+        },
+        "today": {
+            **_visitor_stats(today_views),
+            "customerActions": len(today_actions),
+            "highIntentActions": len(today_high_intent),
+            "newLeads": sum(1 for item in state.lead_reminders if _is_since(item.createdAt, today_start)),
+            "pendingFollowUps": len(pending_followups),
+            "dueFollowUps": len(due_followups),
+        },
+        "sevenDays": {
+            **_visitor_stats(seven_day_views),
+            "customerActions": len(seven_day_actions),
+            "highIntentActions": sum(1 for item in seven_day_actions if str(item.actionKey) in high_intent_keys),
+        },
+        "payment": {
+            "channel": "wechat_pay",
+            "channelLabel": "普通微信支付",
+            "activeMemberships": len(active_member_ids),
+            "todayOrders": len(orders_today),
+            "todayPaidOrders": len(paid_today),
+            "todayPendingOrders": sum(1 for item in orders_today if item.status == "pending"),
+            "todayRefundedOrders": sum(1 for item in orders_today if item.status == "refunded"),
+            "todayPaidRevenueFen": sum(int(item.amountFen or 0) for item in paid_today),
+            "sevenDayPaidRevenueFen": sum(int(item.amountFen or 0) for item in paid_seven_days),
+            "todayWechatPayOrders": sum(1 for item in paid_today if item.paymentChannel == "wechat_pay"),
+            "periodOrders": len(period_orders),
+            "periodPaidOrders": len(period_paid),
+            "periodPaidRevenueFen": sum(int(item.amountFen or 0) for item in period_paid),
+        },
+        "followUps": [
+            {
+                "id": item.id,
+                "ownerUserId": item.ownerUserId,
+                "ownerLabel": user_labels.get(item.ownerUserId, item.ownerUserId),
+                "nickname": item.nickname or "未命名客户",
+                "status": item.status,
+                "intentLevel": item.intentLevel,
+                "viewCount": item.viewCount,
+                "nextFollowUpAt": item.nextFollowUpAt,
+                "updatedAt": item.updatedAt,
+            }
+            for item in follow_up_rows
+        ],
+        "queues": {
+            "subscriptionQueued": subscription_counts["queued"],
+            "subscriptionSending": subscription_counts["sending"],
+            "subscriptionFailed": subscription_counts["failed"],
+            "archiveUnprocessed": len(archive_unprocessed),
+            "archiveFailed": len(archive_failed),
+            "todayMediaAssets": len(today_media_assets),
+            "periodMediaAssets": len(period_media_assets),
+            "mediaOriginalBytes": total_original_bytes,
+            "mediaStoredBytes": total_stored_bytes,
+            "mediaAssetCount": len(state.media_assets),
+            "mediaReferenceCount": len(state.media_asset_refs),
+        },
+    }
+
+
 @router.get("/ops")
 def ops_console_page():
-    return FileResponse(OPS_INDEX_FILE)
+    return FileResponse(
+        OPS_INDEX_FILE,
+        headers={"Cache-Control": "no-store, max-age=0"},
+    )
+
+
+@router.get("/api/ops-admin/customer-info-chain", response_model=ApiResponse[dict])
+def get_customer_info_chain_config(
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    store: OpsConsoleStore = Depends(get_ops_console_store),
+):
+    _verify_admin_token(x_admin_token)
+    return ApiResponse(data=store.get_customer_info_chain_config())
+
+
+@router.put("/api/ops-admin/customer-info-chain", response_model=ApiResponse[dict])
+def update_customer_info_chain_config(
+    payload: CustomerInfoChainToggleRequest,
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    store: OpsConsoleStore = Depends(get_ops_console_store),
+):
+    _verify_admin_token(x_admin_token)
+    if payload.enabled is None and payload.paymentRequired is None:
+        raise HTTPException(status_code=400, detail="至少提供一个客户信息链配置项")
+    return ApiResponse(data=store.set_customer_info_chain_config(
+        enabled=payload.enabled,
+        payment_required=payload.paymentRequired,
+        operator_name=payload.operatorName,
+    ))
+
+
+@router.get("/api/ops-admin/wecom-bind-card-asset", response_model=ApiResponse[dict])
+def get_wecom_bind_card_asset_status(
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+    client: WecomClient = Depends(get_wecom_client),
+):
+    _verify_admin_token(x_admin_token)
+    return ApiResponse(data=WecomBindCardAssetService(service.repo, client, settings).status())
+
+
+@router.post("/api/ops-admin/wecom-bind-card-asset", response_model=ApiResponse[dict])
+async def upload_wecom_bind_card_asset(
+    file: UploadFile = File(...),
+    operator_name: str = Form(default="ops"),
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+    client: WecomClient = Depends(get_wecom_client),
+):
+    _verify_admin_token(x_admin_token)
+    content = await read_upload_with_limit(
+        file,
+        settings.wecom_bind_card_max_bytes,
+        "绑定卡片封面不能超过2MB",
+    )
+    asset_service = WecomBindCardAssetService(service.repo, client, settings)
+    try:
+        asset = await asset_service.upload_source(content, file.filename or "wecom-bind-card.png", file.content_type)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except WecomClientError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="上传企业微信绑定卡片封面失败") from exc
+    return ApiResponse(
+        message=f"绑定卡片封面已更新（操作人：{operator_name.strip() or 'ops'}）",
+        data=asset_service.status(),
+    )
+
+
+@router.post("/api/ops-admin/wecom-bind-card-asset/refresh", response_model=ApiResponse[dict])
+async def refresh_wecom_bind_card_asset(
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+    client: WecomClient = Depends(get_wecom_client),
+):
+    _verify_admin_token(x_admin_token)
+    try:
+        asset_service = WecomBindCardAssetService(service.repo, client, settings)
+        await asset_service.refresh()
+    except WecomClientError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return ApiResponse(data=asset_service.status())
+
+
+@router.get("/api/ops-admin/customer-operations", response_model=ApiResponse[dict])
+def get_customer_operations(
+    period: str = Query(default="today"),
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+    store: OpsConsoleStore = Depends(get_ops_console_store),
+):
+    _verify_admin_token(x_admin_token)
+    _period_config(period)
+    return ApiResponse(data=_customer_operations(service.repo.load(), store, period))
 
 
 @router.get("/api/ops-admin/overview", response_model=ApiResponse[dict])
 def get_ops_admin_overview(
+    period: str = Query(default="today"),
     x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
     service: AppService = Depends(get_app_service),
     sync_task_queue: SyncTaskQueue = Depends(get_sync_task_queue),
+    store: OpsConsoleStore = Depends(get_ops_console_store),
 ):
     _verify_admin_token(x_admin_token)
+    period_key, period_days, period_label, selected_start = _period_start(period)
     state = service.repo.load()
     today_start = _today_start()
+    selected_users = [item for item in state.users if _is_since(item.createdAt, selected_start)]
+    selected_notes = [item for item in state.user_notes if _is_since(item.createdAt, selected_start)]
+    selected_updated_notes = [item for item in state.user_notes if _is_note_updated_since(item, selected_start)]
+    selected_showcases = [item for item in state.showcase_pages if _is_since(item.createdAt, selected_start)]
+    selected_actions = [item for item in state.customer_actions if _is_since(item.createdAt, selected_start)]
+    selected_showcase_views = [
+        item for item in state.showcase_events
+        if item.eventType == "view" and _is_since(item.createdAt, selected_start)
+    ]
     today_user_count = sum(1 for item in state.users if _is_since(item.createdAt, today_start))
     today_note_count = sum(1 for item in state.user_notes if _is_since(item.createdAt, today_start))
+    today_updated_note_count = sum(1 for item in state.user_notes if _is_note_updated_since(item, today_start))
     today_showcase_count = sum(1 for item in state.showcase_pages if _is_since(item.createdAt, today_start))
     today_action_count = sum(1 for item in state.customer_actions if _is_since(item.createdAt, today_start))
     today_showcase_views = sum(1 for item in state.showcase_events if item.eventType == "view" and _is_since(item.createdAt, today_start))
     notifications = service.list_import_notifications()
     today_notification_count = sum(1 for item in notifications if _is_since(item.get("sentAt"), today_start))
+    selected_notification_count = sum(1 for item in notifications if _is_since(item.get("sentAt"), selected_start))
     queue = _system_queue(service, sync_task_queue)
+    customer_operations = _customer_operations(state, store, period_key)
+    selected_visitors = _visitor_stats(selected_showcase_views)
+    selected_paid_orders = [
+        item for item in state.membership_orders
+        if item.paymentChannel == "wechat_pay"
+        and item.status == "paid"
+        and _is_since(item.paidAt, selected_start)
+    ]
 
     showcase_by_id = {item.id: item for item in state.showcase_pages}
     showcase_open_counter: dict[str, int] = defaultdict(int)
@@ -166,7 +639,10 @@ def get_ops_admin_overview(
         if event.eventType == "view":
             showcase_open_counter[event.showcaseId] += 1
     top_showcase = None
-    if showcase_open_counter:
+    if selected_showcase_views:
+        showcase_open_counter = defaultdict(int)
+        for event in selected_showcase_views:
+            showcase_open_counter[event.showcaseId] += 1
         top_showcase_id = max(showcase_open_counter.items(), key=lambda item: item[1])[0]
         showcase = showcase_by_id.get(top_showcase_id)
         top_showcase = {
@@ -176,15 +652,52 @@ def get_ops_admin_overview(
             "openCount": showcase_open_counter[top_showcase_id],
         }
 
+    period_summary = {
+        **_period_metadata(period_key, period_days, period_label, selected_start),
+        "newUsers": len(selected_users),
+        "newNotes": len(selected_notes),
+        "updatedNotes": len(selected_updated_notes),
+        "newShowcases": len(selected_showcases),
+        "customerActions": len(selected_actions),
+        "showcaseViews": len(selected_showcase_views),
+        "anonymousUniqueVisitors": selected_visitors["anonymousUniqueVisitors"],
+        "uniqueVisitors": selected_visitors["uniqueVisitors"],
+        "highIntentActions": customer_operations["period"]["highIntentActions"],
+        "notifications": selected_notification_count,
+        "paidRevenueFen": sum(int(item.amountFen or 0) for item in selected_paid_orders),
+    }
+
     return ApiResponse(
         data={
+            "period": period_summary,
             "summary": {
+                "period": period_key,
+                "periodDays": period_days,
+                "periodLabel": period_label,
                 "todayNewUsers": today_user_count,
                 "todayNewNotes": today_note_count,
+                "todayUpdatedNotes": today_updated_note_count,
                 "todayNewShowcases": today_showcase_count,
                 "todayCustomerActions": today_action_count,
                 "todayShowcaseViews": today_showcase_views,
                 "todayNotifications": today_notification_count,
+                "customerInfoChainEnabled": customer_operations["feature"]["enabled"],
+                "todayUniqueVisitors": customer_operations["today"]["uniqueVisitors"],
+                "todayHighIntentActions": customer_operations["today"]["highIntentActions"],
+                "pendingFollowUps": customer_operations["today"]["pendingFollowUps"],
+                "activeMemberships": customer_operations["payment"]["activeMemberships"],
+                "todayPaidRevenueFen": customer_operations["payment"]["todayPaidRevenueFen"],
+                "periodNewUsers": period_summary["newUsers"],
+                "periodNewNotes": period_summary["newNotes"],
+                "periodUpdatedNotes": period_summary["updatedNotes"],
+                "periodNewShowcases": period_summary["newShowcases"],
+                "periodCustomerActions": period_summary["customerActions"],
+                "periodShowcaseViews": period_summary["showcaseViews"],
+                "periodNotifications": period_summary["notifications"],
+                "periodUniqueVisitors": period_summary["uniqueVisitors"],
+                "periodAnonymousUniqueVisitors": period_summary["anonymousUniqueVisitors"],
+                "periodHighIntentActions": period_summary["highIntentActions"],
+                "periodPaidRevenueFen": period_summary["paidRevenueFen"],
                 "totalUsers": len(state.users),
                 "totalNotes": len(state.user_notes),
                 "totalShowcases": len(state.showcase_pages),
@@ -195,7 +708,14 @@ def get_ops_admin_overview(
                     + queue["summary"]["failedSyncTaskCount"]
                 ),
             },
+            "trend": _build_trend(period_days, state),
             "trend7d": _build_trend(7, state),
+            "funnel": _build_activation_funnel(
+                state,
+                selected_start,
+                period_summary["anonymousUniqueVisitors"],
+            ),
+            "customerOperations": customer_operations,
             "topShowcase": top_showcase,
             "resourceStatus": [
                 {"key": "group-resource-library", "label": "群资源库", "status": "partial", "desc": "积分账本已后端化，使用记录待接"},
@@ -206,6 +726,327 @@ def get_ops_admin_overview(
             "systemQueue": queue["summary"],
         }
     )
+
+
+_OVERVIEW_DETAIL_LABELS = {
+    "anonymousVisitors": "匿名独立访客",
+    "newUsers": "新增用户",
+    "newNotes": "新增资料",
+    "updatedNotes": "资料更新",
+    "newShowcases": "新增合集",
+    "customerActions": "客户动作",
+    "showcaseViews": "展示页打开",
+    "notifications": "导入通知",
+    "highIntentActions": "高意向动作",
+    "pendingNotifications": "待发送通知",
+    "pendingIssues": "待处理异常",
+    "pendingFollowUps": "待跟进客户",
+    "activeMemberships": "有效会员",
+    "paidRevenue": "微信支付收入",
+}
+
+_OVERVIEW_DETAIL_DEFINITIONS = {
+    "anonymousVisitors": "按匿名标识去重后的展示页访客，不把匿名访客识别为实名用户。",
+    "newUsers": "用户注册记录的 createdAt 落在所选时间范围内。",
+    "newNotes": "资料创建记录的 createdAt 落在所选时间范围内。",
+    "updatedNotes": "资料的 updatedAt 落在所选时间范围内，且晚于 createdAt，表示已有资料被编辑更新。",
+    "newShowcases": "合集创建记录的 createdAt 落在所选时间范围内。",
+    "customerActions": "客户动作记录的 createdAt 落在所选时间范围内。",
+    "showcaseViews": "展示页 view 事件的 createdAt 落在所选时间范围内。",
+    "notifications": "导入通知 sentAt 落在所选时间范围内。",
+    "highIntentActions": "咨询、留资、预约、下单意向等高意向客户动作。",
+    "pendingNotifications": "当前 sendStatus 为 pending 的导入通知。",
+    "pendingIssues": "当前导入、媒体和同步队列中的失败或重试异常。",
+    "pendingFollowUps": "当前状态为 pending、following 或 contacted 的跟进客户。",
+    "activeMemberships": "当前未过期且状态为 active 的客户信息链会员权益。",
+    "paidRevenue": "微信支付订单中已支付且 paidAt 落在所选时间范围内的收入。",
+}
+
+_CURRENT_OVERVIEW_DETAIL_METRICS = {
+    "pendingNotifications",
+    "pendingIssues",
+    "pendingFollowUps",
+    "activeMemberships",
+}
+
+
+def _overview_detail_row(time_value: str | None, title: str, detail: str = "", status: str = "") -> dict:
+    return {
+        "time": time_value,
+        "title": title or "-",
+        "detail": detail or "-",
+        "status": status or "-",
+    }
+
+
+_OVERVIEW_DEFAULT_PROFILE_NICKNAMES = {"", "微信用户", "未设置昵称", "微信客户"}
+
+
+def _overview_user_label(user, *, missing_label: str = "已登录用户（资料未同步）") -> str:
+    if not user:
+        return missing_label
+    nickname = str(user.nickname or "").strip()
+    if nickname and nickname not in _OVERVIEW_DEFAULT_PROFILE_NICKNAMES:
+        return nickname
+    return "微信用户（未设置昵称）"
+
+
+def _overview_identity_label(
+    user_id: str | None,
+    users: dict[str, object],
+    *,
+    anonymous_label: str = "匿名访客（未登录）",
+) -> str:
+    if not user_id:
+        return anonymous_label
+    return _overview_user_label(users.get(user_id))
+
+
+def _sort_overview_detail_rows(rows: list[dict]) -> list[dict]:
+    minimum = datetime.min.replace(tzinfo=SHANGHAI)
+    return sorted(rows, key=lambda item: _parse_datetime(item.get("time")) or minimum, reverse=True)
+
+
+def _overview_detail_rows(
+    state,
+    metric: str,
+    period_start: datetime,
+    service: AppService,
+    sync_task_queue: SyncTaskQueue,
+) -> tuple[int, list[dict]]:
+    users = {item.id: item for item in state.users}
+    notes = {item.id: item for item in state.user_notes}
+    showcases = {item.id: item for item in state.showcase_pages}
+    user_label = lambda user_id: _overview_identity_label(
+        user_id,
+        users,
+        anonymous_label="未命名运营用户",
+    )
+    view_events = [
+        item for item in state.showcase_events
+        if item.eventType == "view" and _is_since(item.createdAt, period_start)
+    ]
+    selected_actions = [item for item in state.customer_actions if _is_since(item.createdAt, period_start)]
+    high_intent_keys = {"lead-contact", "appointment", "order-intent", "relay-intent", "consult-click"}
+
+    if metric == "anonymousVisitors":
+        grouped: dict[str, dict] = {}
+        for event in view_events:
+            if event.viewerUserId or not event.anonymousId:
+                continue
+            key = str(event.anonymousId)
+            current = grouped.setdefault(key, {
+                "time": event.createdAt,
+                "title": "匿名访客（未登录）",
+                "detail": "",
+                "status": "匿名",
+                "viewCount": 0,
+            })
+            current["viewCount"] += 1
+            event_time = _parse_datetime(event.createdAt)
+            current_time = _parse_datetime(current["time"])
+            if event_time and (not current_time or event_time > current_time):
+                current["time"] = event.createdAt
+            showcase = showcases.get(event.showcaseId)
+            source = showcase.name if showcase else event.showcaseId
+            current["detail"] = f"查看 {current['viewCount']} 次 · 最近资料：{source}"
+        rows = list(grouped.values())
+        return len(rows), _sort_overview_detail_rows(rows)
+
+    if metric == "newUsers":
+        rows = []
+        for item in state.users:
+            if not _is_since(item.createdAt, period_start):
+                continue
+            label = _overview_user_label(item)
+            profile_status = "已注册 · 已设置昵称" if label != "微信用户（未设置昵称）" else "已注册 · 未设置昵称"
+            rows.append(_overview_detail_row(
+                item.createdAt,
+                label,
+                f"登录身份：已登录 · 用户 ID：{item.id}",
+                profile_status,
+            ))
+        return len(rows), _sort_overview_detail_rows(rows)
+
+    if metric == "newNotes":
+        rows = [
+            _overview_detail_row(
+                item.createdAt,
+                item.title,
+                f"{user_label(item.ownerUserId)} · 资料 ID：{item.id}",
+                item.status,
+            )
+            for item in state.user_notes if _is_since(item.createdAt, period_start)
+        ]
+        return len(rows), _sort_overview_detail_rows(rows)
+
+    if metric == "updatedNotes":
+        rows = [
+            _overview_detail_row(
+                item.updatedAt,
+                item.title,
+                f"{user_label(item.ownerUserId)} · 资料 ID：{item.id} · 创建于：{item.createdAt}",
+                "已更新",
+            )
+            for item in state.user_notes if _is_note_updated_since(item, period_start)
+        ]
+        return len(rows), _sort_overview_detail_rows(rows)
+
+    if metric == "newShowcases":
+        rows = [
+            _overview_detail_row(
+                item.createdAt,
+                item.name,
+                f"{user_label(item.ownerUserId)} · 合集 ID：{item.id}",
+                item.status,
+            )
+            for item in state.showcase_pages if _is_since(item.createdAt, period_start)
+        ]
+        return len(rows), _sort_overview_detail_rows(rows)
+
+    if metric in {"customerActions", "highIntentActions"}:
+        actions = selected_actions
+        if metric == "highIntentActions":
+            actions = [item for item in actions if str(item.actionKey) in high_intent_keys]
+        rows = []
+        for item in actions:
+            note = notes.get(item.noteId)
+            viewer = _overview_identity_label(item.viewerUserId, users)
+            source = note.title if note else item.noteId
+            rows.append(_overview_detail_row(
+                item.createdAt,
+                item.actionLabel or item.actionKey,
+                f"{viewer} · 来源：{source}",
+                item.actionKey,
+            ))
+        return len(rows), _sort_overview_detail_rows(rows)
+
+    if metric == "showcaseViews":
+        rows = []
+        for item in view_events:
+            showcase = showcases.get(item.showcaseId)
+            viewer = _overview_identity_label(item.viewerUserId, users)
+            rows.append(_overview_detail_row(
+                item.createdAt,
+                showcase.name if showcase else item.showcaseId,
+                f"{viewer} · {item.viewType}",
+                f"停留 {item.durationSeconds or 0} 秒",
+            ))
+        return len(rows), _sort_overview_detail_rows(rows)
+
+    if metric == "notifications":
+        rows = [
+            _overview_detail_row(
+                item.get("sentAt"),
+                item.get("title") or "导入通知",
+                f"{item.get('channel') or '-'} · {item.get('message') or ''}"[:180],
+                item.get("sendStatus") or item.get("status") or "-",
+            )
+            for item in service.list_import_notifications()
+            if _is_since(item.get("sentAt"), period_start)
+        ]
+        return len(rows), _sort_overview_detail_rows(rows)
+
+    if metric == "paidRevenue":
+        rows = [
+            _overview_detail_row(
+                item.paidAt,
+                user_label(item.userId),
+                f"订单：{item.id} · 方案：{item.planCode}",
+                f"¥{int(item.amountFen or 0) / 100:.2f}",
+            )
+            for item in state.membership_orders
+            if item.paymentChannel == "wechat_pay"
+            and item.status == "paid"
+            and _is_since(item.paidAt, period_start)
+        ]
+        return len(rows), _sort_overview_detail_rows(rows)
+
+    if metric == "pendingNotifications":
+        items = [item for item in service.list_import_notifications() if item.get("sendStatus") == "pending"]
+        rows = [
+            _overview_detail_row(
+                item.get("sentAt"),
+                item.get("title") or "导入通知",
+                item.get("channel") or "-",
+                item.get("sendStatus") or "pending",
+            )
+            for item in items
+        ]
+        return len(rows), _sort_overview_detail_rows(rows)
+
+    if metric == "pendingFollowUps":
+        items = [item for item in state.lead_reminders if item.status in {"pending", "following", "contacted"}]
+        rows = [
+            _overview_detail_row(
+                item.nextFollowUpAt or item.updatedAt or item.createdAt,
+                item.nickname or "未命名客户",
+                f"{user_label(item.ownerUserId)} · 浏览 {item.viewCount} 次",
+                item.status,
+            )
+            for item in items
+        ]
+        return len(rows), _sort_overview_detail_rows(rows)
+
+    if metric == "activeMemberships":
+        now = datetime.now(tz=SHANGHAI)
+        order_ids = {item.id for item in state.membership_orders if item.paymentChannel == "wechat_pay"}
+        items = [
+            item for item in state.membership_entitlements
+            if item.status == "active"
+            and item.sourceOrderId in order_ids
+            and (_parse_datetime(item.expiresAt) or now) > now
+        ]
+        rows = [
+            _overview_detail_row(
+                item.updatedAt,
+                user_label(item.userId),
+                f"权益：{item.entitlementKey} · 到期：{item.expiresAt}",
+                "有效",
+            )
+            for item in items
+        ]
+        return len(rows), _sort_overview_detail_rows(rows)
+
+    if metric == "pendingIssues":
+        queue = _system_queue(service, sync_task_queue)
+        rows = []
+        for item in queue["importFailures"].get("notifications", []):
+            rows.append(_overview_detail_row(item.get("sentAt"), item.get("title") or "导入通知失败", item.get("message") or "-", "导入失败"))
+        for item in queue["importFailures"].get("skillRuns", []):
+            rows.append(_overview_detail_row(item.get("startedAt"), item.get("skillId") or "技能运行失败", item.get("errorMessage") or "-", "技能失败"))
+        for item in queue["failedMedia"]:
+            rows.append(_overview_detail_row(item.get("updatedAt"), item.get("mediaId") or "媒体资产", "媒体转存或处理失败", "媒体失败"))
+        for item in queue["failedSyncTasks"]:
+            rows.append(_overview_detail_row(item.get("updatedAt"), item.get("name") or "同步任务", item.get("error") or item.get("status") or "-", "同步异常"))
+        return len(rows), _sort_overview_detail_rows(rows)
+
+    raise HTTPException(status_code=400, detail="不支持的运营指标")
+
+
+@router.get("/api/ops-admin/overview-detail", response_model=ApiResponse[dict])
+def get_ops_admin_overview_detail(
+    metric: str = Query(...),
+    period: str = Query(default="today"),
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+    sync_task_queue: SyncTaskQueue = Depends(get_sync_task_queue),
+):
+    _verify_admin_token(x_admin_token)
+    period_key, period_days, period_label, period_start = _period_start(period)
+    if metric not in _OVERVIEW_DETAIL_LABELS:
+        raise HTTPException(status_code=400, detail="不支持的运营指标")
+    total, rows = _overview_detail_rows(state=service.repo.load(), metric=metric, period_start=period_start, service=service, sync_task_queue=sync_task_queue)
+    return ApiResponse(data={
+        "metric": metric,
+        "label": _OVERVIEW_DETAIL_LABELS[metric],
+        "definition": _OVERVIEW_DETAIL_DEFINITIONS[metric],
+        "scope": "current" if metric in _CURRENT_OVERVIEW_DETAIL_METRICS else "period",
+        "period": _period_metadata(period_key, period_days, period_label, period_start),
+        "total": total,
+        "items": rows[:100],
+        "truncated": max(total - 100, 0),
+    })
 
 
 @router.get("/api/ops-admin/user-leaderboard", response_model=ApiResponse[dict])
@@ -363,7 +1204,7 @@ async def preview_group_upload_file(
 ):
     _verify_admin_token(x_admin_token)
     try:
-        content = await file.read()
+        content = await read_upload_with_limit(file, 5 * 1024 * 1024, "群上传预览文件不能超过5MB")
         return ApiResponse(data=store.preview_group_upload_file(file.filename or "", content))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -570,7 +1411,7 @@ async def create_group_upload_batch_from_file(
 ):
     _verify_admin_token(x_admin_token)
     try:
-        content = await file.read()
+        content = await read_upload_with_limit(file, 5 * 1024 * 1024, "群上传文件不能超过5MB")
         return ApiResponse(data=store.create_group_upload_batch_from_file(file.filename or "", content, batchName, operatorName))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

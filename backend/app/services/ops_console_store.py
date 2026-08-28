@@ -3,14 +3,24 @@ from __future__ import annotations
 import csv
 import io
 import json
+import logging
+from contextlib import contextmanager
 from pathlib import Path
+from threading import RLock
 from zipfile import ZipFile
 from xml.etree import ElementTree as ET
 
+import psycopg
+from psycopg_pool import ConnectionPool, PoolTimeout
 from pydantic import BaseModel, Field
+from psycopg.rows import dict_row
 
+from app.core.database import normalize_database_url
 from app.services.helpers import new_id
-from app.services.time_utils import now_iso
+from app.services.time_utils import now_iso, parse_iso
+
+
+logger = logging.getLogger(__name__)
 
 
 class GroupUploadRow(BaseModel):
@@ -129,6 +139,13 @@ class GroupBotChannel(BaseModel):
 
 
 class OpsConsoleState(BaseModel):
+    # These fields remain here only for local JSON compatibility and the
+    # one-time PostgreSQL seed.  The production source of truth is
+    # ops_feature_flags, not this mixed operational-state document.
+    customerInfoChainEnabled: bool = False
+    customerInfoChainPaymentRequired: bool = True
+    customerInfoChainUpdatedAt: str | None = None
+    customerInfoChainUpdatedBy: str | None = None
     singleGroupResources: list[SingleGroupResource] = Field(default_factory=list)
     groupUploadBatches: list[GroupUploadBatch] = Field(default_factory=list)
     feedbackTickets: list[FeedbackTicket] = Field(default_factory=list)
@@ -138,14 +155,66 @@ class OpsConsoleState(BaseModel):
 
 
 class OpsConsoleStore:
-    def __init__(self, file_path: Path):
+    CUSTOMER_INFO_CHAIN_KEY = "customer_info_chain"
+
+    def __init__(
+        self,
+        file_path: Path,
+        *,
+        default_customer_info_chain_enabled: bool = False,
+        default_customer_info_chain_payment_required: bool = True,
+        database_url: str | None = None,
+    ):
         self.file_path = file_path
+        self.default_customer_info_chain_enabled = bool(default_customer_info_chain_enabled)
+        self.default_customer_info_chain_payment_required = bool(default_customer_info_chain_payment_required)
+        self.database_url = normalize_database_url(database_url) if database_url else ""
+        self._pool: ConnectionPool | None = None
+        self._pool_lock = RLock()
         self.file_path.parent.mkdir(parents=True, exist_ok=True)
+
+    def _get_postgres_pool(self) -> ConnectionPool:
+        if not self.database_url:
+            raise RuntimeError("PostgreSQL 未配置")
+        with self._pool_lock:
+            if self._pool is None:
+                self._pool = ConnectionPool(
+                    self.database_url,
+                    min_size=1,
+                    max_size=4,
+                    timeout=5,
+                    open=False,
+                )
+            if self._pool.closed:
+                self._pool.open(wait=True, timeout=5)
+            return self._pool
+
+    @contextmanager
+    def _postgres_connection(self):
+        pool = self._get_postgres_pool()
+        with pool.connection() as conn:
+            conn.row_factory = dict_row
+            try:
+                yield conn
+            finally:
+                conn.row_factory = None
+
+    def close(self) -> None:
+        with self._pool_lock:
+            if self._pool is not None and not self._pool.closed:
+                self._pool.close()
 
     def load(self) -> OpsConsoleState:
         if not self.file_path.exists():
-            return OpsConsoleState()
+            return OpsConsoleState(
+                customerInfoChainEnabled=self.default_customer_info_chain_enabled,
+                customerInfoChainPaymentRequired=self.default_customer_info_chain_payment_required,
+            )
         payload = json.loads(self.file_path.read_text(encoding="utf-8") or "{}")
+        if "customerInfoChainEnabled" not in payload:
+            payload["customerInfoChainEnabled"] = self.default_customer_info_chain_enabled
+        if "customerInfoChainPaymentRequired" not in payload:
+            payload["customerInfoChainPaymentRequired"] = self.default_customer_info_chain_payment_required
         return OpsConsoleState.model_validate(payload)
 
     def save(self, state: OpsConsoleState) -> None:
@@ -153,6 +222,261 @@ class OpsConsoleStore:
             json.dumps(state.model_dump(mode="json"), ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
+
+    def get_customer_info_chain_config(self) -> dict:
+        if self.database_url:
+            try:
+                return self._get_postgres_customer_info_chain_config()
+            except (OSError, RuntimeError, TypeError, ValueError, PoolTimeout, psycopg.Error):
+                # This is a feature gate.  If its durable source cannot be
+                # read, fail closed and tell the operator that the state is
+                # unavailable instead of presenting a false "已关闭" state.
+                logger.exception("failed to read customer information chain configuration")
+                return self._unavailable_customer_info_chain_config()
+        state = self.load()
+        return {
+            "enabled": bool(state.customerInfoChainEnabled),
+            "paymentRequired": bool(state.customerInfoChainPaymentRequired),
+            "updatedAt": state.customerInfoChainUpdatedAt,
+            "updatedBy": state.customerInfoChainUpdatedBy,
+        }
+
+    def set_customer_info_chain_config(
+        self,
+        enabled: bool | None = None,
+        payment_required: bool | None = None,
+        operator_name: str | None = None,
+    ) -> dict:
+        if self.database_url:
+            return self._set_postgres_customer_info_chain_config(
+                enabled=enabled,
+                payment_required=payment_required,
+                operator_name=operator_name,
+            )
+        state = self.load()
+        if enabled is not None:
+            state.customerInfoChainEnabled = bool(enabled)
+        if payment_required is not None:
+            state.customerInfoChainPaymentRequired = bool(payment_required)
+        state.customerInfoChainUpdatedAt = now_iso()
+        state.customerInfoChainUpdatedBy = (operator_name or "ops").strip() or "ops"
+        self.save(state)
+        return self.get_customer_info_chain_config()
+
+    def set_customer_info_chain_enabled(self, enabled: bool, operator_name: str | None = None) -> dict:
+        return self.set_customer_info_chain_config(enabled=enabled, operator_name=operator_name)
+
+    def _read_legacy_customer_info_chain_config(self) -> dict | None:
+        """Read only the two legacy feature fields for the one-time DB seed.
+
+        The rest of ops-console-state.json remains file-backed.  Parsing this
+        small subset separately means a malformed unrelated operator record
+        cannot prevent the feature flag from being migrated or read.
+        """
+        defaults = {
+            "enabled": self.default_customer_info_chain_enabled,
+            "paymentRequired": self.default_customer_info_chain_payment_required,
+            "updatedAt": None,
+            "updatedBy": None,
+        }
+        try:
+            if not self.file_path.exists():
+                return None
+            payload = json.loads(self.file_path.read_text(encoding="utf-8") or "{}")
+            if not isinstance(payload, dict):
+                return None
+        except (OSError, TypeError, ValueError):
+            return None
+
+        updated_at = None
+        raw_updated_at = payload.get("customerInfoChainUpdatedAt")
+        if raw_updated_at:
+            try:
+                updated_at = parse_iso(str(raw_updated_at)).isoformat()
+            except (TypeError, ValueError):
+                updated_at = None
+        return {
+            "enabled": self._coerce_feature_flag(payload.get("customerInfoChainEnabled"), defaults["enabled"]),
+            "paymentRequired": self._coerce_feature_flag(
+                payload.get("customerInfoChainPaymentRequired"),
+                defaults["paymentRequired"],
+            ),
+            "updatedAt": updated_at,
+            "updatedBy": self._clean_operator(payload.get("customerInfoChainUpdatedBy")),
+        }
+
+    @staticmethod
+    def _clean_operator(operator_name: object) -> str:
+        value = str(operator_name or "ops").strip() or "ops"
+        return value[:80]
+
+    @staticmethod
+    def _coerce_feature_flag(value: object, default: bool) -> bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)) and value in {0, 1}:
+            return bool(value)
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"true", "1", "yes", "on"}:
+                return True
+            if normalized in {"false", "0", "no", "off"}:
+                return False
+        return bool(default)
+
+    @staticmethod
+    def _serialize_timestamp(value: object) -> str | None:
+        if value is None:
+            return None
+        return value.isoformat() if hasattr(value, "isoformat") else str(value)
+
+    @classmethod
+    def _feature_row_to_payload(cls, row: dict) -> dict:
+        return {
+            "enabled": bool(row["enabled"]),
+            "paymentRequired": bool(row["payment_required"]),
+            "updatedAt": cls._serialize_timestamp(row.get("updated_at")),
+            "updatedBy": row.get("updated_by"),
+        }
+
+    @staticmethod
+    def _unavailable_customer_info_chain_config() -> dict:
+        return {
+            "enabled": False,
+            "paymentRequired": True,
+            "updatedAt": None,
+            "updatedBy": None,
+            "available": False,
+        }
+
+    def _ensure_postgres_customer_info_chain_row(
+        self,
+        conn,
+        *,
+        allow_missing_legacy: bool = False,
+        seed_overrides: dict | None = None,
+    ) -> dict:
+        existing = conn.execute(
+            """
+            select key, enabled, payment_required, updated_at, updated_by
+            from ops_feature_flags
+            where key = %s
+            """,
+            (self.CUSTOMER_INFO_CHAIN_KEY,),
+        ).fetchone()
+        if existing:
+            return existing
+        legacy = self._read_legacy_customer_info_chain_config()
+        if legacy is None:
+            if not allow_missing_legacy:
+                raise RuntimeError("customer information chain configuration migration is required")
+            legacy = {
+                "enabled": self.default_customer_info_chain_enabled,
+                "paymentRequired": self.default_customer_info_chain_payment_required,
+                "updatedAt": None,
+                "updatedBy": None,
+            }
+        if seed_overrides:
+            if seed_overrides.get("enabled") is not None:
+                legacy["enabled"] = bool(seed_overrides["enabled"])
+            if seed_overrides.get("paymentRequired") is not None:
+                legacy["paymentRequired"] = bool(seed_overrides["paymentRequired"])
+            if seed_overrides.get("updatedBy"):
+                legacy["updatedBy"] = self._clean_operator(seed_overrides["updatedBy"])
+        conn.execute(
+            """
+            insert into ops_feature_flags
+                (key, enabled, payment_required, updated_at, updated_by)
+            values (%s, %s, %s, coalesce(%s::timestamptz, now()), %s)
+            on conflict (key) do nothing
+            """,
+            (
+                self.CUSTOMER_INFO_CHAIN_KEY,
+                legacy["enabled"],
+                legacy["paymentRequired"],
+                legacy["updatedAt"],
+                legacy["updatedBy"],
+            ),
+        )
+        row = conn.execute(
+            """
+            select key, enabled, payment_required, updated_at, updated_by
+            from ops_feature_flags
+            where key = %s
+            """,
+            (self.CUSTOMER_INFO_CHAIN_KEY,),
+        ).fetchone()
+        if not row:
+            raise RuntimeError("customer information chain configuration row was not created")
+        return row
+
+    def _get_postgres_customer_info_chain_config(self) -> dict:
+        with self._postgres_connection() as conn:
+            with conn.transaction():
+                row = self._ensure_postgres_customer_info_chain_row(conn)
+        return self._feature_row_to_payload(row)
+
+    def _set_postgres_customer_info_chain_config(
+        self,
+        *,
+        enabled: bool | None,
+        payment_required: bool | None,
+        operator_name: str | None,
+    ) -> dict:
+        try:
+            with self._postgres_connection() as conn:
+                with conn.transaction():
+                    self._ensure_postgres_customer_info_chain_row(
+                        conn,
+                        allow_missing_legacy=True,
+                        seed_overrides={
+                            "enabled": enabled,
+                            "paymentRequired": payment_required,
+                            "updatedBy": operator_name,
+                        },
+                    )
+                    current = conn.execute(
+                        """
+                        select enabled, payment_required
+                        from ops_feature_flags
+                        where key = %s
+                        for update
+                        """,
+                        (self.CUSTOMER_INFO_CHAIN_KEY,),
+                    ).fetchone()
+                    if not current:
+                        raise RuntimeError("customer information chain configuration row disappeared")
+                    next_enabled = bool(current["enabled"]) if enabled is None else bool(enabled)
+                    next_payment_required = (
+                        bool(current["payment_required"])
+                        if payment_required is None
+                        else bool(payment_required)
+                    )
+                    updated_by = self._clean_operator(operator_name)
+                    row = conn.execute(
+                        """
+                        update ops_feature_flags
+                        set enabled = %s,
+                            payment_required = %s,
+                            updated_at = %s::timestamptz,
+                            updated_by = %s
+                        where key = %s
+                        returning key, enabled, payment_required, updated_at, updated_by
+                        """,
+                        (
+                            next_enabled,
+                            next_payment_required,
+                            now_iso(),
+                            updated_by,
+                            self.CUSTOMER_INFO_CHAIN_KEY,
+                        ),
+                    ).fetchone()
+                    if not row:
+                        raise RuntimeError("customer information chain configuration update failed")
+            return self._feature_row_to_payload(row)
+        except (OSError, RuntimeError, TypeError, ValueError, psycopg.Error):
+            logger.exception("failed to update customer information chain configuration")
+            raise
 
     def preview_group_upload(self, raw_text: str) -> dict:
         rows = self._parse_group_upload_rows(raw_text)

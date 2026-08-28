@@ -61,6 +61,45 @@
       .nav button.active {
         background: rgba(255,255,255,0.14);
       }
+      .nav-group {
+        display: grid;
+        gap: 6px;
+      }
+      .nav-group-toggle {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        width: 100%;
+        font-weight: 600;
+      }
+      .nav-chevron {
+        font-size: 16px;
+        opacity: 0.65;
+        transition: transform 160ms ease;
+      }
+      .nav-group.expanded .nav-chevron {
+        transform: rotate(180deg);
+      }
+      .nav-group.active > .nav-group-toggle {
+        background: rgba(255,255,255,0.14);
+      }
+      .nav-group-items {
+        display: none;
+        gap: 5px;
+        padding-left: 10px;
+        border-left: 1px solid rgba(148,163,184,0.32);
+      }
+      .nav-group.expanded .nav-group-items {
+        display: grid;
+      }
+      .nav-group-items button {
+        padding: 9px 11px;
+        font-size: 13px;
+        background: rgba(255,255,255,0.045);
+      }
+      .nav-group-items button.active {
+        background: rgba(255,255,255,0.18);
+      }
       .main {
         padding: 24px;
       }
@@ -77,6 +116,11 @@
         padding: 16px 18px;
         margin-bottom: 18px;
       }
+      .toolbar-right {
+        display: grid;
+        gap: 10px;
+        justify-items: end;
+      }
       .toolbar-left h1 {
         font-size: 24px;
         margin: 0 0 6px;
@@ -90,6 +134,34 @@
         display: flex;
         gap: 8px;
         align-items: center;
+      }
+      .period-switch {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #f8fafc;
+      }
+      .period-switch button {
+        border: 0;
+        border-radius: 7px;
+        padding: 7px 13px;
+        background: transparent;
+        color: var(--sub);
+        font: inherit;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .period-switch button.active {
+        background: #fff;
+        color: #1769d2;
+        box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
+        font-weight: 700;
+      }
+      .period-switch button:disabled {
+        cursor: wait;
       }
       input, textarea, select {
         width: 100%;
@@ -118,6 +190,147 @@
         background: #eef2f7;
         color: var(--text);
       }
+      button:disabled {
+        opacity: 0.58;
+        cursor: wait;
+      }
+      .automation-review-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .automation-review-btn {
+        min-width: 86px;
+        padding: 8px 10px !important;
+        border: 1px solid transparent !important;
+        white-space: nowrap;
+      }
+      .automation-review-btn.allow {
+        border-color: #b7e2c8 !important;
+        background: var(--brand-soft);
+        color: var(--brand);
+      }
+      .automation-review-btn.deny {
+        border-color: #f3c5b8 !important;
+        background: #fff3ef;
+        color: #b54732;
+      }
+      .automation-review-btn.active {
+        box-shadow: inset 0 0 0 1px currentColor;
+        font-weight: 700;
+      }
+      .automation-profile-editor {
+        display: grid;
+        grid-template-columns: 102px 108px minmax(150px, 1fr) 102px;
+        gap: 6px;
+        margin-top: 8px;
+        max-width: 440px;
+      }
+      .automation-profile-editor input,
+      .automation-profile-editor select {
+        min-width: 0;
+        padding: 7px 8px;
+        border-radius: 8px;
+        font-size: 12px;
+      }
+      .automation-profile-meta {
+        margin-top: 6px;
+        white-space: normal;
+      }
+      .automation-profile-cell {
+        min-width: 450px;
+        white-space: normal;
+      }
+      .automation-account-label {
+        color: var(--sub);
+        font-size: 12px;
+        margin-top: 3px;
+      }
+      .automation-eligibility {
+        display: inline-flex;
+        align-items: center;
+        max-width: 220px;
+        white-space: normal;
+        line-height: 1.4;
+        text-align: left;
+      }
+      .automation-row-actions {
+        display: grid;
+        gap: 8px;
+      }
+      .automation-profile-save-btn {
+        padding: 8px 10px !important;
+        white-space: nowrap;
+      }
+      .automation-account-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+      }
+      .automation-account-picker {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-width: 280px;
+        color: var(--sub);
+        font-size: 13px;
+      }
+      .automation-account-picker select {
+        flex: 1;
+        min-width: 180px;
+      }
+      .automation-pagination {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding-top: 14px;
+      }
+      .automation-pagination-actions {
+        display: flex;
+        gap: 8px;
+      }
+      .automation-pagination-actions button {
+        min-width: 76px;
+        padding: 8px 12px;
+      }
+      .automation-marketing-panel {
+        margin-bottom: 16px;
+      }
+      .automation-marketing-form {
+        display: grid;
+        grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.2fr) minmax(180px, .8fr) auto;
+        gap: 12px;
+        align-items: end;
+      }
+      .automation-marketing-field {
+        display: grid;
+        gap: 6px;
+        min-width: 0;
+        color: var(--sub);
+        font-size: 13px;
+      }
+      .automation-marketing-field select {
+        min-width: 0;
+      }
+      .automation-marketing-status {
+        margin-top: 12px;
+        padding: 10px 12px;
+        border-radius: 10px;
+        background: #f5f8fc;
+        color: var(--sub);
+        font-size: 13px;
+        line-height: 1.5;
+      }
+      .automation-marketing-status.is-blocked {
+        background: #fff6ed;
+        color: #a24b1e;
+      }
+      .automation-marketing-status.is-ready {
+        background: #effbf4;
+        color: #177245;
+      }
       .grid {
         display: grid;
         gap: 16px;
@@ -127,6 +340,39 @@
       }
       .metric {
         padding: 18px;
+      }
+      .metric-actionable {
+        cursor: pointer;
+        transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+      }
+      .metric-actionable:hover, .metric-actionable:focus-visible {
+        border-color: #9fc6f4;
+        box-shadow: 0 8px 22px rgba(23, 105, 210, 0.08);
+        outline: none;
+        transform: translateY(-1px);
+      }
+      .metric-meta {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        min-height: 22px;
+        margin-bottom: 8px;
+      }
+      .metric-time-tag {
+        display: inline-flex;
+        align-items: center;
+        min-height: 22px;
+        padding: 2px 8px;
+        border-radius: 999px;
+        background: #eef6ff;
+        color: #1769d2;
+        font-size: 12px;
+        font-weight: 700;
+      }
+      .metric-detail-link {
+        color: var(--sub);
+        font-size: 12px;
       }
       .metric-label {
         color: var(--sub);
@@ -277,10 +523,149 @@
         gap: 10px;
         flex-wrap: wrap;
       }
+      .control-state {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 14px;
+        border-radius: 12px;
+        background: #f8fafc;
+        margin-bottom: 12px;
+      }
+      .control-state strong { font-size: 18px; }
+      .metric.compact { padding: 14px; }
+      .metric.compact .metric-value { font-size: 24px; }
+      .funnel-panel {
+        overflow: hidden;
+      }
+      .funnel-rail {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        overflow-x: auto;
+        padding: 10px 2px 14px;
+      }
+      .funnel-stage {
+        flex: 1 0 116px;
+        min-width: 116px;
+        padding: 12px 10px;
+        border: 1px solid #b8d3f5;
+        border-radius: 10px;
+        background: #fbfdff;
+        text-align: center;
+      }
+      .funnel-stage.highlight {
+        border-color: #4f9af0;
+        background: #f2f8ff;
+      }
+      .funnel-stage-label {
+        min-height: 34px;
+        color: var(--sub);
+        font-size: 12px;
+        line-height: 1.4;
+      }
+      .funnel-stage-value {
+        margin-top: 5px;
+        color: #1769d2;
+        font-size: 24px;
+        font-weight: 700;
+      }
+      .funnel-arrow {
+        flex: 0 0 auto;
+        color: #1769d2;
+        font-size: 22px;
+      }
+      .funnel-rate {
+        min-height: 18px;
+        color: var(--sub);
+        font-size: 11px;
+      }
+      .funnel-branches {
+        display: flex;
+        justify-content: center;
+        gap: 16px;
+        padding-top: 10px;
+        border-top: 1px solid #edf2f7;
+      }
+      .funnel-branch {
+        min-width: 140px;
+        padding: 10px 14px;
+        border: 1px solid #cbdcf3;
+        border-radius: 10px;
+        background: #fff;
+        text-align: center;
+      }
+      .funnel-branch-label {
+        color: var(--sub);
+        font-size: 12px;
+      }
+      .funnel-branch-value {
+        margin-top: 4px;
+        color: #1769d2;
+        font-size: 20px;
+        font-weight: 700;
+      }
+      .key-action-list {
+        display: grid;
+        gap: 6px;
+      }
+      .key-action-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 14px 0;
+        border-bottom: 1px solid #edf2f7;
+      }
+      .key-action-row:last-child { border-bottom: 0; }
+      .key-action-value {
+        font-size: 22px;
+        font-weight: 700;
+      }
+      .metric-detail-panel {
+        margin-top: 16px;
+        border-color: #b8d3f5;
+        background: #fbfdff;
+      }
+      .metric-detail-meta {
+        margin: -2px 0 14px;
+        color: var(--sub);
+        font-size: 13px;
+        line-height: 1.7;
+      }
+      .metric-detail-meta strong {
+        color: var(--text);
+      }
+      .metric-detail-table td:first-child {
+        color: var(--sub);
+        font-variant-numeric: tabular-nums;
+      }
+      .metric-detail-table td:nth-child(2) {
+        min-width: 150px;
+        font-weight: 600;
+      }
+      .metric-detail-table td:nth-child(3) {
+        min-width: 260px;
+        white-space: normal;
+        color: var(--sub);
+      }
+      .metric-detail-table td:nth-child(4) {
+        color: #1769d2;
+      }
       @media (max-width: 1100px) {
         .layout { grid-template-columns: 1fr; }
         .sidebar { display: none; }
         .metrics, .two-col, .forms, .row { grid-template-columns: 1fr; }
+        .toolbar { align-items: stretch; flex-direction: column; }
+        .toolbar-right { justify-items: stretch; }
+        .token-box { flex-wrap: wrap; }
+        .token-box input { min-width: 0; }
+        .period-switch { justify-content: space-between; }
+        .automation-account-toolbar { align-items: stretch; flex-direction: column; }
+        .automation-account-picker { width: 100%; }
+        .automation-pagination { align-items: flex-start; flex-direction: column; }
+        .automation-marketing-form { grid-template-columns: 1fr; align-items: stretch; }
       }
     </style>
   </head>
@@ -291,18 +676,48 @@
         <div class="brand-sub">先把每天真正要看的数据和动作收拢到一处。</div>
         <div class="nav">
           <button class="active" data-tab="overview">总览</button>
-          <button data-tab="users">用户排行</button>
-          <button data-tab="content">内容排行</button>
-          <button data-tab="upload">群二维码批量上传</button>
-          <button data-tab="botchannels">群发渠道映射</button>
-          <button data-tab="joinway">小程序加群配置</button>
-          <button data-tab="opportunities">商机线索</button>
-          <button data-tab="wallets">积分账本</button>
-          <button data-tab="packages">回应包记录</button>
-          <button data-tab="supplyreview">供给审核</button>
-          <button data-tab="rulesamples">规则样本池</button>
-          <button data-tab="feedback">反馈工单</button>
-          <button data-tab="queue">系统待处理</button>
+          <button data-tab="customerops">客户经营</button>
+          <div class="nav-group" data-group="analytics">
+            <button class="nav-group-toggle" type="button" aria-expanded="false">
+              <span>数据分析</span><span class="nav-chevron">⌄</span>
+            </button>
+            <div class="nav-group-items">
+              <button data-tab="users">用户排行</button>
+              <button data-tab="content">内容排行</button>
+            </div>
+          </div>
+          <div class="nav-group" data-group="group-operations">
+            <button class="nav-group-toggle" type="button" aria-expanded="false">
+              <span>群运营</span><span class="nav-chevron">⌄</span>
+            </button>
+            <div class="nav-group-items">
+              <button data-tab="automation">群自动化运营</button>
+              <button data-tab="upload">群二维码批量上传</button>
+              <button data-tab="botchannels">群发渠道映射</button>
+              <button data-tab="joinway">小程序加群配置</button>
+            </div>
+          </div>
+          <div class="nav-group" data-group="business-operations">
+            <button class="nav-group-toggle" type="button" aria-expanded="false">
+              <span>业务工作台</span><span class="nav-chevron">⌄</span>
+            </button>
+            <div class="nav-group-items">
+              <button data-tab="opportunities">商机线索</button>
+              <button data-tab="supplyreview">供给审核</button>
+              <button data-tab="packages">回应包记录</button>
+              <button data-tab="wallets">积分账本</button>
+            </div>
+          </div>
+          <div class="nav-group" data-group="system-feedback">
+            <button class="nav-group-toggle" type="button" aria-expanded="false">
+              <span>系统与反馈</span><span class="nav-chevron">⌄</span>
+            </button>
+            <div class="nav-group-items">
+              <button data-tab="queue">系统待处理</button>
+              <button data-tab="feedback">反馈工单</button>
+              <button data-tab="rulesamples">规则样本池</button>
+            </div>
+          </div>
         </div>
       </aside>
       <main class="main">
@@ -311,19 +726,67 @@
             <h1>teamBuy PC 运营后台</h1>
             <p>日报、排行、运营台。先跑起来，再慢慢长肌肉。</p>
           </div>
-          <div class="token-box">
-            <input id="adminToken" placeholder="输入管理员 Token" />
-            <button class="secondary" id="saveTokenBtn">保存</button>
-            <button class="primary" id="refreshBtn">刷新</button>
+          <div class="toolbar-right">
+            <div class="period-switch" id="overviewPeriodSwitch" aria-label="总览时间范围">
+              <button type="button" data-period="today" class="active">今日</button>
+              <button type="button" data-period="7d">近 7 日</button>
+              <button type="button" data-period="30d">近 30 日</button>
+            </div>
+            <div class="token-box">
+              <input id="adminToken" placeholder="输入管理员 Token" />
+              <button class="secondary" id="saveTokenBtn">保存</button>
+              <button class="primary" id="refreshBtn">刷新</button>
+            </div>
           </div>
         </div>
 
         <section id="tab-overview" class="tab-panel">
+          <div class="section-head" style="margin-bottom: 12px;">
+            <div>
+              <strong id="overviewPeriodTitle">今日数据</strong>
+              <span class="subtle" id="overviewPeriodHint" style="margin-left: 8px;">创建、发布、分享和客户信号均按当前范围统计</span>
+            </div>
+          </div>
           <div class="grid metrics" id="metricCards"></div>
+          <div class="panel metric-detail-panel hidden" id="metricDetailPanel">
+            <div class="section-head">
+              <div>
+                <h2 id="metricDetailTitle">数据详情</h2>
+                <div class="metric-detail-meta" id="metricDetailMeta"></div>
+              </div>
+              <button class="secondary" id="closeMetricDetailBtn" type="button">收起详情</button>
+            </div>
+            <div class="table-wrap">
+              <table class="metric-detail-table">
+                <thead>
+                  <tr><th>时间</th><th>对象</th><th>具体数据</th><th>状态/数值</th></tr>
+                </thead>
+                <tbody id="metricDetailBody"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="grid two-col" style="margin-top: 16px;">
+            <div class="panel funnel-panel">
+              <div class="section-head">
+                <h2>核心运营漏斗</h2>
+                <span class="subtle" id="funnelPeriodLabel">今日</span>
+              </div>
+              <div id="funnelRail" class="funnel-rail"></div>
+              <div id="funnelBranches" class="funnel-branches"></div>
+              <div id="funnelNote" class="tip" style="margin-top: 12px;"></div>
+            </div>
+            <div class="panel">
+              <div class="section-head">
+                <h2>关键动作</h2>
+                <span class="subtle" id="keyActionPeriodLabel">今日</span>
+              </div>
+              <div id="keyActionList" class="key-action-list"></div>
+            </div>
+          </div>
           <div class="grid two-col" style="margin-top: 16px;">
             <div class="panel">
               <div class="section-head">
-                <h2>近 7 日趋势</h2>
+                <h2 id="trendTitle">今日趋势</h2>
                 <span class="subtle">注册、资料、合集、动作、打开</span>
               </div>
               <div class="trend-list" id="trendList"></div>
@@ -331,12 +794,81 @@
             <div class="panel">
               <div class="section-head">
                 <h2>重点提醒</h2>
-                <span class="subtle">今天优先看的事</span>
+                <span class="subtle">当前待处理状态</span>
               </div>
               <div class="queue-list" id="queueSummary"></div>
               <div style="height: 14px;"></div>
               <h2 style="font-size:16px;">资源状态</h2>
               <div class="status-list" id="resourceStatus"></div>
+            </div>
+          </div>
+        </section>
+
+        <section id="tab-customerops" class="tab-panel hidden">
+          <div class="grid two-col">
+            <div class="panel">
+              <div class="section-head">
+                <h2>客户信息链开关</h2>
+                <span class="subtle">服务端最终裁决</span>
+              </div>
+              <div id="customerFeatureState"></div>
+              <div class="inline-actions">
+                <button class="primary" id="toggleCustomerFeatureBtn">读取中</button>
+                <button class="secondary" id="toggleCustomerPaymentBtn">读取中</button>
+                <button class="secondary" id="refreshCustomerOperationsBtn">刷新数据</button>
+              </div>
+              <div class="row" style="margin-top: 12px;">
+                <input id="customerFeatureOperator" placeholder="操作人，例如：admin" value="ops" />
+              </div>
+              <div class="tip" style="margin-top: 12px;">关闭客户信息链后，小程序不展示客户信号、会员入口，也不能创建或发起会员订单；不会删除资料、客户历史记录，也不会影响已完成的普通微信支付回调。关闭会员支付后，客户信息链直接开放查看，不创建会员订单。</div>
+            </div>
+            <div class="panel">
+              <div class="section-head">
+                <h2>会员与订单</h2>
+                <span class="subtle">当前支付通道：普通微信支付</span>
+              </div>
+              <div class="grid metrics" id="customerPaymentMetrics"></div>
+              <div class="subtle" style="margin-top: 12px;">仅统计已落库订单和权益，不接入虚拟支付。</div>
+            </div>
+          </div>
+          <div class="panel" style="margin-top: 16px;">
+            <div class="section-head">
+              <h2>企业微信绑定卡片</h2>
+              <span class="subtle">服务端自动上传并刷新封面素材</span>
+            </div>
+            <div id="wecomBindCardAssetState" class="control-state">
+              <div><div class="subtle">当前状态</div><strong>读取中</strong></div>
+              <span class="badge">读取中</span>
+            </div>
+            <div class="subtle" id="wecomBindCardAssetMeta" style="margin-top: 10px;">绑定卡片会使用固定封面图，点击后进入一次性绑定页面。封面图不是分享图，也不会包含客户资料。</div>
+            <div class="inline-actions" style="margin-top: 12px;">
+              <input id="wecomBindCardFile" type="file" accept="image/png,image/jpeg,image/webp" style="max-width: 360px;" />
+              <button class="primary" id="uploadWecomBindCardBtn">上传并启用</button>
+              <button class="secondary" id="refreshWecomBindCardBtn">立即刷新素材</button>
+            </div>
+          </div>
+          <div class="grid metrics" id="customerSignalMetrics" style="margin-top: 16px;"></div>
+          <div class="grid two-col" style="margin-top: 16px;">
+            <div class="panel">
+              <div class="section-head">
+                <h2>待跟进客户</h2>
+                <span class="subtle">只展示运营所需摘要，不展示手机号/微信号</span>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr><th>客户</th><th>意向</th><th>浏览</th><th>状态</th><th>下次跟进</th><th>更新时间</th></tr>
+                  </thead>
+                  <tbody id="customerFollowUpTable"></tbody>
+                </table>
+              </div>
+            </div>
+            <div class="panel">
+              <div class="section-head">
+                <h2>运营健康</h2>
+                <span class="subtle">支付、订阅、归档、媒体</span>
+              </div>
+              <div class="queue-list" id="customerHealthList"></div>
             </div>
           </div>
         </section>
@@ -410,6 +942,104 @@
                 </table>
               </div>
             </div>
+          </div>
+        </section>
+
+        <section id="tab-automation" class="tab-panel hidden">
+          <div class="panel" style="margin-bottom: 16px;">
+            <div class="section-head">
+              <h2>群自动化运营</h2>
+              <span class="subtle">原生微信群发现、入库与人工审核</span>
+            </div>
+            <div class="tip">安卓设备只负责读取两个微信实例并提交候选群；本页只负责查看和审核，不会自动发消息。管理员许可只表示允许进入营销策略，不代表当前可以发送。群是否仍在群内、近三天是否活跃、主题和地域是否匹配，需要通过后续群状态检查和卡片策略共同判断。</div>
+            <div class="automation-account-toolbar" style="margin-top: 12px;">
+              <label class="automation-account-picker">
+                <span>查看微信账号</span>
+                <select id="automationAccountFilter">
+                  <option value="">全部微信账号</option>
+                </select>
+              </label>
+              <span class="subtle">本页直接使用顶部管理员 Token；账号名称来自微信“我”页昵称。</span>
+            </div>
+            <div class="inline-actions" style="margin-top: 12px;">
+              <button class="primary" id="refreshAutomationBtn">刷新设备与群库</button>
+              <span class="subtle" id="automationAuthState">尚未读取自动化数据</span>
+            </div>
+          </div>
+
+          <div class="grid metrics" id="automationMetrics" style="margin-bottom: 16px;"></div>
+
+          <div class="panel" style="margin-bottom: 16px;">
+            <div class="section-head">
+              <h2>自动化设备</h2>
+              <span class="subtle">最近心跳与当前账号</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>设备</th><th>状态</th><th>当前微信</th><th>最近心跳</th></tr></thead>
+                <tbody id="automationDeviceTable"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="panel automation-marketing-panel">
+            <div class="section-head">
+              <div>
+                <h2>单群单卡测试</h2>
+                <span class="subtle">选择一个群和一张已发布资料卡</span>
+              </div>
+              <span class="subtle">只创建待执行任务，不会直接发消息</span>
+            </div>
+            <div class="tip">资料正文和分享图来自小程序；微信群营销主题、地域和内容类型只在 PC 运营端配置。这里负责把卡片关联到一个群，后端会再次校验群状态、允许进入策略、内容匹配和当前分享图版本。</div>
+            <div class="automation-marketing-form" style="margin-top: 14px;">
+              <label class="automation-marketing-field">
+                <span>营销资料卡</span>
+                <select id="automationMarketingCardSelect"><option value="">暂无已发布资料卡</option></select>
+              </label>
+              <label class="automation-marketing-field">
+                <span>卡片主题（PC 配置）</span>
+                <select id="automationMarketingCardTopic" disabled>
+                  <option value="">先选择资料卡</option>
+                </select>
+              </label>
+              <label class="automation-marketing-field">
+                <span>卡片地域（PC 配置）</span>
+                <input id="automationMarketingCardRegion" placeholder="例如：佛山" disabled />
+              </label>
+              <label class="automation-marketing-field">
+                <span>卡片内容（PC 配置）</span>
+                <select id="automationMarketingCardContentType" disabled>
+                  <option value="">先选择资料卡</option>
+                </select>
+              </label>
+              <button class="secondary" id="saveAutomationMarketingRouteBtn" type="button" disabled>保存卡片路由</button>
+              <label class="automation-marketing-field">
+                <span>目标微信群</span>
+                <select id="automationMarketingGroupSelect"><option value="">暂无群记录</option></select>
+              </label>
+              <label class="automation-marketing-field">
+                <span>执行设备</span>
+                <select id="automationMarketingDeviceSelect"><option value="">暂无设备</option></select>
+              </label>
+              <button class="primary" id="createAutomationMarketingTaskBtn" type="button">创建测试任务</button>
+            </div>
+            <div id="automationMarketingStatus" class="automation-marketing-status">先刷新设备、群库和资料卡。</div>
+          </div>
+
+          <div class="panel">
+            <div class="section-head">
+              <h2>微信群库</h2>
+              <span class="subtle">来源、账号和幂等记录均由设备回传；审核直接在每行操作</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr><th>群名称与画像</th><th>来源</th><th>管理员许可</th><th>当前发送资格</th><th>备注</th><th>最近发现</th><th>操作</th></tr>
+                </thead>
+                <tbody id="automationCandidateTable"></tbody>
+              </table>
+            </div>
+            <div id="automationCandidatePagination" class="automation-pagination" aria-label="微信群库分页"></div>
           </div>
         </section>
 
@@ -1125,6 +1755,7 @@
 
     <script>
       const state = {
+        overviewPeriod: "today",
         uploadPreview: null,
         opportunityLeads: [],
         opportunityDashboard: null,
@@ -1136,6 +1767,12 @@
         joinWayItems: [],
         customerGroups: [],
         botChannels: [],
+        automationCandidates: [],
+        automationDevices: [],
+        automationMarketingCards: [],
+        automationMarketingTasks: [],
+        automationCandidatePage: 1,
+        automationCandidatePageSize: 10,
         singleQrImageData: "",
         selectedPurposes: ["找同行"],
         batchFile: null
@@ -1172,47 +1809,206 @@
         return payload.data;
       }
 
+      async function requestAutomation(url, options = {}) {
+        const token = getToken();
+        if (!token) throw new Error("请先输入管理员 Token");
+        const headers = {
+          "Content-Type": "application/json",
+          "X-Admin-Token": token,
+          ...(options.headers || {})
+        };
+        const response = await fetch(apiUrl(url), { ...options, headers });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.detail || payload.message || "自动化接口请求失败");
+        return payload.data;
+      }
+
       function formatDate(value) {
         return value ? value.replace("T", " ").slice(0, 16) : "-";
       }
 
+      function formatFen(value) {
+        return `¥${(Number(value || 0) / 100).toFixed(2)}`;
+      }
+
+      function escapeHtml(value) {
+        return String(value ?? "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#39;");
+      }
+
       function setActiveTab(tab) {
-        document.querySelectorAll(".nav button").forEach((button) => {
+        document.querySelectorAll(".nav button[data-tab]").forEach((button) => {
           button.classList.toggle("active", button.dataset.tab === tab);
+        });
+        const targetButton = document.querySelector(`.nav button[data-tab="${tab}"]`);
+        const targetGroup = targetButton?.closest(".nav-group") || null;
+        document.querySelectorAll(".nav-group").forEach((group) => {
+          const active = group === targetGroup;
+          group.classList.toggle("active", active);
+          group.classList.toggle("expanded", active);
+          group.querySelector(".nav-group-toggle")?.setAttribute("aria-expanded", String(active));
         });
         document.querySelectorAll(".tab-panel").forEach((panel) => panel.classList.add("hidden"));
         document.getElementById(`tab-${tab}`).classList.remove("hidden");
       }
 
+      function toggleNavGroup(group) {
+        const expanded = group.classList.contains("expanded");
+        document.querySelectorAll(".nav-group").forEach((item) => {
+          const active = item === group && !expanded;
+          item.classList.toggle("expanded", active);
+          item.querySelector(".nav-group-toggle")?.setAttribute("aria-expanded", String(active));
+        });
+      }
+
       function renderMetrics(summary = {}) {
+        const periodLabel = summary.periodLabel || "今日";
         const items = [
-          ["今日新增用户", summary.todayNewUsers || 0],
-          ["今日新增资料", summary.todayNewNotes || 0],
-          ["今日新增合集", summary.todayNewShowcases || 0],
-          ["今日客户动作", summary.todayCustomerActions || 0],
-          ["今日展示页打开", summary.todayShowcaseViews || 0],
-          ["今日导入通知", summary.todayNotifications || 0],
-          ["待发送通知", summary.pendingNotifications || 0],
-          ["待处理异常", summary.pendingIssues || 0]
+          { key: "anonymousVisitors", label: "匿名独立访客", value: summary.periodAnonymousUniqueVisitors || 0, scope: "period" },
+          { key: "newUsers", label: "新增用户", value: summary.periodNewUsers || 0, scope: "period" },
+          { key: "newNotes", label: "新增资料", value: summary.periodNewNotes || 0, scope: "period" },
+          { key: "updatedNotes", label: "资料更新", value: summary.periodUpdatedNotes || 0, scope: "period" },
+          { key: "newShowcases", label: "新增合集", value: summary.periodNewShowcases || 0, scope: "period" },
+          { key: "customerActions", label: "客户动作", value: summary.periodCustomerActions || 0, scope: "period" },
+          { key: "showcaseViews", label: "展示页打开", value: summary.periodShowcaseViews || 0, scope: "period" },
+          { key: "notifications", label: "导入通知", value: summary.periodNotifications || 0, scope: "period" },
+          { key: "highIntentActions", label: "高意向动作", value: summary.periodHighIntentActions || 0, scope: "period" },
+          { key: "pendingNotifications", label: "待发送通知", value: summary.pendingNotifications || 0, scope: "current" },
+          { key: "pendingIssues", label: "待处理异常", value: summary.pendingIssues || 0, scope: "current" },
+          { key: "pendingFollowUps", label: "待跟进客户", value: summary.pendingFollowUps || 0, scope: "current" },
+          { key: "activeMemberships", label: "有效会员", value: summary.activeMemberships || 0, scope: "current" },
+          { key: "paidRevenue", label: "微信支付收入", value: formatFen(summary.periodPaidRevenueFen), scope: "period" }
         ];
-        document.getElementById("metricCards").innerHTML = items.map(([label, value]) => `
-          <div class="metric">
-            <div class="metric-label">${label}</div>
-            <div class="metric-value">${value}</div>
+        document.getElementById("metricCards").innerHTML = items.map((item) => `
+          <div class="metric metric-actionable" role="button" tabindex="0" data-metric="${item.key}" aria-label="查看${item.scope === "current" ? "当前" : periodLabel}${item.label}详情">
+            <div class="metric-meta">
+              <span class="metric-time-tag">${item.scope === "current" ? "当前" : periodLabel}</span>
+              <span class="metric-detail-link">查看详情 →</span>
+            </div>
+            <div class="metric-label">${item.label}</div>
+            <div class="metric-value">${item.value}</div>
           </div>
         `).join("");
       }
 
-      function renderTrend(items = []) {
+      function closeMetricDetail() {
+        state.metricDetailRequest = (state.metricDetailRequest || 0) + 1;
+        document.getElementById("metricDetailPanel").classList.add("hidden");
+      }
+
+      function renderMetricDetail(data = {}) {
+        const panel = document.getElementById("metricDetailPanel");
+        const period = data.period || {};
+        const scopeLabel = data.scope === "current" ? "当前实时快照" : `统计区间：${period.rangeLabel || period.label || "当前范围"}`;
+        const truncated = Number(data.truncated || 0);
+        document.getElementById("metricDetailTitle").textContent = `${data.label || "数据"}详情`;
+        document.getElementById("metricDetailMeta").innerHTML = `${scopeLabel} · <strong>共 ${Number(data.total || 0)} 条</strong> · 口径：${escapeHtml(data.definition || "按服务端实际落库记录统计")}${truncated ? ` · 仅展示前 100 条，另有 ${truncated} 条未展开` : ""}`;
+        document.getElementById("metricDetailBody").innerHTML = (data.items || []).map((item) => `
+          <tr>
+            <td>${escapeHtml(formatDate(item.time))}</td>
+            <td>${escapeHtml(item.title || "-")}</td>
+            <td>${escapeHtml(item.detail || "-")}</td>
+            <td>${escapeHtml(item.status || "-")}</td>
+          </tr>
+        `).join("") || '<tr><td colspan="4" class="subtle">该时间范围没有明细记录</td></tr>';
+        panel.classList.remove("hidden");
+      }
+
+      async function openMetricDetail(metric) {
+        const panel = document.getElementById("metricDetailPanel");
+        const requestId = (state.metricDetailRequest || 0) + 1;
+        state.metricDetailRequest = requestId;
+        panel.classList.remove("hidden");
+        document.getElementById("metricDetailTitle").textContent = "正在读取数据详情";
+        document.getElementById("metricDetailMeta").textContent = "按当前时间范围读取服务端明细……";
+        document.getElementById("metricDetailBody").innerHTML = '<tr><td colspan="4" class="subtle">正在读取……</td></tr>';
+        panel.scrollIntoView({ behavior: "smooth", block: "start" });
+        try {
+          const data = await request(`/api/ops-admin/overview-detail?metric=${encodeURIComponent(metric)}&period=${encodeURIComponent(state.overviewPeriod)}`);
+          if (requestId !== state.metricDetailRequest) return;
+          renderMetricDetail(data || {});
+        } catch (error) {
+          if (requestId !== state.metricDetailRequest) return;
+          document.getElementById("metricDetailTitle").textContent = "数据详情读取失败";
+          document.getElementById("metricDetailMeta").textContent = error.message || "请刷新后重试";
+          document.getElementById("metricDetailBody").innerHTML = '<tr><td colspan="4" class="subtle">没有拿到明细，请检查管理员 Token 后重试。</td></tr>';
+        }
+      }
+
+      function renderTrend(items = [], periodLabel = "今日") {
+        document.getElementById("trendTitle").textContent = `${periodLabel}趋势`;
         document.getElementById("trendList").innerHTML = items.map((item) => `
           <div class="trend-row">
             <div>
               <div>${item.date}</div>
               <div class="subtle">注册 ${item.users} · 资料 ${item.notes} · 合集 ${item.showcases}</div>
             </div>
-            <div class="subtle">动作 ${item.actions} · 打开 ${item.showcaseViews}</div>
+            <div class="subtle">动作 ${item.actions} · 打开 ${item.showcaseViews} · 匿名 ${item.anonymousVisitors || 0}</div>
           </div>
         `).join("") || `<div class="subtle">暂无趋势数据</div>`;
+      }
+
+      function renderFunnel(data = {}, periodLabel = "今日") {
+        const stages = data.stages || [];
+        document.getElementById("funnelPeriodLabel").textContent = periodLabel;
+        document.getElementById("funnelRail").innerHTML = stages.map((stage, index) => `
+          ${index ? '<span class="funnel-arrow" aria-hidden="true">→</span>' : ""}
+          <div class="funnel-stage ${stage.key === "firstContentUsers" ? "highlight" : ""}">
+            <div class="funnel-stage-label">${escapeHtml(stage.label)}</div>
+            <div class="funnel-stage-value">${stage.value || 0}</div>
+            <div class="funnel-rate">${stage.conversionRate == null ? "" : `${stage.conversionRate}%`}</div>
+          </div>
+        `).join("") || '<div class="subtle">暂无漏斗数据</div>';
+        document.getElementById("funnelBranches").innerHTML = (data.branches || []).map((branch) => `
+          <div class="funnel-branch">
+            <div class="funnel-branch-label">${escapeHtml(branch.label)}</div>
+            <div class="funnel-branch-value">${branch.value || 0}</div>
+          </div>
+        `).join("");
+        document.getElementById("funnelNote").textContent = data.attributionNote || "";
+      }
+
+      function renderKeyActions(summary = {}) {
+        const periodLabel = summary.periodLabel || "今日";
+        document.getElementById("keyActionPeriodLabel").textContent = periodLabel;
+        document.getElementById("keyActionList").innerHTML = [
+          [`${periodLabel}匿名查看资料`, summary.periodAnonymousUniqueVisitors || 0],
+          [`${periodLabel}客户动作`, summary.periodCustomerActions || 0],
+          [`${periodLabel}高意向动作`, summary.periodHighIntentActions || 0],
+          ["当前待跟进客户", summary.pendingFollowUps || 0]
+        ].map(([label, value]) => `
+          <div class="key-action-row">
+            <div>${escapeHtml(label)}</div>
+            <div class="key-action-value">${value}</div>
+          </div>
+        `).join("");
+      }
+
+      async function changeOverviewPeriod(period) {
+        if (!["today", "7d", "30d"].includes(period) || period === state.overviewPeriod) return;
+        const previousPeriod = state.overviewPeriod;
+        state.overviewPeriod = period;
+        closeMetricDetail();
+        const buttons = [...document.querySelectorAll("#overviewPeriodSwitch button[data-period]")];
+        buttons.forEach((button) => {
+          button.classList.toggle("active", button.dataset.period === period);
+          button.disabled = true;
+        });
+        try {
+          await Promise.all([loadOverview(), loadCustomerOperations()]);
+        } catch (error) {
+          state.overviewPeriod = previousPeriod;
+          buttons.forEach((button) => {
+            button.classList.toggle("active", button.dataset.period === previousPeriod);
+          });
+          throw error;
+        } finally {
+          buttons.forEach((button) => { button.disabled = false; });
+        }
       }
 
       function renderQueueSummary(summary = {}) {
@@ -1537,12 +2333,165 @@
         `).join("") || `<tr><td colspan="3" class="subtle">暂无失败异常</td></tr>`;
       }
 
+      function renderCustomerOperations(data = {}) {
+        const feature = data.feature || {};
+        const today = data.today || {};
+        const sevenDays = data.sevenDays || {};
+        const period = data.period || today;
+        const periodLabel = period.label || "今日";
+        const payment = data.payment || {};
+        const queues = data.queues || {};
+        const featureAvailable = feature.available !== false;
+        const stateText = !featureAvailable ? "读取失败" : (feature.enabled ? "已开启" : "已关闭");
+        const stateClass = !featureAvailable || !feature.enabled ? "warn" : "";
+        document.getElementById("customerFeatureState").innerHTML = `
+          <div class="control-state">
+            <div><div class="subtle">当前状态</div><strong>${stateText}</strong></div>
+            <span class="badge ${stateClass}">${!featureAvailable ? "暂不可判断" : (feature.enabled ? "小程序可见" : "小程序隐藏")}</span>
+          </div>
+          <div class="subtle">${featureAvailable ? `最近操作：${escapeHtml(feature.updatedBy || "系统默认")} · ${formatDate(feature.updatedAt)}` : "服务端配置读取失败，请稍后刷新或检查数据库"}</div>
+        `;
+        const toggle = document.getElementById("toggleCustomerFeatureBtn");
+        toggle.textContent = featureAvailable ? (feature.enabled ? "关闭客户信息链" : "开启客户信息链") : "配置读取失败";
+        toggle.dataset.enabled = feature.enabled ? "true" : "false";
+        toggle.disabled = !featureAvailable;
+        const paymentToggle = document.getElementById("toggleCustomerPaymentBtn");
+        paymentToggle.textContent = featureAvailable ? (feature.paymentRequired ? "隐藏会员支付" : "开启会员支付") : "配置读取失败";
+        paymentToggle.dataset.paymentRequired = feature.paymentRequired ? "true" : "false";
+        paymentToggle.disabled = !featureAvailable;
+        document.getElementById("customerPaymentMetrics").innerHTML = [
+          ["有效会员", payment.activeMemberships || 0],
+          [`${periodLabel}订单`, payment.periodOrders || payment.todayOrders || 0],
+          [`${periodLabel}已支付`, payment.periodPaidOrders || payment.todayPaidOrders || 0],
+          [`${periodLabel}收入`, formatFen(payment.periodPaidRevenueFen ?? payment.todayPaidRevenueFen)]
+        ].map(([label, value]) => `<div class="metric compact"><div class="metric-label">${label}</div><div class="metric-value">${value}</div></div>`).join("");
+        document.getElementById("customerSignalMetrics").innerHTML = [
+          [`${periodLabel}访客`, period.uniqueVisitors || 0],
+          [`${periodLabel}匿名访客`, period.anonymousUniqueVisitors || 0],
+          [`${periodLabel}重复访客`, period.repeatVisitors || 0],
+          [`${periodLabel}客户动作`, period.customerActions || 0],
+          [`${periodLabel}高意向`, period.highIntentActions || 0],
+          [`${periodLabel}收入`, formatFen(period.paidRevenueFen)]
+        ].map(([label, value]) => `<div class="metric compact"><div class="metric-label">${label}</div><div class="metric-value">${value}</div></div>`).join("");
+        document.getElementById("customerFollowUpTable").innerHTML = (data.followUps || []).map((item) => `
+          <tr>
+            <td>${escapeHtml(item.nickname || "未命名客户")}<div class="subtle">${escapeHtml(item.ownerLabel || item.ownerUserId || "-")}</div></td>
+            <td>${escapeHtml(item.intentLevel || "-")}</td>
+            <td>${item.viewCount || 0}</td>
+            <td>${escapeHtml(item.status || "-")}</td>
+            <td>${formatDate(item.nextFollowUpAt)}</td>
+            <td>${formatDate(item.updatedAt)}</td>
+          </tr>
+        `).join("") || `<tr><td colspan="6" class="subtle">暂无待跟进客户</td></tr>`;
+        const healthRows = [
+          ["订阅待发送", queues.subscriptionQueued || 0],
+          ["订阅失败", queues.subscriptionFailed || 0],
+          ["归档未处理", queues.archiveUnprocessed || 0],
+          ["归档失败", queues.archiveFailed || 0],
+          ["媒体资产 / 引用", `${queues.mediaAssetCount || 0} / ${queues.mediaReferenceCount || 0}`],
+          ["媒体存储体积", `${Math.round(Number(queues.mediaStoredBytes || 0) / 1024)} KB`]
+        ];
+        document.getElementById("customerHealthList").innerHTML = healthRows.map(([label, value]) => `
+          <div class="queue-row"><div>${label}</div><span class="badge ${value && value !== "0 / 0" ? "warn" : ""}">${value}</span></div>
+        `).join("");
+      }
+
       async function loadOverview() {
-        const data = await request("/api/ops-admin/overview");
+        const data = await request(`/api/ops-admin/overview?period=${encodeURIComponent(state.overviewPeriod)}`);
+        const period = data.period || {};
+        const periodLabel = period.label || "今日";
+        document.getElementById("overviewPeriodTitle").textContent = `${periodLabel}数据`;
+        document.getElementById("overviewPeriodHint").textContent = `${period.rangeLabel || periodLabel} · 创建、发布、分享和客户信号按此范围统计；当前待处理状态不随范围变化`;
         renderMetrics(data.summary || {});
-        renderTrend(data.trend7d || []);
+        renderFunnel(data.funnel || {}, periodLabel);
+        renderKeyActions({ ...(data.summary || {}), periodLabel });
+        renderTrend(data.trend || data.trend7d || [], periodLabel);
         renderQueueSummary(data.systemQueue || {});
         renderResourceStatus(data.resourceStatus || []);
+      }
+
+      async function loadCustomerOperations() {
+        const data = await request(`/api/ops-admin/customer-operations?period=${encodeURIComponent(state.overviewPeriod)}`);
+        renderCustomerOperations(data || {});
+      }
+
+      function renderWecomBindCardAsset(data = {}) {
+        const state = document.getElementById("wecomBindCardAssetState");
+        const meta = document.getElementById("wecomBindCardAssetMeta");
+        const statusLabels = {
+          missing: "未配置",
+          legacy_configured: "旧配置",
+          active: "已启用",
+          expired: "已过期"
+        };
+        const status = data.status || "missing";
+        const warn = status !== "active" || data.autoRefresh === false;
+        state.innerHTML = `
+          <div><div class="subtle">当前状态</div><strong>${escapeHtml(statusLabels[status] || status)}</strong></div>
+          <span class="badge ${warn ? "warn" : ""}">${data.autoRefresh ? "自动刷新已启用" : (data.mediaIdConfigured ? "需要重新上传" : "等待上传")}</span>
+        `;
+        const expiry = data.mediaIdExpiresAt ? `素材预计有效至 ${formatDate(data.mediaIdExpiresAt)}` : "素材有效期未知";
+        const source = data.filename ? `源图片：${escapeHtml(data.filename)}` : "尚未上传源图片";
+        const error = data.lastError ? `；最近失败：${escapeHtml(data.lastError)}` : "";
+        meta.textContent = `${source}；${expiry}${error}`;
+      }
+
+      async function loadWecomBindCardAsset() {
+        const data = await request("/api/ops-admin/wecom-bind-card-asset");
+        renderWecomBindCardAsset(data || {});
+      }
+
+      async function uploadWecomBindCardAsset() {
+        const file = document.getElementById("wecomBindCardFile").files?.[0];
+        if (!file) throw new Error("请先选择 PNG、JPEG 或 WebP 封面图");
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("operator_name", document.getElementById("customerFeatureOperator").value.trim() || "ops");
+        const response = await fetch(apiUrl("/api/ops-admin/wecom-bind-card-asset"), {
+          method: "POST",
+          headers: { "X-Admin-Token": getToken() },
+          body: formData
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.detail || payload.message || "上传失败");
+        renderWecomBindCardAsset(payload.data || {});
+        document.getElementById("wecomBindCardFile").value = "";
+        alert("绑定卡片封面已启用，后续发送会自动使用有效素材。");
+      }
+
+      async function refreshWecomBindCardAsset() {
+        await request("/api/ops-admin/wecom-bind-card-asset/refresh", { method: "POST", body: "{}" });
+        await loadWecomBindCardAsset();
+      }
+
+      async function toggleCustomerInfoChain() {
+        const button = document.getElementById("toggleCustomerFeatureBtn");
+        const enabled = button.dataset.enabled !== "true";
+        const action = enabled ? "开启" : "关闭";
+        if (!window.confirm(`确认${action}客户信息链？这会立即影响小程序客户信号和会员入口。`)) return;
+        await request("/api/ops-admin/customer-info-chain", {
+          method: "PUT",
+          body: JSON.stringify({
+            enabled,
+            operatorName: document.getElementById("customerFeatureOperator").value.trim() || "ops"
+          })
+        });
+        await Promise.all([loadOverview(), loadCustomerOperations()]);
+      }
+
+      async function toggleCustomerPayment() {
+        const button = document.getElementById("toggleCustomerPaymentBtn");
+        const paymentRequired = button.dataset.paymentRequired !== "true";
+        const action = paymentRequired ? "开启会员支付" : "关闭会员支付，免支付查看客户信息";
+        if (!window.confirm(`确认${action}？`)) return;
+        await request("/api/ops-admin/customer-info-chain", {
+          method: "PUT",
+          body: JSON.stringify({
+            paymentRequired,
+            operatorName: document.getElementById("customerFeatureOperator").value.trim() || "ops"
+          })
+        });
+        await Promise.all([loadOverview(), loadCustomerOperations()]);
       }
 
       async function loadUsers() {
@@ -1579,6 +2528,383 @@
       async function loadBotChannels() {
         const data = await request("/api/ops-admin/group-bot-channels");
         renderBotChannels(data || []);
+      }
+
+      function automationStatusLabel(status) {
+        return ({ ready: "就绪", busy: "执行中", paused: "已暂停", degraded: "异常", offline: "离线" })[status] || status || "未知";
+      }
+
+      function automationSourceLabel(source) {
+        return source === "wechat_native" ? "原生微信群" : source === "xiaohongshu" ? "小红书发现" : source || "未知";
+      }
+
+      function automationSendLabel(value) {
+        return value === true ? "允许进入策略" : value === false ? "禁止进入策略" : "待管理员确认";
+      }
+
+      function automationSelectOptions(options, current, emptyLabel) {
+        const values = [...new Set([...(current ? [current] : []), ...options])];
+        return `<option value="">${escapeHtml(emptyLabel)}</option>` + values.map((value) => `
+          <option value="${escapeHtml(value)}" ${value === current ? "selected" : ""}>${escapeHtml(value)}</option>
+        `).join("");
+      }
+
+      function automationMembershipOptions(current) {
+        return [
+          ["unknown", "待检查"],
+          ["active", "仍在群内"],
+          ["removed", "已移出群"]
+        ].map(([value, label]) => `
+          <option value="${value}" ${value === (current || "unknown") ? "selected" : ""}>${label}</option>
+        `).join("");
+      }
+
+      function automationEligibility(item) {
+        return item.sendEligibility || {
+          code: "pending_review",
+          label: "待检查",
+          reason: "当前群状态尚未完成检查"
+        };
+      }
+
+      function automationAccountLabel(item) {
+        return item.wechatAccountName || "昵称待回传";
+      }
+
+      function renderAutomationDevices(devices = []) {
+        state.automationDevices = devices;
+        document.getElementById("automationDeviceTable").innerHTML = devices.map((item) => `
+          <tr>
+            <td>${escapeHtml(item.name || item.id)}<div class="subtle">${escapeHtml(item.id || "-")}</div></td>
+            <td><span class="badge ${item.status === "degraded" || item.status === "offline" ? "warn" : ""}">${automationStatusLabel(item.status)}</span></td>
+            <td>${escapeHtml(item.metadata?.nickname || item.activeWechatAccountId || "-" )}</td>
+            <td>${formatDate(item.lastHeartbeatAt)}</td>
+          </tr>
+        `).join("") || `<tr><td colspan="4" class="subtle">暂无设备心跳。请先在 AScript 中配置设备令牌并运行扫描。</td></tr>`;
+      }
+
+      function automationRouteValue(value) {
+        return String(value || "").replace(/[\s市省]/g, "");
+      }
+
+      function automationCardLabel(card) {
+        const route = [card.topic, card.region, card.contentType].filter(Boolean).join(" · ");
+        const snapshot = card.shareSnapshotStatus === "ready" ? "分享图已就绪" : "分享图待准备";
+        return `${card.title || "未命名资料"} · ${route || "未配置路由"} · ${snapshot}`;
+      }
+
+      function automationRouteOptions(current, values) {
+        const options = [...new Set([current, ...values].filter(Boolean))];
+        return options.map((value) => `<option value="${escapeHtml(value)}" ${value === current ? "selected" : ""}>${escapeHtml(value)}</option>`).join("");
+      }
+
+      function renderAutomationMarketingRouteEditor(card) {
+        const topic = document.getElementById("automationMarketingCardTopic");
+        const region = document.getElementById("automationMarketingCardRegion");
+        const contentType = document.getElementById("automationMarketingCardContentType");
+        const saveButton = document.getElementById("saveAutomationMarketingRouteBtn");
+        if (!topic || !region || !contentType || !saveButton) return;
+        const enabled = Boolean(card);
+        topic.disabled = !enabled;
+        region.disabled = !enabled;
+        contentType.disabled = !enabled;
+        saveButton.disabled = !enabled;
+        topic.innerHTML = enabled
+          ? automationRouteOptions(card.topic, ["房产", "宠物", "AI工具", "本地生活", "招聘", "教育", "其他"])
+          : `<option value="">先选择资料卡</option>`;
+        contentType.innerHTML = enabled
+          ? automationRouteOptions(card.contentType, ["房源", "寻猫/领养", "团购商品", "AI工具资料", "招聘信息", "本地生活", "服务介绍", "普通资料"])
+          : `<option value="">先选择资料卡</option>`;
+        region.value = enabled ? (card.region || "") : "";
+      }
+
+      function automationMarketingMismatches(candidate, card) {
+        const mismatches = [];
+        if (automationRouteValue(candidate.topic) !== automationRouteValue(card.topic)) {
+          mismatches.push(`主题需为${candidate.topic || "未设置"}`);
+        }
+        if (automationRouteValue(candidate.region) !== automationRouteValue(card.region)) {
+          mismatches.push(`地域需为${candidate.region || "未设置"}`);
+        }
+        const allowed = (candidate.allowedContentTypes || []).map(automationRouteValue).filter(Boolean);
+        if (!allowed.length || !allowed.includes(automationRouteValue(card.contentType))) {
+          mismatches.push(`内容需为${(candidate.allowedContentTypes || []).join("、") || "群允许内容未设置"}`);
+        }
+        return mismatches;
+      }
+
+      function updateAutomationMarketingPreview() {
+        const cardId = document.getElementById("automationMarketingCardSelect")?.value;
+        const candidateId = document.getElementById("automationMarketingGroupSelect")?.value;
+        const deviceId = document.getElementById("automationMarketingDeviceSelect")?.value;
+        const status = document.getElementById("automationMarketingStatus");
+        const button = document.getElementById("createAutomationMarketingTaskBtn");
+        const card = state.automationMarketingCards.find((item) => item.id === cardId);
+        const candidate = state.automationCandidates.find((item) => item.id === candidateId);
+        const device = state.automationDevices.find((item) => item.id === deviceId);
+        const reasons = [];
+        if (!card || !candidate || !device) {
+          status.className = "automation-marketing-status is-blocked";
+          status.textContent = "请先选择资料卡、微信群和执行设备。";
+          button.disabled = true;
+          return;
+        }
+        if (candidate.deviceId !== device.id) reasons.push("群记录与执行设备不一致");
+        const eligibility = automationEligibility(candidate);
+        if (eligibility.code !== "card_route_required") reasons.push(eligibility.reason);
+        reasons.push(...automationMarketingMismatches(candidate, card));
+        if (card.shareSnapshotStatus !== "ready") reasons.push("资料卡分享图尚未准备完成");
+        if (String(card.shareSnapshotRevision || "") !== String(card.revision || "")) reasons.push("资料卡分享图不是当前版本");
+        if (reasons.length) {
+          status.className = "automation-marketing-status is-blocked";
+          status.textContent = reasons.join("；");
+          button.disabled = true;
+          return;
+        }
+        status.className = "automation-marketing-status is-ready";
+        status.textContent = `匹配通过：${candidate.groupName || "未命名群"} ← ${card.title || "未命名资料"}。点击后只创建待执行任务，AScript 领取后才会执行。`;
+        button.disabled = false;
+      }
+
+      function renderAutomationMarketingForm() {
+        const cardSelect = document.getElementById("automationMarketingCardSelect");
+        const groupSelect = document.getElementById("automationMarketingGroupSelect");
+        const deviceSelect = document.getElementById("automationMarketingDeviceSelect");
+        const selectedCardId = cardSelect.value;
+        const selectedGroupId = groupSelect.value;
+        const selectedDeviceId = deviceSelect.value;
+        const cards = state.automationMarketingCards || [];
+        const candidates = state.automationCandidates || [];
+        const devices = state.automationDevices || [];
+        cardSelect.innerHTML = cards.length
+          ? `<option value="">选择已发布资料卡</option>` + cards.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(automationCardLabel(item))}</option>`).join("")
+          : `<option value="">暂无已发布资料卡</option>`;
+        groupSelect.innerHTML = candidates.length
+          ? `<option value="">选择目标微信群</option>` + candidates.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(`${item.groupName || "未命名群"} · ${automationAccountLabel(item)}`)}</option>`).join("")
+          : `<option value="">暂无群记录</option>`;
+        deviceSelect.innerHTML = devices.length
+          ? `<option value="">选择执行设备</option>` + devices.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(`${item.name || item.id} · ${automationStatusLabel(item.status)}`)}</option>`).join("")
+          : `<option value="">暂无设备</option>`;
+        if (cards.some((item) => item.id === selectedCardId)) cardSelect.value = selectedCardId;
+        if (candidates.some((item) => item.id === selectedGroupId)) groupSelect.value = selectedGroupId;
+        if (devices.some((item) => item.id === selectedDeviceId)) deviceSelect.value = selectedDeviceId;
+        renderAutomationMarketingRouteEditor(cards.find((item) => item.id === cardSelect.value));
+        updateAutomationMarketingPreview();
+      }
+
+      async function saveAutomationMarketingRoute() {
+        const cardId = document.getElementById("automationMarketingCardSelect").value;
+        const topic = document.getElementById("automationMarketingCardTopic").value;
+        const region = document.getElementById("automationMarketingCardRegion").value.trim();
+        const contentType = document.getElementById("automationMarketingCardContentType").value;
+        if (!cardId || !topic || !contentType) throw new Error("请先选择资料卡、主题和内容类型");
+        const updated = await requestAutomation(`/api/automation/marketing-cards/${encodeURIComponent(cardId)}/route`, {
+          method: "PATCH",
+          body: JSON.stringify({ topic, region, contentType })
+        });
+        const index = state.automationMarketingCards.findIndex((item) => item.id === cardId);
+        if (index >= 0) state.automationMarketingCards[index] = updated;
+        renderAutomationMarketingForm();
+        document.getElementById("automationMarketingCardSelect").value = cardId;
+        renderAutomationMarketingRouteEditor(updated);
+        updateAutomationMarketingPreview();
+        document.getElementById("automationMarketingStatus").className = "automation-marketing-status is-ready";
+        document.getElementById("automationMarketingStatus").textContent = "卡片路由已由 PC 运营端保存；小程序用户端不会看到或修改这组配置。";
+      }
+
+      async function createAutomationMarketingTask() {
+        const cardId = document.getElementById("automationMarketingCardSelect").value;
+        const candidateId = document.getElementById("automationMarketingGroupSelect").value;
+        const deviceId = document.getElementById("automationMarketingDeviceSelect").value;
+        const button = document.getElementById("createAutomationMarketingTaskBtn");
+        const card = state.automationMarketingCards.find((item) => item.id === cardId);
+        const candidate = state.automationCandidates.find((item) => item.id === candidateId);
+        if (!card || !candidate || !deviceId) throw new Error("请先完成资料卡、微信群和设备选择");
+        button.disabled = true;
+        let created = false;
+        try {
+          const task = await requestAutomation("/api/automation/marketing-card-tasks", {
+            method: "POST",
+            body: JSON.stringify({ candidateId, noteId: card.id, deviceId })
+          });
+          state.automationMarketingTasks = [task, ...(state.automationMarketingTasks || [])].slice(0, 20);
+          document.getElementById("automationMarketingStatus").className = "automation-marketing-status is-ready";
+          document.getElementById("automationMarketingStatus").textContent = `已创建待执行任务 ${task.id}，当前状态：${task.status}。AScript 领取后才会执行。`;
+          created = true;
+        } finally {
+          if (!created) updateAutomationMarketingPreview();
+        }
+      }
+
+      function renderAutomationAccountFilter(candidates = []) {
+        const select = document.getElementById("automationAccountFilter");
+        const current = select.value;
+        const accounts = [...new Map(
+          candidates
+            .filter((item) => item.wechatAccountId)
+            .map((item) => [item.wechatAccountId, automationAccountLabel(item)])
+        ).entries()];
+        select.innerHTML = `<option value="">全部微信账号</option>` + accounts.map(([accountId, label]) => `
+          <option value="${escapeHtml(accountId)}">${escapeHtml(label)}</option>
+        `).join("");
+        const accountIds = accounts.map(([id]) => id);
+        select.value = accountIds.includes(current) ? current : "";
+      }
+
+      function renderAutomationPagination(total) {
+        const pagination = document.getElementById("automationCandidatePagination");
+        const pageSize = state.automationCandidatePageSize || 10;
+        const pageCount = Math.max(1, Math.ceil(total / pageSize));
+        state.automationCandidatePage = Math.min(
+          Math.max(1, state.automationCandidatePage || 1),
+          pageCount
+        );
+        if (!total) {
+          pagination.innerHTML = "";
+          return;
+        }
+        const page = state.automationCandidatePage;
+        pagination.innerHTML = `
+          <span class="subtle">第 ${page} / ${pageCount} 页 · 共 ${total} 个群</span>
+          <div class="automation-pagination-actions">
+            <button class="secondary" type="button" data-action="automation-page" data-page="${page - 1}" ${page <= 1 ? "disabled" : ""}>上一页</button>
+            <button class="secondary" type="button" data-action="automation-page" data-page="${page + 1}" ${page >= pageCount ? "disabled" : ""}>下一页</button>
+          </div>
+        `;
+      }
+
+      function renderAutomationCandidates(candidates = []) {
+        state.automationCandidates = candidates;
+        const pageSize = state.automationCandidatePageSize || 10;
+        const pageCount = Math.max(1, Math.ceil(candidates.length / pageSize));
+        state.automationCandidatePage = Math.min(
+          Math.max(1, state.automationCandidatePage || 1),
+          pageCount
+        );
+        const pageStart = (state.automationCandidatePage - 1) * pageSize;
+        const pageCandidates = candidates.slice(pageStart, pageStart + pageSize);
+        document.getElementById("automationCandidateTable").innerHTML = pageCandidates.map((item) => `
+          <tr data-automation-candidate-id="${escapeHtml(item.id)}">
+            <td class="automation-profile-cell">
+              <strong>${escapeHtml(item.groupName || "未命名群")}</strong><div class="subtle">${escapeHtml(item.id || "-")}</div>
+              <div class="automation-account-label">微信：${escapeHtml(automationAccountLabel(item))}</div>
+              <div class="automation-profile-editor">
+                <select data-profile-field="topic" aria-label="群主题">
+                  ${automationSelectOptions(["房产", "宠物", "AI工具", "本地生活", "招聘", "教育", "其他"], item.topic, "群主题")}
+                </select>
+                <input data-profile-field="region" value="${escapeHtml(item.region || "")}" placeholder="地域，如上海" aria-label="群地域" />
+                <input data-profile-field="allowedContentTypes" value="${escapeHtml((item.allowedContentTypes || []).join("、"))}" placeholder="允许内容，如寻猫、领养" aria-label="允许内容" />
+                <select data-profile-field="membershipStatus" aria-label="群成员状态">
+                  ${automationMembershipOptions(item.membershipStatus)}
+                </select>
+              </div>
+              <div class="subtle automation-profile-meta">最近活跃：${formatDate(item.lastActivityAt)} · 最近检查：${formatDate(item.lastVerifiedAt)}</div>
+            </td>
+            <td>${escapeHtml(automationSourceLabel(item.source))}</td>
+            <td><span class="badge ${item.canSend === false ? "warn" : ""}">${automationSendLabel(item.canSend)}</span></td>
+            <td><span class="badge warn automation-eligibility" title="${escapeHtml(automationEligibility(item).reason)}">${escapeHtml(automationEligibility(item).label)}</span><div class="subtle">${escapeHtml(automationEligibility(item).reason)}</div></td>
+            <td>${escapeHtml(item.remark || "-")}</td>
+            <td>${formatDate(item.lastSeenAt || item.savedAt)}</td>
+            <td>
+              <div class="automation-row-actions">
+                <button class="secondary automation-profile-save-btn" type="button" data-action="save-automation-profile" data-id="${escapeHtml(item.id)}">保存群画像</button>
+                <div class="automation-review-actions">
+                  <button class="secondary automation-review-btn allow ${item.canSend === true ? "active" : ""}" type="button" data-action="set-automation-review" data-id="${escapeHtml(item.id)}" data-can-send="true">允许进入</button>
+                  <button class="secondary automation-review-btn deny ${item.canSend === false ? "active" : ""}" type="button" data-action="set-automation-review" data-id="${escapeHtml(item.id)}" data-can-send="false">禁止进入</button>
+                </div>
+              </div>
+            </td>
+          </tr>
+        `).join("") || `<tr><td colspan="7" class="subtle">暂无群候选。设备扫描成功并完成接口配置后会出现在这里。</td></tr>`;
+        const metrics = [
+          ["群候选总数", candidates.length],
+          ["原生微信群", candidates.filter((item) => item.source === "wechat_native").length],
+          ["允许进入策略", candidates.filter((item) => item.canSend === true).length],
+          ["待管理员确认", candidates.filter((item) => item.canSend === null || item.canSend === undefined).length]
+        ];
+        document.getElementById("automationMetrics").innerHTML = metrics.map(([label, value]) => `
+          <div class="metric compact"><div class="metric-label">${label}</div><div class="metric-value">${value}</div></div>
+        `).join("");
+        renderAutomationPagination(candidates.length);
+      }
+
+      async function loadAutomationData() {
+        const authState = document.getElementById("automationAuthState");
+        authState.textContent = "正在读取设备、群库和资料卡...";
+        const accountId = document.getElementById("automationAccountFilter").value.trim();
+        const query = accountId ? `?wechatAccountId=${encodeURIComponent(accountId)}&limit=500` : "?limit=500";
+        const [devices, candidates, cards, tasks] = await Promise.all([
+          requestAutomation("/api/automation/devices?limit=100"),
+          requestAutomation(`/api/automation/group-candidates${query}`),
+          requestAutomation("/api/automation/marketing-cards?limit=100"),
+          requestAutomation("/api/automation/tasks?status=pending&limit=20")
+        ]);
+        state.automationCandidatePage = 1;
+        state.automationMarketingCards = cards || [];
+        state.automationMarketingTasks = tasks || [];
+        renderAutomationDevices(devices || []);
+        renderAutomationAccountFilter(candidates || []);
+        renderAutomationCandidates(candidates || []);
+        renderAutomationMarketingForm();
+        authState.textContent = `已读取 ${candidates?.length || 0} 条群记录、${cards?.length || 0} 张已发布资料卡`;
+      }
+
+      async function reviewAutomationCandidate(candidateId, canSend, button) {
+        const item = state.automationCandidates.find((candidate) => candidate.id === candidateId);
+        if (!item) throw new Error("群记录不存在，请刷新群库");
+        const actions = button.closest(".automation-review-actions");
+        actions?.querySelectorAll("button").forEach((actionButton) => { actionButton.disabled = true; });
+        try {
+          const updated = await requestAutomation(`/api/automation/group-candidates/${encodeURIComponent(candidateId)}`, {
+            method: "PATCH",
+            body: JSON.stringify({
+              canSend,
+              remark: item.remark || null
+            })
+          });
+          state.automationCandidates = state.automationCandidates.map((candidate) => (
+            candidate.id === candidateId ? { ...candidate, ...updated } : candidate
+          ));
+          renderAutomationCandidates(state.automationCandidates);
+          updateAutomationMarketingPreview();
+          document.getElementById("automationAuthState").textContent = `${item.groupName || "未命名群"}：已保存为${canSend ? "允许进入策略" : "禁止进入策略"}`;
+        } catch (error) {
+          actions?.querySelectorAll("button").forEach((actionButton) => { actionButton.disabled = false; });
+          throw error;
+        }
+      }
+
+      async function saveAutomationProfile(candidateId, button) {
+        const item = state.automationCandidates.find((candidate) => candidate.id === candidateId);
+        const row = button.closest("tr");
+        if (!item || !row) throw new Error("群记录不存在，请刷新群库");
+        const field = (name) => row.querySelector(`[data-profile-field="${name}"]`);
+        const allowedContentTypes = (field("allowedContentTypes")?.value || "")
+          .split(/[、,，]/)
+          .map((value) => value.trim())
+          .filter(Boolean)
+          .slice(0, 8);
+        button.disabled = true;
+        try {
+          const updated = await requestAutomation(`/api/automation/group-candidates/${encodeURIComponent(candidateId)}`, {
+            method: "PATCH",
+            body: JSON.stringify({
+              topic: field("topic")?.value || null,
+              region: field("region")?.value.trim() || null,
+              allowedContentTypes,
+              membershipStatus: field("membershipStatus")?.value || "unknown"
+            })
+          });
+          state.automationCandidates = state.automationCandidates.map((candidate) => (
+            candidate.id === candidateId ? { ...candidate, ...updated } : candidate
+          ));
+          renderAutomationCandidates(state.automationCandidates);
+          updateAutomationMarketingPreview();
+          document.getElementById("automationAuthState").textContent = `${item.groupName || "未命名群"}：群画像已保存`;
+        } catch (error) {
+          button.disabled = false;
+          throw error;
+        }
       }
 
       async function loadOpportunityDashboard() {
@@ -1653,6 +2979,8 @@
         saveToken();
         await Promise.all([
           loadOverview(),
+          loadCustomerOperations(),
+          loadWecomBindCardAsset(),
           loadUsers(),
           loadContent(),
           loadUploadBatches(),
@@ -1898,11 +3226,81 @@
       }
 
       function bindEvents() {
-        document.querySelectorAll(".nav button").forEach((button) => {
-          button.addEventListener("click", () => setActiveTab(button.dataset.tab));
+        document.querySelectorAll(".nav-group-toggle").forEach((button) => {
+          button.addEventListener("click", () => toggleNavGroup(button.closest(".nav-group")));
+        });
+        document.querySelectorAll(".nav button[data-tab]").forEach((button) => {
+          button.addEventListener("click", () => {
+            setActiveTab(button.dataset.tab);
+            if (button.dataset.tab === "automation") {
+              loadAutomationData().catch((error) => {
+                document.getElementById("automationAuthState").textContent = error.message;
+              });
+            }
+          });
         });
         document.getElementById("saveTokenBtn").addEventListener("click", saveToken);
+        document.getElementById("overviewPeriodSwitch").addEventListener("click", (event) => {
+          const button = event.target.closest("button[data-period]");
+          if (!button || button.disabled) return;
+          changeOverviewPeriod(button.dataset.period).catch((error) => alert(error.message));
+        });
+        document.getElementById("metricCards").addEventListener("click", (event) => {
+          const card = event.target.closest("[data-metric]");
+          if (!card) return;
+          openMetricDetail(card.dataset.metric);
+        });
+        document.getElementById("metricCards").addEventListener("keydown", (event) => {
+          if (event.key !== "Enter" && event.key !== " ") return;
+          const card = event.target.closest("[data-metric]");
+          if (!card) return;
+          event.preventDefault();
+          openMetricDetail(card.dataset.metric);
+        });
+        document.getElementById("closeMetricDetailBtn").addEventListener("click", closeMetricDetail);
+        document.getElementById("refreshAutomationBtn").addEventListener("click", () => loadAutomationData().catch((error) => alert(error.message)));
+        document.getElementById("automationMarketingCardSelect").addEventListener("change", () => {
+          const card = state.automationMarketingCards.find((item) => item.id === document.getElementById("automationMarketingCardSelect").value);
+          renderAutomationMarketingRouteEditor(card);
+          updateAutomationMarketingPreview();
+        });
+        document.getElementById("saveAutomationMarketingRouteBtn").addEventListener("click", () => runAction(saveAutomationMarketingRoute));
+        document.getElementById("automationMarketingGroupSelect").addEventListener("change", () => {
+          const candidate = state.automationCandidates.find((item) => item.id === document.getElementById("automationMarketingGroupSelect").value);
+          if (candidate && state.automationDevices.some((item) => item.id === candidate.deviceId)) {
+            document.getElementById("automationMarketingDeviceSelect").value = candidate.deviceId;
+          }
+          updateAutomationMarketingPreview();
+        });
+        document.getElementById("automationMarketingDeviceSelect").addEventListener("change", updateAutomationMarketingPreview);
+        document.getElementById("createAutomationMarketingTaskBtn").addEventListener("click", () => createAutomationMarketingTask().catch((error) => alert(error.message)));
+        document.getElementById("automationAccountFilter").addEventListener("change", () => {
+          state.automationCandidatePage = 1;
+          loadAutomationData().catch((error) => alert(error.message));
+        });
+        document.getElementById("automationCandidateTable").addEventListener("click", (event) => {
+          const profileButton = event.target.closest("[data-action='save-automation-profile']");
+          if (profileButton) {
+            saveAutomationProfile(profileButton.dataset.id, profileButton).catch((error) => alert(error.message));
+            return;
+          }
+          const button = event.target.closest("[data-action='set-automation-review']");
+          if (button) {
+            reviewAutomationCandidate(button.dataset.id, button.dataset.canSend === "true", button).catch((error) => alert(error.message));
+          }
+        });
+        document.getElementById("automationCandidatePagination").addEventListener("click", (event) => {
+          const button = event.target.closest("[data-action='automation-page']");
+          if (!button || button.disabled) return;
+          state.automationCandidatePage = Number(button.dataset.page) || 1;
+          renderAutomationCandidates(state.automationCandidates);
+        });
         document.getElementById("refreshBtn").addEventListener("click", () => refreshAll().catch((error) => alert(error.message)));
+        document.getElementById("toggleCustomerFeatureBtn").addEventListener("click", () => toggleCustomerInfoChain().catch((error) => alert(error.message)));
+        document.getElementById("toggleCustomerPaymentBtn").addEventListener("click", () => toggleCustomerPayment().catch((error) => alert(error.message)));
+        document.getElementById("refreshCustomerOperationsBtn").addEventListener("click", () => loadCustomerOperations().catch((error) => alert(error.message)));
+        document.getElementById("uploadWecomBindCardBtn").addEventListener("click", () => uploadWecomBindCardAsset().catch((error) => alert(error.message)));
+        document.getElementById("refreshWecomBindCardBtn").addEventListener("click", () => refreshWecomBindCardAsset().catch((error) => alert(error.message)));
         document.getElementById("searchUsersBtn").addEventListener("click", () => loadUsers().catch((error) => alert(error.message)));
         document.getElementById("previewUploadBtn").addEventListener("click", () => previewUpload().catch((error) => alert(error.message)));
         document.getElementById("saveUploadBtn").addEventListener("click", () => saveUploadBatch().catch((error) => alert(error.message)));

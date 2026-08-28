@@ -13,8 +13,18 @@ SkillRunStatus = Literal["pending", "success", "failed", "needs_confirm"]
 class ContentMediaPayload(BaseModel):
     type: str
     url: str | None = None
+    id: str | None = None
+    name: str | None = None
     mediaId: str | None = None
     title: str | None = None
+    description: str | None = None
+    mimeType: str | None = None
+    sizeBytes: int | None = None
+    pageCount: int | None = None
+    coverUrl: str | None = None
+    sortOrder: int = 0
+    source: str | None = None
+    status: str = "ready"
     sourceRef: str | None = None
 
 
@@ -75,6 +85,7 @@ class UserNoteDraftPayload(BaseModel):
     title: str
     summary: str
     body: str
+    contentBlocks: list[dict] = Field(default_factory=list)
     coverUrl: str | None = None
     media: list[ContentMediaPayload] = Field(default_factory=list)
     categoryIds: list[str] = Field(default_factory=list)

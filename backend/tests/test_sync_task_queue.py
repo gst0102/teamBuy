@@ -62,3 +62,23 @@ def test_sync_task_queue_fails_without_registered_handler(tmp_path: Path):
         assert "No handler registered" in (saved.errorMessage or "")
 
     asyncio.run(run())
+
+
+def test_sync_task_queue_deduplicates_delayed_schedules(tmp_path: Path):
+    async def run():
+        repo = JsonRepository(tmp_path / "state.json")
+        queue = SyncTaskQueue(repo, retry_delay_seconds=60, auto_schedule=False)
+        task = queue.enqueue("demo", {}, max_attempts=2)
+        task.nextRunAt = "2999-01-01T00:00:00+00:00"
+        repo.update_sync_task(task)
+
+        assert queue.start_pending() == 1
+        assert queue.start_pending() == 0
+        assert task.id in queue._delayed_task_ids
+
+        for pending in asyncio.all_tasks():
+            if pending is not asyncio.current_task():
+                pending.cancel()
+        await asyncio.sleep(0)
+
+    asyncio.run(run())

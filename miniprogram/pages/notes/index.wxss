@@ -513,6 +513,23 @@
   background: #fee4e2;
 }
 
+.same-style-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 64rpx;
+  height: 34rpx;
+  padding: 0 10rpx;
+  border-radius: 999rpx;
+  background: #e8f7ee;
+  color: #15803d;
+  font-size: 20rpx;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+
 .confirm-row {
   display: flex;
   align-items: center;
@@ -793,6 +810,10 @@
   color: #98a2b3;
 }
 
+.typed-actions .inline-share.pending {
+  color: #667085;
+}
+
 .groupbuy-card .typed-actions {
   color: #a25800;
 }
@@ -836,6 +857,11 @@
 .service-actions .service-primary-share[disabled] {
   background: #edf2f7;
   color: #8a95a6;
+}
+
+.service-actions .service-primary-share.pending {
+  background: #eef3f9;
+  color: #667085;
 }
 
 .service-actions .service-more-btn {
@@ -1202,6 +1228,6 @@
   left: -9999rpx;
   top: -9999rpx;
   width: 750rpx;
-  height: 600rpx;
+  height: 1800rpx;
   pointer-events: none;
 }

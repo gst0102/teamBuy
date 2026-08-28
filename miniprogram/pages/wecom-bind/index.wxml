@@ -1,0 +1,9 @@
+<view class="page">
+  <view class="card">
+    <view class="icon {{status}}">{{status === "success" ? "✓" : status === "failed" ? "!" : "…"}}</view>
+    <view class="title">{{title}}</view>
+    <view class="message">{{message}}</view>
+    <button wx:if="{{status === 'failed'}}" class="primary" bindtap="handleRetry">重新确认</button>
+    <button class="secondary" bindtap="handleBackHome">回到首页</button>
+  </view>
+</view>

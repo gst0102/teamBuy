@@ -1,0 +1,26 @@
+page { background: #f4f8ff; color: #172033; }
+.page-shell { min-height: 100vh; padding: 0 28rpx; box-sizing: border-box; }
+.recognition-bar { display:flex; align-items:center; justify-content:space-between; margin-top:24rpx; padding:24rpx; border:2rpx solid #cfe2ff; border-radius:20rpx; background:#eef6ff; font-size:26rpx; }
+.recognition-bar .type { margin-left:14rpx; color:#1677ff; font-weight:800; }
+.recognition-bar .status { color:#1677ff; }
+.preview-card { margin-top:22rpx; padding:28rpx; border-radius:24rpx; background:#fff; box-shadow:0 12rpx 36rpx rgba(36,86,145,.08); }
+.cover { width:100%; height:330rpx; border-radius:18rpx; background:#eaf1fb; }
+.cover.placeholder { display:flex; align-items:center; justify-content:center; color:#1677ff; font-size:72rpx; font-weight:900; }
+.content { padding:24rpx 0 20rpx; }
+.title { font-size:38rpx; line-height:1.35; font-weight:900; }
+.summary { margin-top:14rpx; color:#637083; font-size:27rpx; line-height:1.55; }
+.source { margin-top:16rpx; color:#8a96a8; font-size:24rpx; }
+.key-title { padding-top:22rpx; border-top:2rpx solid #edf1f7; font-size:28rpx; font-weight:800; }
+.tags { display:flex; flex-wrap:wrap; gap:12rpx; margin-top:16rpx; }
+.tags text { padding:10rpx 18rpx; border-radius:12rpx; background:#edf5ff; color:#1769d2; font-size:24rpx; }
+.extracted { display:flex; flex-wrap:wrap; gap:12rpx; margin-top:18rpx; }
+.extracted text { padding:10rpx 16rpx; border-radius:12rpx; background:#f5f7fb; color:#5f6d80; font-size:23rpx; }
+.source-row { display:flex; justify-content:space-between; margin-top:24rpx; padding:24rpx 0; border-top:2rpx solid #edf1f7; color:#1677ff; font-size:26rpx; }
+.privacy { padding:18rpx; border-radius:14rpx; background:#ebf9ee; color:#277a42; font-size:23rpx; line-height:1.5; }
+.parse-note { margin-top:16rpx; color:#8a96a8; font-size:22rpx; text-align:center; }
+.footer-safe { height:230rpx; }
+.footer-actions { position:fixed; left:0; right:0; bottom:0; z-index:20; padding:20rpx 28rpx calc(20rpx + env(safe-area-inset-bottom)); background:rgba(255,255,255,.98); box-shadow:0 -10rpx 30rpx rgba(36,86,145,.08); }
+.footer-actions button { width:100%; min-width:0; height:92rpx; margin:0; padding:0; display:flex; align-items:center; justify-content:center; border:0; border-radius:16rpx; box-sizing:border-box; font-size:30rpx; font-weight:800; line-height:1; }
+.footer-actions button::after { border:0; }
+.footer-actions .primary { background:#1677ff; color:#fff; }
+.footer-actions .text-btn { height:68rpx; margin-top:8rpx; background:transparent; color:#1677ff; font-size:26rpx; }

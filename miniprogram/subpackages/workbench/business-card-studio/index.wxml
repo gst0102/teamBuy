@@ -1,0 +1,108 @@
+<view class="card-editor-page style-{{styleId}}">
+  <custom-nav title="编辑电子名片" showBack="{{true}}" />
+  <view wx:if="{{loading}}" class="editor-loading">正在读取名片…</view>
+  <block wx:else>
+    <view class="preview-section">
+      <view class="section-heading compact">
+        <view><view class="section-title">客户看到的效果</view><view class="section-hint">修改内容后，名片效果会同步更新</view></view>
+        <text class="text-link" bindtap="handlePreview">完整预览 ›</text>
+      </view>
+      <view class="live-card">
+        <image wx:if="{{profile.avatarUrl}}" class="live-avatar" src="{{profile.avatarUrl}}" mode="aspectFill" />
+        <view wx:else class="live-avatar placeholder">{{profileInitial}}</view>
+        <view class="live-copy">
+          <view class="live-name">{{profile.displayName || '你的姓名'}}</view>
+          <view class="live-role">{{profile.jobTitle || '职位 / 身份'}}</view>
+          <view class="live-divider"></view>
+          <view wx:if="{{profile.company}}" class="live-detail"><text class="live-detail-marker"></text><text>{{profile.company}}</text></view>
+          <view class="live-detail"><text class="live-detail-marker"></text><text>{{structuredData.headline || '用一句话告诉客户你能提供什么'}}</text></view>
+          <view wx:if="{{contactLine}}" class="live-detail live-contact"><text class="live-detail-marker"></text><text>{{contactLine}}</text></view>
+        </view>
+      </view>
+    </view>
+
+    <view class="editor-section identity-section">
+      <view class="section-heading"><view><view class="section-title">个人身份</view><view class="section-hint">这里只维护一份，会同步到“我的”个人资料</view></view></view>
+      <view class="identity-avatar-row">
+        <image wx:if="{{profile.avatarUrl}}" class="identity-avatar" src="{{profile.avatarUrl}}" mode="aspectFill" />
+        <view wx:else class="identity-avatar placeholder">头像</view>
+        <view class="identity-avatar-copy"><view>头像</view><text>使用清晰的本人照片更容易建立信任</text></view>
+        <button class="small-outline" loading="{{uploadingField === 'avatarUrl'}}" data-field="avatarUrl" bindtap="chooseProfileImage">更换</button>
+      </view>
+      <view class="form-grid two-col">
+        <view class="form-field"><view class="field-label">姓名</view><input value="{{profile.displayName}}" data-key="displayName" bindinput="handleProfileInput" placeholder="请输入姓名" /></view>
+        <view class="form-field"><view class="field-label">职位 / 身份</view><input value="{{profile.jobTitle}}" data-key="jobTitle" bindinput="handleProfileInput" placeholder="例如：企业财税顾问" /></view>
+        <view class="form-field"><view class="field-label">公司 / 门店</view><input value="{{profile.company}}" data-key="company" bindinput="handleProfileInput" placeholder="选填" /></view>
+        <view class="form-field"><view class="field-label">所在城市</view><input value="{{profile.city}}" data-key="city" bindinput="handleProfileInput" placeholder="选填" /></view>
+      </view>
+    </view>
+
+    <view class="editor-section">
+      <view class="section-heading"><view><view class="section-title">名片表达</view><view class="section-hint">让客户快速认识你，而不是重复写一份服务方案</view></view></view>
+      <view class="form-field full"><view class="field-label">一句话介绍</view><input maxlength="40" value="{{structuredData.headline}}" data-key="headline" bindinput="handleStructuredInput" placeholder="例如：专注小微企业代理记账与财税咨询" /></view>
+      <view class="form-field full"><view class="field-label">我能提供 <text>2～6个关键词</text></view><input value="{{structuredData.serviceKeywordsText}}" data-key="serviceKeywordsText" bindinput="handleStructuredInput" placeholder="例如：代理记账，财税咨询，工商注册" /></view>
+      <view class="keyword-preview" wx:if="{{keywordChips.length}}"><text wx:for="{{keywordChips}}" wx:key="*this">{{item}}</text></view>
+      <view class="form-field full"><view class="field-label">关于我 <text>选填</text></view><textarea maxlength="300" value="{{structuredData.bio}}" data-key="bio" bindinput="handleStructuredInput" placeholder="介绍你的经验、擅长领域和服务方式"></textarea></view>
+    </view>
+
+    <view class="editor-section">
+      <view class="section-heading"><view><view class="section-title">联系方式</view><view class="section-hint">客户页只显示你真实填写的联系入口</view></view></view>
+      <view class="contact-grid">
+        <view class="form-field"><view class="field-label">手机号</view><input type="number" value="{{profile.phone}}" data-key="phone" bindinput="handleProfileInput" placeholder="选填" /></view>
+        <view class="form-field"><view class="field-label">微信号</view><input value="{{profile.wechat}}" data-key="wechat" bindinput="handleProfileInput" placeholder="选填" /></view>
+      </view>
+      <view class="qr-row">
+        <image wx:if="{{profile.wechatQrUrl}}" class="qr-image" src="{{profile.wechatQrUrl}}" mode="aspectFit" />
+        <view wx:else class="qr-image placeholder">二维码</view>
+        <view class="qr-copy"><view>微信二维码</view><text>独立保存，不再从普通附件图片中猜测</text></view>
+        <button class="small-outline qr-action" loading="{{uploadingField === 'wechatQrUrl'}}" data-field="wechatQrUrl" bindtap="chooseProfileImage">{{profile.wechatQrUrl ? '更换' : '添加'}}</button>
+      </view>
+      <view class="more-toggle" bindtap="handleToggleMoreContact"><view><view>更多联系方式</view><text>邮箱、个人网站</text></view><text>{{moreContactOpen ? '收起' : '展开'}}</text></view>
+      <view wx:if="{{moreContactOpen}}" class="contact-grid more-contact">
+        <view class="form-field"><view class="field-label">邮箱</view><input value="{{profile.email}}" data-key="email" bindinput="handleProfileInput" placeholder="选填" /></view>
+        <view class="form-field"><view class="field-label">个人网站</view><input value="{{profile.website}}" data-key="website" bindinput="handleProfileInput" placeholder="https://..." /></view>
+      </view>
+    </view>
+
+    <view class="editor-section">
+      <view class="section-heading compact"><view><view class="section-title">精选资料</view><view class="section-hint">从资料库引用，最多3份，不复制原内容</view></view><text class="count-label">{{featuredResources.length}} / 3</text></view>
+      <view wx:if="{{featuredResources.length}}" class="featured-list">
+        <view class="featured-item" wx:for="{{featuredResources}}" wx:key="id">
+          <image wx:if="{{item.coverUrl}}" src="{{item.coverUrl}}" mode="aspectFill" />
+          <view wx:else class="featured-icon">{{item.typeInitial}}</view>
+          <view class="featured-copy"><view>{{item.title}}</view><text>{{item.typeLabel}} · {{item.summary || '点击查看资料'}}</text></view>
+          <text class="featured-remove" data-id="{{item.id}}" bindtap="handleRemoveResource">移除</text>
+        </view>
+      </view>
+      <button class="add-resource" bindtap="handleOpenResourcePicker">＋ {{featuredResources.length ? '调整精选资料' : '添加精选资料'}}</button>
+    </view>
+
+    <view class="editor-section">
+      <view class="section-heading"><view><view class="section-title">名片样式</view><view class="section-hint">统一使用清晰、克制的标准专业版，突出姓名、身份和联系方式</view></view></view>
+      <view class="style-option style-standard active">
+        <view class="style-mini"><view></view><text></text><text></text></view>
+        <view><view>标准专业</view><text>白底蓝色重点，适合所有客户转发场景</text></view>
+        <text class="style-check">✓</text>
+      </view>
+    </view>
+
+    <view class="bottom-space"></view>
+    <view class="bottom-bar"><button class="preview-button" disabled="{{!draftReady || saving}}" bindtap="handlePreview">预览客户页</button><button class="save-button" loading="{{saving}}" disabled="{{!draftReady || saving}}" bindtap="handlePublish">发客户</button></view>
+  </block>
+
+  <view wx:if="{{resourcePickerVisible}}" class="picker-mask" catchtouchmove="noop" catchtap="handleCloseResourcePicker">
+    <view class="picker-sheet" catchtap="noop">
+      <view class="picker-head"><view><view>选择精选资料</view><text>最多选择3份</text></view><text bindtap="handleCloseResourcePicker">×</text></view>
+      <scroll-view scroll-y class="picker-list">
+        <view wx:for="{{resourceOptions}}" wx:key="id" class="picker-item {{item.selected ? 'selected' : ''}}" data-id="{{item.id}}" bindtap="handleToggleResource">
+          <image wx:if="{{item.coverUrl}}" src="{{item.coverUrl}}" mode="aspectFill" />
+          <view wx:else class="picker-icon">{{item.typeInitial}}</view>
+          <view class="picker-copy"><view>{{item.title}}</view><text>{{item.typeLabel}} · {{item.summary || '暂无摘要'}}</text></view>
+          <view class="picker-check">{{item.selected ? '✓' : ''}}</view>
+        </view>
+        <view wx:if="{{!resourceOptions.length}}" class="picker-empty">资料库里还没有可以精选的资料</view>
+      </scroll-view>
+      <button class="picker-done" bindtap="handleCloseResourcePicker">完成（{{featuredResources.length}} / 3）</button>
+    </view>
+  </view>
+</view>

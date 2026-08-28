@@ -231,9 +231,6 @@ Page({
       wx.showToast({ title: "保存失败，稍后再试", icon: "none" });
     }
   },
-  handlePublish() {
-    wx.navigateTo({ url: "/pages/supply-demand-publish/index" });
-  },
   onShareAppMessage() {
     return buildShareCardMessage(this, {
       title: "供需广场",

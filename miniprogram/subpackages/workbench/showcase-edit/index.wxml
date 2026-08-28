@@ -1,0 +1,75 @@
+<view class="page-shell showcase-editor-page">
+  <view class="editor-status-bar">
+    <view>
+      <text class="editor-kicker">{{sceneType === 'property' ? '房源合集' : sceneType === 'groupbuy' ? '商品合集' : sceneType === 'service' ? '服务合集' : '资料合集'}}</text>
+      <text class="editor-status-dot {{status}}"></text><text>{{status === 'published' ? (unpublishedChanges ? '有未发布修改' : '已发布') : status === 'archived' ? '已下架' : '草稿'}}</text>
+    </view>
+    <text class="editor-count">已加入 {{selectedCount}} 条</text>
+  </view>
+
+  <view class="editor-section hero-section">
+    <view class="section-kicker">1 · 合集信息</view>
+    <input class="editor-title-input" value="{{name}}" placeholder="给这份合集起个名字" bindinput="updateField" data-key="name" />
+    <textarea class="editor-description-input" value="{{description}}" placeholder="告诉客户这份合集适合什么场景" bindinput="updateField" maxlength="160" />
+    <view class="cover-row">
+      <image wx:if="{{bannerUrl}}" class="cover-preview" src="{{bannerUrl}}" mode="aspectFill"></image>
+      <view wx:else class="cover-preview cover-empty">{{sceneType === 'property' ? '房源主图' : '合集封面'}}</view>
+      <view class="cover-copy"><text class="cover-title">客户先看到的封面</text><text class="cover-desc">默认取已加入资料的第一张图，也可以单独更换。</text><button class="small-outline-button" bindtap="handleBannerUpload">更换封面</button></view>
+    </view>
+  </view>
+
+  <view class="editor-section">
+    <view class="section-head-row"><view><view class="section-kicker">2 · 已加入资料</view><view class="section-title">先选内容，再决定怎么展示</view></view><button class="small-outline-button" bindtap="toggleNotePicker">{{showNotePicker ? '收起' : '添加资料'}}</button></view>
+    <view wx:if="{{!selectedRows.length}}" class="editor-empty">还没有加入资料，先从资料库选几条。</view>
+    <view wx:for="{{selectedRows}}" wx:key="noteId" class="selected-showcase-row">
+      <image wx:if="{{item.coverUrl}}" class="selected-cover" src="{{item.coverUrl}}" mode="aspectFill"></image><view wx:else class="selected-cover selected-fallback">{{item.badge}}</view>
+      <view class="selected-copy"><view class="selected-title">{{item.displayTitle || item.title}}</view><view class="selected-meta">{{item.badge}} · {{item.visibleText}}</view></view>
+      <view class="selected-actions"><button bindtap="moveSelected" data-id="{{item.noteId}}" data-direction="up">↑</button><button bindtap="moveSelected" data-id="{{item.noteId}}" data-direction="down">↓</button><button bindtap="removeSelected" data-id="{{item.noteId}}">移除</button></view>
+    </view>
+    <view wx:if="{{showNotePicker}}" class="note-picker-box">
+      <view class="picker-head"><text>资料库</text><text class="picker-hint">点选即可加入或移除</text></view>
+      <view wx:if="{{loading}}" class="editor-empty">正在加载资料…</view>
+      <view wx:elif="{{!visibleFilteredNotes.length}}" class="editor-empty">当前场景没有可加入的资料。</view>
+      <view wx:else class="note-picker-list">
+        <note-select-card wx:for="{{visibleFilteredNotes}}" wx:key="id" note="{{item}}" mode="list" bind:toggle="toggleNote" />
+      </view>
+      <view class="picker-footer"><text>已显示 {{visibleFilteredNotes.length}} / {{filteredTotalCount}}</text><button wx:if="{{hasMoreFilteredNotes}}" class="small-outline-button" bindtap="handleLoadMoreNotes">再显示 10 条</button></view>
+    </view>
+  </view>
+
+  <view class="editor-section">
+    <view class="section-kicker">3 · 客户页效果</view>
+    <view class="section-title">按场景选择展示方式</view>
+    <view class="section-hint">点选样式，预览客户页查看真实内容</view>
+    <view class="template-grid">
+      <view wx:for="{{templateOptions}}" wx:key="id" class="template-choice {{activeTemplateId === item.id ? 'active' : ''}}" data-id="{{item.id}}" bindtap="handleTemplateSelect">
+        <view class="template-preview tone-{{item.tone}}">
+          <image wx:if="{{item.previewImage && !item.previewFailed}}" class="template-preview-image" src="{{item.previewImage}}" mode="aspectFill" data-id="{{item.id}}" binderror="handleTemplatePreviewError"></image>
+          <view wx:else class="template-preview-fallback tone-{{item.tone}}"><text class="template-preview-fallback-badge">{{item.badge}}</text><text class="template-preview-fallback-copy">客户页预览</text></view>
+          <text class="template-preview-badge">{{item.badge}}</text>
+        </view>
+        <view class="template-choice-title">{{item.name}}</view><view class="template-choice-desc">{{item.subtitle}}</view><text wx:if="{{activeTemplateId === item.id}}" class="template-check">✓</text>
+      </view>
+    </view>
+    <view class="layout-row"><text>资料排列</text><view class="layout-options"><button class="layout-option {{displayLayout === 'list' ? 'active' : ''}}" data-layout="list" bindtap="handleDisplayLayoutSelect">列表</button><button class="layout-option {{displayLayout === 'grid' ? 'active' : ''}}" data-layout="grid" bindtap="handleDisplayLayoutSelect">双列卡片</button></view></view>
+  </view>
+
+  <view class="editor-section">
+    <view class="section-kicker">4 · 发布检查</view>
+    <view class="check-row" wx:for="{{publishChecks}}" wx:key="key"><text class="check-icon {{item.tone}}">{{item.ok ? '✓' : '!'}}</text><view><text class="check-label">{{item.label}}</text><text wx:if="{{!item.ok}}" class="check-fix">{{item.fix}}</text></view></view>
+    <input class="editor-contact-input" value="{{phone}}" type="number" placeholder="联系电话（可选）" bindinput="updateField" data-key="phone" />
+    <input class="editor-contact-input" value="{{wechat}}" placeholder="微信号（可选）" bindinput="updateField" data-key="wechat" />
+    <input class="editor-contact-input" value="{{contactText}}" placeholder="联系文案" bindinput="updateField" data-key="contactText" />
+  </view>
+
+  <view class="editor-bottom-spacer"></view>
+  <view class="editor-bottom-actions">
+    <button class="bottom-secondary" bindtap="handleSave" loading="{{saving}}">保存草稿</button>
+    <button class="bottom-secondary" bindtap="handlePreview">预览客户页</button>
+    <button wx:if="{{status === 'published' && !unpublishedChanges && shareImageReady}}" class="bottom-primary" open-type="share" catchtap="handleShareTap">分享合集</button>
+    <button wx:elif="{{status === 'published' && !unpublishedChanges}}" class="bottom-primary" bindtap="handlePrepareShare" loading="{{shareImageGenerating}}">{{shareStatusText}}</button>
+    <button wx:elif="{{status === 'published' && unpublishedChanges}}" class="bottom-primary" bindtap="handlePublish" loading="{{saving}}">发布新版</button>
+    <button wx:else class="bottom-primary" bindtap="handlePublish" loading="{{saving}}">发布</button>
+  </view>
+  <canvas canvas-id="showcaseEditShareCanvas" class="share-image-canvas"></canvas>
+</view>

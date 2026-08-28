@@ -70,6 +70,13 @@ CARD_TYPE_LABELS = {
     "image_ocr": "图片资料",
 }
 
+IMPORT_MEDIA_PLACEHOLDERS = {
+    "收到image素材，媒体稍后转存。",
+    "收到video素材，媒体稍后转存。",
+    "收到file素材，媒体稍后转存。",
+}
+IMAGE_CAPTION_MAX_CHARS = 120
+
 FIELD_LABELS = {
     "community": "小区/楼盘",
     "layout": "户型",
@@ -113,7 +120,7 @@ GROUPBUY_CONVERSION_DEFAULTS = {
     "enableLightScrm": True,
     "collectLeads": True,
     "enableAppointment": False,
-    "enablePrivateConsultation": False,
+    "enablePrivateConsultation": True,
     "enableSharePoster": True,
     "enableGroupRelay": True,
     "enablePaymentPlaceholder": False,
@@ -123,7 +130,7 @@ SERVICE_CONVERSION_DEFAULTS = {
     "showContactPhone": True,
     "enableLightScrm": True,
     "collectLeads": True,
-    "enableAppointment": True,
+    "enableAppointment": False,
     "enablePrivateConsultation": True,
     "enableSharePoster": True,
     "enableGroupRelay": False,
@@ -313,7 +320,7 @@ class SkillRouterService:
         )
 
     def _build_note_draft(self, owner_user_id: str | None, content: ContentObjectPayload) -> UserNoteDraftPayload:
-        text = "\n".join(block.strip() for block in content.textBlocks if block.strip())
+        text = "\n".join(self.meaningful_import_text_blocks(content))
         link_text = "\n".join(self._format_link(link) for link in content.links)
         body_parts = [part for part in [text, link_text] if part]
         body = "\n\n".join(body_parts) or "暂无正文，可在小程序中继续编辑。"
@@ -467,11 +474,11 @@ class SkillRouterService:
         if source_type == "miniapp_card" and any(item.get("cardType") == "property_listing" for item in (suggestions or [])):
             return dict(MINIAPP_PROPERTY_CONVERSION_DEFAULTS)
         return {
-            "showContactPhone": False,
+            "showContactPhone": True,
             "enableLightScrm": True,
-            "collectLeads": False,
+            "collectLeads": True,
             "enableAppointment": False,
-            "enablePrivateConsultation": False,
+            "enablePrivateConsultation": True,
             "enableSharePoster": False,
             "enableGroupRelay": False,
             "enablePaymentPlaceholder": False,
@@ -569,7 +576,7 @@ class SkillRouterService:
             suggestions.append(self._type_suggestion("groupbuy_product", groupbuy_score, groupbuy_fields, "命中商品/团购相关字段或关键词"))
         if opportunity_score >= 3:
             suggestions.append(self._type_suggestion("service_offer", opportunity_score, opportunity_fields, "命中商机/合作/服务相关关键词"))
-        card_type = "image_ocr" if content.media and not body.strip() else "text_note"
+        card_type = "image_ocr" if self.is_image_primary_content(content) and not suggestions else "text_note"
         return {
             "cardType": card_type,
             "systemCategory": "图片" if card_type == "image_ocr" else "待整理",
@@ -600,6 +607,27 @@ class SkillRouterService:
             ),
             "tags": [],
         }
+
+    def meaningful_import_text_blocks(self, content: ContentObjectPayload) -> list[str]:
+        return [
+            str(block).strip()
+            for block in content.textBlocks
+            if str(block or "").strip() and str(block).strip() not in IMPORT_MEDIA_PLACEHOLDERS
+        ]
+
+    def is_image_primary_content(self, content: ContentObjectPayload) -> bool:
+        image_items = [item for item in content.media if item.type == "image"]
+        if not image_items or len(image_items) != len(content.media) or content.links:
+            return False
+        text_blocks = self.meaningful_import_text_blocks(content)
+        caption = "\n".join(text_blocks).strip()
+        return len(caption) <= IMAGE_CAPTION_MAX_CHARS and len(text_blocks) <= 3
+
+    def is_image_primary_import(self, content: ContentObjectPayload) -> bool:
+        if not self.is_image_primary_content(content):
+            return False
+        body = "\n".join(self.meaningful_import_text_blocks(content)).strip()
+        return self._detect_card_type(content.title or "", body, content).get("cardType") == "image_ocr"
 
     def _type_suggestion(self, card_type: str, score: int, fields: dict, reason: str) -> dict:
         matched_fields = sorted(fields.keys())

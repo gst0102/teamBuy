@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="membershipGold" x1="18" y1="16" x2="110" y2="116" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFF8C7"/>
+      <stop offset="0.52" stop-color="#FFE89A"/>
+      <stop offset="1" stop-color="#FFC95D"/>
+    </linearGradient>
+  </defs>
+  <path d="M64 10 76 27l21-5-4 22 18 12-18 12 4 22-21-5-12 17-12-17-21 5 4-22-18-12 18-12-4-22 21 5L64 10Z" fill="url(#membershipGold)" opacity=".98"/>
+  <path d="m39 50 12 11 13-20 8 9 9-11 8 13-12 24H51L39 50Z" fill="#1B70E8"/>
+  <path d="M48 79h32" stroke="#1B70E8" stroke-width="6" stroke-linecap="round"/>
+  <circle cx="64" cy="98" r="4" fill="#FFF8C7"/>
+</svg>

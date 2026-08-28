@@ -10,10 +10,11 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from app.api.dependencies import get_app_service, get_ops_console_store, get_sync_task_queue
+from app.api.dependencies import get_app_service, get_automation_control_service, get_ops_console_store, get_sync_task_queue
 from app.core.config import ROOT_DIR
 from app.main import app
 from app.services.app_service import AppService
+from app.services.automation_control_service import AutomationControlService
 from app.services.bootstrap import seed_runtime_state
 from app.services.card_parser_service import CardParserService
 from app.services.import_notification_service import ImportNotificationService
@@ -33,6 +34,7 @@ def client(tmp_path: Path):
     repo = JsonRepository(data_file)
     mock_dir = ROOT_DIR / "backend" / "mock"
     seed_runtime_state(repo, mock_dir)
+    ops_store = OpsConsoleStore(tmp_path / "ops-console-state.json", default_customer_info_chain_enabled=True)
     service = AppService(
         repo=repo,
         wecom_mock_service=WecomMockService(mock_dir),
@@ -42,9 +44,10 @@ def client(tmp_path: Path):
         notification_service=ImportNotificationService(),
         normalizer=WecomMessageNormalizer(),
         ocr_service=OcrService(provider="mock", mock_text=""),
+        ops_console_store=ops_store,
     )
-    ops_store = OpsConsoleStore(tmp_path / "ops-console-state.json")
     sync_task_queue = SyncTaskQueue(repo, retry_delay_seconds=1, auto_schedule=False)
+    automation_control_service = AutomationControlService(repo)
 
     async def run_ocr(payload):
         return service.recognize_ocr_note_image(str(payload.get("noteId")), str(payload.get("ownerUserId")))
@@ -56,6 +59,7 @@ def client(tmp_path: Path):
     sync_task_queue.register("property-table-ocr", run_property_table_ocr)
 
     app.dependency_overrides[get_app_service] = lambda: service
+    app.dependency_overrides[get_automation_control_service] = lambda: automation_control_service
     app.dependency_overrides[get_ops_console_store] = lambda: ops_store
     app.dependency_overrides[get_sync_task_queue] = lambda: sync_task_queue
     try:

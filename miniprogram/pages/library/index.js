@@ -3,7 +3,7 @@ const messagePlugin = require("../../plugins/message-plugin/index");
 const resourceStore = require("../../stores/resource-store");
 const { enrichCard, formatTime, getCurrentUser } = require("../../utils/dashboard");
 const { navigateToNoteEditor, navigateToResourceEdit, navigateToResourceView } = require("../../utils/resource-navigation");
-const { buildNoteShareTitle, getNoteShareSnapshotState, getShareImageUrlFromState, getShareSourceRevision, prepareNoteShareSnapshot, setShareMenuEnabled } = require("../../plugins/share-snapshot/index");
+const { buildNoteShareTitle, getNoteShareSnapshotState, getShareImageUrlFromState, getShareSourceRevision, isShareImageUrl, prepareNoteShareSnapshot, setShareMenuEnabled } = require("../../plugins/share-snapshot/index");
 const subscription = require("../../services/subscription");
 
 const LIBRARY_ENTRY_FILTER_KEY = "teambuy:libraryEntryFilter";
@@ -76,10 +76,25 @@ function createNoteShareId(noteId) {
   return `share_note_${noteId || "note"}_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
 }
 
-function getCardCoverShareImage(card = {}, shareImages = {}) {
+function getCardShareSnapshotImage(card = {}) {
   const user = getCurrentUser() || {};
   const state = getNoteShareSnapshotState(card, user.id, user);
   return getShareImageUrlFromState(state);
+}
+
+function getPreparedLibraryShareImage(card = {}, shareImages = {}) {
+  const prepared = card && card.id ? shareImages[card.id] : null;
+  const noteId = String(card.sourceNoteId || "");
+  const sourceRevision = String(getShareSourceRevision("note", card) || "");
+  if (
+    prepared
+    && isShareImageUrl(prepared.url)
+    && (!prepared.noteId || String(prepared.noteId) === noteId)
+    && String(prepared.sourceRevision || "") === sourceRevision
+  ) {
+    return String(prepared.url).trim();
+  }
+  return getCardShareSnapshotImage(card);
 }
 
 // The list endpoint historically returned the share state in different
@@ -152,6 +167,20 @@ function buildLibraryMeta(card = {}) {
   const shareCount = Number(stats.shareCount || 0);
   const pv = Number(stats.pv || 0);
   return `${latestAction} · 发送 ${shareCount} 次 · 打开 ${pv}`;
+}
+
+function parseActivityTimestamp(value) {
+  const parsed = typeof value === "number" ? value : Date.parse(String(value || ""));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function getLibraryActivityTimestamp(card = {}) {
+  const stats = card.stats || {};
+  return Math.max(
+    parseActivityTimestamp(stats.latestShareAt),
+    parseActivityTimestamp(card.updatedAt),
+    parseActivityTimestamp(card.createdAt)
+  );
 }
 
 function isPropertyCard(card = {}) {
@@ -881,7 +910,7 @@ Page({
       return matchCategory && matchType && matchTag && matchTopic && matchKeyword && matchPropertyFilters && matchGroupbuyFilters && matchDelivery && matchSales;
     }).sort((a, b) => {
       if (this.data.activeSalesFilter === "recent") {
-        const recentDiff = Date.parse(b.updatedAt || b.createdAt || 0) - Date.parse(a.updatedAt || a.createdAt || 0);
+        const recentDiff = getLibraryActivityTimestamp(b) - getLibraryActivityTimestamp(a);
         if (Number.isFinite(recentDiff) && recentDiff) return recentDiff;
       }
       const hotDiff = Number(b.hasHotCustomerSignal) - Number(a.hasHotCustomerSignal);
@@ -892,16 +921,16 @@ Page({
       if (activityDiff) return activityDiff;
       return (b.stats.pv || 0) - (a.stats.pv || 0);
     }).map((card) => {
-      const shareImage = getCardCoverShareImage(card, shareImages);
+      const shareImage = getPreparedLibraryShareImage(card, shareImages);
       const { shareState, isRevoked, canShare, canPublish } = getCardActionState(card);
       return {
         ...card,
         shareState,
         canShare,
         canPublish,
-              shareImageReady: Boolean(shareImage),
-              shareImagePreparing: false,
-              shareDisabled: !canShare || isRevoked,
+        shareImageReady: Boolean(shareImage),
+        shareImagePreparing: false,
+        shareDisabled: !canShare || isRevoked,
       shareStatusText: isRevoked ? "已停止分享" : canShare ? "发客户" : canPublish ? "发客户" : "完善"
       };
     });
@@ -1178,7 +1207,7 @@ Page({
       this.applyFilter();
       const businessCards = cards
         .filter((card) => isBusinessCardResource(card) && getCardActionState(card).canShare)
-        .sort((a, b) => Date.parse(b.updatedAt || b.createdAt || 0) - Date.parse(a.updatedAt || a.createdAt || 0))
+        .sort((a, b) => getLibraryActivityTimestamp(b) - getLibraryActivityTimestamp(a))
         .slice(0, 1);
       if (businessCards.length) this.prepareLibraryShareImages(businessCards);
     });
@@ -1599,10 +1628,11 @@ Page({
         }
       };
     };
-    this.setData({
-      cards: (this.data.cards || []).map(updateCard),
-      displayCards: (this.data.displayCards || []).map(updateCard)
-    });
+    const cards = (this.data.cards || []).map(updateCard);
+    const displayCards = (this.data.displayCards || []).map(updateCard);
+    const updatedCard = cards.find((card) => card && card.id === cardId);
+    if (updatedCard) resourceStore.upsertCard(updatedCard);
+    this.setData({ cards, displayCards }, () => this.applyFilter(false));
   },
   handleDelete(event) {
     const cardId = event.currentTarget.dataset.id;
@@ -1746,13 +1776,14 @@ Page({
         });
         if (!isCurrentGeneration()) throw new Error("share generation is stale");
         const imagePath = result.snapshot && result.snapshot.url;
-        const shareReady = Boolean(imagePath || result.direct);
+        const shareReady = Boolean(imagePath);
         const savedConfig = result.entity && result.entity.visibilityConfig;
         if (shareReady) {
           const shareImages = imagePath ? {
             ...(this.data.shareImages || {}),
             [card.id]: {
               url: imagePath,
+              noteId: sourceNoteId,
               sourceRevision: result.sourceRevision,
               fingerprint: result.fingerprint
             }
@@ -1818,36 +1849,33 @@ Page({
       wx.showToast({ title: "资料分享图正在准备", icon: "none" });
       return;
     }
-    const cover = dataset.cover || card.coverDisplayUrl || card.coverUrl || "";
     const persistedState = getNoteShareSnapshotState(card, (getCurrentUser() || {}).id, getCurrentUser() || {});
     const persistedImage = persistedState.status === "ready" && persistedState.snapshot ? persistedState.snapshot.url : "";
-    const generatedImageUrl = getCardCoverShareImage(card, this.data.shareImages || {}) || persistedImage;
+    const generatedImageUrl = getPreparedLibraryShareImage(card, this.data.shareImages || {}) || persistedImage;
     const imageUrl = generatedImageUrl;
-    const directShareReady = Boolean(persistedState.direct && isShareImageUrl(imageUrl));
     const pendingShare = {
       id: cardId,
       // The card list is the source of truth. Never trust a stale dataset
       // noteId to build a public path for a different card.
       noteId: card.sourceNoteId,
       title: buildLibraryShareTitle(card, dataset.title || card.title),
-      cover,
       imageUrl,
-      direct: directShareReady,
       sourceRevision: getShareSourceRevision("note", card)
     };
     this.setData({ pendingShare });
-    if (!generatedImageUrl && !directShareReady && pendingShare.noteId) {
+    if (!generatedImageUrl && pendingShare.noteId) {
       wx.showToast({ title: "正在准备分享图，完成后再点击发客户", icon: "none" });
       this.prepareLibraryShareImages([card]);
       return;
     }
-    if (generatedImageUrl || directShareReady) {
+    if (generatedImageUrl) {
       const shareImages = {
         ...(this.data.shareImages || {}),
         [card.id]: {
           url: generatedImageUrl,
+          noteId: card.sourceNoteId,
           sourceRevision: getShareSourceRevision("note", card),
-          fingerprint: persistedState.fingerprint || ""
+          fingerprint: ((this.data.shareImages || {})[card.id] || {}).fingerprint || persistedState.fingerprint || ""
         }
       };
       const markReady = (item) => item && item.id === card.id
@@ -1867,7 +1895,7 @@ Page({
     const card = this.data.cards.find((item) => item.id === cardId) || {};
     const pendingCandidate = this.data.pendingShare || {};
     // A fast second tap can arrive before the previous setData callback. Never
-    // reuse another card's generated cover for the current note.
+    // reuse another card's generated snapshot for the current note.
     const pendingShare = !cardId || !pendingCandidate.id || pendingCandidate.id === cardId ? pendingCandidate : {};
     const { canShare } = getCardActionState(card);
     const cardNoteId = card.sourceNoteId || "";
@@ -1875,15 +1903,15 @@ Page({
     const noteId = cardNoteId;
     const title = buildLibraryShareTitle(card, dataset.title || pendingShare.title || card.title);
     const persistedState = getNoteShareSnapshotState(card, (getCurrentUser() || {}).id, getCurrentUser() || {});
-    const imageUrl = getShareImageUrlFromState(persistedState);
-    const directShareReady = Boolean(persistedState.direct && isShareImageUrl(imageUrl));
+    const imageUrl = getPreparedLibraryShareImage(card, this.data.shareImages || {})
+      || getShareImageUrlFromState(persistedState);
     const user = getCurrentUser();
     if (!cardId || !cardNoteId || !canShare || (requestedNoteId && requestedNoteId !== cardNoteId)) {
       wx.showToast({ title: "资料状态已变化，请刷新后再发客户", icon: "none" });
       setShareMenuEnabled(false);
       return null;
     }
-    if (!imageUrl && !directShareReady) {
+    if (!imageUrl) {
       this.prepareLibraryShareImages([card]);
       wx.showToast({ title: "资料分享图正在准备，请稍后再发", icon: "none" });
       setShareMenuEnabled(false);

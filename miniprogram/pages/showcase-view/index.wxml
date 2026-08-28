@@ -1,6 +1,4 @@
 <view class="page-shell {{templateClass}}">
-  <custom-nav title="资料整理助手" />
-
   <view wx:if="{{loading}}" class="empty">加载中...</view>
 
   <view wx:elif="{{errorText}}" class="empty">
@@ -14,7 +12,7 @@
         <view class="share-title">客户可见展示页</view>
         <view class="share-sub">发给客户后，对方打开看到这个页面。</view>
       </view>
-      <button class="share-btn" open-type="share" disabled="{{!shareImageReady}}">{{shareStatusText}}</button>
+      <button class="share-btn" open-type="share" catchtap="handleShareTap" disabled="{{!shareImageReady}}">{{shareStatusText}}</button>
     </view>
 
     <view wx:if="{{template.id === 'featured_window'}}" class="tpl-page featured-page layout-{{displayLayout}}">
@@ -72,11 +70,6 @@
         </view>
       </view>
 
-      <view class="contact-actions featured-actions">
-        <button wx:if="{{page.contactConfig.showWechat && page.contactConfig.wechat}}" bindtap="copyWechat">微信联系</button>
-        <button wx:if="{{page.contactConfig.showPhone && page.contactConfig.phone}}" bindtap="callPhone">电话咨询</button>
-      </view>
-
       <view class="section-headline">
         <text>{{context.featuredTitle}}</text>
         <text class="more">共{{flatItems.length}}条</text>
@@ -106,7 +99,6 @@
           </view>
         </view>
       </view>
-      <button wx:if="{{canShare}}" class="sticky-share" open-type="share" disabled="{{!shareImageReady}}">{{shareImageReady ? context.shareText : shareStatusText}}</button>
     </view>
 
     <view wx:elif="{{template.id === 'moments_story'}}" class="tpl-page story-page layout-{{displayLayout}}">
@@ -165,7 +157,6 @@
           </view>
         </view>
       </view>
-      <button wx:if="{{canShare}}" class="sticky-share warm" open-type="share" disabled="{{!shareImageReady}}">{{shareImageReady ? context.storyShareText : shareStatusText}}</button>
     </view>
 
     <view wx:elif="{{template.id === 'catalog_list'}}" class="tpl-page catalog-page layout-{{displayLayout}}">
@@ -197,10 +188,6 @@
         </view>
         <view class="detail-btn" catchtap="openNote" data-id="{{item.noteId}}">查看详情</view>
       </view>
-      <view class="bottom-contact {{(!page.contactConfig.showPhone || !page.contactConfig.phone) || (!page.contactConfig.showWechat || !page.contactConfig.wechat) ? 'single' : ''}}">
-        <button wx:if="{{page.contactConfig.showWechat && page.contactConfig.wechat}}" bindtap="copyWechat">微信联系</button>
-        <button wx:if="{{page.contactConfig.showPhone && page.contactConfig.phone}}" bindtap="callPhone">电话咨询</button>
-      </view>
     </view>
 
     <view wx:else class="tpl-page brand-page layout-{{displayLayout}}">
@@ -217,13 +204,6 @@
         <view><strong>{{stats.resources}}</strong><text>{{context.resourceMetric}}</text></view>
         <view><strong>{{stats.updated}}</strong><text>{{context.updateMetric}}</text></view>
         <view><strong>{{stats.contact}}</strong><text>{{context.contactMetric}}</text></view>
-      </view>
-      <view class="brand-contact">
-        <view class="contact-title">联系我</view>
-        <view class="contact-actions">
-          <button wx:if="{{page.contactConfig.showWechat && page.contactConfig.wechat}}" bindtap="copyWechat">微信联系</button>
-          <button wx:if="{{page.contactConfig.showPhone && page.contactConfig.phone}}" bindtap="callPhone">电话咨询</button>
-        </view>
       </view>
       <view class="section-headline">
         <text>{{context.brandCases}}</text>
@@ -250,10 +230,21 @@
       <view class="trust-strip">
         <text wx:for="{{context.trustItems}}" wx:key="*this">{{item}}</text>
       </view>
-      <button wx:if="{{canShare}}" class="sticky-share teal" open-type="share" disabled="{{!shareImageReady}}">{{shareImageReady ? context.brandShareText : shareStatusText}}</button>
     </view>
 
-    <view wx:if="{{context.isProperty}}" class="agent-same-card">
+    <customer-communication
+      wx:if="{{!isOwnerViewing}}"
+      actions="{{showcaseCommunicationActions}}"
+      primary-action="{{showcasePrimaryCommunicationAction}}"
+      hint="{{showcaseCommunicationHint}}"
+      share-title="分享合集"
+      share-desc="转给好友继续浏览"
+      share-ready="{{shareImageReady}}"
+      bind:action="handleCommunicationAction"
+      bind:share="handleShareTap"
+    />
+
+    <view wx:if="{{context.isProperty && !isOwnerViewing}}" class="agent-same-card">
       <view class="agent-same-main">
         <view class="agent-same-title">我是中介，也想生成这种合集</view>
         <view class="agent-same-sub">复制公开房源内容，换成你的微信，上游联系人你自己留着。</view>

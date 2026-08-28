@@ -1,0 +1,115 @@
+<view class="property-page">
+  <custom-nav title="编辑房源" showBack="{{true}}" rightText="{{saveStatus}}" />
+
+  <view wx:if="{{loading}}" class="property-loading">正在读取房源…</view>
+
+  <block wx:else>
+    <view class="property-content">
+      <view class="property-card customer-preview-card">
+        <view class="section-heading-row">
+          <view class="section-heading">客户看到的效果</view>
+          <view class="section-link" bindtap="handlePreview">完整预览 <text>›</text></view>
+        </view>
+        <view class="customer-preview">
+          <image wx:if="{{imageMedia.length}}" class="customer-cover" src="{{imageMedia[0].displayUrl || imageMedia[0].url}}" mode="aspectFill" data-index="0" bindtap="handlePreviewImage" />
+          <view wx:else class="customer-cover customer-cover-empty" bindtap="chooseImages"><text class="cover-plus">＋</text><text>添加主图</text></view>
+          <view class="customer-copy">
+            <view class="customer-title">{{previewTitle}}</view>
+            <view class="customer-price">{{previewPrice}}</view>
+            <view class="customer-facts">{{previewFacts}}</view>
+            <view class="customer-area">{{previewArea}}</view>
+            <view class="customer-chips" wx:if="{{highlights.length}}">
+              <text wx:for="{{highlights}}" wx:key="*this" class="customer-chip">{{item}}</text>
+            </view>
+          </view>
+        </view>
+      </view>
+
+      <view class="property-card image-card">
+        <view class="section-heading-row">
+          <view class="section-heading">房源图片</view>
+          <view class="section-note">长按设为封面 · 第一张作为主图</view>
+        </view>
+        <scroll-view class="image-strip" scroll-x="{{true}}" enable-flex>
+          <view class="image-strip-inner">
+            <view class="image-thumb-wrap" wx:for="{{imageMedia}}" wx:key="id">
+              <image class="image-thumb" src="{{item.displayUrl || item.url}}" mode="aspectFill" data-index="{{index}}" bindtap="handlePreviewImage" bindlongpress="handleSetCover" />
+              <view class="image-order">{{index + 1}}</view>
+              <view class="image-remove" data-index="{{index}}" bindtap="handleRemoveImage">×</view>
+            </view>
+            <view class="image-add" bindtap="chooseImages"><text>＋</text><view>{{uploading ? '上传中' : '添加'}}</view></view>
+          </view>
+        </scroll-view>
+      </view>
+
+      <view class="property-card core-card">
+        <view class="section-heading">核心信息</view>
+        <view class="listing-mode-row">
+          <view class="field-label">交易类型</view>
+          <view class="listing-mode-tag" bindtap="handleModeChange">{{listingMode === 'sale' ? '出售' : '出租'}} <text>切换 ›</text></view>
+        </view>
+        <view class="field-grid">
+          <view class="compact-field"><view class="field-label">小区 / 楼盘</view><input class="property-input" value="{{structuredData.community}}" data-key="community" bindinput="handleStructuredInput" placeholder="例如：滨江花园" placeholder-class="property-placeholder" /></view>
+          <view class="compact-field"><view class="field-label">{{priceLabel}}</view><view class="input-with-unit"><input class="property-input" type="digit" value="{{structuredData.price}}" data-key="price" bindinput="handleStructuredInput" placeholder="待填写" placeholder-class="property-placeholder" /><text>{{priceUnit}}</text></view></view>
+          <view class="compact-field"><view class="field-label">户型</view><input class="property-input" value="{{structuredData.layout}}" data-key="layout" bindinput="handleStructuredInput" placeholder="例如：2室1厅" placeholder-class="property-placeholder" /></view>
+          <view class="compact-field"><view class="field-label">面积</view><view class="input-with-unit"><input class="property-input" type="digit" value="{{structuredData.area}}" data-key="area" bindinput="handleStructuredInput" placeholder="待填写" placeholder-class="property-placeholder" /><text>㎡</text></view></view>
+          <view class="compact-field field-wide"><view class="field-label">商圈 / 区域</view><input class="property-input" value="{{structuredData.businessArea}}" data-key="businessArea" bindinput="handleStructuredInput" placeholder="例如：滨江商圈" placeholder-class="property-placeholder" /></view>
+        </view>
+      </view>
+
+      <view class="property-card property-map-card" wx:if="{{structuredData.address || mapPreview.address || geocodingAddress}}">
+        <view class="section-heading-row map-heading-row">
+          <view class="section-heading">地图位置</view>
+          <view class="map-status">{{mapPreview.hasPoint ? '已定位' : geocodingAddress ? '正在定位' : '待定位'}}</view>
+        </view>
+        <map
+          wx:if="{{mapPreview.hasPoint}}"
+          id="propertyEditorMap"
+          class="property-map"
+          latitude="{{mapPreview.latitude}}"
+          longitude="{{mapPreview.longitude}}"
+          markers="{{mapPreview.markers}}"
+          scale="16"
+          show-location="{{false}}"
+          bindtap="handleOpenMap"
+        ></map>
+        <view wx:else class="property-map-empty" bindtap="handleResolveMap">
+          <text>{{geocodingAddress ? '正在按房源地址匹配地图' : '点击生成房源地图'}}</text>
+          <text>{{geocodingAddress ? '匹配成功后会显示小房子标记' : '会优先使用小区级地址，避免栋号导致定位失败'}}</text>
+        </view>
+        <view class="property-map-address">{{mapPreview.address || structuredData.address}}</view>
+      </view>
+
+      <view class="property-card highlights-card">
+        <view class="section-heading">房源亮点</view>
+        <view class="highlight-preview" wx:if="{{highlights.length}}"><text wx:for="{{highlights}}" wx:key="*this" class="highlight-chip">{{item}} ✓</text></view>
+        <view class="field-label standalone">亮点标签</view>
+        <input class="property-input full-input" value="{{structuredData.highlights}}" data-key="highlights" bindinput="handleStructuredInput" placeholder="朝南采光、近地铁、民水民电、随时入住" placeholder-class="property-placeholder" />
+        <view class="field-label standalone">补充说明</view>
+        <textarea class="property-textarea" value="{{structuredData.remark}}" data-key="remark" bindinput="handleStructuredInput" maxlength="200" placeholder="写下客户真正关心的补充信息" placeholder-class="property-placeholder" />
+        <view class="text-count">{{remarkCount}}/200</view>
+      </view>
+
+      <view class="property-card progressive-card">
+        <view class="progressive-row" data-section="more" bindtap="handleToggleSection"><view class="row-icon blue">▤</view><view class="row-copy"><view class="row-title">更多房源信息</view><view class="row-summary">楼层、电梯、押付、水电、入住时间</view></view><text class="row-arrow">{{openSection === 'more' ? '⌄' : '›'}}</text></view>
+        <view wx:if="{{openSection === 'more'}}" class="expanded-fields">
+          <view class="expanded-field" wx:for="{{moreFields}}" wx:key="key"><view class="field-label">{{item.label}}</view><input class="property-input" value="{{structuredData[item.key]}}" data-key="{{item.key}}" bindinput="handleStructuredInput" placeholder="{{item.placeholder}}" placeholder-class="property-placeholder" /></view>
+          <view class="supplement-head"><view><view class="field-label">补充资料</view><view class="small-note">PDF 与外部链接默认不展示，客户页按需打开</view></view><button class="small-add-button" bindtap="handleChooseSupplement">添加</button></view>
+          <view class="supplement-list" wx:if="{{supplementalMedia.length}}"><view class="supplement-item" wx:for="{{supplementalMedia}}" wx:key="id"><text>{{item.type === 'pdf' ? 'PDF' : '链接'}} · {{item.title || item.name || '补充资料'}}</text><text data-index="{{index}}" bindtap="handleRemoveSupplement">删除</text></view></view>
+          <view class="link-form" wx:if="{{showLinkForm}}"><input class="property-input" data-key="title" value="{{linkDraft.title}}" bindinput="handleLinkInput" placeholder="链接标题（可选）" placeholder-class="property-placeholder" /><input class="property-input" data-key="url" value="{{linkDraft.url}}" bindinput="handleLinkInput" placeholder="https://" placeholder-class="property-placeholder" /><button class="link-confirm" bindtap="addLink">确认添加</button></view>
+        </view>
+
+        <view class="progressive-row" data-section="location" bindtap="handleToggleSection"><view class="row-icon blue">⌖</view><view class="row-copy"><view class="row-title">公开位置</view><view class="row-summary">{{structuredData.address || previewArea}}</view></view><text class="row-arrow">{{openSection === 'location' ? '⌄' : '›'}}</text></view>
+        <view wx:if="{{openSection === 'location'}}" class="expanded-fields"><view class="expanded-field"><view class="field-label">客户可见的位置描述</view><input class="property-input" value="{{structuredData.address}}" data-key="address" bindinput="handleStructuredInput" placeholder="例如：滨江花园附近 · 模糊位置" placeholder-class="property-placeholder" /></view></view>
+
+        <view class="progressive-row private" data-section="private" bindtap="handleToggleSection"><view class="row-icon gold">▢</view><view class="row-copy"><view class="row-title">仅自己可见 · 房源管理</view><view class="row-summary">上游联系人、具体房号、佣金、密码锁</view></view><text class="row-arrow">{{openSection === 'private' ? '⌄' : '›'}}</text></view>
+        <view wx:if="{{openSection === 'private'}}" class="expanded-fields private-fields"><view class="expanded-field" wx:for="{{privateFields}}" wx:key="key"><view class="field-label">{{item.label}}</view><textarea wx:if="{{item.multiline}}" class="property-textarea compact" value="{{privateData[item.key]}}" data-key="{{item.key}}" bindinput="handlePrivateInput" placeholder="{{item.placeholder}}" placeholder-class="property-placeholder" /><input wx:else class="property-input" value="{{privateData[item.key]}}" data-key="{{item.key}}" bindinput="handlePrivateInput" placeholder="{{item.placeholder}}" placeholder-class="property-placeholder" /></view></view>
+      </view>
+    </view>
+
+    <view class="property-bottom-bar">
+      <button class="delete-button" bindtap="handleDelete">删除房源</button>
+      <button class="save-button" bindtap="handlePublish" loading="{{saving}}">发客户</button>
+    </view>
+  </block>
+</view>

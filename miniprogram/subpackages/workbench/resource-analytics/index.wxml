@@ -1,0 +1,86 @@
+<view class="resource-ops-page">
+  <custom-nav title="资料运营" showBack="{{true}}" />
+
+  <view class="resource-summary-card">
+    <view class="resource-summary-main">
+      <image wx:if="{{coverUrl}}" class="resource-cover" src="{{coverUrl}}" mode="aspectFill"></image>
+      <view wx:else class="resource-cover resource-cover-fallback">资</view>
+      <view class="resource-summary-copy">
+        <view class="resource-title">{{title}}</view>
+        <view class="resource-meta"><text>{{typeLabel}}</text><text class="meta-dot">·</text><text>{{statusText}}</text></view>
+      </view>
+    </view>
+    <button class="resource-more-button" bindtap="handleToggleMenu" aria-label="更多操作">•••</button>
+    <view wx:if="{{menuVisible}}" class="resource-more-menu" catchtap="noop">
+      <button bindtap="handleMenuAction" data-action="view"><text class="menu-icon">◉</text>{{viewLabel}}</button>
+      <button bindtap="handleMenuAction" data-action="edit"><text class="menu-icon">↗</text>{{editLabel}}</button>
+      <button class="active" bindtap="handleToggleMenu"><text class="menu-icon">▥</text>资料运营</button>
+    </view>
+    <view class="resource-summary-actions">
+      <button class="summary-primary" bindtap="handleViewResource">{{viewLabel}}</button>
+      <button class="summary-secondary" bindtap="handleEditResource">{{editLabel}}</button>
+    </view>
+  </view>
+
+  <view class="resource-metric-strip">
+    <view class="resource-metric metric-blue">
+      <view class="metric-icon metric-chart-icon"><view class="metric-bar metric-bar-short"></view><view class="metric-bar metric-bar-tall"></view><view class="metric-bar metric-bar-mid"></view></view>
+      <view class="metric-copy"><text class="metric-value">{{stats.totalVisits}}</text><text class="metric-label">总访问</text></view>
+    </view>
+    <view class="resource-metric metric-green">
+      <view class="metric-icon metric-person-icon"><view class="person-head"></view><view class="person-body"></view><view class="person-side-head"></view><view class="person-side-body"></view></view>
+      <view class="metric-copy"><text class="metric-value">{{stats.visitorCount}}</text><text class="metric-label">访客</text></view>
+    </view>
+    <view class="resource-metric metric-orange">
+      <view class="metric-icon metric-share-icon">↗</view>
+      <view class="metric-copy"><text class="metric-value">{{stats.shareCount}}</text><text class="metric-label">分享</text></view>
+    </view>
+  </view>
+
+  <view class="resource-panel trend-panel">
+    <view class="panel-head trend-head">
+      <view class="panel-title">访问趋势</view>
+      <view class="trend-switch">
+        <button class="{{trendRange === 'last7' ? 'active' : ''}}" data-range="last7" bindtap="handleTrendRange">近7日</button>
+        <button class="{{trendRange === 'today' ? 'active' : ''}}" data-range="today" bindtap="handleTrendRange">今日</button>
+      </view>
+    </view>
+    <view class="trend-legend"><text class="trend-line-key"></text><text>访问量</text></view>
+    <canvas class="trend-canvas" canvas-id="resourceTrendCanvas"></canvas>
+  </view>
+
+  <view class="resource-panel high-intent-panel">
+    <view class="panel-title">高意向访客</view>
+    <view wx:if="{{highIntent}}" class="high-intent-row">
+      <view class="high-intent-avatar">
+        <image wx:if="{{highIntent.avatarUrl}}" src="{{highIntent.avatarUrl}}" mode="aspectFill"></image>
+        <text wx:else>{{highIntent.avatarText}}</text>
+      </view>
+      <view class="high-intent-copy">
+        <view class="high-intent-name"><text>{{highIntent.nickname}}</text><text class="high-intent-tag">高意向</text></view>
+        <view class="high-intent-meta">{{highIntent.viewText}} · {{highIntent.viewedAt}}</view>
+      </view>
+      <button class="customer-outline-button" bindtap="handleOpenCustomer">查看客户</button>
+    </view>
+    <view wx:else class="high-intent-empty">暂时没有高意向访客</view>
+  </view>
+
+  <view class="resource-panel source-panel">
+    <view class="panel-title">来源与动作</view>
+    <view class="source-action-grid">
+      <view wx:for="{{sourceActions}}" wx:key="label" class="source-action-item">
+        <view class="source-action-icon tone-{{item.tone}} source-icon-{{item.iconClass}}"><text wx:if="{{item.icon}}">{{item.icon}}</text><view wx:if="{{item.iconClass === 'chat'}}" class="chat-glyph"></view><view wx:if="{{item.iconClass === 'appointment'}}" class="appointment-glyph"></view></view>
+        <text class="source-action-value">{{item.value}}</text>
+        <text class="source-action-label">{{item.label}}</text>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{!relayEnabled}}" class="relay-disabled"><text class="relay-info">i</text><text>接龙功能未启用</text></view>
+
+  <view wx:if="{{errorText}}" class="resource-error">
+    <view>资料运营暂时无法加载</view>
+    <text>{{errorText}}</text>
+    <button bindtap="handleRetry">重新读取</button>
+  </view>
+</view>

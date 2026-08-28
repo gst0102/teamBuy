@@ -39,7 +39,7 @@
 
 ## 验证命令
 
-- `node --check miniprogram/pages/sales-template-select/index.js`：通过。
+- `node --check miniprogram/pages/business-card-studio/index.js`、`node --check miniprogram/pages/service-offer-studio/index.js`：通过。
 - `node --check miniprogram/utils/sales-page-templates.js`：通过。
 
 ## 未覆盖

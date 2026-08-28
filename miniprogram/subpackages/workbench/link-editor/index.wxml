@@ -1,0 +1,47 @@
+<view class="link-editor-page">
+  <custom-nav title="编辑链接资料" showBack="{{true}}" rightText="{{saveStatus}}" />
+  <view wx:if="{{loading}}" class="link-loading">正在读取链接资料…</view>
+
+  <block wx:else>
+    <view class="link-content">
+      <view class="link-card preview-card">
+        <view class="section-head"><view class="section-title">客户看到的效果</view><view class="preview-link" bindtap="handlePreview">完整预览 ›</view></view>
+        <image wx:if="{{form.coverUrl}}" class="article-cover" src="{{form.coverUrl}}" mode="aspectFill" bindtap="chooseCover" />
+        <view wx:else class="article-cover empty" bindtap="chooseCover"><text>＋</text><view>{{uploading ? '上传中' : '添加文章封面'}}</view></view>
+        <view class="article-source">{{sourceLabel}} · {{sourceName}}</view>
+        <view class="article-title">{{form.title || '文章标题待补充'}}</view>
+        <view class="article-recommendation" wx:if="{{recommendation}}"><text>我的推荐</text><view>{{recommendation}}</view></view>
+        <view class="article-description">{{description || '补充一段内容简介，帮助客户判断是否值得阅读。'}}</view>
+        <view class="article-open">查看原文</view>
+      </view>
+
+      <view class="link-card edit-card">
+        <view class="section-title">文章信息</view>
+        <view class="field"><view class="field-label">文章标题</view><textarea class="title-input" value="{{form.title}}" maxlength="120" auto-height data-key="title" bindinput="handleTitleInput" placeholder="文章原文标题" placeholder-class="link-placeholder" /></view>
+        <view class="field"><view class="field-label">来源</view><input class="link-input" value="{{sourceName}}" data-key="sourceName" bindinput="handleInput" placeholder="例如：公众号名称" placeholder-class="link-placeholder" /></view>
+        <view class="field"><view class="field-label">原文链接</view><view class="source-url-row"><view>{{sourceUrl}}</view><text bindtap="handleOpenSource">打开 ›</text></view></view>
+      </view>
+
+      <view class="link-card edit-card">
+        <view class="section-title">我的推荐</view>
+        <view class="section-hint">告诉客户为什么值得看；这是你的观点，不冒充原作者内容。</view>
+        <textarea class="link-textarea recommendation" value="{{recommendation}}" maxlength="160" data-key="recommendation" bindinput="handleInput" placeholder="例如：这篇把AI原生办公的变化讲得很清楚，推荐重点看第三部分。" placeholder-class="link-placeholder" />
+        <view class="count">{{recommendationCount}}/160</view>
+      </view>
+
+      <view class="link-card edit-card">
+        <view class="section-title">内容简介</view>
+        <view class="section-hint">系统读取的摘要可以修改；客户在跳转原文前先看到这段内容。</view>
+        <textarea class="link-textarea" value="{{description}}" maxlength="300" data-key="description" bindinput="handleInput" placeholder="用一小段话说明文章在讲什么" placeholder-class="link-placeholder" />
+        <view class="count">{{descriptionCount}}/300</view>
+      </view>
+
+      <view class="link-card privacy-card">
+        <view class="privacy-icon">锁</view>
+        <view><view>只保存链接元信息与推荐内容</view><text>不复制第三方全文；客户点击“查看原文”后进入原作者页面。</text></view>
+      </view>
+    </view>
+
+    <view class="link-bottom-bar"><button class="delete-button" bindtap="handleDelete">删除资料</button><button class="save-button" loading="{{saving}}" bindtap="handlePublish">发客户</button></view>
+  </block>
+</view>

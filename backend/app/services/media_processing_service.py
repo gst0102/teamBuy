@@ -70,6 +70,35 @@ class MediaProcessingService:
         except Exception:
             return ProcessedMedia(content, "image/webp", filename, len(content), len(content), False)
 
+    def process_share_image(self, content: bytes, filename: str | None = None) -> ProcessedMedia:
+        """Normalize a native WeChat share image to a JPG without WebP output."""
+        try:
+            image = Image.open(BytesIO(content))
+            image.load()
+            image.thumbnail((self.image_max_edge, self.image_max_edge))
+            if image.mode in {"RGBA", "LA"} or (image.mode == "P" and "transparency" in image.info):
+                rgba = image.convert("RGBA")
+                background = Image.new("RGB", rgba.size, "white")
+                background.paste(rgba, mask=rgba.getchannel("A"))
+                image = background
+            else:
+                image = image.convert("RGB")
+            output = BytesIO()
+            image.save(output, format="JPEG", quality=max(self.image_quality, 90), optimize=True)
+            processed = output.getvalue()
+            if not processed:
+                raise ValueError("share image processing produced empty output")
+            return ProcessedMedia(
+                content=processed,
+                content_type="image/jpeg",
+                filename=_replace_extension(filename, "jpg"),
+                original_size=len(content),
+                stored_size=len(processed),
+                compressed=len(processed) < len(content) or filename != _replace_extension(filename, "jpg"),
+            )
+        except Exception as exc:
+            raise ValueError("分享图必须是有效的图片") from exc
+
     def process_video(self, content: bytes, filename: str | None = None) -> ProcessedMedia:
         input_suffix = _suffix_from_filename(filename) or ".mp4"
         with tempfile.NamedTemporaryFile(suffix=input_suffix, delete=False) as input_file:

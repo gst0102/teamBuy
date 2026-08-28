@@ -1,0 +1,64 @@
+page { background: #f3f7fd; }
+.service-editor-page { min-height: 100vh; color: #132039; }
+.loading-state { padding: 180rpx 30rpx; color: #8a96a8; font-size: 25rpx; text-align: center; }
+.editor-content { display: grid; gap: 18rpx; padding: 18rpx 20rpx calc(150rpx + env(safe-area-inset-bottom)); }
+.editor-card { padding: 23rpx 25rpx; border: 1rpx solid #e7edf6; border-radius: 22rpx; background: #fff; box-shadow: 0 8rpx 24rpx rgba(38,69,111,.045); box-sizing: border-box; }
+.section-head { display: flex; align-items: center; justify-content: space-between; gap: 16rpx; margin-bottom: 20rpx; }
+.section-head > view:first-child { display: flex; align-items: center; gap: 12rpx; }
+.section-head.tappable { margin-bottom: 0; }
+.step { display: flex; align-items: center; justify-content: center; width: 34rpx; height: 34rpx; border-radius: 50%; background: #1677ff; color: #fff; font-size: 19rpx; font-weight: 900; }
+.section-title { font-size: 28rpx; font-weight: 900; }
+.preview-link, .toggle { color: #1677ff; font-size: 22rpx; font-weight: 800; }
+.live-preview { display: grid; grid-template-columns: 290rpx minmax(0,1fr); gap: 22rpx; }
+.preview-cover { width: 290rpx; height: 178rpx; border-radius: 14rpx; background: #edf3fa; }
+.preview-cover.empty { display: flex; flex-direction: column; align-items: center; justify-content: center; border: 2rpx dashed #c9d5e5; color: #7e8ba0; font-size: 19rpx; box-sizing: border-box; }
+.preview-cover.empty text { color: #1677ff; font-size: 44rpx; line-height: 1; }
+.preview-copy { display: flex; min-width: 0; flex-direction: column; }
+.preview-title { overflow: hidden; font-size: 28rpx; font-weight: 900; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.preview-headline { display: -webkit-box; overflow: hidden; margin-top: 10rpx; color: #657186; font-size: 21rpx; line-height: 1.45; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.preview-footer { display: flex; align-items: center; justify-content: space-between; gap: 10rpx; margin-top: auto; }
+.preview-footer > text { overflow: hidden; color: #778397; font-size: 18rpx; text-overflow: ellipsis; white-space: nowrap; }
+.preview-footer button { display: flex; align-items: center; justify-content: center; flex: 0 0 112rpx; width: 112rpx; height: 46rpx; margin: 0; padding: 0; border: 1rpx solid #1677ff; border-radius: 9rpx; background: #fff; color: #1677ff; font-size: 19rpx; font-weight: 800; line-height: 1; }
+.preview-footer button::after { border: 0; }
+.field-row { display: grid; grid-template-columns: 170rpx minmax(0,1fr); align-items: center; min-width: 0; margin-top: 13rpx; }
+.field-row.multiline { align-items: start; }
+.field-label { color: #334159; font-size: 21rpx; font-weight: 700; }.field-label text { color: #929cad; font-size: 18rpx; font-weight: 500; }
+.service-input { width: 100%; height: 62rpx; padding: 0 16rpx; border: 1rpx solid #d9e2ee; border-radius: 10rpx; color: #152139; font-size: 22rpx; box-sizing: border-box; }
+.service-textarea { width: 100%; min-height: 120rpx; padding: 15rpx 16rpx; border: 1rpx solid #d9e2ee; border-radius: 10rpx; color: #152139; font-size: 22rpx; line-height: 1.55; box-sizing: border-box; }
+.service-placeholder { color: #9ca7b7; font-size: 20rpx; line-height: 1.5; }
+.count { grid-column: 2; margin-top: -27rpx; padding-right: 11rpx; color: #9aa5b5; font-size: 17rpx; text-align: right; pointer-events: none; }
+.attachment-list { overflow: hidden; border: 1rpx solid #dbe3ee; border-radius: 11rpx; }
+.attachment-row { display: grid; grid-template-columns: 80rpx minmax(0,1fr) 56rpx; gap: 14rpx; align-items: center; min-height: 88rpx; padding: 10rpx 14rpx; border-bottom: 1rpx solid #e9edf3; box-sizing: border-box; }
+.attachment-row:last-child { border-bottom: 0; }
+.attachment-thumb, .attachment-mark { display: flex; align-items: center; justify-content: center; width: 80rpx; height: 62rpx; border-radius: 8rpx; }
+.attachment-mark { background: #eef5ff; color: #1677ff; font-size: 18rpx; font-weight: 900; }.attachment-mark.pdf { background: #fff0ee; color: #e14d3b; }
+.attachment-copy { min-width: 0; }.attachment-copy view { overflow: hidden; font-size: 21rpx; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }.attachment-copy text { display: block; overflow: hidden; margin-top: 5rpx; color: #929cad; font-size: 17rpx; text-overflow: ellipsis; white-space: nowrap; }
+.attachment-remove { color: #db5661; font-size: 18rpx; text-align: right; }
+.attachment-empty { padding: 30rpx; border: 2rpx dashed #d1dbe8; border-radius: 10rpx; color: #8c98aa; font-size: 20rpx; text-align: center; }
+.attachment-add { display: flex; align-items: center; justify-content: center; min-height: 62rpx; margin-top: 14rpx; border: 2rpx dashed #2680f4; border-radius: 10rpx; color: #1677ff; font-size: 21rpx; font-weight: 800; }
+.link-form { display: grid; gap: 10rpx; margin-top: 14rpx; padding: 14rpx; border-radius: 10rpx; background: #f6f9fd; }
+.link-form button { display: flex; align-items: center; justify-content: center; height: 54rpx; margin: 0; padding: 0; border-radius: 9rpx; background: #1677ff; color: #fff; font-size: 21rpx; font-weight: 800; line-height: 1; }.link-form button::after { border: 0; }
+.radar-note { margin-top: 13rpx; color: #8b97aa; font-size: 18rpx; line-height: 1.45; }
+.contact-review-card { border-color: #cce8d8; background: linear-gradient(180deg, #f4fff8 0%, #fff 100%); }
+.contact-review-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16rpx; }
+.contact-review-title { color: #137b4c; font-size: 25rpx; font-weight: 900; }
+.contact-review-hint, .contact-review-foot { margin-top: 8rpx; color: #718277; font-size: 18rpx; line-height: 1.5; }
+.contact-review-count { flex: 0 0 auto; padding: 7rpx 12rpx; border-radius: 999rpx; background: #dff6e8; color: #137b4c; font-size: 18rpx; font-weight: 800; }
+.contact-review-row { margin-top: 16rpx; padding-top: 16rpx; border-top: 1rpx solid #dcefe3; }
+.contact-review-main { display: flex; align-items: center; gap: 12rpx; }
+.contact-review-phone { color: #172033; font-size: 24rpx; font-weight: 800; letter-spacing: 1rpx; }
+.contact-review-status { padding: 5rpx 10rpx; border-radius: 999rpx; font-size: 17rpx; font-weight: 800; }
+.contact-review-status.pending { background: #fff0d8; color: #a46000; }
+.contact-review-status.public { background: #dff6e8; color: #137b4c; }
+.contact-review-status.private { background: #e9eef6; color: #5e6b7d; }
+.contact-review-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10rpx; margin-top: 12rpx; }
+.contact-review-btn { display: flex; align-items: center; justify-content: center; min-width: 0; height: 52rpx; margin: 0; padding: 0 6rpx; border: 1rpx solid #d6e1dc; border-radius: 9rpx; background: #fff; color: #445267; font-size: 18rpx; line-height: 1; white-space: nowrap; }
+.contact-review-btn.public { border-color: #9dd8b7; background: #e9fbf0; color: #137b4c; }
+.contact-review-btn.private { border-color: #cbd7e5; background: #f5f8fc; }
+.contact-review-btn.remove { border-color: #f0c8c8; background: #fff7f7; color: #bc4b51; }
+.contact-review-btn::after { border: 0; }
+.contact-review-foot { margin-top: 16rpx; color: #7f8e86; }
+.other-card .field-row:first-of-type { margin-top: 20rpx; }
+.bottom-bar { position: fixed; z-index: 20; right: 0; bottom: 0; left: 0; display: grid; grid-template-columns: 1fr 0.82fr 1.18fr; gap: 12rpx; padding: 14rpx 22rpx calc(14rpx + env(safe-area-inset-bottom)); border-top: 1rpx solid #e5eaf1; background: rgba(255,255,255,.96); box-shadow: 0 -8rpx 24rpx rgba(32,55,90,.08); box-sizing: border-box; }
+.delete-button, .save-draft-button, .save-button { display: flex; align-items: center; justify-content: center; height: 76rpx; margin: 0; padding: 0; border-radius: 13rpx; font-size: 24rpx; font-weight: 800; line-height: 1; box-sizing: border-box; white-space: nowrap; }
+.delete-button { background: #eef3f9; color: #334155; }.save-draft-button { border: 1rpx solid #cfe0f7; background: #f4f8ff; color: #1677ff; }.save-button { background: linear-gradient(135deg,#1284ff,#0864ea); color: #fff; }.delete-button::after, .save-draft-button::after, .save-button::after { border: 0; }

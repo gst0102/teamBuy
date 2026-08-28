@@ -1,0 +1,105 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-teambuy}
+      POSTGRES_USER: ${POSTGRES_USER:-teambuy}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-teambuy_dev_password}
+    volumes:
+      - teambuy_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-teambuy} -d ${POSTGRES_DB:-teambuy}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    image: ${PRODUCTION_RUNTIME_IMAGE:-teambuy-test-backend-test:latest}
+    env_file:
+      - ./backend/.env
+    environment:
+      APP_ROLE: api
+      APP_HOST: 0.0.0.0
+      BACKGROUND_TASKS_IN_API: "false"
+      SYNC_TASK_AUTO_SCHEDULE: "false"
+      SYNC_TASK_WORKER_ENABLED: "false"
+      WECOM_ARCHIVE_WORKER_ENABLED: "false"
+      DATABASE_BACKEND: postgres
+      DATABASE_REQUIRE_POSTGRES: "true"
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-teambuy}:${POSTGRES_PASSWORD:-teambuy_dev_password}@postgres:5432/${POSTGRES_DB:-teambuy}
+      MEDIA_STORAGE_DIR: /app/mock/media
+      MEDIA_PUBLIC_URL_PREFIX: /media
+      OCR_PROVIDER: auto
+    ports:
+      - "127.0.0.1:8004:8000"
+    volumes:
+      - ./backend:/app:ro
+      - teambuy_backend_media:/app/mock/media
+      - ./backend/secrets:/app/secrets:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  backend-worker:
+    image: ${PRODUCTION_RUNTIME_IMAGE:-teambuy-test-backend-test:latest}
+    command: ["python", "-m", "app.worker"]
+    env_file:
+      - ./backend/.env
+    environment:
+      APP_ROLE: ocr-worker
+      BACKGROUND_TASKS_IN_API: "false"
+      SYNC_TASK_AUTO_SCHEDULE: "false"
+      SYNC_TASK_WORKER_ENABLED: "true"
+      SYNC_TASK_WORKER_INTERVAL_SECONDS: "5"
+      OCR_TASK_CONCURRENCY: "1"
+      WECOM_ARCHIVE_WORKER_ENABLED: "false"
+      DATABASE_BACKEND: postgres
+      DATABASE_REQUIRE_POSTGRES: "true"
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-teambuy}:${POSTGRES_PASSWORD:-teambuy_dev_password}@postgres:5432/${POSTGRES_DB:-teambuy}
+      MEDIA_STORAGE_DIR: /app/mock/media
+      MEDIA_PUBLIC_URL_PREFIX: /media
+      OCR_PROVIDER: auto
+    volumes:
+      - ./backend:/app:ro
+      - teambuy_backend_media:/app/mock/media
+      - ./backend/secrets:/app/secrets:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  archive-worker:
+    image: ${PRODUCTION_RUNTIME_IMAGE:-teambuy-test-backend-test:latest}
+    command: ["python", "-m", "app.worker"]
+    env_file:
+      - ./backend/.env
+    environment:
+      APP_ROLE: archive-worker
+      BACKGROUND_TASKS_IN_API: "false"
+      SYNC_TASK_AUTO_SCHEDULE: "false"
+      SYNC_TASK_WORKER_ENABLED: "false"
+      WECOM_ARCHIVE_WORKER_ENABLED: "true"
+      WECOM_ARCHIVE_WORKER_INTERVAL_SECONDS: "60"
+      DATABASE_BACKEND: postgres
+      DATABASE_REQUIRE_POSTGRES: "true"
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-teambuy}:${POSTGRES_PASSWORD:-teambuy_dev_password}@postgres:5432/${POSTGRES_DB:-teambuy}
+      MEDIA_STORAGE_DIR: /app/mock/media
+      MEDIA_PUBLIC_URL_PREFIX: /media
+      OCR_PROVIDER: auto
+    volumes:
+      - ./backend:/app:ro
+      - teambuy_backend_media:/app/mock/media
+      - ./backend/secrets:/app/secrets:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  teambuy_postgres_data:
+    external: true
+    name: teambuy_postgres_data
+  teambuy_backend_media:
+    external: true
+    name: teambuy_backend_media

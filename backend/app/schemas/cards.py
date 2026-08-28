@@ -102,9 +102,17 @@ class LeadReminderUpdateRequest(BaseModel):
     note: str | None = None
     customerPhone: str | None = None
     customerWechat: str | None = None
+    customerEmail: str | None = None
     budgetText: str | None = None
     intentLevel: str | None = None
+    # Deprecated API spelling kept for existing workbench callers. New
+    # follow-up records should use followUpTags so tags, notes and the next
+    # reminder date are written together by the canonical action endpoint.
     customerTags: list[str] | None = None
+    # Follow-up tags are stored as a snapshot on the same history row as the
+    # note and reminder date. The current lead tags remain on LeadReminder.
+    followUpTags: list[str] | None = None
+    followUpAction: str | None = None
     conclusionReason: str | None = None
     nextFollowUpAt: str | None = None
     logContent: str | None = None

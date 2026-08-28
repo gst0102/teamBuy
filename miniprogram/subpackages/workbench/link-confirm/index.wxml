@@ -1,0 +1,36 @@
+<view class="page-shell">
+  <custom-nav title="确认资料" showBack="{{true}}" />
+  <view class="recognition-bar">
+    <view><text>已识别为</text><text class="type">{{typeLabel}}</text></view>
+    <text class="status">{{parsed ? '识别完成' : '链接已保存'}}</text>
+  </view>
+
+  <view class="preview-card" wx:if="{{!loading}}">
+    <image wx:if="{{coverUrl}}" class="cover" src="{{coverUrl}}" mode="aspectFill" />
+    <view wx:else class="cover placeholder">{{isLink ? '链' : (cardType === 'image_ocr' || cardType === 'mixed_content') ? '图' : cardType === 'pdf_document' ? 'PDF' : cardType === 'property_listing' ? '房' : cardType === 'groupbuy_product' ? '商' : cardType === 'service_offer' ? '服' : '文'}}</view>
+    <view class="content">
+      <view class="title">{{title}}</view>
+      <view class="summary">{{summary}}</view>
+      <view class="source" wx:if="{{isLink}}">{{sourceLabel}} · {{sourceName}}</view>
+    </view>
+    <view class="key-title">提取到的重点</view>
+    <view class="tags">
+      <text wx:for="{{tags}}" wx:key="*this">{{item}}</text>
+      <text wx:if="{{!tags.length}}">{{sourceLabel}}</text>
+    </view>
+    <view class="extracted" wx:if="{{extracted.length}}">
+      <text wx:for="{{extracted}}" wx:key="*this">{{item}}</text>
+    </view>
+    <view class="source-row" wx:if="{{isLink}}" bindtap="handleOpenSource">
+      <text>原文链接</text><text>打开原文 ›</text>
+    </view>
+    <view class="privacy">🔒 {{isLink ? '只展示公开网页内容，不复制登录身份或私密信息' : '电话、房号、成本等敏感内容会在后续确认，不直接展示给客户'}}</view>
+    <view class="parse-note">{{parseText}}</view>
+  </view>
+
+  <view class="footer-safe"></view>
+  <view class="footer-actions">
+    <button class="primary" loading="{{saving}}" disabled="{{unsupportedType}}" bindtap="handleGenerate">{{primaryActionText}}</button>
+    <button class="text-btn" bindtap="handleSaveOriginal">保存原文，不整理</button>
+  </view>
+</view>

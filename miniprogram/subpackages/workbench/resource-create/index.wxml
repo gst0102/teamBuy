@@ -1,0 +1,127 @@
+<view class="page-shell create-page">
+  <custom-nav title="新建资料" />
+
+  <view class="create-head">
+    <view class="create-title">把现成内容交给我</view>
+    <view class="create-subtitle">粘贴文字、上传图片或添加链接，直接生成<br/>可以发给客户的资料。</view>
+  </view>
+
+  <block wx:if="{{!propertyBatchVisible}}">
+    <block wx:if="{{!businessPromptVisible}}">
+    <view class="input-card">
+      <textarea
+        class="create-input"
+        value="{{inputText}}"
+        focus="{{inputFocused}}"
+        placeholder="{{inputPlaceholder}}"
+        maxlength="3000"
+        show-confirm-bar="{{false}}"
+        adjust-position="{{true}}"
+        bindinput="handleInput"
+      ></textarea>
+      <view class="pending-content" wx:if="{{pendingMedia.length}}">
+        <view class="pending-content-label">正文内容</view>
+        <view class="pending-images">
+        <view class="pending-image {{item.type === 'link' ? 'link' : ''}}" wx:for="{{pendingMedia}}" wx:key="id">
+          <image wx:if="{{item.type === 'image'}}" src="{{item.url}}" mode="aspectFill"></image>
+          <view wx:else class="pending-link-mark">链</view>
+          <view data-index="{{index}}" bindtap="handleRemovePendingImage">×</view>
+          <text wx:if="{{item.type === 'link'}}">{{item.title || item.url}}</text>
+        </view>
+        </view>
+      </view>
+      <view class="input-tools">
+        <button class="input-tool" loading="{{ocrUploading}}" disabled="{{ocrUploading}}" data-mode="image" bindtap="handleSourceSelect"><text>＋</text> 添加图片</button>
+        <button class="input-tool" data-mode="link" bindtap="handleSourceSelect"><text class="link-mark">⌁</text> 添加链接</button>
+      </view>
+    </view>
+
+    <button class="organize-button" loading="{{saving}}" disabled="{{saving || (!inputText && !pendingMedia.length)}}" bindtap="handleSubmit">直接发布</button>
+
+    <view class="scene-section">
+      <view class="scene-divider"><text></text><view>需要特定格式？（可选）</view><text></text></view>
+      <view class="scene-grid">
+        <view class="scene-card" data-type="property_listing" bindtap="handleSceneCreate">
+          <view class="scene-icon property">房</view>
+          <view class="scene-name">房源</view>
+        </view>
+        <view class="scene-card" data-type="groupbuy_product" bindtap="handleSceneCreate">
+          <view class="scene-icon product">品</view>
+          <view class="scene-name">商品</view>
+        </view>
+        <view class="scene-card" data-type="service_offer" bindtap="handleSceneCreate">
+          <view class="scene-icon service">服</view>
+          <view class="scene-name">服务方案</view>
+        </view>
+        <view class="scene-card" data-type="text_note" bindtap="handleSceneCreate">
+          <view class="scene-icon note">文</view>
+          <view class="scene-name">普通资料</view>
+        </view>
+        <view class="scene-card" data-type="business_card" bindtap="handleSceneCreate">
+          <view class="scene-icon card">名</view>
+          <view class="scene-name">电子名片</view>
+        </view>
+      </view>
+    </view>
+    </block>
+  </block>
+
+  <view class="link-sheet-mask" wx:if="{{showLinkForm}}" catchtouchmove="noop" catchtap="handleCloseLinkForm">
+    <view class="link-sheet" catchtap="noop">
+      <view class="link-sheet-head"><view>添加链接</view><text bindtap="handleCloseLinkForm">×</text></view>
+      <view class="link-sheet-hint">粘贴公众号文章或网页的 HTTPS 链接。</view>
+      <input class="link-input" value="{{linkDraft.url}}" data-key="url" bindinput="handleLinkInput" placeholder="https://..." focus="{{showLinkForm}}" />
+      <input class="link-input" value="{{linkDraft.title}}" data-key="title" bindinput="handleLinkInput" placeholder="链接标题（选填）" />
+      <button class="link-confirm" bindtap="handleAddLink">加入当前资料</button>
+    </view>
+  </view>
+
+  <view class="saved-bar" wx:if="{{savedBarVisible}}">
+    <text>{{savedText}}</text>
+    <text class="saved-link" bindtap="handleViewSaved">继续完善</text>
+  </view>
+
+  <view class="property-batch-card" wx:if="{{propertyBatchVisible}}">
+    <view class="result-kicker">识别结果</view>
+    <view class="property-batch-head">
+      <view>
+        <view class="property-batch-title">识别到 {{propertyBatchCount}} 套房源</view>
+        <view class="result-subtitle">确认要生成的房源，详细字段稍后再完善。</view>
+      </view>
+      <view class="property-batch-count">已选 {{propertyBatchSelectedCount}}</view>
+    </view>
+    <view class="property-private-notice"><text class="property-private-lock">仅自己看</text><text>已识别并隔离{{propertyBatchPrivacyText}}。</text></view>
+    <view class="property-candidate-list">
+      <view class="property-candidate {{item.selected ? 'selected' : ''}}" wx:for="{{propertyBatchCandidates}}" wx:key="candidateId" data-index="{{index}}" bindtap="togglePropertyCandidate">
+        <view class="property-candidate-check">{{item.selected ? '✓' : ''}}</view>
+        <view class="property-candidate-body">
+          <view class="property-candidate-title">{{item.title}}</view>
+          <view class="property-candidate-summary">{{item.summary || '待补充卖点'}}</view>
+          <view class="property-candidate-price">{{item.price}}</view>
+          <view class="property-tag-row" wx:if="{{item.publicTagsText}}"><text class="property-tag public">{{item.publicTagsText}}</text></view>
+          <view class="property-tag-row" wx:if="{{item.privateTagsText}}"><text class="property-tag private">仅自己看：{{item.privateTagsText}}</text></view>
+        </view>
+      </view>
+    </view>
+    <view class="property-batch-actions">
+      <button class="property-batch-secondary" bindtap="handlePropertyBatchSaveRaw">保留为文字资料</button>
+      <button class="property-batch-primary" loading="{{propertyBatchCreating}}" disabled="{{propertyBatchCreating || !propertyBatchSelectedCount}}" bindtap="handlePropertyBatchCreate">生成房源资料</button>
+    </view>
+  </view>
+
+  <view class="business-card" wx:if="{{businessPromptVisible}}">
+    <view class="business-close" bindtap="handleBusinessCancel">×</view>
+    <view class="result-kicker">识别结果</view>
+    <view class="business-icon">{{businessPromptIcon}}</view>
+    <view class="business-body">
+      <view class="business-badge">已自动整理</view>
+      <view class="business-title">{{businessPromptTitle}}</view>
+      <view class="business-content">{{businessPromptContent}}</view>
+    </view>
+    <view class="recognition-note">资料已经保存。这里只确认类型，完整字段进入对应编辑器后再补充。</view>
+    <view class="business-actions">
+      <button class="business-secondary" bindtap="handleBusinessCancel">稍后再完善</button>
+      <button class="business-primary" bindtap="handleBusinessConfirm">{{businessPromptConfirmText}}</button>
+    </view>
+  </view>
+</view>

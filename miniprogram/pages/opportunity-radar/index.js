@@ -1,10 +1,10 @@
 const { fetchOpportunityLeads, fetchOpportunityPushDigests, generateOpportunityPushDigest, markOpportunityPushDigestRead, saveOpportunityLead } = require("../../services/api");
 const { getCurrentUser } = require("../../utils/dashboard");
 const { buildShareCardMessage, prepareShareCardImage } = require("../../plugins/share-snapshot/index");
+const customerIntelligenceStore = require("../../stores/customer-intelligence-store");
 
 const tabs = [
   { key: "mine", label: "我的机会" },
-  { key: "market", label: "供需广场" },
   { key: "saved", label: "已保存" },
   { key: "sub", label: "订阅" }
 ];
@@ -208,10 +208,6 @@ Page({
   },
   handleTabTap(event) {
     const key = event.currentTarget.dataset.key;
-    if (key === "market") {
-      wx.navigateTo({ url: "/pages/opportunity-market/index" });
-      return;
-    }
     if (key === "saved") {
       wx.navigateTo({ url: "/pages/opportunity-saved/index" });
       return;
@@ -251,6 +247,7 @@ Page({
       if (/用户不存在|认证|登录/.test(String(message))) {
         wx.removeStorageSync("currentUser");
         getApp().globalData.currentUser = null;
+        customerIntelligenceStore.clearAll();
       }
       wx.showToast({ title: String(message).slice(0, 18), icon: "none" });
     }

@@ -1,17 +1,35 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+import asyncio
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 
 from app.api.dependencies import get_app_service, get_ops_console_store, get_sync_task_queue
 from app.schemas.cards import RecordViewRequest
 from app.schemas.common import ApiResponse
-from app.schemas.notes import CustomerActionSubmitRequest, ManualNoteDraftRequest, NoteTypeConfirmRequest, PropertyBatchCreateRequest, PropertyBatchParseRequest, PropertySameCloneRequest, QuickNoteCaptureRequest, TopicCreateRequest, TopicNoteRequest, UserNoteUpdateRequest
+from app.schemas.notes import CustomerActionSubmitRequest, LinkCaptureRequest, ManualNoteDraftRequest, NoteInteractionEventRequest, NotePublishRequest, NoteTypeConfirmRequest, PropertyBatchCreateRequest, PropertyBatchParseRequest, PropertySameCloneRequest, QuickNoteCaptureRequest, TopicCreateRequest, TopicNoteRequest, UserNoteUpdateRequest
+from app.schemas.share_snapshots import ShareSnapshotRequest
 from app.services.app_service import AppService
 from app.services.ops_console_store import OpsConsoleStore
 from app.services.sync_task_queue import SyncTaskQueue
+from app.api.upload_utils import read_upload_with_limit
+from app.core.config import settings
 
 
 router = APIRouter(prefix="/api/notes", tags=["notes"])
+
+
+def _strip_operations_only_fields(value):
+    """Keep PC automation metadata out of all user-facing note responses."""
+    if isinstance(value, dict):
+        return {
+            key: _strip_operations_only_fields(child)
+            for key, child in value.items()
+            if key != "marketingRoute"
+        }
+    if isinstance(value, list):
+        return [_strip_operations_only_fields(child) for child in value]
+    return value
 
 
 @router.get("", response_model=ApiResponse[list[dict]])
@@ -28,7 +46,7 @@ def list_notes(
     service: AppService = Depends(get_app_service),
 ):
     return ApiResponse(
-        data=service.list_user_notes(
+        data=_strip_operations_only_fields(service.list_user_notes(
             owner_user_id=ownerUserId,
             keyword=keyword,
             category_id=categoryId,
@@ -38,8 +56,18 @@ def list_notes(
             topic_id=topicId,
             sort=sort,
             include_deleted=includeDeleted,
-        )
+        ))
     )
+
+
+@router.get("/business-card-summary", response_model=ApiResponse[dict])
+def get_business_card_summary(ownerUserId: str = Query(...), service: AppService = Depends(get_app_service)):
+    return ApiResponse(data=_strip_operations_only_fields(service.get_business_card_summary(ownerUserId)))
+
+
+@router.patch("/{note_id}/share-snapshot", response_model=ApiResponse[dict])
+def save_note_share_snapshot(note_id: str, payload: ShareSnapshotRequest, service: AppService = Depends(get_app_service)):
+    return ApiResponse(data=_strip_operations_only_fields(service.save_note_share_snapshot(note_id, payload).model_dump()), message="share snapshot saved")
 
 
 @router.get("/tag-suggestions", response_model=ApiResponse[dict])
@@ -54,7 +82,7 @@ def suggest_tags(
 
 @router.post("/manual-draft", response_model=ApiResponse[dict])
 def create_manual_note_draft(payload: ManualNoteDraftRequest, service: AppService = Depends(get_app_service)):
-    return ApiResponse(data=service.create_manual_note_draft(payload).model_dump(), message="manual draft created")
+    return ApiResponse(data=_strip_operations_only_fields(service.create_manual_note_draft(payload).model_dump()), message="manual draft created")
 
 
 @router.post("/property-batch/parse", response_model=ApiResponse[dict])
@@ -69,31 +97,41 @@ def create_property_batch(payload: PropertyBatchCreateRequest, service: AppServi
 
 @router.post("/quick-capture", response_model=ApiResponse[dict])
 def create_quick_note_capture(payload: QuickNoteCaptureRequest, service: AppService = Depends(get_app_service)):
-    return ApiResponse(data=service.create_quick_note_capture(payload).model_dump(), message="quick note captured")
+    return ApiResponse(data=_strip_operations_only_fields(service.create_quick_note_capture(payload).model_dump()), message="quick note captured")
+
+
+@router.post("/link-capture", response_model=ApiResponse[dict])
+def create_link_note_capture(payload: LinkCaptureRequest, service: AppService = Depends(get_app_service)):
+    return ApiResponse(data=_strip_operations_only_fields(service.create_link_note_capture(payload).model_dump()), message="link note captured")
 
 
 @router.post("/image-capture", response_model=ApiResponse[dict])
 async def create_image_note_capture(
     ownerUserId: str = Form(...),
+    intakeId: str | None = Form(default=None),
+    idempotencyKey: str | None = Form(default=None),
     file: UploadFile = File(...),
     service: AppService = Depends(get_app_service),
     sync_task_queue: SyncTaskQueue = Depends(get_sync_task_queue),
 ):
     if not file.content_type or not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="请上传图片文件")
-    content = await file.read()
-    data = service.create_image_note_from_upload(
+    content = await read_upload_with_limit(file, settings.media_max_image_bytes, "图片不能超过10MB")
+    data = await asyncio.to_thread(
+        service.create_image_note_from_upload,
         owner_user_id=ownerUserId,
         content=content,
         filename=file.filename,
         content_type=file.content_type,
+        intake_id=intakeId,
+        idempotency_key=idempotencyKey,
     )
     task = sync_task_queue.enqueue(
         "ocr-recognize-note",
         {"noteId": data["note"]["id"], "ownerUserId": ownerUserId},
         max_attempts=2,
     )
-    queued = service.mark_ocr_note_queued(data["note"]["id"], ownerUserId, task.id)
+    queued = await asyncio.to_thread(service.mark_ocr_note_queued, data["note"]["id"], ownerUserId, task.id)
     queued["syncTask"] = task.model_dump()
     return ApiResponse(data=queued, message="image note queued for ocr")
 
@@ -144,33 +182,62 @@ def clone_property_same(payload: PropertySameCloneRequest, service: AppService =
 
 
 @router.post("/{note_id}/view", response_model=ApiResponse[dict])
-def record_note_view(note_id: str, payload: RecordViewRequest, service: AppService = Depends(get_app_service)):
-    return ApiResponse(data=service.record_note_view(note_id, payload).model_dump())
+def record_note_view(
+    note_id: str,
+    payload: RecordViewRequest,
+    request: Request,
+    service: AppService = Depends(get_app_service),
+    queue: SyncTaskQueue = Depends(get_sync_task_queue),
+):
+    event = service.record_note_view(note_id, payload, authenticated_user_id=getattr(request.state, "authenticated_user_id", None))
+    notification = service.queue_note_view_notification(note_id, event, queue)
+    return ApiResponse(data={**event.model_dump(), "notification": notification})
+
+
+@router.post("/{note_id}/events", response_model=ApiResponse[dict])
+def record_note_event(note_id: str, payload: NoteInteractionEventRequest, service: AppService = Depends(get_app_service)):
+    return ApiResponse(data=service.record_note_interaction(note_id, payload))
 
 
 @router.get("/{note_id}", response_model=ApiResponse[dict])
 def get_note(note_id: str, ownerUserId: str = Query(...), service: AppService = Depends(get_app_service)):
-    return ApiResponse(data=service.get_user_note(note_id, ownerUserId).model_dump())
+    return ApiResponse(data=_strip_operations_only_fields(service.get_user_note(note_id, ownerUserId).model_dump()))
 
 
 @router.put("/{note_id}", response_model=ApiResponse[dict])
 def update_note(note_id: str, payload: UserNoteUpdateRequest, service: AppService = Depends(get_app_service)):
-    return ApiResponse(data=service.update_user_note(note_id, payload).model_dump())
+    return ApiResponse(data=_strip_operations_only_fields(service.update_user_note(note_id, payload).model_dump()))
 
 
 @router.post("/{note_id}/duplicate", response_model=ApiResponse[dict])
 def duplicate_note(note_id: str, payload: TopicNoteRequest, service: AppService = Depends(get_app_service)):
-    return ApiResponse(data=service.duplicate_user_note(note_id, payload.ownerUserId).model_dump(), message="note duplicated")
+    return ApiResponse(data=_strip_operations_only_fields(service.duplicate_user_note(note_id, payload.ownerUserId).model_dump()), message="note duplicated")
 
 
 @router.post("/{note_id}/organize", response_model=ApiResponse[dict])
 def organize_note(note_id: str, ownerUserId: str = Query(...), service: AppService = Depends(get_app_service)):
-    return ApiResponse(data=service.organize_bookmark_note(note_id, ownerUserId).model_dump())
+    return ApiResponse(data=_strip_operations_only_fields(service.organize_bookmark_note(note_id, ownerUserId).model_dump()))
+
+
+@router.post("/{note_id}/publish", response_model=ApiResponse[dict])
+def publish_note(note_id: str, payload: NotePublishRequest, service: AppService = Depends(get_app_service)):
+    return ApiResponse(
+        data=_strip_operations_only_fields(service.publish_user_note(note_id, payload.ownerUserId, payload.expectedRevision).model_dump()),
+        message="note published",
+    )
+
+
+@router.post("/{note_id}/revoke", response_model=ApiResponse[dict])
+def revoke_note(note_id: str, payload: TopicNoteRequest, service: AppService = Depends(get_app_service)):
+    return ApiResponse(
+        data=_strip_operations_only_fields(service.revoke_user_note(note_id, payload.ownerUserId).model_dump()),
+        message="note sharing revoked",
+    )
 
 
 @router.post("/{note_id}/generate", response_model=ApiResponse[dict])
 def generate_note(note_id: str, ownerUserId: str = Query(...), service: AppService = Depends(get_app_service)):
-    return ApiResponse(data=service.generate_note_result(note_id, ownerUserId).model_dump())
+    return ApiResponse(data=_strip_operations_only_fields(service.generate_note_result(note_id, ownerUserId).model_dump()))
 
 
 @router.post("/{note_id}/confirm-type", response_model=ApiResponse[dict])
@@ -208,7 +275,7 @@ def confirm_note_type(
             },
             tags=before_config.get("tags") if isinstance(before_config.get("tags"), list) else [],
         )
-    return ApiResponse(data=note.model_dump())
+    return ApiResponse(data=_strip_operations_only_fields(note.model_dump()))
 
 
 @router.get("/{note_id}/customer-actions/config", response_model=ApiResponse[dict])
@@ -227,7 +294,9 @@ def list_customer_actions_for_note(
     ownerUserId: str = Query(...),
     service: AppService = Depends(get_app_service),
 ):
-    return ApiResponse(data=service.list_customer_actions_for_note_owner(note_id, ownerUserId))
+    data = service.list_customer_actions_for_note_owner(note_id, ownerUserId)
+    service.require_customer_intelligence(ownerUserId)
+    return ApiResponse(data=data)
 
 
 @router.post("/{note_id}/customer-actions/{action_key}", response_model=ApiResponse[dict])

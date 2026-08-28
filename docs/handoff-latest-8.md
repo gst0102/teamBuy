@@ -182,7 +182,6 @@
 - [miniprogram/pages/resource-create/index.js](/Users/yiyi/Desktop/Desktop/myprojects/teamBuy/miniprogram/pages/resource-create/index.js)
 - [miniprogram/pages/resource-create/index.wxml](/Users/yiyi/Desktop/Desktop/myprojects/teamBuy/miniprogram/pages/resource-create/index.wxml)
 - [miniprogram/pages/resource-create/index.wxss](/Users/yiyi/Desktop/Desktop/myprojects/teamBuy/miniprogram/pages/resource-create/index.wxss)
-- [miniprogram/pages/sales-template-select/index.js](/Users/yiyi/Desktop/Desktop/myprojects/teamBuy/miniprogram/pages/sales-template-select/index.js)
 - [miniprogram/pages/note-edit/index.js](/Users/yiyi/Desktop/Desktop/myprojects/teamBuy/miniprogram/pages/note-edit/index.js)
 - [miniprogram/pages/note-edit/index.wxml](/Users/yiyi/Desktop/Desktop/myprojects/teamBuy/miniprogram/pages/note-edit/index.wxml)
 - [miniprogram/pages/note-edit/index.wxss](/Users/yiyi/Desktop/Desktop/myprojects/teamBuy/miniprogram/pages/note-edit/index.wxss)

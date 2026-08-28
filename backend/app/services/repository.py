@@ -3,10 +3,12 @@ from __future__ import annotations
 import json
 import os
 import threading
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Protocol
 
 import psycopg
+from psycopg_pool import ConnectionPool
 from psycopg.rows import dict_row
 
 from app.core.database import normalize_database_url
@@ -139,6 +141,23 @@ class AppRepository(Protocol):
         keyword: str | None = None,
         category_id: str | None = None,
         include_deleted: bool = False,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[UserNote]:
+        ...
+
+    def list_user_notes_by_source_card_ids(
+        self,
+        owner_user_id: str,
+        source_card_ids: set[str],
+    ) -> list[UserNote]:
+        ...
+
+    def list_standalone_user_notes(
+        self,
+        owner_user_id: str,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> list[UserNote]:
         ...
 
@@ -213,7 +232,14 @@ class AppRepository(Protocol):
     def get_card(self, card_id: str) -> Card | None:
         ...
 
-    def list_cards(self, owner_user_id: str | None = None, keyword: str | None = None, category_id: str | None = None) -> list[Card]:
+    def list_cards(
+        self,
+        owner_user_id: str | None = None,
+        keyword: str | None = None,
+        category_id: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[Card]:
         ...
 
     def save_card(self, card: Card) -> None:
@@ -698,6 +724,12 @@ class AppRepository(Protocol):
     def save_opportunity_push_digest(self, digest: OpportunityPushDigest) -> None:
         ...
 
+    def get_membership_records(
+        self,
+        user_id: str,
+    ) -> tuple[list[MembershipOrder], list[MembershipEntitlement]]:
+        ...
+
 
 class JsonRepository:
     def __init__(self, data_file: Path):
@@ -729,6 +761,15 @@ class JsonRepository:
         state.users = [item for item in state.users if item.id != user.id]
         state.users.append(user)
         self.save(state)
+
+    def get_membership_records(
+        self,
+        user_id: str,
+    ) -> tuple[list[MembershipOrder], list[MembershipEntitlement]]:
+        state = self.load()
+        orders = [item for item in state.membership_orders if item.userId == user_id]
+        entitlements = [item for item in state.membership_entitlements if item.userId == user_id]
+        return orders, entitlements
 
     def get_wecom_identity_binding(self, source_type: str, external_user_id: str) -> WecomIdentityBinding | None:
         return next(
@@ -828,6 +869,8 @@ class JsonRepository:
         keyword: str | None = None,
         category_id: str | None = None,
         include_deleted: bool = False,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> list[UserNote]:
         notes = [item for item in self.load().user_notes if item.ownerUserId == owner_user_id]
         if not include_deleted:
@@ -837,7 +880,45 @@ class JsonRepository:
             notes = [item for item in notes if lowered in item.title.lower() or lowered in item.summary.lower()]
         if category_id:
             notes = [item for item in notes if category_id in item.categoryIds]
-        return sorted(notes, key=lambda item: item.updatedAt, reverse=True)
+        notes = sorted(notes, key=lambda item: item.updatedAt, reverse=True)
+        if limit is not None:
+            start = max(int(offset or 0), 0)
+            notes = notes[start:start + max(1, int(limit))]
+        return notes
+
+    def list_user_notes_by_source_card_ids(
+        self,
+        owner_user_id: str,
+        source_card_ids: set[str],
+    ) -> list[UserNote]:
+        if not source_card_ids:
+            return []
+        return [
+            item
+            for item in self.load().user_notes
+            if item.ownerUserId == owner_user_id
+            and item.status != "deleted"
+            and item.sourceCardId in source_card_ids
+        ]
+
+    def list_standalone_user_notes(
+        self,
+        owner_user_id: str,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[UserNote]:
+        notes = [
+            item
+            for item in self.load().user_notes
+            if item.ownerUserId == owner_user_id
+            and item.status != "deleted"
+            and not item.sourceCardId
+        ]
+        notes = sorted(notes, key=lambda item: item.updatedAt, reverse=True)
+        if limit is not None:
+            start = max(int(offset or 0), 0)
+            notes = notes[start:start + max(1, int(limit))]
+        return notes
 
     def list_all_user_notes(self, include_deleted: bool = False) -> list[UserNote]:
         notes = self.load().user_notes
@@ -967,7 +1048,14 @@ class JsonRepository:
     def get_card(self, card_id: str) -> Card | None:
         return next((item for item in self.load().cards if item.id == card_id), None)
 
-    def list_cards(self, owner_user_id: str | None = None, keyword: str | None = None, category_id: str | None = None) -> list[Card]:
+    def list_cards(
+        self,
+        owner_user_id: str | None = None,
+        keyword: str | None = None,
+        category_id: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[Card]:
         cards = self.load().cards
         if owner_user_id:
             cards = [item for item in cards if item.ownerUserId == owner_user_id]
@@ -975,6 +1063,10 @@ class JsonRepository:
             cards = [item for item in cards if keyword.lower() in item.title.lower()]
         if category_id:
             cards = [item for item in cards if category_id in item.categoryIds]
+        cards = sorted(cards, key=lambda item: item.updatedAt, reverse=True)
+        if limit is not None:
+            start = max(int(offset or 0), 0)
+            cards = cards[start:start + max(1, int(limit))]
         return cards
 
     def save_card(self, card: Card) -> None:
@@ -2770,18 +2862,38 @@ class PostgresRepository:
 
     def __init__(self, database_url: str):
         self.database_url = normalize_database_url(database_url)
+        self._pool = ConnectionPool(
+            self.database_url,
+            min_size=1,
+            max_size=8,
+            timeout=5,
+            open=False,
+        )
+        self._pool.open()
         self.init_schema()
+
+    @contextmanager
+    def _connection(self, row_factory=None):
+        with self._pool.connection() as conn:
+            conn.row_factory = row_factory
+            try:
+                yield conn
+            finally:
+                conn.row_factory = None
+
+    def close(self) -> None:
+        self._pool.close()
 
     def load(self) -> AppState:
         payload: dict[str, list[dict]] = {}
-        with psycopg.connect(self.database_url, row_factory=dict_row) as conn:
+        with self._connection(row_factory=dict_row) as conn:
             for state_key, table_name in self.TABLES.items():
                 rows = conn.execute(f"select payload from {table_name} order by created_at, id").fetchall()
                 payload[state_key] = [row["payload"] for row in rows]
         return AppState.model_validate(payload)
 
     def save(self, state: AppState) -> None:
-        with psycopg.connect(self.database_url) as conn:
+        with self._connection() as conn:
             with conn.transaction():
                 for state_key, table_name in self.TABLES.items():
                     items = getattr(state, state_key)
@@ -2792,7 +2904,7 @@ class PostgresRepository:
 
     def get_payload_by_id(self, table_name: str, item_id: str) -> dict | None:
         self._ensure_known_table(table_name)
-        with psycopg.connect(self.database_url, row_factory=dict_row) as conn:
+        with self._connection(row_factory=dict_row) as conn:
             row = conn.execute(f"select payload from {table_name} where id = %s", (item_id,)).fetchone()
         return row["payload"] if row else None
 
@@ -2814,6 +2926,24 @@ class PostgresRepository:
 
     def save_user(self, user: User) -> None:
         self._save_model("users", user)
+
+    def get_membership_records(
+        self,
+        user_id: str,
+    ) -> tuple[list[MembershipOrder], list[MembershipEntitlement]]:
+        with self._connection(row_factory=dict_row) as conn:
+            order_rows = conn.execute(
+                "select payload from membership_orders where user_id = %s order by created_at desc, id desc",
+                (user_id,),
+            ).fetchall()
+            entitlement_rows = conn.execute(
+                "select payload from membership_entitlements where user_id = %s order by expires_at desc, id desc",
+                (user_id,),
+            ).fetchall()
+        return (
+            [MembershipOrder.model_validate(row["payload"]) for row in order_rows],
+            [MembershipEntitlement.model_validate(row["payload"]) for row in entitlement_rows],
+        )
 
     def get_wecom_identity_binding(self, source_type: str, external_user_id: str) -> WecomIdentityBinding | None:
         rows = self._list_payloads(
@@ -2877,7 +3007,7 @@ class PostgresRepository:
         now: str,
     ) -> WecomBindCardToken | None:
         self._ensure_known_table("wecom_bind_card_tokens")
-        with psycopg.connect(self.database_url, row_factory=dict_row) as conn:
+        with self._connection(row_factory=dict_row) as conn:
             with conn.transaction():
                 row = conn.execute(
                     """
@@ -2935,6 +3065,8 @@ class PostgresRepository:
         keyword: str | None = None,
         category_id: str | None = None,
         include_deleted: bool = False,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> list[UserNote]:
         where_parts = ["owner_user_id = %s"]
         params: list[str] = [owner_user_id]
@@ -2946,7 +3078,53 @@ class PostgresRepository:
         if category_id:
             where_parts.append("payload->'categoryIds' ? %s")
             params.append(category_id)
-        rows = self._list_payloads("user_notes", " and ".join(where_parts), tuple(params), "updated_at desc, id desc")
+        limit_sql = ""
+        if limit is not None:
+            safe_limit = max(1, min(int(limit), 10000))
+            safe_offset = max(int(offset or 0), 0)
+            limit_sql = f" limit {safe_limit} offset {safe_offset}"
+        rows = self._list_payloads(
+            "user_notes",
+            " and ".join(where_parts),
+            tuple(params),
+            "updated_at desc, id desc",
+            limit_sql=limit_sql,
+        )
+        return [UserNote.model_validate(row) for row in rows]
+
+    def list_standalone_user_notes(
+        self,
+        owner_user_id: str,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[UserNote]:
+        limit_sql = ""
+        if limit is not None:
+            safe_limit = max(1, min(int(limit), 10000))
+            safe_offset = max(int(offset or 0), 0)
+            limit_sql = f" limit {safe_limit} offset {safe_offset}"
+        rows = self._list_payloads(
+            "user_notes",
+            "owner_user_id = %s and status <> 'deleted' and source_card_id is null",
+            (owner_user_id,),
+            "updated_at desc, id desc",
+            limit_sql=limit_sql,
+        )
+        return [UserNote.model_validate(row) for row in rows]
+
+    def list_user_notes_by_source_card_ids(
+        self,
+        owner_user_id: str,
+        source_card_ids: set[str],
+    ) -> list[UserNote]:
+        if not source_card_ids:
+            return []
+        rows = self._list_payloads(
+            "user_notes",
+            "owner_user_id = %s and status <> 'deleted' and source_card_id = any(%s)",
+            (owner_user_id, list(source_card_ids)),
+            "updated_at desc, id desc",
+        )
         return [UserNote.model_validate(row) for row in rows]
 
     def list_all_user_notes(self, include_deleted: bool = False) -> list[UserNote]:
@@ -3035,19 +3213,19 @@ class PostgresRepository:
         generation: SameStyleGeneration,
         referral_relation: ReferralRelation | None = None,
     ) -> None:
-        with psycopg.connect(self.database_url) as conn:
+        with self._connection() as conn:
             with conn.transaction():
                 if referral_relation:
                     self._upsert_payload(conn, "referral_relations", referral_relation.model_dump(mode="json"))
                 self._upsert_payload(conn, "same_style_generations", generation.model_dump(mode="json"))
 
     def delete_showcase_page(self, showcase_id: str) -> None:
-        with psycopg.connect(self.database_url) as conn:
+        with self._connection() as conn:
             conn.execute("delete from showcase_events where showcase_id = %s", (showcase_id,))
             conn.execute("delete from showcase_pages where id = %s", (showcase_id,))
 
     def save_raw_messages(self, messages: list[RawMessage]) -> None:
-        with psycopg.connect(self.database_url) as conn:
+        with self._connection() as conn:
             with conn.transaction():
                 for message in messages:
                     self._upsert_payload(conn, "raw_messages", message.model_dump(mode="json"))
@@ -3055,7 +3233,7 @@ class PostgresRepository:
     def existing_wecom_msg_ids(self, wecom_msg_ids: set[str]) -> set[str]:
         if not wecom_msg_ids:
             return set()
-        with psycopg.connect(self.database_url, row_factory=dict_row) as conn:
+        with self._connection(row_factory=dict_row) as conn:
             rows = conn.execute(
                 "select wecom_msg_id from raw_messages where wecom_msg_id = any(%s)",
                 (list(wecom_msg_ids),),
@@ -3069,7 +3247,7 @@ class PostgresRepository:
         card: Card,
         notification: ImportNotification,
     ) -> None:
-        with psycopg.connect(self.database_url) as conn:
+        with self._connection() as conn:
             with conn.transaction():
                 self._upsert_payload(conn, "import_batches", batch.model_dump(mode="json"))
                 for message in raw_messages:
@@ -3105,7 +3283,14 @@ class PostgresRepository:
             "updated_at desc, id desc",
         )
 
-    def list_cards(self, owner_user_id: str | None = None, keyword: str | None = None, category_id: str | None = None) -> list[Card]:
+    def list_cards(
+        self,
+        owner_user_id: str | None = None,
+        keyword: str | None = None,
+        category_id: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[Card]:
         where_parts = ["true"]
         params: list[str] = []
         if owner_user_id:
@@ -3117,14 +3302,25 @@ class PostgresRepository:
         if category_id:
             where_parts.append("payload->'categoryIds' ? %s")
             params.append(category_id)
-        rows = self._list_payloads("cards", " and ".join(where_parts), tuple(params), "updated_at desc, id desc")
+        limit_sql = ""
+        if limit is not None:
+            safe_limit = max(1, min(int(limit), 10000))
+            safe_offset = max(int(offset or 0), 0)
+            limit_sql = f" limit {safe_limit} offset {safe_offset}"
+        rows = self._list_payloads(
+            "cards",
+            " and ".join(where_parts),
+            tuple(params),
+            "updated_at desc, id desc",
+            limit_sql=limit_sql,
+        )
         return [Card.model_validate(row) for row in rows]
 
     def save_card(self, card: Card) -> None:
         self._save_model("cards", card)
 
     def delete_card(self, card_id: str) -> None:
-        with psycopg.connect(self.database_url) as conn:
+        with self._connection() as conn:
             conn.execute("delete from relay_entries where card_id = %s", (card_id,))
             conn.execute("delete from view_events where card_id = %s", (card_id,))
             conn.execute("delete from lead_reminders where card_id = %s", (card_id,))
@@ -3146,7 +3342,7 @@ class PostgresRepository:
         self._save_model("categories", category)
 
     def delete_category(self, category_id: str) -> None:
-        with psycopg.connect(self.database_url) as conn:
+        with self._connection() as conn:
             conn.execute("delete from categories where id = %s", (category_id,))
 
     def list_topics(self, owner_user_id: str) -> list[Topic]:
@@ -3161,7 +3357,7 @@ class PostgresRepository:
         self._save_model("topics", topic)
 
     def delete_topic(self, topic_id: str) -> None:
-        with psycopg.connect(self.database_url) as conn:
+        with self._connection() as conn:
             with conn.transaction():
                 conn.execute("delete from topics where id = %s", (topic_id,))
                 rows = self._list_payloads("user_notes", "payload->'visibilityConfig'->'topicIds' ? %s", (topic_id,), "updated_at desc")
@@ -3288,7 +3484,7 @@ class PostgresRepository:
         self._save_model("wechat_subscription_grants", grant)
 
     def reserve_wechat_subscription_grant(self, user_id: str, template_id: str, now: str) -> WechatSubscriptionGrant | None:
-        with psycopg.connect(self.database_url, row_factory=dict_row) as conn:
+        with self._connection(row_factory=dict_row) as conn:
             with conn.transaction():
                 row = conn.execute(
                     """
@@ -3313,7 +3509,7 @@ class PostgresRepository:
         return WechatSubscriptionGrant.model_validate(row["payload"]) if row else None
 
     def release_stale_wechat_subscription_grants(self, cutoff: str, now: str) -> int:
-        with psycopg.connect(self.database_url) as conn:
+        with self._connection() as conn:
             with conn.transaction():
                 result = conn.execute(
                     """
@@ -3424,7 +3620,7 @@ class PostgresRepository:
 
     def save_lead_reminder_if_version(self, reminder: LeadReminder, expected_version: int) -> bool:
         self._ensure_known_table("lead_reminders")
-        with psycopg.connect(self.database_url, row_factory=dict_row) as conn:
+        with self._connection(row_factory=dict_row) as conn:
             with conn.transaction():
                 row = conn.execute(
                     "select payload from lead_reminders where id = %s for update",
@@ -3439,7 +3635,7 @@ class PostgresRepository:
                 return True
 
     def delete_lead_reminder(self, reminder_id: str) -> None:
-        with psycopg.connect(self.database_url) as conn:
+        with self._connection() as conn:
             conn.execute("delete from lead_reminders where id = %s", (reminder_id,))
 
     def get_customer_radar_summary(self, owner_user_id: str, mode: str = "") -> CustomerRadarSummary | None:
@@ -3459,7 +3655,7 @@ class PostgresRepository:
         self._ensure_known_table("customer_radar_summaries")
         where_sql = "" if not owner_user_id else " where owner_user_id = %s"
         params = (owner_user_id,) if owner_user_id else ()
-        with psycopg.connect(self.database_url) as conn:
+        with self._connection() as conn:
             conn.execute(
                 f"update customer_radar_summaries "
                 "set is_dirty = true, payload = jsonb_set(payload, '{isDirty}', 'true'::jsonb, true), "
@@ -3585,7 +3781,7 @@ class PostgresRepository:
             "createdAt": now,
             "updatedAt": now,
         }
-        with psycopg.connect(self.database_url, row_factory=dict_row) as conn:
+        with self._connection(row_factory=dict_row) as conn:
             row = conn.execute(
                 """
                 insert into sync_cursors (
@@ -3645,7 +3841,7 @@ class PostgresRepository:
         error_message: str | None,
         now: str,
     ) -> SyncCursor | None:
-        with psycopg.connect(self.database_url, row_factory=dict_row) as conn:
+        with self._connection(row_factory=dict_row) as conn:
             row = conn.execute(
                 """
                 update sync_cursors set
@@ -3681,7 +3877,7 @@ class PostgresRepository:
         return SyncCursor.model_validate(row["payload"]) if row else self.get_sync_cursor(open_kfid)
 
     def force_release_sync_lock(self, open_kfid: str, reason: str, now: str) -> SyncCursor | None:
-        with psycopg.connect(self.database_url, row_factory=dict_row) as conn:
+        with self._connection(row_factory=dict_row) as conn:
             row = conn.execute(
                 """
                 update sync_cursors set
@@ -3814,7 +4010,7 @@ class PostgresRepository:
         if usage:
             where_parts.append("usage = %s")
             params.append(usage)
-        with psycopg.connect(self.database_url) as conn:
+        with self._connection() as conn:
             result = conn.execute(
                 f"delete from media_asset_refs where {' and '.join(where_parts)}",
                 tuple(params),
@@ -3837,7 +4033,7 @@ class PostgresRepository:
         return [SyncTask.model_validate(row) for row in rows]
 
     def claim_sync_task(self, task_id: str, worker_id: str, now: str, stale_before: str) -> SyncTask | None:
-        with psycopg.connect(self.database_url, row_factory=dict_row) as conn:
+        with self._connection(row_factory=dict_row) as conn:
             row = conn.execute(
                 """
                 update sync_tasks set
@@ -3981,7 +4177,7 @@ class PostgresRepository:
         lease_expires_at: str,
         lease_token: str,
     ) -> AutomationTask | None:
-        with psycopg.connect(self.database_url, row_factory=dict_row) as conn:
+        with self._connection(row_factory=dict_row) as conn:
             with conn.transaction():
                 active = conn.execute(
                     """
@@ -4086,7 +4282,7 @@ class PostgresRepository:
         self._save_model("wecom_archive_cursors", cursor)
 
     def save_wecom_archive_messages(self, messages: list[WecomArchiveMessage]) -> None:
-        with psycopg.connect(self.database_url) as conn:
+        with self._connection() as conn:
             with conn.transaction():
                 for message in messages:
                     self._upsert_payload(conn, "wecom_archive_messages", message.model_dump(mode="json"))
@@ -4094,7 +4290,7 @@ class PostgresRepository:
     def existing_wecom_archive_msg_ids(self, msg_ids: set[str]) -> set[str]:
         if not msg_ids:
             return set()
-        with psycopg.connect(self.database_url, row_factory=dict_row) as conn:
+        with self._connection(row_factory=dict_row) as conn:
             rows = conn.execute(
                 "select msg_id from wecom_archive_messages where msg_id = any(%s)",
                 (list(msg_ids),),
@@ -4388,7 +4584,7 @@ class PostgresRepository:
         self._save_model("opportunity_push_digests", digest)
 
     def init_schema(self) -> None:
-        with psycopg.connect(self.database_url) as conn:
+        with self._connection() as conn:
             with conn.transaction():
                 conn.execute("select pg_advisory_xact_lock(81207008435)")
                 for table_name in self.TABLES.values():
@@ -4596,7 +4792,7 @@ class PostgresRepository:
 
     def _save_model(self, table_name: str, item) -> None:
         self._ensure_known_table(table_name)
-        with psycopg.connect(self.database_url) as conn:
+        with self._connection() as conn:
             with conn.transaction():
                 self._upsert_payload(conn, table_name, item.model_dump(mode="json"))
 
@@ -4609,7 +4805,7 @@ class PostgresRepository:
         limit_sql: str = "",
     ) -> list[dict]:
         self._ensure_known_table(table_name)
-        with psycopg.connect(self.database_url, row_factory=dict_row) as conn:
+        with self._connection(row_factory=dict_row) as conn:
             rows = conn.execute(
                 f"select payload from {table_name} where {where_sql} order by {order_sql}{limit_sql}",
                 params,

@@ -12,7 +12,7 @@ class ImportNotificationService:
         result_ref_id = batch.generatedNoteId or batch.generatedCardId
         result_type = "note" if batch.generatedNoteId else ("card" if batch.generatedCardId else None)
         result_path = f"/pages/note-edit/index?id={batch.generatedNoteId}" if batch.generatedNoteId else (
-            f"/pages/card-view/index?id={batch.generatedCardId}" if batch.generatedCardId else None
+            f"/pages/note-preview/index?id={batch.generatedCardId}" if batch.generatedCardId else None
         )
         actions = []
         if is_success:

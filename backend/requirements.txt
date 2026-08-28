@@ -4,6 +4,7 @@ pydantic==2.11.5
 python-dotenv==1.1.0
 pycryptodome==3.23.0
 psycopg[binary]==3.2.9
+psycopg-pool==3.2.6
 tzdata==2025.2
 pytest==8.3.5
 httpx==0.28.1

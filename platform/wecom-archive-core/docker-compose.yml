@@ -1,0 +1,52 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${ARCHIVE_CORE_POSTGRES_DB:-archive_core}
+      POSTGRES_USER: ${ARCHIVE_CORE_POSTGRES_USER:-archive_core}
+      POSTGRES_PASSWORD: ${ARCHIVE_CORE_POSTGRES_PASSWORD:-change_me}
+    volumes:
+      - archive_core_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${ARCHIVE_CORE_POSTGRES_USER:-archive_core} -d ${ARCHIVE_CORE_POSTGRES_DB:-archive_core}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  archive-core:
+    build: .
+    env_file: .env
+    environment:
+      WECOM_ARCHIVE_CORE_DATABASE_URL: postgresql://${ARCHIVE_CORE_POSTGRES_USER:-archive_core}:${ARCHIVE_CORE_POSTGRES_PASSWORD:-change_me}@postgres:5432/${ARCHIVE_CORE_POSTGRES_DB:-archive_core}
+      WECOM_ARCHIVE_CORE_WORKER_ENABLED: "false"
+    ports:
+      - "127.0.0.1:8050:8050"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./secrets:/app/secrets:ro
+      - /opt/wecom-sdk:/opt/wecom-sdk:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  archive-core-worker:
+    build: .
+    env_file: .env
+    environment:
+      WECOM_ARCHIVE_CORE_DATABASE_URL: postgresql://${ARCHIVE_CORE_POSTGRES_USER:-archive_core}:${ARCHIVE_CORE_POSTGRES_PASSWORD:-change_me}@postgres:5432/${ARCHIVE_CORE_POSTGRES_DB:-archive_core}
+      WECOM_ARCHIVE_CORE_WORKER_ENABLED: "true"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./secrets:/app/secrets:ro
+      - /opt/wecom-sdk:/opt/wecom-sdk:ro
+    command: ["python", "-m", "app.worker"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  archive_core_postgres_data:

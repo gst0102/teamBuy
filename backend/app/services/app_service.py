@@ -85,8 +85,8 @@ MANUAL_DRAFT_CARD_TYPES = {"property_listing", "groupbuy_product", "business_car
 MANUAL_DRAFT_INPUT_MODES = {"paste_text", "blank"}
 PUBLIC_ATTACHMENT_TYPES = {"image", "pdf", "link"}
 NOTE_INTERACTION_TYPES = {"image_open", "pdf_open", "link_open", "source_open", "contact_click", "phone_click", "wechat_qr_open", "featured_note_open", "map_open"}
-CUSTOMER_INTELLIGENCE_SHOWCASE_EVENTS = {"phone_click", "wechat_copy"}
-CUSTOMER_INTELLIGENCE_NOTE_EVENTS = {"contact_click", "phone_click", "wechat_qr_open"}
+CUSTOMER_INTELLIGENCE_SHOWCASE_EVENTS = {"view", "note_click", "phone_click", "wechat_copy", "share"}
+CUSTOMER_INTELLIGENCE_NOTE_EVENTS = set(NOTE_INTERACTION_TYPES)
 PROPERTY_CONVERSION_DEFAULTS = {
     "showContactPhone": True,
     "enableLightScrm": True,
@@ -188,6 +188,7 @@ SALES_SCRM_PERIOD_DAYS = 30
 MEMBERSHIP_PENDING_ORDER_TTL_SECONDS = 30 * 60
 MEMBERSHIP_PAYMENT_LOCK = RLock()
 SHARE_SNAPSHOT_RETENTION_DAYS = 30
+SHARE_SNAPSHOT_STYLE_ID = "share_card_v10"
 SUBSCRIBE_ACCEPT_STATUSES = {"accept", "acceptWithAudio"}
 SUBSCRIBE_DEDUPE_WINDOW_SECONDS = 30 * 60
 SUBSCRIBE_DELIVERY_MAX_ATTEMPTS = 3
@@ -1747,13 +1748,29 @@ class AppService:
                 "expiresAt": None,
                 "latestOrder": None,
             }
+        now = parse_iso(now_iso())
+        # The JSON repository is still used by local/dev mode and rewrites one
+        # file for mutations. Keep the narrow read under the existing process
+        # lock so a status request cannot observe a half-written snapshot.
         with MEMBERSHIP_PAYMENT_LOCK:
-            state = self._load()
-            now = parse_iso(now_iso())
-            if self._close_expired_membership_orders(state, now):
-                self._save(state)
+            membership_records = self.repo.get_membership_records(user_id)
+        raw_orders, raw_entitlements = membership_records
+        # Status reads are a hot dependency of the radar summary.  Keep the
+        # read narrow and make expired pending orders look closed in this
+        # response; mutation endpoints still persist the full state transition
+        # under MEMBERSHIP_PAYMENT_LOCK.
+        orders = []
+        for order in raw_orders:
+            if order.status == "pending":
+                try:
+                    expired = self._membership_pending_expires_at(order) <= now
+                except (TypeError, ValueError, OverflowError):
+                    expired = True
+                if expired:
+                    order = order.model_copy(update={"status": "closed", "updatedAt": now.isoformat()})
+            orders.append(order)
         entitlements = [
-            item for item in state.membership_entitlements
+            item for item in raw_entitlements
             if item.userId == user_id and item.entitlementKey == "customer_intelligence"
         ]
         active = [
@@ -1762,7 +1779,7 @@ class AppService:
         ]
         latest = max(active or entitlements, key=lambda item: item.expiresAt, default=None)
         orders = sorted(
-            [item for item in state.membership_orders if item.userId == user_id],
+            orders,
             key=lambda item: item.createdAt,
             reverse=True,
         )
@@ -2984,8 +3001,9 @@ class AppService:
         note_by_id = {item.id: item for item in notes}
         note_ids = set(note_by_id)
         note_source_ids = note_ids | {item.sourceCardId for item in notes if item.sourceCardId}
+        note_event_rows = self.repo.list_view_events_for_cards(note_source_ids)
         note_view_events = {
-            note.id: self.repo.list_view_events_for_card(note.sourceCardId or note.id)
+            note.id: note_event_rows.get(note.sourceCardId or note.id, [])
             for note in notes
         }
         showcases = self.repo.list_showcase_pages(owner_user_id)
@@ -2994,17 +3012,19 @@ class AppService:
         elif mode in {"groupbuy", "service"}:
             showcases = [item for item in showcases if any(showcase_item.noteId in note_ids for showcase_item in item.items)]
         showcase_ids = {item.id for item in showcases}
+        showcase_event_rows = self.repo.list_showcase_events_for_showcases(showcase_ids)
         showcase_events = [
             event
             for showcase in showcases
-            for event in self.repo.list_showcase_events(showcase.id)
+            for event in showcase_event_rows.get(showcase.id, [])
             if event.ownerUserId == owner_user_id
             and (mode not in {"groupbuy", "service"} or not event.noteId or event.noteId in note_ids)
         ]
+        actions_by_note = self.repo.list_customer_actions_for_notes(note_ids)
         actions = [
             action
-            for note in notes
-            for action in self.repo.list_customer_actions_for_note(note.id)
+            for rows in actions_by_note.values()
+            for action in rows
             if action.ownerUserId == owner_user_id
         ]
         leads = self.repo.list_lead_reminders(owner_user_id)
@@ -7236,20 +7256,33 @@ class AppService:
         ref_id: str | None = None,
         usage: str = "media",
         storage_service: MediaStorageService | None = None,
+        preserve_share_format: bool = False,
     ) -> str:
         if not content:
             raise HTTPException(status_code=400, detail="媒体内容不能为空")
         normalized_type = "video" if media_type == "video" else "image" if media_type == "image" else str(media_type or "file")
+        max_bytes = {
+            "image": settings.media_max_image_bytes,
+            "video": settings.media_max_video_bytes,
+            "pdf": settings.media_max_pdf_bytes,
+        }.get(normalized_type)
+        if max_bytes and len(content) > max_bytes:
+            raise HTTPException(status_code=413, detail="媒体超过服务器允许的大小")
         original_sha256 = hashlib.sha256(content).hexdigest()
-        existing = self.repo.get_media_asset_by_original_hash(normalized_type, original_sha256)
-        if existing:
-            self._save_media_asset_ref(existing, owner_user_id, ref_type, ref_id or media_id, usage)
-            return existing.url
-        processed = self.media_processing_service.process_upload(
-            media_type=normalized_type,
-            content=content,
-            content_type=content_type,
-            filename=filename,
+        if not preserve_share_format:
+            existing = self.repo.get_media_asset_by_original_hash(normalized_type, original_sha256)
+            if existing:
+                self._save_media_asset_ref(existing, owner_user_id, ref_type, ref_id or media_id, usage)
+                return existing.url
+        processed = (
+            self.media_processing_service.process_share_image(content, filename)
+            if preserve_share_format and normalized_type == "image"
+            else self.media_processing_service.process_upload(
+                media_type=normalized_type,
+                content=content,
+                content_type=content_type,
+                filename=filename,
+            )
         )
         storage_sha256 = hashlib.sha256(processed.content).hexdigest()
         existing = self.repo.get_media_asset_by_storage_hash(normalized_type, storage_sha256)
@@ -7976,14 +8009,31 @@ class AppService:
             raise HTTPException(status_code=400, detail="当前资料没有可识别的图片")
         local_path = self._local_media_path_from_url(image_url)
         if local_path and local_path.exists():
+            if local_path.stat().st_size > settings.media_max_image_bytes:
+                raise HTTPException(status_code=400, detail="图片超过服务器允许的大小")
             return local_path.read_bytes(), local_path.name
         if image_url.startswith("http://") or image_url.startswith("https://"):
             try:
-                response = httpx.get(image_url, timeout=15)
-                response.raise_for_status()
+                with httpx.stream("GET", image_url, timeout=15, follow_redirects=False) as response:
+                    response.raise_for_status()
+                    content_length = response.headers.get("content-length")
+                    try:
+                        declared_length = int(content_length) if content_length else None
+                    except ValueError:
+                        declared_length = None
+                    if declared_length and declared_length > settings.media_max_image_bytes:
+                        raise ValueError("图片超过服务器允许的大小")
+                    chunks: list[bytes] = []
+                    total = 0
+                    for chunk in response.iter_bytes():
+                        total += len(chunk)
+                        if total > settings.media_max_image_bytes:
+                            raise ValueError("图片超过服务器允许的大小")
+                        chunks.append(chunk)
+                    content = b"".join(chunks)
             except Exception as exc:
                 raise HTTPException(status_code=400, detail=f"图片读取失败：{exc}") from exc
-            return response.content, Path(urlparse(image_url).path).name or "ocr-image"
+            return content, Path(urlparse(image_url).path).name or "ocr-image"
         raise HTTPException(status_code=400, detail="图片文件不可读取，请重新上传图片")
 
     def _first_note_image_url(self, note: UserNote) -> str:
@@ -8559,7 +8609,14 @@ class AppService:
         showcase.shareSnapshotHistory = history
         if isinstance(showcase.publicSnapshot, dict):
             public_snapshot = dict(showcase.publicSnapshot)
+            # Keep the public payload and the owner/editor payload on the same
+            # image source. Otherwise a legacy public snapshot without
+            # coverUrl would compute a different v10 fingerprint even after
+            # the owner regenerated the JPG.
+            public_snapshot["items"] = self._public_showcase_items(showcase)
             public_snapshot["shareSnapshotUrl"] = snapshot["url"]
+            public_snapshot["shareSnapshotStyleId"] = snapshot["styleId"]
+            public_snapshot["shareSnapshotFingerprint"] = snapshot["fingerprint"]
             showcase.publicSnapshot = public_snapshot
         self.repo.save_showcase_page(showcase)
         if previous_url and previous_url != url:
@@ -8678,6 +8735,7 @@ class AppService:
             and public_snapshot.get("status") == "ready"
             and public_snapshot.get("url")
             and str(public_snapshot.get("sourceRevision") or "") == str(note.revision or "")
+            and str(public_snapshot.get("styleId") or "") == SHARE_SNAPSHOT_STYLE_ID
         ):
             payload["visibilityConfig"].pop("shareSnapshot", None)
         self._attach_owner_sales_profile_to_public_note(note, payload)
@@ -9132,7 +9190,12 @@ class AppService:
         snapshot = showcase.publicSnapshot if isinstance(showcase.publicSnapshot, dict) else {}
         scene_type = normalize_scene_type(showcase.sceneType, (showcase.displayConfig or {}).get("activeCategory"))
         if snapshot and isinstance(snapshot.get("items"), list) and snapshot.get("templateId") == normalize_template_id(scene_type, showcase.templateId):
-            return snapshot
+            public_snapshot = dict(snapshot)
+            if public_snapshot.get("shareSnapshotStyleId") != SHARE_SNAPSHOT_STYLE_ID:
+                public_snapshot["shareSnapshotUrl"] = ""
+                public_snapshot["shareSnapshotStyleId"] = ""
+                public_snapshot["shareSnapshotFingerprint"] = ""
+            return public_snapshot
         now = now_iso()
         next_version = (showcase.snapshotVersion or 0) + 1
         snapshot = self._build_showcase_public_snapshot(showcase, now, next_version)
@@ -9149,8 +9212,11 @@ class AppService:
             share_snapshot.get("url")
             if share_snapshot.get("status") == "ready"
             and str(share_snapshot.get("sourceRevision") or "") == f"{snapshot_version}:{showcase.updatedAt}"
+            and str(share_snapshot.get("styleId") or "") == SHARE_SNAPSHOT_STYLE_ID
             else ""
         )
+        share_snapshot_style_id = SHARE_SNAPSHOT_STYLE_ID if share_snapshot_url else ""
+        share_snapshot_fingerprint = share_snapshot.get("fingerprint") if share_snapshot_url else ""
         return {
             "id": showcase.id,
             "name": showcase.name,
@@ -9168,6 +9234,8 @@ class AppService:
             "snapshotCreatedAt": snapshot_at,
             "snapshotSource": "published_snapshot",
             "shareSnapshotUrl": share_snapshot_url,
+            "shareSnapshotStyleId": share_snapshot_style_id,
+            "shareSnapshotFingerprint": share_snapshot_fingerprint,
         }
 
     def _ensure_showcase_owner(self, owner_user_id: str) -> None:
@@ -9183,6 +9251,18 @@ class AppService:
         # Keep the legacy property-batch identifier in owner responses for
         # existing workflows; rendering and public snapshots use its alias.
         payload["templateId"] = showcase.templateId if showcase.templateId == "property_batch_collection" else normalize_template_id(scene_type, showcase.templateId)
+        # The editor and the share-card prewarmer need the first real image of
+        # each selected item, including images stored in media rather than in
+        # the legacy coverUrl field. Keep the original item fields intact and
+        # only enrich the owner response with render metadata.
+        payload["items"] = [
+            {
+                **item.model_dump(),
+                "coverUrl": self._first_note_image_url(note) if note else "",
+            }
+            for item in showcase.items
+            for note in [self.repo.get_user_note(item.noteId)]
+        ]
         payload["itemCount"] = len(self._valid_showcase_items(showcase))
         payload["sharePath"] = f"/pages/showcase-view/index?id={showcase.id}"
         analytics = self._build_showcase_analytics(showcase, compact=True)
@@ -11231,7 +11311,7 @@ class AppService:
             "noteId": note.id,
             "title": item.displayTitle or note.title,
             "summary": note.summary,
-            "coverUrl": note.coverUrl,
+            "coverUrl": self._first_note_image_url(note),
             "sectionTitle": item.sectionTitle,
             "sortOrder": item.sortOrder,
             "cardType": card_type,
@@ -13774,14 +13854,125 @@ class AppService:
                 break
         return history
 
+    def _list_cards_page_fast(
+        self,
+        owner_user_id: str,
+        limit: int,
+        offset: int,
+        cache_key: tuple,
+        now: float,
+    ) -> list[dict]:
+        """Build only the requested library window for the unfiltered path.
+
+        Cards and standalone notes are independently ordered streams.  The
+        first ``offset + limit`` rows from each stream are sufficient to find
+        that window after merging them, while linked source notes are fetched
+        only for the candidate legacy cards.
+        """
+        window_size = max(1, offset + limit)
+        cards = self.repo.list_cards(owner_user_id=owner_user_id, limit=window_size, offset=0)
+        notes = self.repo.list_standalone_user_notes(
+            owner_user_id=owner_user_id,
+            limit=window_size,
+            offset=0,
+        )
+        linked_notes = self.repo.list_user_notes_by_source_card_ids(
+            owner_user_id,
+            {item.id for item in cards},
+        )
+        notes_by_id = {item.id: item for item in [*notes, *linked_notes]}
+        notes = list(notes_by_id.values())
+        notes_by_source_card = {
+            note.sourceCardId: note
+            for note in notes
+            if note.sourceCardId
+        }
+        backed_note_ids = {note.id for note in notes_by_source_card.values()}
+        stats_ids = {item.id for item in cards}
+        stats_ids.update(note.sourceCardId or note.id for note in notes)
+        view_events_by_card = self.repo.list_view_events_for_cards(stats_ids)
+        relays_by_card = self.repo.list_relay_entries_for_cards(stats_ids, relay_status="active")
+        note_ids = {note.id for note in notes}
+        actions_by_note = self.repo.list_customer_actions_for_notes(note_ids)
+        leads_by_owner = {owner_user_id: self.repo.list_lead_reminders(owner_user_id)}
+
+        def card_stats(card_id: str) -> dict:
+            return self._build_stats_from_events(
+                card_id,
+                view_events_by_card.get(card_id, []),
+                relays_by_card.get(card_id, []),
+            )
+
+        rows = []
+        for item in cards:
+            source_note = notes_by_source_card.get(item.id)
+            source_note_config = source_note.visibilityConfig if source_note else {}
+            source_note_cover_url = self._first_note_image_url(source_note) if source_note else ""
+            rows.append(
+                {
+                    **item.model_dump(),
+                    "coverUrl": item.coverUrl or source_note_cover_url,
+                    "cardType": source_note_config.get("cardType"),
+                    "systemCategory": source_note_config.get("systemCategory"),
+                    "visibilityConfig": source_note_config,
+                    "stats": card_stats(item.id),
+                    "sourceNoteId": source_note.id if source_note else None,
+                    "shareState": source_note.shareState if source_note else None,
+                    "sourceNoteShareState": source_note.shareState if source_note else None,
+                    "sourceNoteStatus": source_note.status if source_note else None,
+                    "revision": source_note.revision if source_note else None,
+                    "customerSummary": self._build_note_customer_summary(
+                        source_note,
+                        actions_by_note=actions_by_note,
+                        leads_by_owner=leads_by_owner,
+                    ) if source_note else {},
+                }
+            )
+        rows.extend(
+            self._note_card_rows(
+                owner_user_id,
+                None,
+                None,
+                backed_note_ids,
+                notes=notes,
+                view_events_by_card=view_events_by_card,
+                relays_by_card=relays_by_card,
+                actions_by_note=actions_by_note,
+                leads_by_owner=leads_by_owner,
+            )
+        )
+        rows.sort(key=lambda item: item.get("updatedAt") or item.get("createdAt") or "", reverse=True)
+        page = rows[offset:offset + limit]
+        self._card_list_cache[cache_key] = (now, page)
+        return page
+
     def list_cards(self, owner_user_id: str | None = None, keyword: str | None = None, category_id: str | None = None, limit: int | None = None, offset: int = 0) -> list[dict]:
-        cache_key = (owner_user_id or "", keyword or "", category_id or "")
+        page_mode = bool(owner_user_id and limit is not None and not keyword and not category_id)
+        safe_limit = max(1, min(int(limit), 50)) if limit is not None else None
+        safe_offset = max(int(offset or 0), 0)
+        cache_key = (
+            owner_user_id or "",
+            keyword or "",
+            category_id or "",
+            "page",
+            safe_limit,
+            safe_offset,
+        ) if page_mode else (owner_user_id or "", keyword or "", category_id or "")
         cached = self._card_list_cache.get(cache_key)
         now = time.monotonic()
         if cached and now - cached[0] < self._card_list_cache_ttl_seconds:
             rows = cached[1]
-            start = max(int(offset or 0), 0)
-            return rows[start:start + limit] if limit else rows[start:]
+            if page_mode:
+                return rows
+            return rows[safe_offset:safe_offset + safe_limit] if safe_limit else rows[safe_offset:]
+        if page_mode:
+            return self._list_cards_page_fast(
+                owner_user_id,
+                safe_limit,
+                safe_offset,
+                cache_key,
+                now,
+            )
         cards = self.repo.list_cards(owner_user_id=owner_user_id, keyword=keyword, category_id=category_id)
         notes = (
             self.repo.list_user_notes(owner_user_id=owner_user_id, keyword=None, category_id=category_id, include_deleted=False)
@@ -13866,8 +14057,7 @@ class AppService:
                 oldest_keys = sorted(self._card_list_cache, key=lambda key: self._card_list_cache[key][0])
                 for old_key in oldest_keys[:len(self._card_list_cache) - self._card_list_cache_max_entries]:
                     self._card_list_cache.pop(old_key, None)
-        start = max(int(offset or 0), 0)
-        return rows[start:start + limit] if limit else rows[start:]
+        return rows[safe_offset:safe_offset + safe_limit] if safe_limit else rows[safe_offset:]
 
     def _note_card_rows(
         self,
@@ -14188,6 +14378,7 @@ class AppService:
         )
         self.repo.add_view_event(event)
         self._invalidate_card_list_cache(card.ownerUserId)
+        self._invalidate_customer_intelligence_cache(card.ownerUserId)
         return event
 
     def record_note_view(
@@ -14246,6 +14437,7 @@ class AppService:
         )
         self.repo.add_view_event(event)
         self._invalidate_card_list_cache(note.ownerUserId)
+        self._invalidate_customer_intelligence_cache(note.ownerUserId)
         return event
 
     def record_note_interaction(self, note_id: str, payload: NoteInteractionEventRequest) -> dict:

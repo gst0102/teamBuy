@@ -1,4 +1,5 @@
 const api = require("../../services/api");
+const { editorPathForCardType } = require("../../utils/resource-navigation");
 
 Page({
   data: {
@@ -50,11 +51,11 @@ Page({
       wx.showToast({ title: "已保存到账号", icon: "success" });
       setTimeout(() => {
         if (noteId) {
-          wx.redirectTo({ url: `/pages/note-edit/index?id=${noteId}` });
+          wx.redirectTo({ url: `/subpackages/workbench/link-confirm/index?id=${noteId}` });
           return;
         }
         if (cardId) {
-          wx.redirectTo({ url: `/pages/card-edit/index?id=${cardId}` });
+          wx.redirectTo({ url: `/subpackages/workbench/card-edit/index?id=${cardId}` });
           return;
         }
         wx.switchTab({ url: "/pages/library/index" });

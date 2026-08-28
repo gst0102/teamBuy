@@ -10,20 +10,10 @@
           <view wx:else class="bc-avatar placeholder">{{view.businessCardHero.initial}}</view>
           <view class="bc-main">
             <view class="bc-name">{{view.businessCardHero.name}}</view>
-            <view class="bc-role">{{view.businessCardHero.role}}</view>
-            <view class="bc-company">{{view.businessCardHero.company}}</view>
-            <view class="bc-service">{{view.businessCardHero.serviceScope}}</view>
-            <view class="bc-contact">{{view.businessCardHero.contactLine}}</view>
+            <view wx:if="{{view.businessCardHero.role}}" class="bc-role">{{view.businessCardHero.role}}</view>
+            <view wx:if="{{view.businessCardHero.company}}" class="bc-company">{{view.businessCardHero.company}}</view>
+            <view wx:if="{{view.businessCardHero.serviceScope}}" class="bc-service">{{view.businessCardHero.serviceScope}}</view>
           </view>
-        </view>
-
-        <view class="bc-action-bar count-{{view.businessCardActions.length}}">
-          <block wx:for="{{view.businessCardActions}}" wx:key="key">
-            <view class="bc-action-item" data-key="{{item.key}}" bindtap="handleAction">
-              <view class="bc-action-icon">{{item.icon}}</view>
-              <text>{{item.title}}</text>
-            </view>
-          </block>
         </view>
 
         <view class="bc-contact-selected" wx:if="{{selectedContactCard}}">
@@ -32,38 +22,31 @@
           <text>{{selectedContactCard.hint}}</text>
         </view>
 
-        <view class="lead-form bc-form" wx:if="{{showLeadForm}}">
-          <input value="{{leadDraft.name}}" data-key="name" bindinput="handleLeadInput" placeholder="姓名" />
-          <input value="{{leadDraft.phone}}" data-key="phone" bindinput="handleLeadInput" placeholder="电话" type="number" />
-          <input value="{{leadDraft.wechat}}" data-key="wechat" bindinput="handleLeadInput" placeholder="微信号，可选" />
-          <textarea value="{{leadDraft.remark}}" data-key="remark" bindinput="handleLeadInput" placeholder="备注，例如需求、预算或方便联系的时间"></textarea>
-          <button loading="{{submittingAction === 'lead-contact'}}" bindtap="handleSubmitLead">提交联系方式</button>
+        <view class="bc-section" wx:if="{{view.businessCardDetail.keywords.length}}">
+          <view class="bc-section-title">我能提供</view>
+          <view class="bc-keyword-row"><text wx:for="{{view.businessCardDetail.keywords}}" wx:key="*this">{{item}}</text></view>
         </view>
-        <view class="status-line" wx:if="{{leadSubmittedText}}">{{leadSubmittedText}}</view>
 
-        <view class="bc-section">
-          <view class="bc-section-title">服务介绍</view>
+        <view class="bc-section" wx:if="{{view.businessCardDetail.intro}}">
+          <view class="bc-section-title">关于我</view>
           <view class="bc-section-body">{{view.businessCardDetail.intro}}</view>
         </view>
 
-        <view class="bc-section">
-          <view class="bc-section-title">服务范围</view>
-          <view class="bc-scope-grid">
-            <block wx:for="{{view.businessCardDetail.scopeItems}}" wx:key="label">
-              <view class="bc-scope-item">
-                <view class="bc-scope-icon">{{index + 1}}</view>
-                <view>
-                  <view>{{item.label}}</view>
-                  <text>{{item.desc}}</text>
-                </view>
-              </view>
-            </block>
+        <view class="bc-section" wx:if="{{view.businessCardDetail.featuredResources.length}}">
+          <view class="bc-section-title">精选资料</view>
+          <view class="bc-featured-list">
+            <view class="bc-featured-item" wx:for="{{view.businessCardDetail.featuredResources}}" wx:key="id" data-id="{{item.id}}" bindtap="handleOpenFeaturedResource">
+              <image wx:if="{{item.coverUrl}}" src="{{item.coverUrl}}" mode="aspectFill" />
+              <view wx:else class="bc-featured-icon">{{item.typeInitial}}</view>
+              <view><view>{{item.title}}</view><text>{{item.typeLabel}} · {{item.summary || '点击查看资料'}}</text></view>
+              <text>›</text>
+            </view>
           </view>
         </view>
 
-        <view class="bc-section bc-contact-section">
+        <view class="bc-section bc-contact-section" wx:if="{{view.businessCardDetail.phone || view.businessCardDetail.wechat || view.businessCardDetail.email || view.businessCardDetail.website || view.businessCardDetail.qrCodeUrl}}">
           <view>
-            <view class="bc-section-title">联系与二维码</view>
+            <view class="bc-section-title">更多联系方式</view>
             <view class="bc-contact-row" wx:if="{{view.businessCardDetail.phone}}">
               <text>电话</text>
               <view>{{view.businessCardDetail.phone}}</view>
@@ -80,210 +63,183 @@
               <text>网址</text>
               <view>{{view.businessCardDetail.website}}</view>
             </view>
-            <button class="bc-save-btn" data-key="save-card" bindtap="handleAction">保存名片</button>
           </view>
           <image wx:if="{{view.businessCardDetail.qrCodeUrl}}" class="bc-qr" src="{{view.businessCardDetail.qrCodeUrl}}" mode="aspectFill" data-url="{{view.businessCardDetail.qrCodeUrl}}" bindtap="handlePreviewImage"></image>
           <view wx:else class="bc-qr placeholder">二维码</view>
         </view>
+        <customer-communication
+          wx:if="{{!isOwnerViewing}}"
+          actions="{{view.communicationActions}}"
+          primary-action="{{view.primaryCommunicationAction}}"
+          hint="电话、微信、邮箱和留言都可以直接发起"
+          share-ready="{{shareImageReady}}"
+          bind:action="handleCommunicationAction"
+          bind:share="handleShareTap"
+        />
+        <view class="property-same-card business-same-card" wx:if="{{!isOwnerViewing}}">
+          <view class="property-same-main"><view class="property-same-title">生成我的同款名片</view><view class="property-same-sub">仅复用样式，不复制原作者姓名、头像、联系方式与内容。</view></view>
+          <button class="property-same-btn" loading="{{generatingSame}}" disabled="{{generatingSame}}" bindtap="handleGenerateSame">生成同款</button>
+        </view>
       </view>
     </block>
     <block wx:elif="{{view.isServiceOffer}}">
-      <view class="service-offer-page {{view.templateToneClass}} {{view.templateId}}">
-        <block wx:if="{{view.templateId === 'service_consultation' || view.templateId === 'service_campaign'}}">
-          <view class="service-offer-hero portrait-layout">
-            <view class="service-hero-copy">
-              <view class="service-template-label">{{view.serviceOfferDetail.templateName}}</view>
-              <view class="service-title">{{view.serviceOfferDetail.serviceName}}</view>
-              <view class="service-headline">{{view.serviceOfferDetail.headline}}</view>
-              <view class="service-tags" wx:if="{{view.serviceOfferDetail.supportChips.length}}">
-                <block wx:for="{{view.serviceOfferDetail.supportChips}}" wx:key="*this" wx:for-item="chip">
-                  <text>{{chip}}</text>
-                </block>
-              </view>
-            </view>
-            <image wx:if="{{view.serviceOfferDetail.coverUrl}}" class="service-hero-portrait" src="{{view.serviceOfferDetail.coverUrl}}" mode="aspectFill"></image>
-            <image wx:elif="{{view.serviceOfferDetail.heroPortraitUrl}}" class="service-hero-portrait" src="{{view.serviceOfferDetail.heroPortraitUrl}}" mode="aspectFill"></image>
-            <view wx:else class="service-hero-portrait placeholder">{{view.serviceOfferDetail.scene || '服务'}}</view>
+      <view class="service-public-page">
+        <image wx:if="{{view.serviceOfferDetail.coverUrl}}" class="service-public-cover" src="{{view.serviceOfferDetail.coverUrl}}" mode="aspectFill" data-url="{{view.serviceOfferDetail.coverUrl}}" bindtap="handlePreviewImage" />
+        <view class="service-public-hero">
+          <view class="service-public-badge">服务 / 合作</view>
+          <view class="service-public-title">{{view.serviceOfferDetail.serviceName}}</view>
+          <view wx:if="{{view.serviceOfferDetail.headline}}" class="service-public-headline">{{view.serviceOfferDetail.headline}}</view>
+          <view class="service-public-publisher">
+            <image wx:if="{{view.serviceOfferDetail.publisherAvatarUrl}}" src="{{view.serviceOfferDetail.publisherAvatarUrl}}" mode="aspectFill" />
+            <view wx:else class="service-public-avatar">{{view.serviceOfferDetail.publisherInitial}}</view>
+            <view><text>{{view.serviceOfferDetail.publisherName}}</text><text wx:if="{{view.serviceOfferDetail.publisherRole}}">{{view.serviceOfferDetail.publisherRole}}</text></view>
           </view>
-        </block>
-        <block wx:else>
-          <view class="service-offer-hero cover-layout">
-            <image wx:if="{{view.serviceOfferDetail.coverUrl}}" class="service-cover" src="{{view.serviceOfferDetail.coverUrl}}" mode="aspectFill"></image>
-            <view wx:else class="service-cover placeholder {{view.templateId}}">
-              <view wx:if="{{view.templateId === 'service_pricing'}}" class="service-room-preview">
-                <view class="room-wall"></view>
-                <view class="room-sofa"></view>
-                <view class="room-table"></view>
-              </view>
-              <view wx:else class="service-case-preview"></view>
-            </view>
-            <view class="service-hero-copy stacked">
-              <view class="service-template-label">{{view.serviceOfferDetail.templateName}}</view>
-              <view class="service-title">{{view.serviceOfferDetail.serviceName}}</view>
-              <view class="service-headline">{{view.serviceOfferDetail.headline}}</view>
-            </view>
-          </view>
-        </block>
+          <view class="service-public-trust">可直接沟通 · 按需求了解合作</view>
+        </view>
 
-        <view class="service-metric-row">
-          <block wx:for="{{view.serviceOfferDetail.metricCards}}" wx:key="label" wx:for-item="metric">
-            <view class="service-metric-card">
-              <view>{{metric.value}}</view>
-              <text>{{metric.label}}</text>
-            </view>
+        <view class="service-public-highlights" wx:if="{{view.salesHighlights.length}}">
+          <view class="service-public-highlight" wx:for="{{view.salesHighlights}}" wx:key="label">
+            <text>{{item.label}}</text>
+            <view>{{item.value}}</view>
+          </view>
+        </view>
+        <view class="service-public-section" wx:for="{{view.salesSections}}" wx:key="key">
+          <view>{{item.title}}</view>
+          <text>{{item.body}}</text>
+        </view>
+        <view class="service-public-section service-public-gallery" wx:if="{{view.galleryImages.length}}">
+          <view>图片 / 资料预览</view>
+          <swiper class="service-public-gallery-swiper" indicator-dots="{{true}}" indicator-active-color="#5a31cc" indicator-color="#d7cdf5">
+            <block wx:for="{{view.galleryImages}}" wx:key="*this">
+              <swiper-item>
+                <image src="{{item}}" mode="aspectFill" data-url="{{item}}" bindtap="handlePreviewImage" />
+              </swiper-item>
+            </block>
+          </swiper>
+          <text class="service-public-gallery-hint">左右滑动查看图片 · 点击图片查看大图</text>
+        </view>
+        <customer-communication
+          wx:if="{{!isOwnerViewing}}"
+          actions="{{view.communicationActions}}"
+          primary-action="{{view.primaryCommunicationAction}}"
+          hint="{{view.communicationHint}}"
+          share-ready="{{shareImageReady}}"
+          bind:action="handleCommunicationAction"
+          bind:share="handleShareTap"
+        />
+        <view class="property-same-card" wx:if="{{!isOwnerViewing}}">
+          <view class="property-same-main"><view class="property-same-title">生成我的同款资料</view><view class="property-same-sub">仅复用公开结构，不复制发布者身份和联系方式。</view></view>
+          <button class="property-same-btn" loading="{{generatingSame}}" disabled="{{generatingSame}}" bindtap="handleGenerateSame">生成同款</button>
+        </view>
+      </view>
+    </block>
+    <block wx:elif="{{view.isArticle}}">
+      <view class="article-reader-page">
+        <image wx:if="{{view.articleDetail.coverUrl}}" class="article-reader-cover" src="{{view.articleDetail.coverUrl}}" mode="aspectFill" />
+        <view class="article-reader-card">
+          <view class="article-reader-source">{{view.articleDetail.sourceLabel}} · {{view.articleDetail.sourceName}}</view>
+          <view class="article-reader-title">{{view.title}}</view>
+          <view class="article-reader-recommendation" wx:if="{{view.articleDetail.recommendation}}"><text>推荐给你</text><view>{{view.articleDetail.recommendation}}</view></view>
+          <view class="article-reader-section" wx:if="{{view.articleDetail.description}}"><view>内容简介</view><text>{{view.articleDetail.description}}</text></view>
+          <button class="article-source-button" bindtap="handleOpenArticleSource">查看原文</button>
+          <view class="article-source-note">原文内容与版权归原作者所有</view>
+        </view>
+        <customer-communication
+          wx:if="{{!isOwnerViewing}}"
+          actions="{{view.communicationActions}}"
+          primary-action="{{view.primaryCommunicationAction}}"
+          hint="{{view.communicationHint}}"
+          share-ready="{{shareImageReady}}"
+          bind:action="handleCommunicationAction"
+          bind:share="handleShareTap"
+        />
+        <view class="property-same-card" wx:if="{{!isOwnerViewing}}">
+          <view class="property-same-main"><view class="property-same-title">也想这样分享链接？</view><view class="property-same-sub">免费换成你的推荐语和销售身份。</view></view>
+          <button class="property-same-btn" loading="{{generatingSame}}" disabled="{{generatingSame}}" bindtap="handleGenerateSame">免费生成同款</button>
+        </view>
+      </view>
+    </block>
+    <block wx:elif="{{view.isContentStream}}">
+      <view class="text-reader-page">
+        <view class="text-reader-card content-stream-card">
+          <view class="text-reader-label">图文资料</view>
+          <view class="text-reader-title">{{view.title}}</view>
+          <block wx:for="{{view.contentBlocks}}" wx:key="id">
+            <view wx:if="{{item.type === 'text'}}" class="content-stream-text">{{item.text}}</view>
+            <image wx:elif="{{item.type === 'image'}}" class="content-stream-image" src="{{item.url}}" mode="widthFix" data-url="{{item.url}}" bindtap="handlePreviewImage" />
           </block>
         </view>
-
-        <view class="service-section audience">
-          <view class="service-section-title">适合人群</view>
-          <block wx:for="{{view.serviceOfferDetail.audienceBullets}}" wx:key="*this" wx:for-item="bullet">
-            <view class="service-bullet-row"><text>•</text><text>{{bullet}}</text></view>
+        <customer-communication
+          wx:if="{{!isOwnerViewing}}"
+          actions="{{view.communicationActions}}"
+          primary-action="{{view.primaryCommunicationAction}}"
+          hint="{{view.communicationHint}}"
+          share-ready="{{shareImageReady}}"
+          bind:action="handleCommunicationAction"
+          bind:share="handleShareTap"
+        />
+        <view class="text-reader-consult" wx:if="{{!isOwnerViewing}}">
+          <view class="text-reader-same" bindtap="handleGenerateSame">也想做这样的资料？<text>免费生成同款 →</text></view>
+        </view>
+      </view>
+    </block>
+    <block wx:elif="{{view.isImageNote}}">
+      <view class="image-reader-page">
+        <view class="image-reader-card">
+          <view class="image-reader-label">图片资料</view>
+          <view class="image-reader-title">{{view.title}}</view>
+          <view wx:if="{{view.imageCaption}}" class="image-reader-caption">{{view.imageCaption}}</view>
+          <image wx:if="{{view.coverUrl}}" class="image-reader-main" src="{{view.coverUrl}}" mode="widthFix" data-url="{{view.coverUrl}}" bindtap="handlePreviewImage" />
+          <block wx:for="{{view.galleryImages}}" wx:key="*this">
+            <image class="image-reader-main image-reader-extra" src="{{item}}" mode="widthFix" data-url="{{item}}" bindtap="handlePreviewImage" />
           </block>
         </view>
-
-        <view class="service-section">
-          <view class="service-section-title">服务内容</view>
-          <view class="service-feature-grid">
-            <block wx:for="{{view.serviceOfferDetail.serviceBullets}}" wx:key="*this" wx:for-item="serviceBullet">
-              <view class="service-feature-item">
-                <view class="service-feature-icon">{{index + 1}}</view>
-                <text>{{serviceBullet}}</text>
-              </view>
-            </block>
-          </view>
+        <customer-communication
+          wx:if="{{!isOwnerViewing}}"
+          actions="{{view.communicationActions}}"
+          primary-action="{{view.primaryCommunicationAction}}"
+          hint="{{view.communicationHint}}"
+          share-ready="{{shareImageReady}}"
+          bind:action="handleCommunicationAction"
+          bind:share="handleShareTap"
+        />
+        <view class="text-reader-consult" wx:if="{{!isOwnerViewing}}">
+          <view class="text-reader-same" bindtap="handleGenerateSame">也想做这样的资料？<text>免费生成同款 →</text></view>
         </view>
-
-        <view class="service-section" wx:if="{{view.templateId === 'service_pricing'}}">
-          <view class="service-section-title">报价说明</view>
-          <view class="service-price-tag-row">
-            <block wx:for="{{view.serviceOfferDetail.pricingTags}}" wx:key="*this" wx:for-item="priceTag">
-              <view class="service-price-tag">{{priceTag}}</view>
-            </block>
-          </view>
-          <view class="service-section-body">{{view.serviceOfferDetail.pricingNote}}</view>
+      </view>
+    </block>
+    <block wx:elif="{{view.isTextNote}}">
+      <view class="text-reader-page">
+        <view class="text-reader-card">
+          <view class="text-reader-label">文字资料</view>
+          <view class="text-reader-title">{{view.title}}</view>
+          <view wx:if="{{view.subtitle}}" class="text-reader-summary">{{view.subtitle}}</view>
+          <view wx:if="{{view.publisherName}}" class="text-reader-author">{{view.publisherName}}{{view.publisherRole ? ' · ' + view.publisherRole : ''}}</view>
+          <view wx:if="{{view.remark}}" class="text-reader-body">{{view.remark}}</view>
         </view>
-
-        <view class="service-section" wx:elif="{{view.templateId === 'service_case_story'}}">
-          <view class="service-section-title">案例 / 成果</view>
-          <view class="service-case-row">
-            <block wx:for="{{view.serviceOfferDetail.caseBullets}}" wx:key="*this" wx:for-item="caseBullet">
-              <view class="service-case-card">
-                <image wx:if="{{view.serviceOfferDetail.caseImages[index]}}" src="{{view.serviceOfferDetail.caseImages[index]}}" mode="aspectFill" data-url="{{view.serviceOfferDetail.caseImages[index]}}" bindtap="handlePreviewImage"></image>
-                <view wx:else class="service-case-placeholder"></view>
-                <text>{{caseBullet}}</text>
-              </view>
-            </block>
-          </view>
-          <view class="service-section-body" wx:if="{{view.serviceOfferDetail.caseHighlights}}">{{view.serviceOfferDetail.caseHighlights}}</view>
-        </view>
-
-        <view class="service-section" wx:elif="{{view.templateId === 'service_campaign'}}">
-          <view class="service-section-title">服务流程</view>
-          <view class="service-process">
-            <block wx:for="{{view.serviceOfferDetail.processSteps}}" wx:key="*this" wx:for-item="processStep">
-              <view>
-                <text>{{index + 1}}</text>
-                <view>{{processStep}}</view>
-              </view>
-            </block>
-          </view>
-        </view>
-
-        <view class="service-section" wx:else>
-          <view class="service-section-title">服务流程</view>
-          <view class="service-process">
-            <block wx:for="{{view.serviceOfferDetail.processSteps}}" wx:key="*this" wx:for-item="processStep">
-              <view>
-                <text>{{index + 1}}</text>
-                <view>{{processStep}}</view>
-              </view>
-            </block>
-          </view>
-        </view>
-
-        <view class="service-gallery" wx:if="{{view.galleryVideos.length}}">
-          <view class="service-section-title">展示视频</view>
-          <scroll-view scroll-x class="service-gallery-scroll video-scroll">
-            <block wx:for="{{view.galleryVideos}}" wx:key="*this">
-              <video src="{{item}}" controls object-fit="cover"></video>
-            </block>
-          </scroll-view>
-        </view>
-
-        <view class="service-contact-card">
-          <view class="service-contact-head">
-            <view class="service-section-title">联系与预约</view>
-            <view class="service-appoint-note" wx:if="{{view.serviceOfferDetail.appointmentNote}}">{{view.serviceOfferDetail.appointmentNote}}</view>
-          </view>
-          <view class="service-contact-row" wx:if="{{view.serviceOfferDetail.phone}}">
-            <text>电话</text>
-            <view>{{view.serviceOfferDetail.phone}}</view>
-          </view>
-          <view class="service-contact-row" wx:if="{{view.serviceOfferDetail.wechat}}">
-            <text>微信</text>
-            <view>{{view.serviceOfferDetail.wechat}}</view>
-          </view>
-          <view class="service-contact-row" wx:if="{{view.serviceOfferDetail.email}}" data-key="email" bindtap="handleAction">
-            <text>邮箱</text>
-            <view>{{view.serviceOfferDetail.email}}</view>
-          </view>
-          <view class="service-contact-row" wx:if="{{view.serviceOfferDetail.website}}" data-key="website" bindtap="handleAction">
-            <text>网址</text>
-            <view>{{view.serviceOfferDetail.website}}</view>
-          </view>
-          <view class="service-secondary-actions" wx:if="{{view.serviceOfferSecondaryActions.length}}">
-            <block wx:for="{{view.serviceOfferSecondaryActions}}" wx:key="key">
-              <view class="service-secondary-action" data-key="{{item.key}}" bindtap="handleAction">{{item.shortTitle}}</view>
-            </block>
-          </view>
-        </view>
-
-        <view class="lead-form service-form" wx:if="{{showLeadForm}}">
-          <input value="{{leadDraft.name}}" data-key="name" bindinput="handleLeadInput" placeholder="姓名" />
-          <input value="{{leadDraft.phone}}" data-key="phone" bindinput="handleLeadInput" placeholder="电话" type="number" />
-          <input value="{{leadDraft.wechat}}" data-key="wechat" bindinput="handleLeadInput" placeholder="微信号，可选" />
-          <textarea value="{{leadDraft.remark}}" data-key="remark" bindinput="handleLeadInput" placeholder="想咨询的问题、预算范围或方便联系的时间"></textarea>
-          <button loading="{{submittingAction === 'lead-contact'}}" bindtap="handleSubmitLead">提交联系方式</button>
-        </view>
-        <view class="appointment-form service-form" wx:if="{{showAppointmentForm}}">
-          <view class="quick-date">
-            <text data-offset="0" bindtap="handleQuickAppointment">今天</text>
-            <text data-offset="1" bindtap="handleQuickAppointment">明天</text>
-          </view>
-          <view class="picker-row">
-            <picker mode="date" value="{{appointmentDraft.date}}" bindchange="handleAppointmentDate">
-              <view>日期：{{appointmentDraft.date}}</view>
-            </picker>
-            <picker mode="time" value="{{appointmentDraft.time}}" bindchange="handleAppointmentTime">
-              <view>时间：{{appointmentDraft.time}}</view>
-            </picker>
-          </view>
-          <input value="{{appointmentDraft.remark}}" bindinput="handleAppointmentRemark" placeholder="想沟通的问题或期望服务方式" />
-          <button loading="{{submittingAction === 'appointment'}}" bindtap="handleSubmitAppointment">提交预约</button>
-        </view>
-        <view class="status-line" wx:if="{{leadSubmittedText}}">{{leadSubmittedText}}</view>
-        <view class="status-line" wx:if="{{appointmentText}}">预约意向：{{appointmentText}}</view>
-
-        <view class="service-bottom-bar" wx:if="{{view.serviceOfferPrimaryActions.length}}">
-          <block wx:for="{{view.serviceOfferPrimaryActions}}" wx:key="key">
-            <view class="service-bottom-action" data-key="{{item.key}}" bindtap="handleAction">
-              <view>{{item.icon}}</view>
-              <text>{{item.shortTitle}}</text>
-            </view>
-          </block>
+        <customer-communication
+          wx:if="{{!isOwnerViewing}}"
+          actions="{{view.communicationActions}}"
+          primary-action="{{view.primaryCommunicationAction}}"
+          hint="{{view.communicationHint}}"
+          share-ready="{{shareImageReady}}"
+          bind:action="handleCommunicationAction"
+          bind:share="handleShareTap"
+        />
+        <view class="text-reader-consult" wx:if="{{!isOwnerViewing}}">
+          <view class="text-reader-same" bindtap="handleGenerateSame">也想做这样的资料？<text>免费生成同款 →</text></view>
         </view>
       </view>
     </block>
     <block wx:else>
     <image wx:if="{{view.coverUrl}}" class="cover" src="{{view.coverUrl}}" mode="aspectFill"></image>
-    <view wx:else class="cover placeholder">{{view.badge}}</view>
     <view class="content">
       <view class="badge">{{view.badge}}</view>
       <view class="title">{{view.title}}</view>
       <view class="property-highlight-row" wx:if="{{view.propertyHighlightChips.length}}">
         <text wx:for="{{view.propertyHighlightChips}}" wx:key="*this">{{item}}</text>
       </view>
-      <view class="subtitle">{{view.subtitle}}</view>
+      <view class="subtitle" wx:if="{{view.subtitle}}">{{view.subtitle}}</view>
       <view class="availability {{view.availability ? view.availability.status : ''}}" wx:if="{{view.availability}}">
         <view>{{view.availability.title}}</view>
         <text>{{view.availability.desc}}</text>
@@ -338,11 +294,16 @@
       </view>
       <view class="gallery" wx:if="{{view.galleryImages.length}}">
         <view class="section-title">{{view.badge === '房源' ? '房源图片' : view.badge === '商品' ? '商品图片' : view.badge === '名片' ? '二维码 / 图片' : '案例图片'}}</view>
-        <scroll-view scroll-x class="gallery-scroll">
+        <swiper class="gallery-swiper" indicator-dots="{{true}}" indicator-active-color="#1677ff" indicator-color="#cbd5e1" circular="{{false}}">
           <block wx:for="{{view.galleryImages}}" wx:key="*this">
-            <image src="{{item}}" mode="aspectFill" data-url="{{item}}" bindtap="handlePreviewImage"></image>
+            <swiper-item>
+              <view class="gallery-slide">
+                <image src="{{item}}" mode="aspectFit" data-url="{{item}}" bindtap="handlePreviewImage"></image>
+              </view>
+            </swiper-item>
           </block>
-        </scroll-view>
+        </swiper>
+        <view class="gallery-count">左右滑动查看图片 · 点击图片查看大图</view>
       </view>
       <view class="gallery" wx:if="{{view.galleryVideos.length}}">
         <view class="section-title">{{view.badge === '房源' ? '房源视频' : view.badge === '商品' ? '商品视频' : '展示视频'}}</view>
@@ -355,7 +316,7 @@
       <view class="remark" wx:if="{{view.remark}}">{{view.remark}}</view>
       <view class="map-card" wx:if="{{view.hasMap}}">
         <view class="map-head">
-          <text>房源定位</text>
+          <text>{{view.isGroupbuy ? '自提位置' : '房源定位'}}</text>
           <text wx:if="{{view.mapLocation.hasPoint}}">腾讯地图</text>
           <text wx:elif="{{resolvingMap}}">正在匹配默认地址</text>
           <text wx:else>按默认地址定位</text>
@@ -368,32 +329,35 @@
           markers="{{view.mapLocation.markers}}"
           scale="16"
           show-location="{{false}}"
+          bindtap="handleOpenMap"
         ></map>
         <view wx:else class="map-empty" bindtap="handleOpenMap">{{resolvingMap ? '正在生成地图定位' : '点这里用默认地址打开地图'}}</view>
       </view>
-      <view class="actions" wx:if="{{view.actions.length}}">
-        <block wx:for="{{view.actions}}" wx:key="key">
+      <customer-communication
+        wx:if="{{!isOwnerViewing}}"
+        actions="{{view.communicationActions}}"
+        primary-action="{{view.primaryCommunicationAction}}"
+        hint="{{view.communicationHint}}"
+        share-ready="{{shareImageReady}}"
+        bind:action="handleCommunicationAction"
+        bind:share="handleShareTap"
+      />
+      <view class="actions" wx:if="{{view.sceneActions.length && !isOwnerViewing}}">
+        <block wx:for="{{view.sceneActions}}" wx:key="key">
           <view class="action-card {{item.key}}" data-key="{{item.key}}" bindtap="handleAction">
             <view>{{item.title}}</view>
             <text>{{item.desc}}</text>
           </view>
         </block>
       </view>
-      <view class="property-same-card" wx:if="{{view.isProperty}}">
+      <view class="property-same-card" wx:if="{{!isOwnerViewing}}">
         <view class="property-same-main">
-          <view class="property-same-title">我是中介，也想生成这张房源卡</view>
-          <view class="property-same-sub">复制公开房源内容，换成你的微信，上游联系人你自己留着。</view>
+          <view class="property-same-title">生成我的同款资料</view>
+          <view class="property-same-sub">复制公开内容与样式，身份、联系方式、客户和统计不会复制。</view>
         </view>
-        <button class="property-same-btn" bindtap="handleGenerateSame">生成同款</button>
+        <button class="property-same-btn" loading="{{generatingSame}}" disabled="{{generatingSame}}" bindtap="handleGenerateSame">生成同款</button>
       </view>
-      <view class="lead-form" wx:if="{{showLeadForm}}">
-        <input value="{{leadDraft.name}}" data-key="name" bindinput="handleLeadInput" placeholder="姓名" />
-        <input value="{{leadDraft.phone}}" data-key="phone" bindinput="handleLeadInput" placeholder="电话" type="number" />
-        <input value="{{leadDraft.wechat}}" data-key="wechat" bindinput="handleLeadInput" placeholder="微信号，可选" />
-        <textarea value="{{leadDraft.remark}}" data-key="remark" bindinput="handleLeadInput" placeholder="备注，例如预算、看房时间"></textarea>
-        <button loading="{{submittingAction === 'lead-contact'}}" bindtap="handleSubmitLead">提交联系方式</button>
-      </view>
-      <view class="appointment-form" wx:if="{{showAppointmentForm}}">
+      <view class="appointment-form" wx:if="{{showAppointmentForm && !isOwnerViewing}}">
         <view class="quick-date">
           <text data-offset="0" bindtap="handleQuickAppointment">今天</text>
           <text data-offset="1" bindtap="handleQuickAppointment">明天</text>
@@ -409,22 +373,62 @@
         <input value="{{appointmentDraft.remark}}" bindinput="handleAppointmentRemark" placeholder="备注，可选，例如两个人看房" />
         <button loading="{{submittingAction === 'appointment'}}" bindtap="handleSubmitAppointment">提交预约</button>
       </view>
-      <view class="product-order-panel" wx:if="{{view.isGroupbuy && view.skuConfig.skus.length}}">
+      <view class="product-order-panel" wx:if="{{view.isGroupbuy && view.enableGroupRelay && view.skuConfig.skus.length && !isOwnerViewing}}">
         <view class="order-panel-head">
           <view>
-            <view class="section-title">下单</view>
-            <text>选择规格后填写地址和联系方式</text>
+            <view class="section-title">团购接龙</view>
+            <text>选择规格和数量后提交接龙</text>
           </view>
           <button bindtap="handleOpenOrderSheet">{{view.orderButtonText}}</button>
         </view>
       </view>
-      <view class="status-line" wx:if="{{leadSubmittedText}}">{{leadSubmittedText}}</view>
       <view class="status-line" wx:if="{{appointmentText}}">预约意向：{{appointmentText}}</view>
       <view class="status-line" wx:if="{{productOrderSubmitted}}">{{productOrderStatusText || (view.enableGroupRelay ? '已记录接龙意向' : '已下单')}}</view>
     </view>
     </block>
+    <view id="leadForm" class="lead-form lead-form-global" wx:if="{{showLeadForm && !isOwnerViewing}}">
+      <view class="lead-form-heading">
+        <view class="lead-form-mark">留</view>
+        <view class="lead-form-heading-copy">
+          <view class="lead-form-title">留下你的需求</view>
+          <view class="lead-form-hint">留下联系方式和需求，发布者会尽快联系你</view>
+        </view>
+      </view>
+      <view class="lead-form-guide"><text class="lead-form-guide-title">联系信息</text><text class="lead-form-guide-hint">手机号或微信号至少填写一项</text></view>
+      <view class="lead-field">
+        <view class="lead-field-label">怎么称呼你？<text>选填</text></view>
+        <input value="{{leadDraft.name}}" data-key="name" bindinput="handleLeadInput" placeholder="例如：张先生" />
+      </view>
+      <view class="lead-field">
+        <view class="lead-field-label">手机号<text>电话或微信至少填写一项</text></view>
+        <input value="{{leadDraft.phone}}" data-key="phone" bindinput="handleLeadInput" placeholder="请输入手机号" type="number" />
+      </view>
+      <view class="lead-field">
+        <view class="lead-field-label">微信号<text>选填</text></view>
+        <input value="{{leadDraft.wechat}}" data-key="wechat" bindinput="handleLeadInput" placeholder="方便微信联系时填写" />
+      </view>
+      <view class="lead-field">
+        <view class="lead-field-label">你想了解什么？<text>选填</text></view>
+        <textarea value="{{leadDraft.remark}}" data-key="remark" bindinput="handleLeadInput" placeholder="例如：预算、城市或合作需求"></textarea>
+      </view>
+      <button loading="{{submittingAction === 'lead-contact'}}" bindtap="handleSubmitLead">提交需求</button>
+      <view class="lead-form-privacy">仅用于本次联系，不会公开展示</view>
+    </view>
+    <view class="status-line lead-submit-status" wx:if="{{leadSubmittedText}}">{{leadSubmittedText}}</view>
+    <view class="public-attachments shared" wx:if="{{view.attachments.length}}">
+      <view class="section-title">相关资料</view>
+      <view wx:for="{{view.attachments}}" wx:key="id" wx:for-index="index" class="public-attachment" data-index="{{index}}" bindtap="handleAttachment">
+        <image wx:if="{{item.type === 'image'}}" src="{{item.url}}" mode="aspectFill"></image>
+        <view wx:else class="public-attachment-mark {{item.type}}">{{item.type === 'pdf' ? 'PDF' : '链'}}</view>
+        <view class="public-attachment-copy"><view>{{item.title || item.name || (item.type === 'pdf' ? 'PDF 文件' : '外部链接')}}</view><text>{{item.type === 'image' ? '查看大图' : item.type === 'pdf' ? '打开文档' : '复制链接打开'}}</text></view>
+        <text class="public-attachment-open">打开</text>
+      </view>
+    </view>
     <view class="floating-share-actions">
-      <button open-type="share">好友</button>
+      <button wx:if="{{shareImageReady}}" open-type="share" catchtap="handleShareTap">好友</button>
+      <button wx:elif="{{shareImageState === 'preparing'}}" disabled="true">分享图生成中</button>
+      <button wx:elif="{{isOwnerViewing}}" bindtap="prepareShareSnapshot">{{shareStatusText}}</button>
+      <button wx:else disabled="true">{{shareStatusText}}</button>
       <button bindtap="handleTimelineHint">朋友圈</button>
     </view>
 
@@ -460,6 +464,19 @@
 
   <view class="standalone-return" wx:if="{{openedStandalone && view}}">
     <button bindtap="handleBackHome">回到首页</button>
+  </view>
+
+  <view class="floating-home-button" wx:if="{{openedStandalone && view}}" bindtap="handleBackHome">
+    <text class="floating-home-icon">⌂</text>
+    <text>首页</text>
+  </view>
+
+  <view class="public-load-error" wx:if="{{publicLoadError}}">
+    <view class="public-load-error-icon">!</view>
+    <view class="public-load-error-title">{{publicLoadErrorTitle}}</view>
+    <view class="public-load-error-message">{{publicLoadErrorMessage}}</view>
+    <button class="public-load-error-retry" bindtap="handleRetryPublicNote">重新加载</button>
+    <button class="public-load-error-home" bindtap="handleBackHome">回到首页</button>
   </view>
 
   <canvas canvas-id="businessCardShareCanvas" class="business-card-share-canvas"></canvas>

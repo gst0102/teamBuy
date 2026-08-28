@@ -1,10 +1,16 @@
 const api = require("../../services/api");
-const { getCurrentUser, getRandomDefaultNickname, safeAvatarUrl } = require("../../utils/dashboard");
-const { getShowcaseTemplate, templateClass } = require("../../utils/showcase-templates");
+const { getCurrentUser, safeAvatarUrl } = require("../../utils/dashboard");
+const {
+  getShowcaseTemplate,
+  getDefaultTemplateId,
+  normalizeSceneType,
+  normalizeTemplateId,
+  templateClass
+} = require("../../utils/showcase-templates");
 const { buildTitleCoverData } = require("../../utils/title-cover");
-const { generateTitleShareImage } = require("../../utils/business-card-share");
+const subscription = require("../../services/subscription");
+const { getAnonymousVisitorId } = require("../../utils/visitor-identity");
 
-const SHOWCASE_SHARE_CANVAS_ID = "showcaseShareCanvas";
 
 function sectionName(item, groupBy) {
   if (groupBy === "custom" && item.sectionTitle) return item.sectionTitle;
@@ -203,13 +209,32 @@ function contactSummary(page) {
   return "可分享";
 }
 
+function buildShowcaseCommunicationActions(page) {
+  const contact = (page && page.contactConfig) || {};
+  const actions = [];
+  if (contact.showPhone && contact.phone) {
+    actions.push({
+      key: "contact",
+      icon: "电",
+      title: "打电话",
+      primaryTitle: "电话联系",
+      desc: "直接联系发布者"
+    });
+  }
+  if (contact.showWechat && contact.wechat) {
+    actions.push({
+      key: "private",
+      icon: "微",
+      title: "微信沟通",
+      primaryTitle: "微信联系",
+      desc: "复制微信号联系"
+    });
+  }
+  return actions;
+}
+
 function getShowcaseAnonymousId() {
-  const key = "showcaseAnonymousId";
-  const stored = wx.getStorageSync(key);
-  if (stored) return stored;
-  const next = `showcase_anon_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
-  wx.setStorageSync(key, next);
-  return next;
+  return getAnonymousVisitorId();
 }
 
 function createShareId(showcaseId) {
@@ -218,6 +243,12 @@ function createShareId(showcaseId) {
 
 function canSharePage(preview, page) {
   return !preview || (page && page.status === "published");
+}
+
+function resolveAudienceMode(preview, user, shareFromUserId) {
+  if (preview) return "owner_preview";
+  if (user && shareFromUserId && user.id === shareFromUserId) return "owner";
+  return "customer";
 }
 
 function visibleStats(items, page) {
@@ -290,10 +321,21 @@ function inferShowcaseContext(page, items) {
     };
 }
 
+const {
+  buildShowcaseShareSource,
+  createShareSnapshotFingerprint,
+  getShareSourceRevision,
+  isShareImageUrl,
+  setShareMenuEnabled,
+  SHARE_CARD_STYLE_VERSION
+} = require("../../plugins/share-snapshot/index");
+
 Page({
   data: {
     id: "",
     preview: false,
+    audienceMode: "customer",
+    isOwnerViewing: false,
     user: null,
     page: null,
     displayLayout: "list",
@@ -322,24 +364,36 @@ Page({
     canShare: true,
     showcaseShareImage: "",
     shareImageReady: false,
-    shareStatusText: "封面准备中"
+    shareStatusText: "正在准备",
+    showcaseCommunicationActions: [],
+    showcasePrimaryCommunicationAction: null,
+    showcaseCommunicationHint: "先浏览资料，选中具体内容后可留言或留下需求"
   },
   onLoad(options) {
     const id = options.id || options.showcaseId || "";
+    const preview = options.preview === "1";
     this.setData({
       id,
-      preview: options.preview === "1",
+      preview,
       shareId: options.sid || "",
       shareFromUserId: options.from || "",
       shareScene: options.src || options.scene || "",
       referrer: options.ref || "",
+      audienceMode: resolveAudienceMode(preview, getCurrentUser(), options.from || ""),
+      isOwnerViewing: resolveAudienceMode(preview, getCurrentUser(), options.from || "") !== "customer",
       viewSessionId: createViewSessionId("showcase_view"),
       pageEnterAt: Date.now(),
       maxScrollPercent: 0
     });
   },
   onShow() {
-    this.setData({ user: getCurrentUser() });
+    const user = getCurrentUser();
+    const audienceMode = resolveAudienceMode(this.data.preview, user, this.data.shareFromUserId);
+    this.setData({
+      user,
+      audienceMode,
+      isOwnerViewing: audienceMode !== "customer"
+    });
     this.loadPage();
   },
   async loadPage() {
@@ -355,26 +409,43 @@ Page({
         ? await api.fetchShowcase(id, user.id)
         : await api.fetchPublicShowcase(id);
       const page = res.data || {};
+      page.shareSnapshotUrl = page.shareSnapshotUrl || (page.shareSnapshot && page.shareSnapshot.url) || "";
+      page.shareSnapshotStyleId = page.shareSnapshotStyleId || (page.shareSnapshot && page.shareSnapshot.styleId) || "";
+      page.shareSnapshotFingerprint = page.shareSnapshotFingerprint
+        || (page.shareSnapshot && page.shareSnapshot.fingerprint)
+        || "";
       page.contactConfig = {
         ...(page.contactConfig || {}),
         avatarUrl: safeAvatarUrl(page.contactConfig && page.contactConfig.avatarUrl)
       };
       if (preview && user) {
-        const notesRes = await api.fetchNotes({ ownerUserId: user.id });
+        const notesRes = await api.fetchNotes({ ownerUserId: user.id }, { metadataOnly: true });
         page.items = summarizePreviewItems(page.items || [], notesRes.data || []);
       }
       const display = page.displayConfig || {};
-      const template = getShowcaseTemplate(page.templateId);
+      const sceneType = normalizeSceneType(
+        page.sceneType || display.sceneType || display.activeCategory || "notes"
+      );
+      const effectiveTemplateId = normalizeTemplateId(
+        sceneType,
+        page.templateId || getDefaultTemplateId(sceneType)
+      );
+      // 公开快照必须按场景白名单渲染。服务端已做同样约束，这里再做一次防御，
+      // 避免旧快照或异常 templateId 把客户页落到错误的模板分支。
+      page.sceneType = sceneType;
+      page.templateId = effectiveTemplateId;
+      const template = getShowcaseTemplate(effectiveTemplateId);
       const visibleItems = filterItemsForDisplay(page.items || [], display);
       const rawPropertyFilters = normalizePropertyFilters(display);
       const activePropertyFilter = { key: "", value: "", label: "" };
       const filteredItems = applyPropertyFilter(visibleItems, activePropertyFilter);
       const sections = buildSections(filteredItems, display.groupBy || "none");
       const flatItems = flattenSections(sections);
+      const showcaseCommunicationActions = buildShowcaseCommunicationActions(page);
       this.setData({
         page,
         template,
-        templateClass: templateClass(page.templateId),
+        templateClass: templateClass(effectiveTemplateId),
         displayLayout: display.layoutMode === "grid" ? "grid" : "list",
         profileInitial: String(page.name || "展").slice(0, 1),
         profileName: (page.contactConfig && page.contactConfig.ownerName) || page.name || "展示页",
@@ -386,9 +457,14 @@ Page({
         heroItem: flatItems.find((item) => item.coverUrl) || flatItems[0] || null,
         stats: visibleStats(flatItems, page),
         context: inferShowcaseContext(page, flatItems),
-        canShare: canSharePage(preview, page)
-      }, () => this.prepareShowcaseShareImage());
-      this.updateShareMenu(canSharePage(preview, page));
+        canShare: canSharePage(preview, page),
+        showcaseCommunicationActions,
+        showcasePrimaryCommunicationAction: showcaseCommunicationActions.find((item) => item.key === "private")
+          || showcaseCommunicationActions.find((item) => item.key === "contact")
+          || null
+      }, () => {
+        this.prepareShowcaseShareImage();
+      });
       if (!preview && !this.data.viewRecorded) {
         this.recordEvent("view", {
           sessionId: this.data.viewSessionId,
@@ -398,6 +474,7 @@ Page({
         });
         this.setData({ viewRecorded: true });
       }
+      this.bindReferralFromShare(page);
     } catch (error) {
       this.setData({ errorText: error.detail || "展示页不可访问，请让发布者确认已发布。" });
       wx.showToast({ title: error.detail || "展示页不可访问", icon: "none" });
@@ -405,6 +482,12 @@ Page({
     } finally {
       this.setData({ loading: false });
     }
+  },
+  bindReferralFromShare(page) {
+    const user = this.data.user;
+    const inviterUserId = this.data.shareFromUserId;
+    if (this.data.preview || !user || !inviterUserId || user.id === inviterUserId || !page || page.ownerUserId === user.id) return;
+    api.bindReferralFromShare(user.id, inviterUserId, this.data.shareScene || "share_link").catch(() => {});
   },
   handlePropertyFilterTap(event) {
     const key = event.currentTarget.dataset.key || "";
@@ -427,11 +510,7 @@ Page({
     });
   },
   updateShareMenu(canShare) {
-    if (canShare) {
-      wx.showShareMenu({ withShareTicket: false });
-    } else {
-      wx.hideShareMenu();
-    }
+    setShareMenuEnabled(Boolean(canShare && isShareImageUrl(this.data.showcaseShareImage)));
   },
   recordEvent(eventType, extra = {}) {
     if (this.data.preview || !this.data.id) return;
@@ -446,7 +525,7 @@ Page({
     const payload = user ? {
       eventType,
       viewerUserId: user.id,
-      nickname: user.nickname || getRandomDefaultNickname(),
+      nickname: user.nickname || "微信用户",
       avatarUrl: safeAvatarUrl(user.avatarUrl),
       ...trace
     } : {
@@ -484,6 +563,17 @@ Page({
     this.recordEvent("note_click", { noteId });
     wx.navigateTo({ url: `/pages/note-preview/index?id=${noteId}` });
   },
+  handleCommunicationAction(event) {
+    const key = event.detail && event.detail.key;
+    if (key === "contact") {
+      this.callPhone();
+      return;
+    }
+    if (key === "private") this.copyWechat();
+  },
+  handleShareTap() {
+    subscription.requestViewNotificationSubscription("showcase_view_share");
+  },
   callPhone() {
     const phone = this.data.page && this.data.page.contactConfig && this.data.page.contactConfig.phone;
     if (!phone) return;
@@ -497,6 +587,10 @@ Page({
     wx.setClipboardData({ data: wechat });
   },
   handleGenerateSame() {
+    if (this.data.isOwnerViewing || this.data.audienceMode !== "customer") {
+      wx.showToast({ title: "这是自己的展示页，无需生成同款", icon: "none" });
+      return;
+    }
     const page = this.data.page || {};
     const contact = page.contactConfig || {};
     const query = [
@@ -506,51 +600,50 @@ Page({
       (contact.ownerName || this.data.profileName) ? `publisherName=${encodeURIComponent(contact.ownerName || this.data.profileName)}` : "",
       (contact.wechat || contact.phone || contact.contactText) ? `upstreamContact=${encodeURIComponent(contact.wechat || contact.phone || contact.contactText)}` : ""
     ].filter(Boolean).join("&");
-    wx.navigateTo({ url: `/pages/property-same/index?${query}` });
+    wx.navigateTo({ url: `/subpackages/workbench/property-same/index?${query}` });
   },
   async prepareShowcaseShareImage() {
     const page = this.data.page || {};
-    const heroItem = this.data.heroItem || {};
     if (!page) {
-      this.setData({ showcaseShareImage: "", shareImageReady: false, shareStatusText: "封面准备中" });
+      this.setData({ showcaseShareImage: "", shareImageReady: false, shareStatusText: "正在准备" }, () => this.updateShareMenu(false));
       return;
     }
-    this.setData({ showcaseShareImage: "", shareImageReady: false, shareStatusText: "封面准备中" });
-    try {
-      const imagePath = await generateTitleShareImage(this, SHOWCASE_SHARE_CANVAS_ID, {
-        title: page.shareTitle || page.name || "资料展示页",
-        summary: page.description || "",
-        badge: "合集",
-        coverUrl: heroItem.coverUrl || page.bannerUrl || "",
-        hint: "打开小程序查看完整合集",
-        growthHint: "我也想做同款",
-        shareTargetLabel: "合集"
+    const source = buildShowcaseShareSource(page);
+    const expectedFingerprint = page.id
+      ? createShareSnapshotFingerprint(
+        "showcase",
+        page.id,
+        getShareSourceRevision("showcase", page),
+        SHARE_CARD_STYLE_VERSION,
+        source
+      )
+      : "";
+    const isCurrentSnapshot = Boolean(
+      page.shareSnapshotUrl
+      && page.shareSnapshotStyleId === SHARE_CARD_STYLE_VERSION
+      && page.shareSnapshotFingerprint === expectedFingerprint
+      && isShareImageUrl(page.shareSnapshotUrl)
+    );
+    if (isCurrentSnapshot) {
+      this.setData({ showcaseShareImage: page.shareSnapshotUrl, shareImageReady: true, shareStatusText: "发给客户" }, () => {
+        this.updateShareMenu(canSharePage(this.data.preview, page) && isShareImageUrl(page.shareSnapshotUrl));
       });
-      if (imagePath) {
-        this.setData({ showcaseShareImage: imagePath, shareImageReady: true, shareStatusText: "发给客户" });
-      } else {
-        this.setData({ showcaseShareImage: "", shareImageReady: false, shareStatusText: "封面生成失败" });
-      }
-    } catch (error) {
-      this.setData({ showcaseShareImage: "", shareImageReady: false, shareStatusText: "封面生成失败" });
+      return;
     }
+    this.setData({ showcaseShareImage: "", shareImageReady: false, shareStatusText: "正在准备" }, () => this.updateShareMenu(false));
   },
   onShareAppMessage() {
     const page = this.data.page || {};
     if (!this.data.canShare) {
       wx.showToast({ title: "发布后才能发给客户", icon: "none" });
-      return {
-        title: page.name || "资料展示页",
-        path: `/pages/showcases/index`
-      };
+      this.updateShareMenu(false);
+      return null;
     }
     const user = this.data.user || getCurrentUser();
-    if (!this.data.showcaseShareImage) {
-      wx.showToast({ title: "封面还在生成，请稍后再发", icon: "none" });
-      return {
-        title: buildCustomerShareTitle(page.shareTitle || page.name || "资料展示页"),
-        path: `/pages/showcases/index`
-      };
+    if (!isShareImageUrl(this.data.showcaseShareImage)) {
+      wx.showToast({ title: "分享内容正在准备，请稍后再发", icon: "none" });
+      this.updateShareMenu(false);
+      return null;
     }
     const shareId = createShareId(this.data.id);
     const scene = this.data.preview ? "showcase_preview_share" : "public_showcase_share";
@@ -568,7 +661,7 @@ Page({
     }
     return {
       title: buildCustomerShareTitle(page.shareTitle || page.name || "资料展示页"),
-      path: `/pages/showcases/index?shareTarget=showcase&showcaseId=${this.data.id}&sid=${shareId}&from=${shareFromUserId}&src=${scene}&ref=${this.data.shareId || ""}`,
+      path: `/pages/showcase-view/index?id=${encodeURIComponent(this.data.id)}&showcaseId=${encodeURIComponent(this.data.id)}&sid=${encodeURIComponent(shareId)}&from=${encodeURIComponent(shareFromUserId)}&src=${encodeURIComponent(scene)}&ref=${encodeURIComponent(this.data.shareId || "")}`,
       imageUrl: this.data.showcaseShareImage
     };
   }

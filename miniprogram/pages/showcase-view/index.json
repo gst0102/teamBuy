@@ -1,6 +1,6 @@
 {
+  "navigationBarTitleText": "展示页",
   "usingComponents": {
-    "custom-nav": "/components/custom-nav/index"
-  },
-  "navigationBarTitleText": "展示页"
+    "customer-communication": "/components/customer-communication/index"
+  }
 }

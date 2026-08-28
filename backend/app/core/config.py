@@ -41,12 +41,17 @@ class Settings:
     app_port: int = env_int("APP_PORT", 8000)
     public_base_url: str = env_value("PUBLIC_BASE_URL", "")
     admin_token: str = env_value("WECOM_ADMIN_TOKEN", "")
+    # The customer-information chain is a server-side operational feature
+    # switch.  Production starts closed unless an operator enables it in /ops.
+    customer_info_chain_default_enabled: bool = env_value(
+        "CUSTOMER_INFO_CHAIN_DEFAULT_ENABLED", "false"
+    ).lower() in {"1", "true", "yes"}
     database_backend: str = env_value("DATABASE_BACKEND", "postgres")
     database_url: str = env_value("DATABASE_URL", "")
-    wecom_callback_token: str = env_value("WECOM_CALLBACK_TOKEN", "teamBuy-dev-token")
+    wecom_kf_callback_token: str = env_value("WECOM_KF_CALLBACK_TOKEN", "teamBuy-dev-token")
     wecom_corp_id: str = env_value("WECOM_CORP_ID", "")
-    wecom_secret: str = env_value("WECOM_SECRET", "")
-    wecom_encoding_aes_key: str = env_value("WECOM_ENCODING_AES_KEY", "")
+    wecom_kf_secret: str = env_value("WECOM_KF_SECRET", "")
+    wecom_kf_encoding_aes_key: str = env_value("WECOM_KF_ENCODING_AES_KEY", "")
     wecom_open_kfid: str = env_value("WECOM_OPEN_KFID", "")
     wecom_sync_cursor: str = env_value("WECOM_SYNC_CURSOR", "")
     wecom_sync_limit: int = env_int("WECOM_SYNC_LIMIT", 100)
@@ -55,8 +60,8 @@ class Settings:
     wecom_use_mock: bool = env_value("WECOM_USE_MOCK", "true").lower() in {"1", "true", "yes"}
     wecom_archive_enabled: bool = env_value("WECOM_ARCHIVE_ENABLED", "false").lower() in {"1", "true", "yes"}
     wecom_archive_secret: str = env_value("WECOM_ARCHIVE_SECRET", "")
-    wecom_archive_callback_token: str = env_value("WECOM_ARCHIVE_CALLBACK_TOKEN", wecom_callback_token)
-    wecom_archive_encoding_aes_key: str = env_value("WECOM_ARCHIVE_ENCODING_AES_KEY", wecom_encoding_aes_key)
+    wecom_archive_callback_token: str = env_value("WECOM_ARCHIVE_CALLBACK_TOKEN", "")
+    wecom_archive_encoding_aes_key: str = env_value("WECOM_ARCHIVE_ENCODING_AES_KEY", "")
     wecom_archive_private_key_path: Path | None = env_path("WECOM_ARCHIVE_PRIVATE_KEY_PATH", "backend/secrets/wecom_archive_private.pem")
     wecom_archive_public_key_path: Path | None = env_path("WECOM_ARCHIVE_PUBLIC_KEY_PATH", "backend/secrets/wecom_archive_public.pem")
     wecom_archive_sdk_lib_path: Path | None = env_path("WECOM_ARCHIVE_SDK_LIB_PATH", "")
@@ -66,14 +71,42 @@ class Settings:
     wecom_archive_proxy_password: str = env_value("WECOM_ARCHIVE_PROXY_PASSWORD", "")
     wecom_archive_worker_enabled: bool = env_value("WECOM_ARCHIVE_WORKER_ENABLED", "false").lower() in {"1", "true", "yes"}
     wecom_archive_worker_interval_seconds: int = env_int("WECOM_ARCHIVE_WORKER_INTERVAL_SECONDS", 60)
+    # direct = this project owns Finance SDK pulling; shared = the platform
+    # core owns pulling and this project only consumes routed events.
+    wecom_archive_source: str = env_value("WECOM_ARCHIVE_SOURCE", "direct").lower()
+    wecom_archive_core_project_id: str = env_value("WECOM_ARCHIVE_CORE_PROJECT_ID", "teamBuy")
+    wecom_archive_core_project_token: str = env_value("WECOM_ARCHIVE_CORE_PROJECT_TOKEN", "")
+    wecom_archive_core_media_base_url: str = env_value("WECOM_ARCHIVE_CORE_MEDIA_BASE_URL", "")
     background_tasks_in_api: bool = env_value("BACKGROUND_TASKS_IN_API", "true").lower() in {"1", "true", "yes"}
     sync_task_worker_enabled: bool = env_value("SYNC_TASK_WORKER_ENABLED", "false").lower() in {"1", "true", "yes"}
     sync_task_worker_interval_seconds: int = env_int("SYNC_TASK_WORKER_INTERVAL_SECONDS", 5)
     sync_task_auto_schedule: bool = env_value("SYNC_TASK_AUTO_SCHEDULE", "true").lower() in {"1", "true", "yes"}
     ocr_task_concurrency: int = env_int("OCR_TASK_CONCURRENCY", 1)
     wecom_bind_intent_ttl_seconds: int = env_int("WECOM_BIND_INTENT_TTL_SECONDS", 3600)
+    # Contact-plugin binding is a separate, short-lived one-time link.  Its
+    # callback is configured on the same WeCom application callback as the KF
+    # events, so it uses the KF callback credentials above.
+    wecom_contact_state: str = env_value("WECOM_CONTACT_STATE", "")
+    wecom_contact_plugid: str = env_value(
+        "WECOM_CONTACT_PLUGID",
+        "df29f3fd3ddc95bfec70e60cef93730c",
+    )
+    wecom_bind_card_ttl_seconds: int = env_int("WECOM_BIND_CARD_TTL_SECONDS", 600)
+    wecom_bind_card_pic_media_id: str = env_value("WECOM_BIND_CARD_PIC_MEDIA_ID", "")
+    wecom_bind_card_title: str = env_value("WECOM_BIND_CARD_TITLE", "开启我的资料库")
+    wecom_bind_welcome_text: str = env_value(
+        "WECOM_BIND_WELCOME_TEXT",
+        "你好，我是资料整理助手 👋\n\n以后你发来的图片、文件和链接，我会帮你整理到资料库。\n首次使用只需确认一次，之后直接发资料即可。\n\n点击下方“开启我的资料库”，开始使用。",
+    )
+    wecom_bind_card_media_ttl_seconds: int = env_int("WECOM_BIND_CARD_MEDIA_TTL_SECONDS", 259200)
+    wecom_bind_card_media_refresh_margin_seconds: int = env_int(
+        "WECOM_BIND_CARD_MEDIA_REFRESH_MARGIN_SECONDS", 86400
+    )
+    wecom_bind_card_max_bytes: int = env_int("WECOM_BIND_CARD_MAX_BYTES", 2 * 1024 * 1024)
     wecom_unclaimed_default_owner_user_id: str = env_value("WECOM_UNCLAIMED_DEFAULT_OWNER_USER_ID", "")
     robot_gateway_token: str = env_value("ROBOT_GATEWAY_TOKEN", "")
+    automation_operator_token: str = env_value("AUTOMATION_OPERATOR_TOKEN", "")
+    automation_device_token: str = env_value("AUTOMATION_DEVICE_TOKEN", "")
     wecom_group_bot_webhooks: str = env_value("WECOM_GROUP_BOT_WEBHOOKS", "")
     storage_mode: str = env_value("STORAGE_MODE", "mock")
     media_storage_dir: Path = ROOT_DIR / env_value("MEDIA_STORAGE_DIR", "backend/mock/media")
@@ -82,6 +115,10 @@ class Settings:
     media_image_quality: int = env_int("MEDIA_IMAGE_QUALITY", 82)
     media_video_max_width: int = env_int("MEDIA_VIDEO_MAX_WIDTH", 1280)
     media_video_crf: int = env_int("MEDIA_VIDEO_CRF", 28)
+    media_max_image_bytes: int = env_int("MEDIA_MAX_IMAGE_BYTES", 10 * 1024 * 1024)
+    media_max_video_bytes: int = env_int("MEDIA_MAX_VIDEO_BYTES", 50 * 1024 * 1024)
+    media_max_pdf_bytes: int = env_int("MEDIA_MAX_PDF_BYTES", 20 * 1024 * 1024)
+    media_max_share_snapshot_bytes: int = env_int("MEDIA_MAX_SHARE_SNAPSHOT_BYTES", 5 * 1024 * 1024)
     ffmpeg_bin: str = env_value("FFMPEG_BIN", "ffmpeg")
     ocr_provider: str = env_value("OCR_PROVIDER", "auto")
     ocr_language: str = env_value("OCR_LANGUAGE", "chi_sim+eng")
@@ -96,10 +133,42 @@ class Settings:
     object_storage_key_prefix: str = env_value("OBJECT_STORAGE_KEY_PREFIX", "wecom-media")
     wechat_miniapp_appid: str = env_value("WECHAT_MINIAPP_APPID", "")
     wechat_miniapp_secret: str = env_value("WECHAT_MINIAPP_SECRET", "")
+    wechat_miniapp_api_base_url: str = env_value("WECHAT_MINIAPP_API_BASE_URL", "https://api.weixin.qq.com")
+    wechat_miniapp_subscribe_template_id: str = env_value("WECHAT_MINIAPP_SUBSCRIBE_TEMPLATE_ID", "")
+    wechat_miniapp_subscribe_page: str = env_value("WECHAT_MINIAPP_SUBSCRIBE_PAGE", "/pages/visits/index")
+    wechat_miniapp_subscribe_field_keys_json: str = env_value(
+        "WECHAT_MINIAPP_SUBSCRIBE_FIELD_KEYS",
+        '{"messageName":"thing13","customerName":"thing16","projectName":"thing14","messageContent":"thing3","reminderTime":"time11"}',
+    )
+    wechat_pay_enabled: bool = env_value("WECHAT_PAY_ENABLED", "false").lower() in {"1", "true", "yes"}
+    wechat_pay_mch_id: str = env_value("WECHAT_PAY_MCH_ID", "")
+    wechat_pay_api_v3_key: str = env_value("WECHAT_PAY_API_V3_KEY", "")
+    wechat_pay_cert_serial_no: str = env_value("WECHAT_PAY_CERT_SERIAL_NO", "")
+    wechat_pay_private_key_path: Path | None = env_path(
+        "WECHAT_PAY_PRIVATE_KEY_PATH",
+        "backend/secrets/wechat_pay_apiclient_key.pem",
+    )
+    wechat_pay_platform_cert_serial_no: str = env_value("WECHAT_PAY_PLATFORM_CERT_SERIAL_NO", "")
+    wechat_pay_platform_cert_path: Path | None = env_path(
+        "WECHAT_PAY_PLATFORM_CERT_PATH",
+        "backend/secrets/wechat_pay_platform_cert.pem",
+    )
+    wechat_pay_notify_url: str = env_value("WECHAT_PAY_NOTIFY_URL", "")
+    wechat_pay_api_base_url: str = env_value("WECHAT_PAY_API_BASE_URL", "https://api.mch.weixin.qq.com")
+    wechat_pay_timeout_seconds: int = env_int("WECHAT_PAY_TIMEOUT_SECONDS", 15)
+    # Merchant transfer is intentionally isolated from customer payment.  Keep
+    # it disabled until the payout flow has passed a real-money review.
+    wechat_transfer_enabled: bool = env_value("WECHAT_TRANSFER_ENABLED", "false").lower() in {"1", "true", "yes"}
+    wechat_transfer_scene_id: str = env_value("WECHAT_TRANSFER_SCENE_ID", "")
+    wechat_transfer_notify_url: str = env_value("WECHAT_TRANSFER_NOTIFY_URL", "")
+    wechat_transfer_test_min_amount_fen: int = env_int("WECHAT_TRANSFER_TEST_MIN_AMOUNT_FEN", 10)
+    wechat_transfer_min_amount_fen: int = env_int("WECHAT_TRANSFER_MIN_AMOUNT_FEN", 1000)
+    wechat_transfer_daily_withdrawal_limit: int = env_int("WECHAT_TRANSFER_DAILY_WITHDRAWAL_LIMIT", 1)
     wechat_jscode2session_url: str = env_value("WECHAT_JSCODE2SESSION_URL", "https://api.weixin.qq.com/sns/jscode2session")
     allow_mock_login: bool = env_value("ALLOW_MOCK_LOGIN", "true").lower() in {"1", "true", "yes"}
     h5_auth_secret: str = env_value("H5_AUTH_SECRET", env_value("WECOM_ADMIN_TOKEN", "teamBuy-h5-dev-secret"))
     h5_auth_ticket_ttl_seconds: int = env_int("H5_AUTH_TICKET_TTL_SECONDS", 600)
+    user_session_ttl_seconds: int = env_int("USER_SESSION_TTL_SECONDS", 30 * 24 * 60 * 60)
     tencent_map_key: str = env_value("TENCENT_MAP_KEY", "")
     tencent_map_geocoder_url: str = env_value("TENCENT_MAP_GEOCODER_URL", "https://apis.map.qq.com/ws/geocoder/v1/")
     tyc_api_key: str = env_value("TYC_API_KEY", "")
@@ -115,10 +184,10 @@ class Settings:
     def missing_wecom_fields(self) -> list[str]:
         required = {
             "PUBLIC_BASE_URL": self.public_base_url,
-            "WECOM_CALLBACK_TOKEN": self.wecom_callback_token,
+            "WECOM_KF_CALLBACK_TOKEN": self.wecom_kf_callback_token,
             "WECOM_CORP_ID": self.wecom_corp_id,
-            "WECOM_SECRET": self.wecom_secret,
-            "WECOM_ENCODING_AES_KEY": self.wecom_encoding_aes_key,
+            "WECOM_KF_SECRET": self.wecom_kf_secret,
+            "WECOM_KF_ENCODING_AES_KEY": self.wecom_kf_encoding_aes_key,
             "WECOM_OPEN_KFID": self.wecom_open_kfid,
         }
         return [key for key, value in required.items() if not value]
@@ -129,6 +198,10 @@ class Settings:
             missing.append("WECOM_CORP_ID")
         if not self.wecom_archive_secret:
             missing.append("WECOM_ARCHIVE_SECRET")
+        if not self.wecom_archive_callback_token:
+            missing.append("WECOM_ARCHIVE_CALLBACK_TOKEN")
+        if not self.wecom_archive_encoding_aes_key:
+            missing.append("WECOM_ARCHIVE_ENCODING_AES_KEY")
         if not self.wecom_archive_private_key_path:
             missing.append("WECOM_ARCHIVE_PRIVATE_KEY_PATH")
         elif not self.wecom_archive_private_key_path.exists():
@@ -152,6 +225,19 @@ class Settings:
             str(key): str(url)
             for key, url in value.items()
             if key and isinstance(url, str) and url.startswith(("http://", "https://"))
+        }
+
+    def wechat_miniapp_subscribe_field_keys(self) -> dict[str, str]:
+        try:
+            value = json.loads(self.wechat_miniapp_subscribe_field_keys_json or "{}")
+        except json.JSONDecodeError:
+            return {}
+        if not isinstance(value, dict):
+            return {}
+        return {
+            str(key): str(field).strip()
+            for key, field in value.items()
+            if str(key) and isinstance(field, str) and field.strip()
         }
 
 

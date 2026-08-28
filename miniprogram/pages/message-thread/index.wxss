@@ -13,6 +13,32 @@
   background: #ffffff;
 }
 
+.page-home-entry {
+  margin: 0 0 18rpx;
+}
+
+.home-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 64rpx;
+  margin: 0;
+  padding: 0;
+  border: 1rpx solid #c9d8ef;
+  border-radius: 8rpx;
+  background: #ffffff;
+  color: #1677ff;
+  font-size: 24rpx;
+  font-weight: 800;
+  line-height: 1;
+  box-sizing: border-box;
+}
+
+.home-link::after {
+  border: 0;
+}
+
 .title {
   font-size: 30rpx;
   font-weight: 900;
@@ -22,6 +48,28 @@
   margin-top: 8rpx;
   color: #64748b;
   font-size: 24rpx;
+}
+
+.radar-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 64rpx;
+  margin: 18rpx 0 0;
+  padding: 0;
+  border: 1rpx solid #bfe3ce;
+  border-radius: 8rpx;
+  background: #effaf3;
+  color: #11924d;
+  font-size: 24rpx;
+  font-weight: 800;
+  line-height: 1;
+  box-sizing: border-box;
+}
+
+.radar-link::after {
+  border: 0;
 }
 
 .message-list {

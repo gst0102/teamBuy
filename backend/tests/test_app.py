@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.api.dependencies import get_app_service, get_sync_task_queue, get_wecom_archive_client, get_wecom_client
+from app.api.dependencies import get_app_service, get_sync_task_queue, get_wecom_archive_client, get_wecom_archive_media_client, get_wecom_client
 from app.core.config import settings
 from app.services.media_storage_service import MediaStorageService
 from app.services.media_processing_service import MediaProcessingService
@@ -8,13 +8,14 @@ from app.models.domain import CustomerAction, LeadReminder, ShowcaseEvent, Showc
 from app.services.archive_message_parsers import ArchiveMessageParser, ArchiveMessageParserRegistry, ArchiveParseResult
 from app.services.ocr_service import OcrResult, OcrService
 from app.services.helpers import new_id
-from app.services.time_utils import now_iso
+from app.services.time_utils import now_iso, parse_iso
 from app.services.wecom_archive_worker import WecomArchiveWorker
 from app.services.wecom_client import DownloadedMedia
 from io import BytesIO
 from PIL import Image
 import asyncio
 import json
+from datetime import timedelta
 from zipfile import ZipFile, ZIP_DEFLATED
 
 
@@ -59,6 +60,15 @@ def make_test_image_bytes() -> bytes:
     return output.getvalue()
 
 
+def activate_customer_intelligence(client, user_id: str, suffix: str) -> None:
+    order = client.post("/api/scrm/membership/orders", json={"userId": user_id}).json()["data"]["order"]
+    response = client.post(
+        f"/api/scrm/membership/orders/{order['id']}/test-confirm",
+        json={"transactionId": f"txn_legacy_{suffix}_{order['id']}"},
+    )
+    assert response.status_code == 200
+
+
 def run_test_background_queue(client, delay: float = 0.05) -> None:
     queue = client.app.dependency_overrides[get_sync_task_queue]()
 
@@ -81,14 +91,27 @@ def test_wechat_login_uses_openid_identity(client, monkeypatch):
     monkeypatch.setattr(settings, "wechat_miniapp_secret", "secret-test")
     monkeypatch.setattr("app.services.app_service.httpx.get", lambda *args, **kwargs: FakeResponse())
 
-    first = client.post("/api/auth/wechat-login", json={"code": "code-a", "nickname": "用户A"})
+    first = client.post(
+        "/api/auth/wechat-login",
+        json={
+            "code": "code-a",
+            "nickname": "用户A",
+            "avatarUrl": "https://cdn.example.test/avatar-a.png",
+            "phone": "15100001111",
+        },
+    )
     second = client.post("/api/auth/wechat-login", json={"code": "code-b", "nickname": "用户A更新"})
+    third = client.post("/api/auth/wechat-login", json={"code": "code-c"})
 
     assert first.status_code == 200
     assert second.status_code == 200
+    assert third.status_code == 200
     assert first.json()["data"]["id"] == second.json()["data"]["id"]
     assert second.json()["data"]["openid"] == "openid_real_user_a"
     assert second.json()["data"]["nickname"] == "用户A更新"
+    assert third.json()["data"]["nickname"] == "用户A更新"
+    assert third.json()["data"]["avatarUrl"] == "https://cdn.example.test/avatar-a.png"
+    assert third.json()["data"]["phone"] == "15100001111"
 
 
 def test_mock_login_can_be_disabled(client, monkeypatch):
@@ -691,16 +714,27 @@ def test_p1_subscription_unlock_supply_and_response_radar(client, monkeypatch):
 def test_ops_admin_overview_and_leaderboards(client, monkeypatch):
     monkeypatch.setattr(settings, "admin_token", "ops-secret")
     owner = client.post("/api/auth/mock-login", json={"nickname": "运营用户", "openid": "openid_ops_owner"}).json()["data"]
+    no_nickname_user = client.post("/api/auth/mock-login", json={"nickname": "微信用户", "openid": "openid_ops_no_nickname"}).json()["data"]
     service = client.app.dependency_overrides[get_app_service]()
     now = now_iso()
     note = UserNote(
         id="note_ops_dashboard",
-        ownerUserId=owner["id"],
+        ownerUserId=no_nickname_user["id"],
         status="active",
         title="运营资料",
         summary="今日资料",
         body="资料正文",
         createdAt=now,
+        updatedAt=now,
+    )
+    updated_note = UserNote(
+        id="note_ops_dashboard_updated",
+        ownerUserId=owner["id"],
+        status="active",
+        title="刚刚编辑的运营资料",
+        summary="编辑后的资料",
+        body="编辑后的正文",
+        createdAt=(parse_iso(now) - timedelta(days=2)).isoformat(),
         updatedAt=now,
     )
     showcase = ShowcasePage(
@@ -728,11 +762,13 @@ def test_ops_admin_overview_and_leaderboards(client, monkeypatch):
         ownerUserId=owner["id"],
         eventType="view",
         noteId=note.id,
+        anonymousId="anonymous_ops_visitor",
         viewType="share",
         createdAt=now,
         dateKey=now[:10],
     )
     service.repo.save_user_note(note)
+    service.repo.save_user_note(updated_note)
     service.repo.save_showcase_page(showcase)
     service.repo.save_customer_action(action)
     service.repo.add_showcase_event(showcase_event)
@@ -746,10 +782,79 @@ def test_ops_admin_overview_and_leaderboards(client, monkeypatch):
     overview_data = overview.json()["data"]
     assert overview_data["summary"]["todayNewUsers"] >= 1
     assert overview_data["summary"]["todayNewNotes"] >= 1
+    assert overview_data["summary"]["todayUpdatedNotes"] >= 1
     assert overview_data["summary"]["todayNewShowcases"] >= 1
     assert overview_data["summary"]["todayCustomerActions"] >= 1
     assert overview_data["summary"]["todayShowcaseViews"] >= 1
+    assert overview_data["period"]["key"] == "today"
+    assert overview_data["period"]["anonymousUniqueVisitors"] >= 1
+    assert overview_data["funnel"]["stages"][0]["value"] >= 1
+    assert overview_data["funnel"]["stages"][1]["value"] >= 1
+    assert overview_data["funnel"]["branches"][0]["value"] >= 1
+    assert overview_data["funnel"]["branches"][1]["value"] >= 1
+    assert len(overview_data["trend"]) == 1
     assert len(overview_data["trend7d"]) == 7
+
+    overview_7d = client.get("/api/ops-admin/overview?period=7d", headers=headers)
+    assert overview_7d.status_code == 200
+    assert overview_7d.json()["data"]["period"]["key"] == "7d"
+    assert len(overview_7d.json()["data"]["trend"]) == 7
+    assert overview_7d.json()["data"]["summary"]["periodNewNotes"] >= 1
+
+    overview_30d = client.get("/api/ops-admin/overview?period=30d", headers=headers)
+    assert overview_30d.status_code == 200
+    assert overview_30d.json()["data"]["period"]["key"] == "30d"
+    assert len(overview_30d.json()["data"]["trend"]) == 30
+
+    note_detail = client.get(
+        "/api/ops-admin/overview-detail?metric=newNotes&period=7d",
+        headers=headers,
+    )
+    assert note_detail.status_code == 200
+    note_detail_data = note_detail.json()["data"]
+    assert note_detail_data["period"]["rangeLabel"]
+    assert note_detail_data["total"] >= 1
+    assert any(item["title"] == note.title for item in note_detail_data["items"])
+
+    updated_note_detail = client.get(
+        "/api/ops-admin/overview-detail?metric=updatedNotes&period=today",
+        headers=headers,
+    )
+    assert updated_note_detail.status_code == 200
+    updated_note_items = updated_note_detail.json()["data"]["items"]
+    assert updated_note_items[0]["title"] == updated_note.title
+    assert updated_note_items[0]["status"] == "已更新"
+    assert all(item["title"] != note.title for item in updated_note_items)
+
+    anonymous_detail = client.get(
+        "/api/ops-admin/overview-detail?metric=anonymousVisitors&period=today",
+        headers=headers,
+    )
+    assert anonymous_detail.status_code == 200
+    assert anonymous_detail.json()["data"]["total"] >= 1
+    assert all(item["title"] == "匿名访客（未登录）" for item in anonymous_detail.json()["data"]["items"])
+
+    user_detail = client.get(
+        "/api/ops-admin/overview-detail?metric=newUsers&period=today",
+        headers=headers,
+    )
+    assert user_detail.status_code == 200
+    user_detail_items = user_detail.json()["data"]["items"]
+    assert any(item["title"] == "运营用户" and "已登录" in item["detail"] for item in user_detail_items)
+    assert any(
+        item["title"] == "微信用户（未设置昵称）"
+        and item["status"] == "已注册 · 未设置昵称"
+        for item in user_detail_items
+    )
+
+    invalid_detail = client.get(
+        "/api/ops-admin/overview-detail?metric=unknown&period=today",
+        headers=headers,
+    )
+    assert invalid_detail.status_code == 400
+
+    invalid_period = client.get("/api/ops-admin/overview?period=90d", headers=headers)
+    assert invalid_period.status_code == 400
 
     assert users.status_code == 200
     user_rows = users.json()["data"]["items"]
@@ -1140,6 +1245,7 @@ def test_process_and_store_media_reuses_same_image_asset(client):
 
 def test_property_same_clone_note_creates_b_owned_note_with_replaced_contact(client):
     source_owner = client.post("/api/auth/mock-login", json={"nickname": "A中介", "openid": "openid_clone_source"}).json()["data"]
+    activate_customer_intelligence(client, source_owner["id"], "property_clone")
     target_owner = client.post(
         "/api/auth/mock-login",
         json={"nickname": "B中介", "openid": "openid_clone_target", "phone": "13900001111"},
@@ -1194,13 +1300,19 @@ def test_property_same_clone_note_creates_b_owned_note_with_replaced_contact(cli
     assert data["type"] == "note"
     assert cloned["ownerUserId"] == target_owner["id"]
     assert cloned["id"] != source_note.id
-    assert cloned["phone"] == "13900002222"
+    assert cloned["phone"] is None
     assert structured["community"] == "龙悦和府"
-    assert structured["phone"] == "13900002222"
-    assert structured["wechat"] == "agent-b"
+    assert "phone" not in structured
+    assert "wechat" not in structured
     assert "landlordPhone" not in structured
-    assert private_data["upstreamContact"] in {"13800000000", "agent-a", "A中介"}
-    assert private_data["upstreamContact"] != "真实房东13700000000"
+    assert private_data == {}
+    publish = client.post(
+        f"/api/notes/{cloned['id']}/publish",
+        json={"ownerUserId": target_owner["id"], "expectedRevision": cloned["revision"]},
+    )
+    assert publish.status_code == 200
+    public_clone = client.get(f"/api/notes/public/{cloned['id']}").json()["data"]
+    assert public_clone["ownerProfile"]["phone"] == "13900001111"
     assert cloned["media"][0]["url"] == "/media/source-room.webp"
     source_actions = client.get(
         f"/api/notes/{source_note.id}/customer-actions",
@@ -1289,7 +1401,7 @@ def test_property_same_clone_showcase_creates_b_owned_showcase_and_notes(client)
     cloned_note = service.repo.get_user_note(showcase["items"][0]["noteId"])
     assert cloned_note is not None
     assert cloned_note.ownerUserId == target_owner["id"]
-    assert cloned_note.phone == "13900004444"
+    assert cloned_note.phone is None
 
 
 def test_update_user_profile_rejects_temporary_avatar_path(client):
@@ -1324,6 +1436,7 @@ def test_update_user_profile_rejects_http_avatar_url(client):
 
 def test_create_note_demo_data_for_owner(client):
     user = client.post("/api/auth/mock-login", json={"nickname": "演示用户", "openid": "openid_demo_owner"}).json()["data"]
+    activate_customer_intelligence(client, user["id"], "demo_owner")
 
     response = client.post("/api/notes/demo-data", params={"ownerUserId": user["id"]})
 
@@ -1833,6 +1946,7 @@ def test_note_preview_view_updates_note_list_stats(client):
             "rawText": "小区：城市之光\n租金：1600元/月\n电话：13800138000",
         },
     ).json()["data"]
+    assert client.post(f"/api/notes/{created['id']}/publish", json={"ownerUserId": owner["id"]}).status_code == 200
 
     before = client.get("/api/notes", params={"ownerUserId": owner["id"]}).json()["data"]
     target_before = next(item for item in before if item["id"] == created["id"])
@@ -1888,8 +2002,73 @@ def test_note_preview_view_updates_note_list_stats(client):
     assert target_after["stats"]["loggedInViewers"][0]["nickname"] == "客户访客"
 
 
+def test_view_history_returns_only_public_other_user_cards(client):
+    owner = client.post("/api/auth/mock-login", json={"nickname": "历史发布者", "openid": "openid_history_owner"}).json()["data"]
+    viewer = client.post("/api/auth/mock-login", json={"nickname": "历史访客", "openid": "openid_history_viewer"}).json()["data"]
+    note = client.post(
+        "/api/notes/manual-draft",
+        json={
+            "ownerUserId": owner["id"],
+            "cardType": "text_note",
+            "inputMode": "paste_text",
+            "title": "可回看的公开资料",
+            "rawText": "公开内容",
+        },
+    ).json()["data"]
+    assert client.post(f"/api/notes/{note['id']}/publish", json={"ownerUserId": owner["id"]}).status_code == 200
+
+    first_view = client.post(
+        f"/api/notes/{note['id']}/view",
+        json={"viewerUserId": viewer["id"], "nickname": viewer["nickname"]},
+    )
+    assert first_view.status_code == 200
+    second_view = client.post(
+        f"/api/notes/{note['id']}/view",
+        json={"viewerUserId": viewer["id"], "nickname": viewer["nickname"], "sessionId": "history-second-session"},
+    )
+    assert second_view.status_code == 200
+
+    history = client.get("/api/view-history", params={"userId": viewer["id"], "limit": 30})
+    assert history.status_code == 200
+    rows = history.json()["data"]
+    assert len(rows) == 1
+    assert rows[0]["id"] == note["id"]
+    assert rows[0]["targetType"] == "note"
+    assert rows[0]["title"] == "可回看的公开资料"
+    assert "phone" not in rows[0]
+    assert "ownerUserId" not in rows[0]
+
+    owner_history = client.get("/api/view-history", params={"userId": owner["id"]}).json()["data"]
+    assert owner_history == []
+
+    assert client.post(f"/api/notes/{note['id']}/revoke", json={"ownerUserId": owner["id"]}).status_code == 200
+    assert client.get("/api/view-history", params={"userId": viewer["id"]}).json()["data"] == []
+
+
+def test_view_history_production_identity_is_user_scoped(client, monkeypatch):
+    user = client.post("/api/auth/mock-login", json={"nickname": "历史本人", "openid": "openid_history_identity"}).json()["data"]
+    other = client.post("/api/auth/mock-login", json={"nickname": "历史他人", "openid": "openid_history_identity_other"}).json()["data"]
+    monkeypatch.setattr(settings, "app_env", "production")
+
+    own = client.get(
+        "/api/view-history",
+        params={"userId": user["id"]},
+        headers={"Authorization": f"Bearer {user['authToken']}"},
+    )
+    assert own.status_code == 200
+
+    cross_account = client.get(
+        "/api/view-history",
+        params={"userId": other["id"]},
+        headers={"Authorization": f"Bearer {user['authToken']}"},
+    )
+    assert cross_account.status_code == 403
+    assert client.get("/api/view-history", params={"userId": user["id"]}).status_code == 401
+
+
 def test_opportunity_radar_uses_public_view_behavior_without_duplicate_pv(client):
     owner = client.post("/api/auth/mock-login", json={"nickname": "成交助手用户", "openid": "openid_opp_owner"}).json()["data"]
+    activate_customer_intelligence(client, owner["id"], "opportunity_radar")
     viewer = client.post("/api/auth/mock-login", json={"nickname": "王女士", "openid": "openid_opp_viewer"}).json()["data"]
     note = client.post(
         "/api/notes/manual-draft",
@@ -1900,6 +2079,7 @@ def test_opportunity_radar_uses_public_view_behavior_without_duplicate_pv(client
             "rawText": "暑期英语班介绍\n课程内容：自然拼读\n价格优惠：早鸟价 1999 元\n联系方式：添加老师微信咨询",
         },
     ).json()["data"]
+    assert client.post(f"/api/notes/{note['id']}/publish", json={"ownerUserId": owner["id"]}).status_code == 200
 
     payload = {
         "viewerUserId": viewer["id"],
@@ -1956,6 +2136,8 @@ def test_public_note_hides_private_and_opportunity_data(client):
             ],
         },
     ).json()["data"]["notes"][0]
+    publish = client.post(f"/api/notes/{note['id']}/publish", json={"ownerUserId": owner["id"]})
+    assert publish.status_code == 200
     public_note = client.get(f"/api/notes/public/{note['id']}").json()["data"]
     config = public_note["visibilityConfig"]
     assert "privateData" not in config
@@ -2015,6 +2197,14 @@ def test_manual_note_draft_creates_blank_structured_notes(client):
         "/api/notes/manual-draft",
         json={"ownerUserId": owner["id"], "cardType": "groupbuy_product", "inputMode": "blank"},
     )
+    service_response = client.post(
+        "/api/notes/manual-draft",
+        json={"ownerUserId": owner["id"], "cardType": "service_offer", "inputMode": "blank"},
+    )
+    text_response = client.post(
+        "/api/notes/manual-draft",
+        json={"ownerUserId": owner["id"], "cardType": "text_note", "inputMode": "blank"},
+    )
 
     assert property_response.status_code == 200
     property_note = property_response.json()["data"]
@@ -2024,10 +2214,34 @@ def test_manual_note_draft_creates_blank_structured_notes(client):
     assert property_note["visibilityConfig"]["structuredData"]["community"] == "未命名房源"
     assert groupbuy_response.status_code == 200
     groupbuy_note = groupbuy_response.json()["data"]
-    assert groupbuy_note["title"] == "未命名商品"
+    assert groupbuy_note["title"] == ""
     assert groupbuy_note["visibilityConfig"]["cardType"] == "groupbuy_product"
     assert groupbuy_note["visibilityConfig"]["conversionConfig"]["enableGroupRelay"] is True
     assert "skuConfig" in groupbuy_note["visibilityConfig"]["structuredData"]
+    assert groupbuy_note["visibilityConfig"]["structuredData"]["productName"] == ""
+    assert groupbuy_note["visibilityConfig"]["structuredData"]["remark"] == ""
+    assert service_response.status_code == 200
+    service_note = service_response.json()["data"]
+    service_config = service_note["visibilityConfig"]
+    assert service_note["title"] == ""
+    assert service_note["summary"] == ""
+    assert service_note["body"] == ""
+    assert service_config["cardType"] == "service_offer"
+    assert service_config["conversionConfig"]["enableAppointment"] is False
+    assert service_config["structuredData"] == {
+        "serviceName": "",
+        "headline": "",
+        "detailText": "",
+        "serviceScope": "",
+        "pricingOrTerms": "",
+        "primaryAction": "consult",
+    }
+    assert text_response.status_code == 200
+    text_note = text_response.json()["data"]
+    assert text_note["title"] == ""
+    assert text_note["summary"] == ""
+    assert text_note["body"] == ""
+    assert text_note["visibilityConfig"]["cardType"] == "text_note"
 
 
 def test_manual_note_draft_creates_business_card_from_profile(client):
@@ -2054,20 +2268,66 @@ def test_manual_note_draft_creates_business_card_from_profile(client):
     assert config["systemCategory"] == "名片"
     assert "名片" in config["tags"]
     assert config["conversionConfig"]["collectLeads"] is True
-    assert config["conversionConfig"]["enableAppointment"] is True
-    assert structured["name"] == "林顾问"
-    assert structured["phone"] == "13800138000"
-    assert structured["avatarUrl"] == "https://cdn.example.test/avatar.png"
+    assert config["conversionConfig"]["enableAppointment"] is False
+    assert structured == {"headline": "", "serviceKeywords": [], "bio": "", "featuredNoteIds": []}
+    assert client.post(f"/api/notes/{note['id']}/publish", json={"ownerUserId": owner["id"]}).status_code == 200
+    public = client.get(f"/api/notes/public/{note['id']}").json()["data"]
+    assert public["ownerProfile"]["displayName"] == "林顾问"
+    assert public["ownerProfile"]["phone"] == "13800138000"
+    assert public["ownerProfile"]["avatarUrl"] == "https://cdn.example.test/avatar.png"
+
+
+def test_business_card_summary_is_lightweight_and_returns_latest_card(client):
+    owner = client.post(
+        "/api/auth/mock-login",
+        json={"nickname": "摘要用户", "openid": "openid_business_card_summary"},
+    ).json()["data"]
+    older = client.post(
+        "/api/notes/manual-draft",
+        json={"ownerUserId": owner["id"], "cardType": "business_card", "inputMode": "blank"},
+    ).json()["data"]
+    newer = client.post(
+        "/api/notes/manual-draft",
+        json={"ownerUserId": owner["id"], "cardType": "business_card", "inputMode": "blank"},
+    ).json()["data"]
+    updated = client.put(
+        f"/api/notes/{newer['id']}",
+        json={
+            "ownerUserId": owner["id"],
+            "title": "最新电子名片",
+            "summary": "",
+            "body": "",
+            "media": [],
+            "categoryIds": [],
+            "visibilityConfig": {
+                "cardType": "business_card",
+                "structuredData": {"headline": "专注企业服务"},
+                "displayConfig": {"styleId": "fresh_green"},
+            },
+        },
+    )
+    assert updated.status_code == 200
+    response = client.get("/api/notes/business-card-summary", params={"ownerUserId": owner["id"]})
+
+    assert response.status_code == 200
+    payload = response.json()["data"]
+    assert payload["businessCard"]["sourceNoteId"] == newer["id"]
+    assert payload["businessCard"]["visibilityConfig"]["displayConfig"]["styleId"] == "fresh_green"
+    assert "stats" not in payload["businessCard"]
+    assert payload["totalResources"] >= 2
+    assert older["id"] != newer["id"]
 
 
 def test_service_offer_customer_actions_project_to_leads(client):
     owner = client.post("/api/auth/mock-login", json={"nickname": "服务顾问", "openid": "openid_service_owner"}).json()["data"]
+    activate_customer_intelligence(client, owner["id"], "service_offer")
     created = client.post(
         "/api/notes/manual-draft",
         json={"ownerUserId": owner["id"], "cardType": "service_offer", "inputMode": "blank"},
     )
     assert created.status_code == 200
     note = created.json()["data"]
+    assert client.post(f"/api/notes/{note['id']}/publish", json={"ownerUserId": owner["id"]}).status_code == 200
 
     public_response = client.get(f"/api/notes/public/{note['id']}")
     action_config = client.get(f"/api/notes/{note['id']}/customer-actions/config", params={"anonymousId": "anon_service_1"})
@@ -2079,29 +2339,21 @@ def test_service_offer_customer_actions_project_to_leads(client):
             "payload": {"name": "服务客户", "phone": "13900139000", "wechat": "wx_service", "remark": "想咨询方案"},
         },
     )
-    appointment_response = client.post(
-        f"/api/notes/{note['id']}/customer-actions/appointment",
-        json={
-            "anonymousId": "anon_service_2",
-            "nickname": "预约客户",
-            "payload": {"date": "2026-06-23", "time": "10:30", "remark": "上午沟通"},
-        },
-    )
     owner_actions = client.get(f"/api/notes/{note['id']}/customer-actions", params={"ownerUserId": owner["id"]})
 
     assert public_response.status_code == 200
     assert public_response.json()["data"]["visibilityConfig"]["cardType"] == "service_offer"
     assert action_config.status_code == 200
     action_keys = {item["key"] for item in action_config.json()["data"]["actions"]}
-    assert {"lead-contact", "appointment"}.issubset(action_keys)
+    assert "lead-contact" in action_keys
+    assert "appointment" not in action_keys
     assert "order-intent" not in action_keys
     assert "relay-intent" not in action_keys
     assert lead_response.status_code == 200
-    assert appointment_response.status_code == 200
     summary = owner_actions.json()["data"]["summary"]
     assert summary["leadContact"] == 1
-    assert summary["appointment"] == 1
-    assert summary["leads"] == 2
+    assert summary["appointment"] == 0
+    assert summary["leads"] == 1
     assert summary["orderIntent"] == 0
 
 
@@ -2211,11 +2463,12 @@ def test_public_note_preview_does_not_require_owner(client):
     viewer = client.post("/api/auth/mock-login", json={"nickname": "另一个手机", "openid": "openid_public_note_viewer"}).json()["data"]
     created = client.post(
         "/api/notes/quick-capture",
-        json={"ownerUserId": owner["id"], "rawText": "🔥加州郡府 毛坯 小高层 三居室 126平米 88万 ☎️15147262725"},
+        json={"ownerUserId": owner["id"], "rawText": "🔥加州郡府 毛坯 小高层 三居室 126平米 88万"},
     )
     note = created.json()["data"]
 
     forbidden_private = client.get(f"/api/notes/{note['id']}", params={"ownerUserId": viewer["id"]})
+    assert client.post(f"/api/notes/{note['id']}/publish", json={"ownerUserId": owner["id"]}).status_code == 200
     public_response = client.get(f"/api/notes/public/{note['id']}")
 
     assert forbidden_private.status_code == 403
@@ -2288,6 +2541,8 @@ def test_property_note_uses_owner_contact_publicly_and_keeps_upstream_private(cl
     assert config["privateData"]["upstreamPhones"] == ["18501775740"]
     assert "18501775740" not in structured.get("contact", "")
 
+    publish = client.post(f"/api/notes/{note['id']}/publish", json={"ownerUserId": owner["id"]})
+    assert publish.status_code == 200
     public_note = client.get(f"/api/notes/public/{note['id']}").json()["data"]
     public_config = public_note["visibilityConfig"]
     public_structured = public_config["structuredData"]
@@ -2398,6 +2653,7 @@ def test_quick_capture_rejects_empty_or_missing_user(client):
 
 def test_showcase_builder_create_publish_public_and_archive(client):
     owner = client.post("/api/auth/mock-login", json={"nickname": "展示页店主", "openid": "openid_showcase_owner"}).json()["data"]
+    activate_customer_intelligence(client, owner["id"], "showcase_builder")
     notes = client.post("/api/notes/demo-data", params={"ownerUserId": owner["id"]}).json()["data"]["notes"]
     note_ids = [item["id"] for item in notes[:2]]
 
@@ -2626,8 +2882,137 @@ def test_showcase_public_uses_publish_snapshot_until_republish(client):
     assert refreshed_data["items"][0]["summary"] == "更新后的摘要"
 
 
+def test_share_snapshot_version_switch_and_retention_cleanup(client):
+    owner = client.post("/api/auth/mock-login", json={"nickname": "快照测试", "openid": "openid_share_snapshot"}).json()["data"]
+    note = client.post("/api/notes/demo-data", params={"ownerUserId": owner["id"]}).json()["data"]["notes"][0]
+    assert note["shareState"] == "published"
+
+    first_snapshot = client.patch(
+        f"/api/notes/{note['id']}/share-snapshot",
+        json={
+            "ownerUserId": owner["id"],
+            "sourceRevision": str(note["revision"]),
+            "fingerprint": "note-v1",
+            "url": "/media/share-note-v1.webp",
+            "styleId": "note_v1",
+        },
+    )
+    assert first_snapshot.status_code == 200
+    assert first_snapshot.json()["data"]["visibilityConfig"]["shareSnapshot"]["url"] == "/media/share-note-v1.webp"
+    legacy_public = client.get(f"/api/notes/public/{note['id']}").json()["data"]
+    assert "shareSnapshot" not in (legacy_public.get("visibilityConfig") or {})
+
+    updated_note = dict(note)
+    updated_note["title"] = "快照测试新版"
+    updated_note["summary"] = "快照测试新版摘要"
+    updated_note["body"] = note["body"]
+    updated = client.put(f"/api/notes/{note['id']}", json=updated_note)
+    assert updated.status_code == 200
+    republished = client.post(
+        f"/api/notes/{note['id']}/publish",
+        json={"ownerUserId": owner["id"], "expectedRevision": updated.json()["data"]["revision"]},
+    )
+    assert republished.status_code == 200
+    next_note = republished.json()["data"]
+    stale_public_note = client.get(f"/api/notes/public/{note['id']}").json()["data"]
+    assert "shareSnapshot" not in (stale_public_note.get("visibilityConfig") or {})
+
+    stale = client.patch(
+        f"/api/notes/{note['id']}/share-snapshot",
+        json={
+            "ownerUserId": owner["id"],
+            "sourceRevision": str(note["revision"]),
+            "fingerprint": "stale",
+            "url": "/media/stale.webp",
+        },
+    )
+    assert stale.status_code == 409
+    second_snapshot = client.patch(
+        f"/api/notes/{note['id']}/share-snapshot",
+        json={
+            "ownerUserId": owner["id"],
+            "sourceRevision": str(next_note["revision"]),
+            "fingerprint": "note-v2",
+            "url": "/media/share-note-v2.webp",
+            "styleId": "share_card_v10",
+        },
+    )
+    assert second_snapshot.status_code == 200
+    note_config = second_snapshot.json()["data"]["visibilityConfig"]
+    assert note_config["shareSnapshot"]["url"] == "/media/share-note-v2.webp"
+    assert note_config["shareSnapshotHistory"][0]["url"] == "/media/share-note-v1.webp"
+    assert note_config["shareSnapshotHistory"][0]["deleteAfter"]
+    assert parse_iso(note_config["shareSnapshotHistory"][0]["deleteAfter"]) > parse_iso(note_config["shareSnapshotHistory"][0]["retiredAt"])
+    public_note = client.get(f"/api/notes/public/{note['id']}").json()["data"]
+    public_config = public_note.get("visibilityConfig") or {}
+    assert "shareSnapshotHistory" not in public_config
+    assert public_config["shareSnapshot"]["styleId"] == "share_card_v10"
+
+    showcase = client.post(
+        "/api/showcases",
+        json={"ownerUserId": owner["id"], "name": "快照合集", "items": [{"noteId": note["id"]}]},
+    ).json()["data"]
+    published_showcase = client.post(
+        f"/api/showcases/{showcase['id']}/publish", json={"ownerUserId": owner["id"]}
+    ).json()["data"]
+    showcase_revision = f"{published_showcase['snapshotVersion']}:{published_showcase['updatedAt']}"
+    service = client.app.dependency_overrides[get_app_service]()
+    stored_showcase = service.repo.get_showcase_page(showcase["id"])
+    stored_showcase.publicSnapshot = {
+        **(stored_showcase.publicSnapshot or {}),
+        "shareSnapshotUrl": "/media/legacy-showcase.webp",
+        "shareSnapshotStyleId": "share_card_v8",
+    }
+    service.repo.save_showcase_page(stored_showcase)
+    legacy_showcase_public = client.get(f"/api/showcases/public/{showcase['id']}").json()["data"]
+    assert legacy_showcase_public["shareSnapshotUrl"] == ""
+    assert legacy_showcase_public["shareSnapshotStyleId"] == ""
+    first_showcase_snapshot = client.patch(
+        f"/api/showcases/{showcase['id']}/share-snapshot",
+        json={
+            "ownerUserId": owner["id"],
+            "sourceRevision": showcase_revision,
+            "fingerprint": "showcase-v1",
+            "url": "/media/share-showcase-v1.webp",
+            "styleId": "share_card_v10",
+        },
+    )
+    assert first_showcase_snapshot.status_code == 200
+    republished_showcase = client.post(
+        f"/api/showcases/{showcase['id']}/publish", json={"ownerUserId": owner["id"]}
+    ).json()["data"]
+    next_showcase_revision = f"{republished_showcase['snapshotVersion']}:{republished_showcase['updatedAt']}"
+    second_showcase_snapshot = client.patch(
+        f"/api/showcases/{showcase['id']}/share-snapshot",
+        json={
+            "ownerUserId": owner["id"],
+            "sourceRevision": next_showcase_revision,
+            "fingerprint": "showcase-v2",
+            "url": "/media/share-showcase-v2.webp",
+            "styleId": "share_card_v10",
+        },
+    )
+    assert second_showcase_snapshot.status_code == 200
+    showcase_data = second_showcase_snapshot.json()["data"]
+    assert showcase_data["shareSnapshot"]["url"] == "/media/share-showcase-v2.webp"
+    assert showcase_data["shareSnapshotHistory"][0]["url"] == "/media/share-showcase-v1.webp"
+    assert client.get(f"/api/showcases/public/{showcase['id']}").json()["data"]["shareSnapshotUrl"] == "/media/share-showcase-v2.webp"
+
+    stored_note = service.repo.get_user_note(note["id"])
+    stored_config = dict(stored_note.visibilityConfig or {})
+    stored_config["shareSnapshotHistory"] = [
+        {"url": "/media/share-note-v1.webp", "deleteAfter": "2026-07-01T00:00:00+08:00", "status": "retired"}
+    ]
+    stored_note.visibilityConfig = stored_config
+    service.repo.save_user_note(stored_note)
+    cleanup = service.cleanup_expired_share_snapshots()
+    assert cleanup["deletedFiles"] == 1
+    assert service.repo.get_user_note(note["id"]).visibilityConfig["shareSnapshotHistory"] == []
+
+
 def test_business_dashboard_aggregates_real_customer_data(client):
     owner = client.post("/api/auth/mock-login", json={"nickname": "看板用户", "openid": "openid_dashboard_owner"}).json()["data"]
+    activate_customer_intelligence(client, owner["id"], "dashboard")
     other = client.post("/api/auth/mock-login", json={"nickname": "其他看板用户", "openid": "openid_dashboard_other"}).json()["data"]
     notes = client.post("/api/notes/demo-data", params={"ownerUserId": owner["id"]}).json()["data"]["notes"]
     other_notes = client.post("/api/notes/demo-data", params={"ownerUserId": other["id"]}).json()["data"]["notes"]
@@ -2782,6 +3167,7 @@ def test_business_dashboard_aggregates_real_customer_data(client):
 
 def test_property_business_dashboard_only_counts_property_customer_data(client):
     owner = client.post("/api/auth/mock-login", json={"nickname": "房源看板用户", "openid": "openid_property_dashboard_owner"}).json()["data"]
+    activate_customer_intelligence(client, owner["id"], "property_dashboard")
     viewer = client.post("/api/auth/mock-login", json={"nickname": "看房客户", "openid": "openid_property_dashboard_viewer"}).json()["data"]
     property_note = client.post(
         "/api/notes/manual-draft",
@@ -2796,11 +3182,30 @@ def test_property_business_dashboard_only_counts_property_customer_data(client):
         "/api/notes/manual-draft",
         json={"ownerUserId": owner["id"], "cardType": "service_offer", "inputMode": "blank"},
     ).json()["data"]
+    assert client.post(f"/api/notes/{property_note['id']}/publish", json={"ownerUserId": owner["id"]}).status_code == 200
+    service_update = client.put(
+        f"/api/notes/{service_note['id']}",
+        json={
+            "ownerUserId": owner["id"], "title": "服务方案", "summary": "咨询服务", "body": "服务说明",
+            "visibilityConfig": {"cardType": "service_offer", "conversionConfig": {"enableAppointment": True}},
+        },
+    )
+    assert service_update.status_code == 200
+    assert client.post(f"/api/notes/{service_note['id']}/publish", json={"ownerUserId": owner["id"]}).status_code == 200
 
     client.post(
         f"/api/notes/{property_note['id']}/view",
         json={"viewerUserId": viewer["id"], "nickname": viewer["nickname"], "avatarUrl": viewer["avatarUrl"]},
     )
+    assert client.post(
+        f"/api/notes/{property_note['id']}/view",
+        json={
+            "eventType": "share",
+            "viewerUserId": owner["id"],
+            "shareFromUserId": owner["id"],
+            "shareId": "note_share_property_dashboard_001",
+        },
+    ).status_code == 200
     service = client.app.dependency_overrides[get_app_service]()
     service.repo.add_view_event(
         ViewEvent(
@@ -2884,6 +3289,7 @@ def test_property_business_dashboard_only_counts_property_customer_data(client):
     assert data["summary"]["visitorCount"] == 2
     assert data["summary"]["loggedInVisitorCount"] == 1
     assert data["summary"]["pendingLeadCount"] == 2
+    assert data["summary"]["shareCount"] == 1
     assert data["summary"]["customerCount"] == 2
     assert data["summary"]["noteClickCount"] == 3
     assert data["todaySummary"]["propertyCount"] == 1
@@ -2891,7 +3297,12 @@ def test_property_business_dashboard_only_counts_property_customer_data(client):
     assert data["todaySummary"]["visitorCount"] == 1
     assert data["todaySummary"]["loggedInVisitorCount"] == 1
     assert data["todaySummary"]["pendingLeadCount"] == 2
+    assert data["todaySummary"]["shareCount"] == 1
     assert data["todaySummary"]["noteClickCount"] == 2
+    assert set(data["rangeSummaries"]) == {"today", "last7", "total"}
+    assert data["rangeSummaries"]["today"]["shareCount"] == 1
+    assert data["rangeSummaries"]["last7"]["shareCount"] == 1
+    assert data["rangeSummaries"]["total"]["shareCount"] == 1
     assert [item["noteId"] for item in data["topNotes"]] == [property_note["id"]]
     assert data["topNotes"][0]["followupCount"] == 2
     assert data["topNotes"][0]["visitorCount"] == 2
@@ -2906,6 +3317,7 @@ def test_property_business_dashboard_only_counts_property_customer_data(client):
 
 def test_service_business_dashboard_only_counts_service_customer_data(client):
     owner = client.post("/api/auth/mock-login", json={"nickname": "服务看板用户", "openid": "openid_service_dashboard_owner"}).json()["data"]
+    activate_customer_intelligence(client, owner["id"], "service_dashboard")
     viewer = client.post("/api/auth/mock-login", json={"nickname": "咨询客户", "openid": "openid_service_dashboard_viewer"}).json()["data"]
     service_note = client.post(
         "/api/notes/manual-draft",
@@ -2924,6 +3336,25 @@ def test_service_business_dashboard_only_counts_service_customer_data(client):
             "rawText": "团购 白凤乌鸡蛋 4斤，约40多个，今天接龙",
         },
     ).json()["data"]
+    card_update = client.put(
+        f"/api/notes/{card_note['id']}",
+        json={
+            "ownerUserId": owner["id"], "title": "电子名片", "summary": "", "body": "",
+            "visibilityConfig": {"cardType": "business_card", "conversionConfig": {"collectLeads": True}},
+        },
+    )
+    assert card_update.status_code == 200
+    service_update = client.put(
+        f"/api/notes/{service_note['id']}",
+        json={
+            "ownerUserId": owner["id"], "title": "服务方案", "summary": "咨询服务", "body": "服务说明",
+            "visibilityConfig": {"cardType": "service_offer", "conversionConfig": {"enableAppointment": True}},
+        },
+    )
+    assert service_update.status_code == 200
+    assert client.post(f"/api/notes/{service_note['id']}/publish", json={"ownerUserId": owner["id"]}).status_code == 200
+    assert client.post(f"/api/notes/{card_note['id']}/publish", json={"ownerUserId": owner["id"]}).status_code == 200
+    assert client.post(f"/api/notes/{groupbuy_note['id']}/publish", json={"ownerUserId": owner["id"]}).status_code == 200
 
     service_action = client.post(
         f"/api/notes/{service_note['id']}/customer-actions/appointment",
@@ -3016,6 +3447,52 @@ def test_wecom_archive_worker_run_once_pulls_then_processes():
 
     assert result == {"pull": {"savedCount": 1}, "process": {"processedCount": 1}}
     assert fake_service.calls == [("pull", fake_client, 20), ("process", 20, fake_client)]
+
+
+def test_wecom_archive_worker_sends_processed_import_notification():
+    class FakeService:
+        def cleanup_expired_share_snapshots(self):
+            return {"deleted": 0, "failed": 0}
+
+        def process_wecom_archive_messages(self, limit, archive_client=None):
+            assert limit == 20
+            return {
+                "processedCount": 1,
+                "processed": [
+                    {
+                        "notification": {
+                            "id": "notification_worker_001",
+                            "externalUserId": "wm_worker_customer",
+                            "status": "success",
+                        }
+                    }
+                ],
+            }
+
+    sent = []
+
+    async def send_notifications(notifications):
+        sent.extend(notifications)
+        return [{"notificationId": notifications[0]["id"], "status": "sent"}]
+
+    worker = WecomArchiveWorker(
+        FakeService(),
+        object(),
+        enabled=True,
+        interval_seconds=60,
+        pull_limit=20,
+        source="shared",
+        notification_sender=send_notifications,
+    )
+
+    result = asyncio.run(worker.run_once())
+
+    assert result["pull"] == {"source": "shared", "skipped": True}
+    assert result["process"]["processedCount"] == 1
+    assert result["process"]["notificationSendResults"] == [
+        {"notificationId": "notification_worker_001", "status": "sent"}
+    ]
+    assert sent[0]["externalUserId"] == "wm_worker_customer"
 
 
 def test_archive_parser_registry_uses_explicit_parser_metadata():
@@ -3317,7 +3794,7 @@ def test_ocr_unconfigured_keeps_saved_image_note(client):
 def test_wecom_callback_get_verify(client):
     response = client.get(
         "/api/wecom/kf/teamBuy/callback",
-        params={"token": settings.wecom_callback_token, "echostr": "hello-teamBuy"},
+        params={"token": settings.wecom_kf_callback_token, "echostr": "hello-teamBuy"},
     )
     assert response.status_code == 200
     assert response.text == "hello-teamBuy"
@@ -3421,13 +3898,13 @@ def test_wecom_customer_service_config_uses_existing_kf_env(client, monkeypatch)
     assert payload["data"]["configured"] is True
 
 
-def test_wecom_archive_callback_get_verify_reuses_callback_token(client, monkeypatch):
-    monkeypatch.setattr(settings, "wecom_callback_token", "shared-token")
-    monkeypatch.setattr(settings, "wecom_archive_callback_token", "shared-token")
+def test_wecom_archive_callback_get_verify_uses_archive_token(client, monkeypatch):
+    monkeypatch.setattr(settings, "wecom_kf_callback_token", "kf-token")
+    monkeypatch.setattr(settings, "wecom_archive_callback_token", "archive-token")
 
     response = client.get(
         "/api/wecom/archive/callback",
-        params={"token": "shared-token", "echostr": "hello-archive"},
+        params={"token": "archive-token", "echostr": "hello-archive"},
     )
 
     assert response.status_code == 200
@@ -3436,12 +3913,12 @@ def test_wecom_archive_callback_get_verify_reuses_callback_token(client, monkeyp
 
 
 def test_wecom_archive_callback_rejects_wrong_token(client, monkeypatch):
-    monkeypatch.setattr(settings, "wecom_callback_token", "shared-token")
-    monkeypatch.setattr(settings, "wecom_archive_callback_token", "shared-token")
+    monkeypatch.setattr(settings, "wecom_kf_callback_token", "kf-token")
+    monkeypatch.setattr(settings, "wecom_archive_callback_token", "archive-token")
 
     response = client.get(
         "/api/wecom/archive/callback",
-        params={"token": "wrong-token", "echostr": "hello-archive"},
+        params={"token": "kf-token", "echostr": "hello-archive"},
     )
 
     assert response.status_code == 403
@@ -3462,6 +3939,8 @@ def test_wecom_archive_config_check_reports_key_status(client, monkeypatch, tmp_
     monkeypatch.setattr(settings, "wecom_corp_id", "ww_archive")
     monkeypatch.setattr(settings, "wecom_archive_enabled", True)
     monkeypatch.setattr(settings, "wecom_archive_secret", "archive-secret")
+    monkeypatch.setattr(settings, "wecom_archive_callback_token", "archive-token")
+    monkeypatch.setattr(settings, "wecom_archive_encoding_aes_key", "archive-aes-key")
     monkeypatch.setattr(settings, "wecom_archive_private_key_path", private_key)
     monkeypatch.setattr(settings, "wecom_archive_public_key_path", public_key)
     monkeypatch.setattr(settings, "wecom_archive_sdk_lib_path", None)
@@ -4276,6 +4755,115 @@ def test_wecom_archive_process_groups_nearby_messages(client, monkeypatch):
     assert generated["generatedNote"]["media"][0]["mediaId"] == "image-sdk-file"
 
 
+def test_wecom_archive_group_uses_first_message_fixed_60_second_window(client):
+    service = client.app.dependency_overrides[get_app_service]()
+
+    def make_archive_message(seq: int, msg_id: str, msg_time: str, to_list=None, room_id=None):
+        return WecomArchiveMessage(
+            id=f"archive_group_window_{seq}",
+            corpId="ww_archive_window",
+            seq=seq,
+            msgId=msg_id,
+            action="send",
+            fromUser="wm_customer_window",
+            toList=to_list or ["user_sales"],
+            roomId=room_id,
+            msgTime=msg_time,
+            msgType="text",
+            decryptedPayload={"text": {"content": msg_id}},
+            createdAt=msg_time,
+        )
+
+    messages = [
+        make_archive_message(1, "window_0", "2026-08-21T13:40:00+08:00"),
+        make_archive_message(2, "window_59", "2026-08-21T13:40:59+08:00"),
+        make_archive_message(3, "window_60", "2026-08-21T13:41:00+08:00"),
+        make_archive_message(4, "window_118", "2026-08-21T13:41:58+08:00"),
+        make_archive_message(5, "window_other_conversation", "2026-08-21T13:41:59+08:00", ["another_sales"]),
+    ]
+
+    groups = service._group_wecom_archive_messages(messages)
+
+    assert [[item.msgId for item in group] for group in groups] == [
+        ["window_0", "window_59", "window_60"],
+        ["window_118"],
+        ["window_other_conversation"],
+    ]
+
+
+def test_wecom_archive_image_with_short_caption_is_image_primary(client, monkeypatch, tmp_path):
+    class FakeArchiveClient:
+        def download_media(self, media_id):
+            assert media_id == "archive-caption-image-sdk"
+            return DownloadedMedia(make_test_image_bytes(), "image/png", "sticker.png")
+
+    monkeypatch.setattr(settings, "admin_token", "archive-admin")
+    service = client.app.dependency_overrides[get_app_service]()
+    media_dir = tmp_path / "archive-caption-media"
+    service.media_storage_service = MediaStorageService("local", media_dir, "/media")
+    client.app.dependency_overrides[get_wecom_archive_client] = lambda: FakeArchiveClient()
+    payload = {
+        "corpId": "ww_archive_image_caption",
+        "messages": [
+            {
+                "seq": 601,
+                "msgid": "archive_caption_image_001",
+                "action": "send",
+                "from": "wm_customer_caption",
+                "tolist": ["user_sales"],
+                "msgtime": 1781725400000,
+                "msgtype": "image",
+                "decryptedPayload": {
+                    "msgid": "archive_caption_image_001",
+                    "action": "send",
+                    "from": "wm_customer_caption",
+                    "tolist": ["user_sales"],
+                    "msgtime": 1781725400000,
+                    "msgtype": "image",
+                    "image": {"sdkfileid": "archive-caption-image-sdk", "md5sum": "caption-md5", "filesize": 1024},
+                },
+            },
+            {
+                "seq": 602,
+                "msgid": "archive_caption_text_001",
+                "action": "send",
+                "from": "wm_customer_caption",
+                "tolist": ["user_sales"],
+                "msgtime": 1781725403000,
+                "msgtype": "text",
+                "decryptedPayload": {
+                    "msgid": "archive_caption_text_001",
+                    "action": "send",
+                    "from": "wm_customer_caption",
+                    "tolist": ["user_sales"],
+                    "msgtime": 1781725403000,
+                    "msgtype": "text",
+                    "text": {"content": "表情包"},
+                },
+            },
+        ],
+    }
+
+    saved = client.post("/api/wecom/archive/mock-messages", json=payload, headers={"X-Admin-Token": "archive-admin"})
+    processed = client.post("/api/wecom/archive/process", headers={"X-Admin-Token": "archive-admin"})
+    pending = client.get("/api/imports/pending").json()["data"]
+
+    assert saved.status_code == 200
+    assert processed.status_code == 200
+    result = processed.json()["data"]
+    assert result["processedCount"] == 1
+    note_id = result["processed"][0]["noteId"]
+    generated = next(item for item in pending if item["generatedNote"] and item["generatedNote"]["id"] == note_id)
+    note = generated["generatedNote"]
+    config = note["visibilityConfig"]
+    assert note["title"] == "表情包"
+    assert note["body"] == "表情包"
+    assert config["cardType"] == "image_ocr"
+    assert config["structuredData"]["caption"] == "表情包"
+    assert config["structuredData"]["images"] == [note["media"][0]["url"]]
+    assert note["media"][0]["url"].startswith("/media/")
+
+
 def test_wecom_archive_process_downloads_and_attaches_image_media(client, monkeypatch, tmp_path):
     class FakeArchiveClient:
         def __init__(self):
@@ -4496,7 +5084,7 @@ def test_wecom_archive_media_backfill_updates_existing_note_and_card(client, mon
     service = client.app.dependency_overrides[get_app_service]()
     media_dir = tmp_path / "archive-backfill-media"
     service.media_storage_service = MediaStorageService("local", media_dir, "/media")
-    client.app.dependency_overrides[get_wecom_archive_client] = lambda: FailingArchiveClient()
+    client.app.dependency_overrides[get_wecom_archive_media_client] = lambda: FailingArchiveClient()
     payload = {
         "corpId": "ww_archive_media_backfill",
         "messages": [
@@ -4548,8 +5136,36 @@ def test_wecom_archive_media_backfill_updates_existing_note_and_card(client, mon
     assert generated_before["generatedNote"]["media"][0]["url"] is None
     assert generated_before["generatedCard"]["media"] == []
 
+    refreshed = service.save_wecom_archive_messages(
+        "ww_archive_media_backfill",
+        [
+            {
+                "seq": 522,
+                "msgid": "archive_media_backfill_image_001",
+                "action": "send",
+                "from": "wm_customer",
+                "tolist": ["user_sales"],
+                "msgtime": 1781725501000,
+                "msgtype": "image",
+                "decryptedPayload": {
+                    "msgid": "archive_media_backfill_image_001",
+                    "action": "send",
+                    "from": "wm_customer",
+                    "tolist": ["user_sales"],
+                    "msgtime": 1781725501000,
+                    "msgtype": "image",
+                    "image": {"sdkfileid": "archive-image-sdk-backfill-public", "md5sum": "image-md5", "filesize": 1024},
+                },
+                "mediaRefs": [{"mediaId": "archive-event-522:token", "path": "image.sdkfileid"}],
+            }
+        ],
+        advance_cursor=False,
+        refresh_media_on_duplicate=True,
+    )
+    assert refreshed["refreshedMediaCount"] == 1
+
     successful_client = SuccessfulArchiveClient()
-    client.app.dependency_overrides[get_wecom_archive_client] = lambda: successful_client
+    client.app.dependency_overrides[get_wecom_archive_media_client] = lambda: successful_client
     backfilled = client.post(
         "/api/wecom/archive/media-backfill",
         params={"limit": 10},
@@ -4563,7 +5179,8 @@ def test_wecom_archive_media_backfill_updates_existing_note_and_card(client, mon
     assert result["downloadedCount"] == 1
     assert result["updatedNoteCount"] == 1
     assert result["updatedCardCount"] == 1
-    assert successful_client.downloaded_media_ids == ["archive-image-sdk-backfill"]
+    assert successful_client.downloaded_media_ids == ["archive-image-sdk-backfill-public"]
+    assert result["remappedCount"] == 1
     assert generated_after["generatedNote"]["media"][0]["url"].startswith("/media/")
     assert generated_after["generatedCard"]["coverUrl"] == generated_after["generatedNote"]["media"][0]["url"]
     assert generated_after["generatedCard"]["media"][0]["url"] == generated_after["generatedNote"]["media"][0]["url"]
@@ -5439,6 +6056,187 @@ def test_link_import_uses_thumbnail_and_source_url(client):
     assert topic_notes_after_delete == []
 
 
+def test_manual_link_capture_fetches_metadata_and_creates_bookmark(client, monkeypatch):
+    login = client.post("/api/auth/mock-login", json={"nickname": "链接收藏用户"}).json()["data"]
+    monkeypatch.setattr(
+        "app.services.app_service.fetch_link_preview",
+        lambda url: {
+            "url": url,
+            "title": "一篇值得收藏的文章",
+            "description": "这是从网页元信息读取到的摘要。",
+            "coverUrl": "https://example.com/article-cover.jpg",
+            "sourceName": "示例网站",
+            "sourceLabel": "网页链接",
+            "parseStatus": "meta_done",
+        },
+    )
+
+    response = client.post(
+        "/api/notes/link-capture",
+        json={"ownerUserId": login["id"], "url": "https://example.com/article"},
+    )
+
+    assert response.status_code == 200
+    note = response.json()["data"]
+    assert note["title"] == "一篇值得收藏的文章"
+    assert note["summary"] == "这是从网页元信息读取到的摘要。"
+    assert note["coverUrl"] == "https://example.com/article-cover.jpg"
+    assert note["media"][0]["type"] == "link"
+    assert note["media"][0]["title"] == "一篇值得收藏的文章"
+    assert note["visibilityConfig"]["cardType"] == "link"
+    assert note["visibilityConfig"]["contentMode"] == "bookmark"
+    assert note["visibilityConfig"]["sourceUrl"] == "https://example.com/article"
+    assert note["visibilityConfig"]["sourceName"] == "示例网站"
+    assert note["visibilityConfig"]["structuredData"]["parseStatus"] == "meta_done"
+
+
+def test_note_intake_is_private_idempotent_and_revision_protected(client):
+    owner = client.post("/api/auth/mock-login", json={"nickname": "幂等资料用户", "openid": "openid_note_intake_contract"}).json()["data"]
+    payload = {
+        "ownerUserId": owner["id"],
+        "cardType": "text_note",
+        "inputMode": "blank",
+        "intakeId": "intake_contract_1",
+        "idempotencyKey": "note_contract_key_1",
+    }
+    first = client.post("/api/notes/manual-draft", json=payload)
+    retry = client.post("/api/notes/manual-draft", json=payload)
+    assert first.status_code == 200
+    assert retry.status_code == 200
+    assert retry.json()["data"]["id"] == first.json()["data"]["id"]
+    note = first.json()["data"]
+    assert note["shareState"] == "private"
+    assert note["intakeId"] == "intake_contract_1"
+    assert note["idempotencyKey"] == "note_contract_key_1"
+    assert client.get(f"/api/notes/public/{note['id']}").status_code == 404
+
+    saved = client.put(
+        f"/api/notes/{note['id']}",
+        json={
+            "ownerUserId": owner["id"],
+            "expectedRevision": note["revision"],
+            "title": "已编辑资料",
+            "summary": "",
+            "body": "正文",
+            "visibilityConfig": {"cardType": "text_note"},
+        },
+    )
+    assert saved.status_code == 200
+    stale = client.put(
+        f"/api/notes/{note['id']}",
+        json={
+            "ownerUserId": owner["id"],
+            "expectedRevision": note["revision"],
+            "title": "旧页面覆盖",
+            "summary": "",
+            "body": "旧正文",
+            "visibilityConfig": {"cardType": "text_note"},
+        },
+    )
+    assert stale.status_code == 409
+    assert client.post(f"/api/notes/{note['id']}/publish", json={"ownerUserId": owner["id"]}).status_code == 200
+    assert client.get(f"/api/notes/public/{note['id']}").status_code == 200
+    organized = client.post(f"/api/notes/{note['id']}/organize", params={"ownerUserId": owner["id"]})
+    assert organized.status_code == 200
+    assert organized.json()["data"]["shareState"] == "private"
+    assert client.get(f"/api/notes/public/{note['id']}").status_code == 404
+
+
+def test_saved_imported_draft_can_be_sent_to_customer(client):
+    """A legacy/imported draft must not fail after the owner saves it."""
+    owner = client.post("/api/auth/mock-login", json={"nickname": "导入资料发送用户", "openid": "openid_import_send"}).json()["data"]
+    created = client.post(
+        "/api/notes/manual-draft",
+        json={"ownerUserId": owner["id"], "cardType": "text_note", "inputMode": "blank"},
+    ).json()["data"]
+    service = client.app.dependency_overrides[get_app_service]()
+    stored = service.repo.get_user_note(created["id"])
+    stored.status = "draft"
+    service.repo.save_user_note(stored)
+
+    saved = client.put(
+        f"/api/notes/{created['id']}",
+        json={
+            "ownerUserId": owner["id"],
+            "expectedRevision": created["revision"],
+            "title": "可以发送的资料",
+            "summary": "客户可读摘要",
+            "body": "客户可读正文",
+            "visibilityConfig": {"cardType": "text_note", "cardState": "organized"},
+        },
+    )
+    assert saved.status_code == 200
+    assert saved.json()["data"]["status"] == "active"
+    published = client.post(
+        f"/api/notes/{created['id']}/publish",
+        json={"ownerUserId": owner["id"], "expectedRevision": saved.json()["data"]["revision"]},
+    )
+    assert published.status_code == 200
+    assert published.json()["data"]["shareState"] == "published"
+
+
+def test_complete_imported_draft_can_publish_without_editor_roundtrip(client):
+    """A complete legacy draft is publishable even before a second save call."""
+    owner = client.post("/api/auth/mock-login", json={"nickname": "遗留草稿发送用户", "openid": "openid_import_direct_send"}).json()["data"]
+    created = client.post(
+        "/api/notes/manual-draft",
+        json={"ownerUserId": owner["id"], "cardType": "text_note", "inputMode": "blank"},
+    ).json()["data"]
+    service = client.app.dependency_overrides[get_app_service]()
+    stored = service.repo.get_user_note(created["id"])
+    stored.status = "draft"
+    stored.title = "遗留文章标题"
+    stored.summary = "客户可读摘要"
+    stored.body = "客户可读正文"
+    service.repo.save_user_note(stored)
+
+    published = client.post(
+        f"/api/notes/{created['id']}/publish",
+        json={"ownerUserId": owner["id"], "expectedRevision": created["revision"]},
+    )
+    assert published.status_code == 200
+    assert published.json()["data"]["status"] == "active"
+    assert published.json()["data"]["shareState"] == "published"
+
+
+def test_link_and_property_intake_retries_do_not_duplicate(client, monkeypatch):
+    owner = client.post("/api/auth/mock-login", json={"nickname": "入口重试用户", "openid": "openid_note_intake_retry"}).json()["data"]
+    monkeypatch.setattr(
+        "app.services.app_service.fetch_link_preview",
+        lambda url: {
+            "url": url,
+            "title": "重试链接",
+            "description": "链接摘要",
+            "coverUrl": "",
+            "sourceName": "示例站点",
+            "sourceLabel": "网页链接",
+            "parseStatus": "meta_done",
+        },
+    )
+    link_payload = {
+        "ownerUserId": owner["id"],
+        "url": "https://example.com/retry",
+        "intakeId": "intake_link_retry",
+        "idempotencyKey": "link_retry_key",
+    }
+    link_first = client.post("/api/notes/link-capture", json=link_payload).json()["data"]
+    link_retry = client.post("/api/notes/link-capture", json=link_payload).json()["data"]
+    assert link_retry["id"] == link_first["id"]
+    assert client.get(f"/api/notes/public/{link_first['id']}").status_code == 404
+
+    property_payload = {
+        "ownerUserId": owner["id"],
+        "rawText": "滨江花园一室 1600",
+        "intakeId": "intake_property_retry",
+        "idempotencyKey": "property_retry_key",
+        "candidates": [{"candidateId": "p1", "title": "滨江花园一室", "layout": "一室", "price": "1600", "selected": True}],
+    }
+    property_first = client.post("/api/notes/property-batch/create", json=property_payload).json()["data"]
+    property_retry = client.post("/api/notes/property-batch/create", json=property_payload).json()["data"]
+    assert property_retry["noteIds"] == property_first["noteIds"]
+    assert property_retry["showcaseId"] == property_first["showcaseId"]
+
+
 def test_explicit_link_organize_command_uses_deep_note(client):
     service = client.app.dependency_overrides[get_app_service]()
     sync_response = {
@@ -5561,6 +6359,7 @@ def test_claim_import_by_token_binds_external_user(client):
 
 def test_import_creates_claimable_user_note_and_note_crud(client):
     login = client.post("/api/auth/mock-login", json={"nickname": "笔记用户"}).json()["data"]
+    activate_customer_intelligence(client, login["id"], "note_crud")
     client.post(
         "/api/wecom/mock-sync",
         json={"externalUserId": "external_note_crud", "conversationId": "conv_note_crud", "fixture": "note"},
@@ -5638,6 +6437,8 @@ def test_import_creates_claimable_user_note_and_note_crud(client):
     )
     assert structured.status_code == 200
     assert structured.json()["data"]["visibilityConfig"]["structuredData"]["businessArea"] == "万家丽、高桥北"
+    assert client.post(f"/api/notes/{note['id']}/publish", json={"ownerUserId": login["id"]}).status_code == 200
+    assert client.post(f"/api/notes/{note['id']}/publish", json={"ownerUserId": login["id"]}).status_code == 200
 
     filtered = client.get(
         "/api/notes",
@@ -5670,6 +6471,7 @@ def test_import_creates_claimable_user_note_and_note_crud(client):
     assert generated_config["structuredData"]["generatedResult"]["pageType"] == "property_promo_page"
     assert "预约看房" in generated_config["structuredData"]["generatedResult"]["enabledActions"]
     assert "私聊咨询" not in generated_config["structuredData"]["generatedResult"]["enabledActions"]
+    assert client.post(f"/api/notes/{note['id']}/publish", json={"ownerUserId": login["id"]}).status_code == 200
 
     viewer = client.post("/api/auth/mock-login", json={"nickname": "看房客户"}).json()["data"]
     action_config = client.get(
@@ -5765,6 +6567,7 @@ def test_import_creates_claimable_user_note_and_note_crud(client):
 def test_groupbuy_product_relay_intent_uses_customer_actions_without_leads(client):
     service = client.app.dependency_overrides[get_app_service]()
     owner = client.post("/api/auth/mock-login", json={"nickname": "团长"}).json()["data"]
+    activate_customer_intelligence(client, owner["id"], "groupbuy_actions")
     now = now_iso()
     note = UserNote(
         id=new_id("note"),
@@ -6060,6 +6863,7 @@ def test_groupbuy_product_relay_intent_uses_customer_actions_without_leads(clien
 
 def test_demo_data_includes_product_relay_mock_for_current_user(client):
     owner = client.post("/api/auth/mock-login", json={"nickname": "演示团长"}).json()["data"]
+    activate_customer_intelligence(client, owner["id"], "demo_groupbuy")
     created = client.post("/api/notes/demo-data", params={"ownerUserId": owner["id"]})
     assert created.status_code == 200
     notes = created.json()["data"]["notes"]
@@ -6206,6 +7010,77 @@ def test_manual_asset_upload_returns_media_url(client):
     assert payload["mediaType"] == "image"
     assert payload["name"] == "cover.png"
     assert payload["url"]
+    assert len(payload["originalSha256"]) == 64
+    assert len(payload["storageSha256"]) == 64
+
+
+def test_share_snapshot_upload_returns_jpeg(client, tmp_path):
+    service = client.app.dependency_overrides[get_app_service]()
+    media_dir = tmp_path / "share-media"
+    service.media_storage_service = MediaStorageService("local", media_dir, "/media")
+    service.media_processing_service = MediaProcessingService(image_max_edge=600, image_quality=80)
+    owner = client.post("/api/auth/mock-login", json={"nickname": "分享图用户"}).json()["data"]
+    image = Image.new("RGB", (1200, 960), (45, 120, 220))
+    output = BytesIO()
+    image.save(output, format="PNG")
+    image_bytes = output.getvalue()
+
+    generic = client.post(
+        "/api/uploads/asset",
+        data={"ownerUserId": owner["id"], "mediaType": "image"},
+        files={"file": ("ordinary.png", image_bytes, "image/png")},
+    )
+    assert generic.status_code == 200
+    assert generic.json()["data"]["contentType"] == "image/webp"
+
+    response = client.post(
+        "/api/uploads/share-snapshot",
+        data={"ownerUserId": owner["id"]},
+        files={"file": ("share-card.png", image_bytes, "image/png")},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()["data"]
+    assert payload["source"] == "share_snapshot"
+    assert payload["contentType"] == "image/jpeg"
+    assert payload["mimeType"] == "image/jpeg"
+    assert payload["url"].endswith(".jpg")
+    stored_files = list(media_dir.iterdir())
+    assert len(stored_files) == 2
+    share_file = next(path for path in stored_files if path.suffix == ".jpg")
+    with Image.open(share_file) as stored:
+        assert stored.format == "JPEG"
+        assert stored.size == (600, 480)
+
+
+def test_manual_duplicate_image_upload_reuses_hashed_asset(client, tmp_path):
+    service = client.app.dependency_overrides[get_app_service]()
+    media_dir = tmp_path / "dedupe-media"
+    service.media_storage_service = MediaStorageService("local", media_dir, "/media")
+    owner = client.post("/api/auth/mock-login", json={"nickname": "图片去重用户"}).json()["data"]
+    image = make_test_image_bytes()
+
+    first = client.post(
+        "/api/uploads/asset",
+        data={"ownerUserId": owner["id"], "mediaType": "image"},
+        files={"file": ("first.png", image, "image/png")},
+    )
+    second = client.post(
+        "/api/uploads/asset",
+        data={"ownerUserId": owner["id"], "mediaType": "image"},
+        files={"file": ("same-content-different-name.png", image, "image/png")},
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    first_payload = first.json()["data"]
+    second_payload = second.json()["data"]
+    state = service.repo.load()
+    assert second_payload["url"] == first_payload["url"]
+    assert second_payload["originalSha256"] == first_payload["originalSha256"]
+    assert second_payload["storageSha256"] == first_payload["storageSha256"]
+    assert len(state.media_assets) == 1
+    assert len(list(media_dir.iterdir())) == 1
 
 
 def test_manual_image_upload_compresses_before_storage(client, tmp_path):
@@ -6237,8 +7112,250 @@ def test_manual_image_upload_compresses_before_storage(client, tmp_path):
         assert max(stored.size) <= 640
 
 
+def test_pdf_upload_preserves_bytes_and_rejects_disguised_file(client, tmp_path):
+    service = client.app.dependency_overrides[get_app_service]()
+    media_dir = tmp_path / "pdf-media"
+    service.media_storage_service = MediaStorageService("local", media_dir, "/media")
+    owner = client.post("/api/auth/mock-login", json={"nickname": "PDF用户"}).json()["data"]
+    pdf = b"%PDF-1.4\n1 0 obj\n<<>>\nendobj\n%%EOF\n"
+    response = client.post(
+        "/api/uploads/asset",
+        data={"ownerUserId": owner["id"], "mediaType": "pdf"},
+        files={"file": ("guide.pdf", pdf, "application/pdf")},
+    )
+    assert response.status_code == 200
+    payload = response.json()["data"]
+    assert payload["type"] == "pdf"
+    assert payload["mimeType"] == "application/pdf"
+    assert payload["id"].startswith("att_")
+    assert next(media_dir.iterdir()).read_bytes() == pdf
+    disguised = client.post(
+        "/api/uploads/asset",
+        data={"ownerUserId": owner["id"], "mediaType": "pdf"},
+        files={"file": ("fake.pdf", b"not-a-pdf", "application/pdf")},
+    )
+    assert disguised.status_code == 400
+
+
+def test_note_attachments_validate_https_limits_and_cross_note_events(client):
+    owner = client.post("/api/auth/mock-login", json={"nickname": "附件作者"}).json()["data"]
+    viewer = client.post("/api/auth/mock-login", json={"nickname": "附件客户"}).json()["data"]
+    created = client.post(
+        "/api/notes/manual-draft",
+        json={"ownerUserId": owner["id"], "cardType": "service_offer", "inputMode": "blank", "title": "附件服务"},
+    ).json()["data"]
+    base = {
+        "ownerUserId": owner["id"], "title": "附件服务", "summary": "", "body": "介绍",
+        "visibilityConfig": {"cardType": "service_offer"},
+    }
+    unsafe = client.put(f"/api/notes/{created['id']}", json={**base, "media": [{"id": "att_bad", "type": "link", "url": "javascript:alert(1)"}]})
+    assert unsafe.status_code == 400
+    updated = client.put(
+        f"/api/notes/{created['id']}",
+        json={**base, "media": [{"id": "att_pdf", "type": "pdf", "url": "https://example.test/guide.pdf", "mimeType": "application/pdf"}]},
+    )
+    assert updated.status_code == 200
+    assert client.post(f"/api/notes/{created['id']}/publish", json={"ownerUserId": owner["id"]}).status_code == 200
+    other = client.post(
+        "/api/notes/manual-draft",
+        json={"ownerUserId": owner["id"], "cardType": "text_note", "inputMode": "blank", "title": "另一资料"},
+    ).json()["data"]
+    assert client.post(f"/api/notes/{other['id']}/publish", json={"ownerUserId": owner["id"]}).status_code == 200
+    forged = client.post(
+        f"/api/notes/{other['id']}/events",
+        json={"eventType": "pdf_open", "attachmentId": "att_pdf", "viewerUserId": viewer["id"], "sessionId": "s1"},
+    )
+    assert forged.status_code == 400
+    recorded = client.post(
+        f"/api/notes/{created['id']}/events",
+        json={"eventType": "pdf_open", "attachmentId": "att_pdf", "viewerUserId": viewer["id"], "sessionId": "s1"},
+    )
+    assert recorded.status_code == 200
+    assert recorded.json()["data"]["recorded"] is True
+    duplicate = client.post(
+        f"/api/notes/{created['id']}/events",
+        json={"eventType": "pdf_open", "attachmentId": "att_pdf", "viewerUserId": viewer["id"], "sessionId": "s1"},
+    )
+    assert duplicate.json()["data"]["duplicate"] is True
+    owner_preview = client.post(
+        f"/api/notes/{created['id']}/events",
+        json={"eventType": "pdf_open", "attachmentId": "att_pdf", "viewerUserId": owner["id"], "sessionId": "owner-s"},
+    )
+    assert owner_preview.json()["data"]["ignoredReason"] == "owner_preview"
+    legacy = client.put(
+        f"/api/notes/{other['id']}",
+        json={**base, "title": "旧资料", "media": [{"type": "pdf", "url": "https://example.test/legacy.pdf"}]},
+    )
+    assert legacy.status_code == 200
+    assert client.post(f"/api/notes/{other['id']}/publish", json={"ownerUserId": owner["id"]}).status_code == 200
+    public_first = client.get(f"/api/notes/public/{other['id']}").json()["data"]["media"][0]["id"]
+    public_second = client.get(f"/api/notes/public/{other['id']}").json()["data"]["media"][0]["id"]
+    assert public_first == public_second
+
+
+def test_article_source_open_records_without_attachment_and_deduplicates(client):
+    owner = client.post("/api/auth/mock-login", json={"nickname": "链接作者"}).json()["data"]
+    viewer = client.post("/api/auth/mock-login", json={"nickname": "链接读者"}).json()["data"]
+    created = client.post(
+        "/api/notes/manual-draft",
+        json={"ownerUserId": owner["id"], "cardType": "text_note", "inputMode": "blank", "title": "阅读资料"},
+    ).json()["data"]
+    updated = client.put(
+        f"/api/notes/{created['id']}",
+        json={
+            "ownerUserId": owner["id"],
+            "title": "阅读资料",
+            "summary": "内容简介",
+            "body": "我的推荐",
+            "visibilityConfig": {
+                "cardType": "article",
+                "contentMode": "deep_note",
+                "sourceUrl": "https://example.test/article",
+                "structuredData": {"salesRecommendation": "值得一看"},
+            },
+        },
+    )
+    assert updated.status_code == 200
+    assert client.post(f"/api/notes/{created['id']}/publish", json={"ownerUserId": owner["id"]}).status_code == 200
+    payload = {"eventType": "source_open", "viewerUserId": viewer["id"], "sessionId": "article-session"}
+    recorded = client.post(f"/api/notes/{created['id']}/events", json=payload)
+    assert recorded.status_code == 200
+    assert recorded.json()["data"]["recorded"] is True
+    duplicate = client.post(f"/api/notes/{created['id']}/events", json=payload)
+    assert duplicate.status_code == 200
+    assert duplicate.json()["data"]["duplicate"] is True
+    owner_preview = client.post(
+        f"/api/notes/{created['id']}/events",
+        json={"eventType": "source_open", "viewerUserId": owner["id"], "sessionId": "owner-article"},
+    )
+    assert owner_preview.status_code == 200
+    assert owner_preview.json()["data"]["ignoredReason"] == "owner_preview"
+
+
+def test_library_cards_support_ten_item_offset_pagination_and_cache_invalidation(client):
+    owner = client.post(
+        "/api/auth/mock-login",
+        json={"nickname": "分页资料用户", "openid": "openid_library_pagination"},
+    ).json()["data"]
+    for index in range(12):
+        client.post(
+            "/api/notes/manual-draft",
+            json={
+                "ownerUserId": owner["id"],
+                "cardType": "text_note",
+                "inputMode": "blank",
+                "title": f"分页资料{index:02d}",
+            },
+        )
+
+    first = client.get("/api/cards", params={"ownerUserId": owner["id"], "limit": 10, "offset": 0})
+    second = client.get("/api/cards", params={"ownerUserId": owner["id"], "limit": 10, "offset": 10})
+    assert first.status_code == 200
+    assert second.status_code == 200
+    first_rows = first.json()["data"]
+    second_rows = second.json()["data"]
+    assert len(first_rows) == 10
+    assert len(second_rows) == 2
+    assert not ({item["id"] for item in first_rows} & {item["id"] for item in second_rows})
+
+    created = client.post(
+        "/api/notes/manual-draft",
+        json={
+            "ownerUserId": owner["id"],
+            "cardType": "text_note",
+            "inputMode": "blank",
+            "title": "缓存失效后应出现",
+        },
+    )
+    assert created.status_code == 200
+    refreshed = client.get("/api/cards", params={"ownerUserId": owner["id"], "limit": 10, "offset": 0}).json()["data"]
+    assert any(item["title"] == "缓存失效后应出现" for item in refreshed)
+
+
+def test_sales_profile_is_public_source_and_conversion_can_hide_contact(client):
+    login = client.post(
+        "/api/auth/mock-login",
+        json={"nickname": "销售顾问", "phone": "13900001111"},
+    ).json()["data"]
+    updated = client.patch(
+        f"/api/auth/users/{login['id']}/profile",
+        json={
+            "displayName": "王小满", "jobTitle": "置业顾问", "company": "星城门店", "city": "长沙",
+            "phone": "13900002222", "wechat": "wx_consultant", "email": "hello@example.com", "website": "https://example.com",
+        },
+    )
+    assert updated.status_code == 200
+    assert updated.json()["data"]["salesProfile"]["company"] == "星城门店"
+    unsafe_profile = client.patch(
+        f"/api/auth/users/{login['id']}/profile",
+        json={"website": "javascript:alert(1)"},
+    )
+    assert unsafe_profile.status_code == 400
+    note = client.post(
+        "/api/notes/manual-draft",
+        json={"ownerUserId": login["id"], "cardType": "business_card", "inputMode": "blank", "rawText": ""},
+    ).json()["data"]
+    hidden = client.put(
+        f"/api/notes/{note['id']}",
+        json={
+            "ownerUserId": login["id"], "title": "我的名片", "summary": "", "body": "名片简介", "media": [], "categoryIds": [],
+            "visibilityConfig": {
+                "cardType": "business_card", "structuredData": {"headline": "帮你找到合适房源"},
+                "conversionConfig": {"showContactPhone": False, "enablePrivateConsultation": False},
+            },
+        },
+    )
+    assert hidden.status_code == 200
+    assert client.post(f"/api/notes/{note['id']}/publish", json={"ownerUserId": login["id"]}).status_code == 200
+    public = client.get(f"/api/notes/public/{note['id']}").json()["data"]
+    assert public["ownerProfile"]["displayName"] == "王小满"
+    assert public["ownerProfile"]["phone"] == ""
+    assert public["ownerProfile"]["wechat"] == ""
+    assert public["phone"] is None
+
+
+def test_business_card_public_page_exposes_only_owned_featured_resources_and_records_open(client):
+    owner = client.post("/api/auth/mock-login", json={"nickname": "名片发布者"}).json()["data"]
+    other = client.post("/api/auth/mock-login", json={"nickname": "其他发布者"}).json()["data"]
+    own_note = client.post(
+        "/api/notes/manual-draft",
+        json={"ownerUserId": owner["id"], "cardType": "text_note", "inputMode": "blank", "title": "我的精选资料"},
+    ).json()["data"]
+    foreign_note = client.post(
+        "/api/notes/manual-draft",
+        json={"ownerUserId": other["id"], "cardType": "text_note", "inputMode": "blank", "title": "别人的资料"},
+    ).json()["data"]
+    card = client.post(
+        "/api/notes/manual-draft",
+        json={"ownerUserId": owner["id"], "cardType": "business_card", "inputMode": "blank"},
+    ).json()["data"]
+    updated = client.put(
+        f"/api/notes/{card['id']}",
+        json={
+            "ownerUserId": owner["id"], "title": "我的电子名片", "summary": "可信介绍", "body": "",
+            "media": [], "categoryIds": [],
+            "visibilityConfig": {
+                "cardType": "business_card",
+                "structuredData": {"headline": "可信介绍", "featuredNoteIds": [own_note["id"], foreign_note["id"]]},
+            },
+        },
+    )
+    assert updated.status_code == 200
+    assert client.post(f"/api/notes/{own_note['id']}/publish", json={"ownerUserId": owner["id"]}).status_code == 200
+    assert client.post(f"/api/notes/{card['id']}/publish", json={"ownerUserId": owner["id"]}).status_code == 200
+    public = client.get(f"/api/notes/public/{card['id']}").json()["data"]
+    assert [item["id"] for item in public["featuredResources"]] == [own_note["id"]]
+    interaction = client.post(
+        f"/api/notes/{card['id']}/events",
+        json={"eventType": "featured_note_open", "anonymousId": "anon_featured", "sessionId": "featured-session", "metadata": {"featuredNoteId": own_note["id"]}},
+    )
+    assert interaction.status_code == 200
+    assert interaction.json()["data"]["event"]["actionLabel"] == "打开精选资料"
+
+
 def test_lead_reminder_flow_persists_status_note_and_filters(client):
     owner = client.post("/api/auth/mock-login", json={"nickname": "线索团长"}).json()["data"]
+    activate_customer_intelligence(client, owner["id"], "lead_flow")
     other = client.post("/api/auth/mock-login", json={"nickname": "其他用户"}).json()["data"]
     card = client.post(
         "/api/cards",
@@ -6436,6 +7553,9 @@ def test_anonymous_and_logged_in_view_stats_are_isolated(client):
     browser_viewer = next(item for item in owner_stats["loggedInViewers"] if item["nickname"] == "浏览用户")
     assert browser_viewer["viewCount"] == 2
     assert all(item["nickname"] != "匿名用户" for item in owner_stats["loggedInViewers"])
+    assert len(owner_stats["trend"]["last7"]) == 7
+    assert len(owner_stats["trend"]["today"]) == 6
+    assert sum(item["value"] for item in owner_stats["trend"]["last7"]) >= 2
 
 
 def test_relay_requires_phone_when_enabled(client):
@@ -6914,3 +8034,37 @@ def test_wecom_group_bot_broadcast_sends_miniapp_card(client, monkeypatch):
     assert sent[0]["webhook"] == "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=resource-secret"
     assert sent[0]["payload"]["msgtype"] == "template_card"
     assert sent[0]["payload"]["template_card"]["jump_list"][0]["appid"] == "wx-test-appid"
+
+
+def test_showcase_owner_and_public_payload_use_first_media_image(client):
+    owner = client.post(
+        "/api/auth/mock-login",
+        json={"nickname": "合集首图测试", "openid": "openid_showcase_first_media"},
+    ).json()["data"]
+    note = client.post("/api/notes/demo-data", params={"ownerUserId": owner["id"]}).json()["data"]["notes"][0]
+    service = client.app.dependency_overrides[get_app_service]()
+    stored_note = service.repo.get_user_note(note["id"])
+    stored_note.coverUrl = None
+    stored_note.media = [
+        {"id": "media-first", "type": "image", "url": "/media/showcase-first.jpg"},
+        {"id": "media-second", "type": "image", "url": "/media/showcase-second.jpg"},
+    ]
+    service.repo.save_user_note(stored_note)
+
+    showcase = client.post(
+        "/api/showcases",
+        json={"ownerUserId": owner["id"], "name": "媒体首图合集", "items": [{"noteId": note["id"]}]},
+    ).json()["data"]
+    published = client.post(
+        f"/api/showcases/{showcase['id']}/publish",
+        json={"ownerUserId": owner["id"]},
+    )
+    assert published.status_code == 200
+
+    owner_showcase = next(
+        item for item in client.get("/api/showcases", params={"ownerUserId": owner["id"]}).json()["data"]
+        if item["id"] == showcase["id"]
+    )
+    assert owner_showcase["items"][0]["coverUrl"] == "/media/showcase-first.jpg"
+    public_showcase = client.get(f"/api/showcases/public/{showcase['id']}").json()["data"]
+    assert public_showcase["items"][0]["coverUrl"] == "/media/showcase-first.jpg"

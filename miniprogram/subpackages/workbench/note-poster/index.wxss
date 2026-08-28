@@ -1,0 +1,141 @@
+.page-shell {
+  min-height: 100vh;
+  padding: 0 28rpx 48rpx;
+  box-sizing: border-box;
+  background: #f1f6fb;
+}
+
+.share-wrap {
+  margin-top: 24rpx;
+}
+
+.share-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 520rpx;
+  padding: 18rpx;
+  box-sizing: border-box;
+  border: 2rpx solid #dbe8f2;
+  border-radius: 28rpx;
+  background: #fff;
+  box-shadow: 0 16rpx 38rpx rgba(38, 71, 104, .08);
+}
+
+.share-image {
+  width: 100%;
+  height: 480rpx;
+  border-radius: 18rpx;
+  background: #eef4fa;
+}
+
+.share-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 480rpx;
+  color: #64748b;
+  font-size: 28rpx;
+}
+
+.share-status {
+  margin-top: 18rpx;
+  color: #64748b;
+  font-size: 25rpx;
+  text-align: center;
+}
+
+.share-status.ready {
+  color: #1677ff;
+}
+
+.share-status.failed {
+  color: #d14343;
+}
+
+.share-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 180rpx;
+  gap: 16rpx;
+  margin-top: 22rpx;
+}
+
+.share-actions button,
+.copy-button,
+.retry-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  height: 82rpx;
+  margin: 0;
+  padding: 0 18rpx;
+  border: 0;
+  border-radius: 18rpx;
+  font-size: 27rpx;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.share-actions button::after,
+.copy-button::after,
+.retry-button::after {
+  border: 0;
+}
+
+.save-share {
+  background: #1677ff;
+  color: #fff;
+}
+
+.preview-link {
+  background: #e8f2ff;
+  color: #1669d4;
+}
+
+.copy-panel {
+  margin-top: 24rpx;
+  padding: 24rpx;
+  border-radius: 22rpx;
+  background: #fff;
+}
+
+.panel-title {
+  color: #102a43;
+  font-size: 29rpx;
+  font-weight: 800;
+}
+
+.copy-text {
+  margin-top: 16rpx;
+  padding: 18rpx;
+  border-radius: 14rpx;
+  background: #f7faff;
+  color: #526579;
+  font-size: 26rpx;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.copy-button,
+.retry-button {
+  margin-top: 18rpx;
+  background: #eef5ff;
+  color: #1669d4;
+}
+
+.retry-button {
+  width: 100%;
+}
+
+.share-card-canvas {
+  position: fixed;
+  left: -2000px;
+  top: 0;
+  width: 750px;
+  height: 600px;
+  pointer-events: none;
+}

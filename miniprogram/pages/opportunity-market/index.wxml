@@ -7,7 +7,6 @@
       <view class="hero-title">供需广场</view>
       <view class="hero-sub">官方收录需求和用户供给都放在这里，先看可联系和可信状态。</view>
     </view>
-    <button class="publish-btn" bindtap="handlePublish">发布需求/供给</button>
   </view>
 
   <view class="stats-grid">

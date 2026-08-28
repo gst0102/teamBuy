@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 import httpx
+import logging
+import secrets
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
@@ -10,16 +13,19 @@ from app.api.dependencies import (
     get_ops_console_store,
     get_sync_task_queue,
     get_wecom_archive_client,
+    get_wecom_archive_media_client,
     get_wecom_client,
     get_wecom_mock_service,
 )
 from app.core.config import settings
 from app.schemas.common import ApiResponse
 from app.schemas.imports import MockImportRequest
+from app.schemas.wecom_archive_core import SharedArchiveEvent
 from app.services.app_service import AppService
 from app.services.ops_console_store import OpsConsoleStore
 from app.services.sync_task_queue import SyncTaskQueue
 from app.services.wecom_archive_client import WecomArchiveClient
+from app.services.wecom_bind_card_asset_service import WecomBindCardAssetService
 from app.services.wecom_client import WecomClient, WecomClientError
 from app.services.wecom_crypto import WecomCryptoError, decrypt_aes_message, verify_signature
 from app.services.wecom_event_service import parse_callback_body
@@ -27,6 +33,7 @@ from app.services.wecom_mock_service import WecomMockService
 
 
 router = APIRouter(prefix="/api/wecom", tags=["wecom"])
+logger = logging.getLogger(__name__)
 KF_CALLBACK_PATH = "/kf/teamBuy/callback"
 ARCHIVE_CALLBACK_PATH = "/archive/callback"
 GROUP_BOT_MESSAGE_TEMPLATES = {
@@ -99,6 +106,85 @@ def _notification_reply_text(notification: dict) -> str:
     return f"整理失败：{title}\n{message}"
 
 
+def _contact_add_event(payload: dict) -> bool:
+    return (
+        str(payload.get("Event") or payload.get("event") or "").strip() == "change_external_contact"
+        and str(payload.get("ChangeType") or payload.get("changeType") or "").strip()
+        in {"add_external_contact", "add_half_external_contact"}
+    )
+
+
+async def _handle_contact_add_event(
+    payload: dict,
+    service: AppService,
+    client: WecomClient,
+) -> dict:
+    """Handle the contact-plugin add event before any normal sync work.
+
+    WelcomeCode is a one-shot credential with a very short lifetime.  Keep this
+    path synchronous and do not put it on the archive/sync queue.
+    """
+    if not _contact_add_event(payload):
+        return {"handled": False}
+
+    state = str(payload.get("State") or payload.get("state") or "").strip()
+    expected_state = settings.wecom_contact_state.strip()
+    if expected_state and state != expected_state:
+        return {"handled": True, "status": "ignored_state", "state": state}
+
+    external_user_id = str(payload.get("ExternalUserID") or payload.get("externalUserId") or "").strip()
+    welcome_code = str(payload.get("WelcomeCode") or payload.get("welcomeCode") or "").strip()
+    if not external_user_id or not welcome_code:
+        return {
+            "handled": True,
+            "status": "missing_welcome_code",
+            "externalUserId": external_user_id or None,
+        }
+
+    issued = service.issue_wecom_bind_card_token(external_user_id, welcome_code)
+    if issued["status"] == "already_bound":
+        return {"handled": True, **issued}
+    if issued.get("alreadyIssued"):
+        return {"handled": True, "status": "already_issued", "tokenId": issued.get("tokenId")}
+
+    if settings.wecom_use_mock:
+        service.mark_wecom_bind_card_delivery(issued["tokenId"], "sent")
+        return {
+            "handled": True,
+            "status": "mock_sent",
+            "tokenId": issued["tokenId"],
+            "page": issued["page"],
+        }
+
+    try:
+        asset_service = WecomBindCardAssetService(service.repo, client, settings)
+        bind_card_asset = await asset_service.ensure_valid()
+        response = await client.send_contact_welcome_mini_program(
+            welcome_code=welcome_code,
+            appid=settings.wechat_miniapp_appid,
+            page=issued["page"],
+            title=settings.wecom_bind_card_title,
+            pic_media_id=bind_card_asset.mediaId,
+            text_content=settings.wecom_bind_welcome_text,
+        )
+    except Exception as exc:
+        service.mark_wecom_bind_card_delivery(issued["tokenId"], "failed")
+        return {
+            "handled": True,
+            "status": "send_failed",
+            "tokenId": issued["tokenId"],
+            "error": str(exc),
+        }
+
+    service.mark_wecom_bind_card_delivery(issued["tokenId"], "sent")
+    return {
+        "handled": True,
+        "status": "sent",
+        "tokenId": issued["tokenId"],
+        "response": response,
+    }
+
+
 async def _send_import_notifications(
     notifications: list[dict],
     service: AppService,
@@ -144,6 +230,63 @@ def _verify_admin_token(provided_token: str | None) -> None:
         raise HTTPException(status_code=403, detail="WECOM_ADMIN_TOKEN is not configured")
     if provided_token != settings.admin_token:
         raise HTTPException(status_code=403, detail="admin token verification failed")
+
+
+def _verify_archive_core_project_token(provided_token: str | None, project_id: str | None = None) -> None:
+    if settings.wecom_archive_source != "shared":
+        raise HTTPException(status_code=409, detail="当前项目未切换到共享归档平台")
+    configured = settings.wecom_archive_core_project_token
+    if not configured or not provided_token or not secrets.compare_digest(provided_token, configured):
+        raise HTTPException(status_code=401, detail="共享归档项目令牌无效")
+    if not project_id or project_id != settings.wecom_archive_core_project_id:
+        raise HTTPException(status_code=403, detail="共享归档项目路由不匹配")
+
+
+@router.post("/archive/core-events", response_model=ApiResponse[dict])
+def receive_shared_archive_event(
+    payload: SharedArchiveEvent,
+    x_project_token: str | None = Header(default=None, alias="X-WeCom-Archive-Project-Token"),
+    x_project_id: str | None = Header(default=None, alias="X-WeCom-Archive-Project"),
+    service: AppService = Depends(get_app_service),
+):
+    """Accept one idempotent event from the shared archive core.
+
+    This endpoint persists the event only. The existing teamBuy archive worker
+    processes pending messages asynchronously, using the core media proxy when
+    `WECOM_ARCHIVE_SOURCE=shared`.
+    """
+    _verify_archive_core_project_token(x_project_token, x_project_id)
+    if payload.seq != payload.message.seq:
+        raise HTTPException(status_code=400, detail="归档事件 seq 不一致")
+    message = payload.message.model_dump()
+    result = service.save_wecom_archive_messages(
+        settings.wecom_corp_id or "shared",
+        [
+            {
+                "seq": message["seq"],
+                "msgid": message.get("msgId") or payload.eventId,
+                "action": message.get("action"),
+                "from": message.get("fromUser"),
+                "tolist": message.get("toList") or [],
+                "roomid": message.get("roomId"),
+                "msgtime": message.get("msgTime"),
+                "msgtype": message.get("msgType"),
+                "decryptedPayload": message.get("decryptedPayload") or {},
+                "mediaRefs": message.get("mediaRefs") or [],
+            }
+        ],
+        advance_cursor=False,
+        refresh_media_on_duplicate=True,
+    )
+    return ApiResponse(
+        message="shared archive event accepted",
+        data={
+            "eventId": payload.eventId,
+            "savedCount": result.get("savedCount", 0),
+            "duplicateCount": result.get("skippedDuplicateCount", 0),
+            "refreshedMediaCount": result.get("refreshedMediaCount", 0),
+        },
+    )
 
 
 def _configured_group_webhooks(store: OpsConsoleStore | None = None) -> dict[str, str]:
@@ -280,7 +423,8 @@ async def _download_sync_media(
             continue
         try:
             downloaded = await client.download_media(media_id)
-            media_urls[media_id] = service.process_and_store_media(
+            media_urls[media_id] = await asyncio.to_thread(
+                service.process_and_store_media,
                 media_id=media_id,
                 media_type=msg_type,
                 content=downloaded.content,
@@ -288,7 +432,8 @@ async def _download_sync_media(
                 filename=downloaded.filename,
             )
         except WecomClientError as exc:
-            service.save_media_retry_failure(
+            await asyncio.to_thread(
+                service.save_media_retry_failure,
                 media_id=media_id,
                 media_type=msg_type,
                 open_kfid=message.get("openKfid"),
@@ -299,14 +444,16 @@ async def _download_sync_media(
 
 async def _retry_media_job(job: dict, client: WecomClient, service: AppService):
     downloaded = await client.download_media(job["mediaId"])
-    local_url = service.process_and_store_media(
+    local_url = await asyncio.to_thread(
+        service.process_and_store_media,
         media_id=job["mediaId"],
         media_type=job["mediaType"],
         content=downloaded.content,
         content_type=downloaded.content_type,
         filename=downloaded.filename,
     )
-    return service.save_media_retry_success(
+    return await asyncio.to_thread(
+        service.save_media_retry_success,
         media_id=job["mediaId"],
         media_type=job["mediaType"],
         open_kfid=job.get("openKfid"),
@@ -322,14 +469,14 @@ def verify_callback(
     echostr: str | None = Query(default=None),
     token: str | None = Query(default=None),
 ):
-    if token is not None and token != settings.wecom_callback_token:
+    if token is not None and token != settings.wecom_kf_callback_token:
         raise HTTPException(status_code=403, detail="token 验证失败")
     if echostr and msg_signature and timestamp and nonce:
-        if not verify_signature(settings.wecom_callback_token, timestamp, nonce, echostr, msg_signature):
+        if not verify_signature(settings.wecom_kf_callback_token, timestamp, nonce, echostr, msg_signature):
             raise HTTPException(status_code=403, detail="企业微信签名验证失败")
-        if settings.wecom_encoding_aes_key and settings.wecom_corp_id:
+        if settings.wecom_kf_encoding_aes_key and settings.wecom_corp_id:
             try:
-                return PlainTextResponse(decrypt_aes_message(settings.wecom_encoding_aes_key, echostr, settings.wecom_corp_id))
+                return PlainTextResponse(decrypt_aes_message(settings.wecom_kf_encoding_aes_key, echostr, settings.wecom_corp_id))
             except WecomCryptoError as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
     return PlainTextResponse(echostr or "verified")
@@ -356,7 +503,20 @@ async def receive_callback(
             },
         )
     except (ValueError, WecomCryptoError) as exc:
+        logger.exception(
+            "企业微信客户回调解析失败 content_type=%s body_bytes=%s has_signature=%s has_timestamp=%s has_nonce=%s",
+            request.headers.get("content-type", ""),
+            len(raw_body),
+            bool(request.query_params.get("msg_signature")),
+            bool(request.query_params.get("timestamp")),
+            bool(request.query_params.get("nonce")),
+        )
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    contact_result = await _handle_contact_add_event(payload, service, client)
+    if contact_result.get("handled"):
+        return ApiResponse(message="contact add event handled", data={"callback": payload, "contact": contact_result})
+
     if settings.wecom_use_mock:
         fixture = payload.get("fixture", "note")
         external_user_id = payload.get("externalUserId") or payload.get("ExternalUserID") or "external_demo"
@@ -380,8 +540,8 @@ def verify_archive_callback(
     echostr: str | None = Query(default=None),
     token: str | None = Query(default=None),
 ):
-    callback_token = settings.wecom_archive_callback_token or settings.wecom_callback_token
-    callback_aes_key = settings.wecom_archive_encoding_aes_key or settings.wecom_encoding_aes_key
+    callback_token = settings.wecom_archive_callback_token
+    callback_aes_key = settings.wecom_archive_encoding_aes_key
     if token is not None and token != callback_token:
         raise HTTPException(status_code=403, detail="token 验证失败")
     if echostr and msg_signature and timestamp and nonce:
@@ -408,8 +568,8 @@ async def receive_archive_callback(request: Request):
                 "timestamp": request.query_params.get("timestamp"),
                 "nonce": request.query_params.get("nonce"),
             },
-            token=settings.wecom_archive_callback_token or settings.wecom_callback_token,
-            encoding_aes_key=settings.wecom_archive_encoding_aes_key or settings.wecom_encoding_aes_key,
+            token=settings.wecom_archive_callback_token,
+            encoding_aes_key=settings.wecom_archive_encoding_aes_key,
         )
     except (ValueError, WecomCryptoError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -611,7 +771,24 @@ def customer_service_config():
 
 @router.get("/archive/config-check", response_model=ApiResponse[dict])
 def archive_config_check():
-    missing = settings.missing_wecom_archive_fields()
+    shared_core_configured = bool(
+        settings.wecom_archive_source == "shared"
+        and settings.wecom_archive_core_project_id
+        and settings.wecom_archive_core_project_token
+        and settings.wecom_archive_core_media_base_url
+    )
+    if settings.wecom_archive_source == "shared":
+        missing = [] if shared_core_configured else [
+            key
+            for key, value in {
+                "WECOM_ARCHIVE_CORE_PROJECT_ID": settings.wecom_archive_core_project_id,
+                "WECOM_ARCHIVE_CORE_PROJECT_TOKEN": settings.wecom_archive_core_project_token,
+                "WECOM_ARCHIVE_CORE_MEDIA_BASE_URL": settings.wecom_archive_core_media_base_url,
+            }.items()
+            if not value
+        ]
+    else:
+        missing = settings.missing_wecom_archive_fields()
     public_key = _read_text_file(settings.wecom_archive_public_key_path)
     private_key_exists = bool(settings.wecom_archive_private_key_path and settings.wecom_archive_private_key_path.exists())
     sdk_exists = bool(settings.wecom_archive_sdk_lib_path and settings.wecom_archive_sdk_lib_path.exists())
@@ -620,18 +797,29 @@ def archive_config_check():
         message="wecom archive config ready" if not missing else "wecom archive config incomplete",
         data={
             "enabled": settings.wecom_archive_enabled,
-            "callbackUrl": f"{settings.public_base_url.rstrip('/')}/api/wecom{ARCHIVE_CALLBACK_PATH}" if settings.public_base_url else "",
-            "callbackTokenConfigured": bool(settings.wecom_archive_callback_token or settings.wecom_callback_token),
-            "callbackAesKeyConfigured": bool(settings.wecom_archive_encoding_aes_key or settings.wecom_encoding_aes_key),
+            "source": settings.wecom_archive_source,
+            "sharedCoreConfigured": shared_core_configured,
+            "callbackOwner": "sharedCore" if settings.wecom_archive_source == "shared" else "thisProject",
+            "callbackUrl": (
+                ""
+                if settings.wecom_archive_source == "shared"
+                else f"{settings.public_base_url.rstrip('/')}/api/wecom{ARCHIVE_CALLBACK_PATH}" if settings.public_base_url else ""
+            ),
+            "callbackTokenConfigured": bool(settings.wecom_archive_callback_token),
+            "callbackAesKeyConfigured": bool(settings.wecom_archive_encoding_aes_key),
             "corpIdConfigured": bool(settings.wecom_corp_id),
-            "archiveSecretConfigured": bool(settings.wecom_archive_secret),
+            "archiveSecretConfigured": bool(settings.wecom_archive_secret) if settings.wecom_archive_source != "shared" else False,
             "privateKeyPath": _mask_path(settings.wecom_archive_private_key_path),
             "privateKeyReadable": private_key_exists,
             "publicKeyPath": _mask_path(settings.wecom_archive_public_key_path),
             "publicKey": public_key,
             "sdkLibPath": _mask_path(settings.wecom_archive_sdk_lib_path),
             "sdkLibReadable": sdk_exists,
-            "sdkConfigured": sdk_exists and bool(settings.wecom_archive_secret and settings.wecom_archive_private_key_path),
+            "sdkConfigured": (
+                sdk_exists and bool(settings.wecom_archive_secret and settings.wecom_archive_private_key_path)
+                if settings.wecom_archive_source != "shared"
+                else False
+            ),
             "pullLimit": settings.wecom_archive_pull_limit,
             "workerEnabled": settings.wecom_archive_worker_enabled,
             "workerIntervalSeconds": settings.wecom_archive_worker_interval_seconds,
@@ -703,7 +891,7 @@ def backfill_archive_media(
     admin_token: str | None = Query(default=None, alias="adminToken"),
     x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
     service: AppService = Depends(get_app_service),
-    archive_client: WecomArchiveClient = Depends(get_wecom_archive_client),
+    archive_client: WecomArchiveClient = Depends(get_wecom_archive_media_client),
 ):
     _verify_admin_token(x_admin_token or admin_token)
     return ApiResponse(

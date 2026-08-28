@@ -551,7 +551,7 @@ Page({
           businessCard.revision || "",
           businessCard.updatedAt || businessCard.createdAt || "",
           shareStyleId,
-          shareSource && shareSource.shareRendererVersion || SHARE_CARD_STYLE_VERSION
+          shareFingerprint
         ].join("|")
       : "";
     const sameShare = Boolean(shareKey && shareKey === this.data.businessCardShareKey);

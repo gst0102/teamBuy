@@ -9,7 +9,8 @@ page {
 }
 
 .tpl-page {
-  min-height: 100vh;
+  /* 页面内容决定高度；不能让 grid 为凑满一屏拉伸中间空行。 */
+  min-height: auto;
   max-width: 720rpx;
   margin-left: auto;
   margin-right: auto;
@@ -872,6 +873,7 @@ page {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14rpx;
+  align-content: start;
 }
 
 .catalog-page.layout-grid .catalog-search,
@@ -976,7 +978,7 @@ page {
   right: 24rpx;
   bottom: calc(20rpx + env(safe-area-inset-bottom));
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.28fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12rpx;
   max-width: 720rpx;
   margin: 0 auto;
@@ -1007,6 +1009,150 @@ page {
 
 .bottom-contact button::after {
   border: 0;
+}
+
+/* 合集客户页：长标题/摘要只占有限行数，避免列表和双列卡片被文字撑变形。 */
+.showcase-card,
+.story-row,
+.catalog-row,
+.brand-case {
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.showcase-card .card-title,
+.showcase-card .card-summary,
+.story-row-title,
+.story-row-sub,
+.catalog-title,
+.catalog-summary,
+.brand-case-title,
+.brand-case-sub {
+  min-width: 0;
+  word-break: break-all;
+  overflow: hidden;
+}
+
+.showcase-card .card-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: normal;
+  line-height: 1.28;
+  max-height: 66rpx;
+}
+
+.showcase-card .card-summary {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: normal;
+  line-height: 1.35;
+  max-height: 58rpx;
+}
+
+.showcase-grid.layout-list .showcase-card {
+  grid-template-columns: 180rpx minmax(0, 1fr);
+  min-height: 164rpx;
+}
+
+.showcase-grid.layout-list .card-cover {
+  width: 180rpx;
+  min-height: 164rpx;
+  height: 100%;
+}
+
+.showcase-grid.layout-list .card-title {
+  align-self: start;
+  margin-top: 14rpx;
+}
+
+.showcase-grid.layout-list .card-bottom {
+  align-self: end;
+  margin-bottom: 12rpx;
+}
+
+.story-row-title,
+.catalog-title,
+.brand-case-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: normal;
+  line-height: 1.3;
+  max-height: 70rpx;
+}
+
+.story-row-sub,
+.catalog-summary,
+.brand-case-sub {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+  white-space: normal;
+  line-height: 1.35;
+  max-height: 32rpx;
+}
+
+.story-row > view,
+.catalog-main,
+.brand-case-body {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.story-row {
+  grid-template-columns: 160rpx minmax(0, 1fr);
+  gap: 14rpx;
+  min-height: 142rpx;
+  padding: 12rpx;
+}
+
+.story-row image {
+  width: 160rpx;
+  height: 116rpx;
+}
+
+.catalog-row {
+  grid-template-columns: 150rpx minmax(0, 1fr) 116rpx;
+  gap: 12rpx;
+  min-height: 158rpx;
+  margin-bottom: 12rpx;
+  padding: 12rpx;
+}
+
+.catalog-cover {
+  width: 150rpx;
+  height: 116rpx;
+}
+
+.detail-btn {
+  width: 116rpx;
+  height: 48rpx;
+  font-size: 20rpx;
+}
+
+.catalog-page.layout-grid .catalog-row {
+  grid-template-columns: minmax(0, 1fr);
+  min-height: 0;
+}
+
+.catalog-page.layout-grid .catalog-cover {
+  width: 100%;
+  height: 150rpx;
+}
+
+.catalog-page.layout-grid .detail-btn {
+  width: 100%;
+  height: 48rpx;
+}
+
+.brand-case-title {
+  font-size: 25rpx;
+}
+
+.brand-case-sub {
+  font-size: 21rpx;
 }
 
 .tpl-brand_card {
@@ -1311,4 +1457,27 @@ page {
   .agent-same-btn {
     height: 76rpx;
   }
+}
+
+/* 放在文件末尾，覆盖旧版品牌卡规则，确保长文本不会把卡片撑高。 */
+.brand-case-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  max-height: 64rpx;
+  line-height: 1.28;
+  white-space: normal;
+  word-break: break-all;
+  overflow: hidden;
+}
+
+.brand-case-sub {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+  max-height: 30rpx;
+  line-height: 1.35;
+  white-space: normal;
+  word-break: break-all;
+  overflow: hidden;
 }

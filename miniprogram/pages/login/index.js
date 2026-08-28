@@ -1,36 +1,90 @@
 const api = require("../../services/api");
-const { getRandomDefaultNickname } = require("../../utils/dashboard");
+const subscription = require("../../services/subscription");
 
-const initialNickname = getRandomDefaultNickname();
+const LOCAL_TEST_NICKNAME = "测试用户";
+
+function getAppInstance() {
+  try {
+    return typeof getApp === "function" ? getApp() || null : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+function getGlobalData() {
+  const app = getAppInstance();
+  return (app && app.globalData) || {};
+}
+
+function decodeReturnUrl(value) {
+  try {
+    return decodeURIComponent(value || "");
+  } catch (error) {
+    return "";
+  }
+}
+
+function isLocalAvatarPath(value) {
+  const text = String(value || "").trim();
+  return /^(wxfile|file):/i.test(text) || /^\/tmp\//i.test(text) || /^http:\/\/tmp\//i.test(text);
+}
 
 Page({
   data: {
-    nickname: initialNickname,
-    avatarUrl: "",
     allowMockLogin: false,
     returnUrl: "",
     loggingIn: false,
     loginCoverFailed: false,
-    legalAgreed: false
+    legalAgreed: false,
+    loginProfileDraft: {
+      nickname: "",
+      avatarUrl: ""
+    }
   },
   onLoad(options = {}) {
-    const app = getApp();
-    const returnUrl = decodeURIComponent(options.returnUrl || "");
-    if (app.globalData.currentUser) {
+    const app = getAppInstance();
+    const globalData = getGlobalData();
+    if (app && app.globalData) app.globalData.authRecoveryInFlight = false;
+    const returnUrl = decodeReturnUrl(options.returnUrl);
+    if (globalData.currentUser) {
       this.redirectAfterLogin(returnUrl);
       return;
     }
-    const baseUrl = (app.globalData && app.globalData.apiBaseUrl) || "";
+    const baseUrl = globalData.apiBaseUrl || "";
     this.setData({
       allowMockLogin: !/^https:\/\//i.test(baseUrl),
       returnUrl
     });
   },
-  handleNicknameChange(event) {
-    this.setData({ nickname: event.detail.value });
-  },
   handleLoginCoverError() {
     this.setData({ loginCoverFailed: true });
+  },
+  handleChooseAvatarFromAlbum() {
+    const handleSuccess = (result = {}) => {
+      const firstFile = Array.isArray(result.tempFiles) ? result.tempFiles[0] : null;
+      const avatarUrl = String((firstFile && firstFile.tempFilePath) || (result.tempFilePaths || [])[0] || "").trim();
+      if (!avatarUrl) {
+        wx.showToast({ title: "未选择头像", icon: "none" });
+        return;
+      }
+      this.setData({ "loginProfileDraft.avatarUrl": avatarUrl });
+    };
+    const handleFail = (error = {}) => {
+      if (/cancel/i.test(String(error.errMsg || ""))) return;
+      wx.showToast({ title: "选择头像失败，请重试", icon: "none" });
+    };
+    if (typeof wx.chooseMedia === "function") {
+      wx.chooseMedia({ count: 1, mediaType: ["image"], sourceType: ["album"], success: handleSuccess, fail: handleFail });
+      return;
+    }
+    if (typeof wx.chooseImage !== "function") {
+      wx.showToast({ title: "当前版本暂不支持选择头像", icon: "none" });
+      return;
+    }
+    wx.chooseImage({ count: 1, sourceType: ["album"], success: handleSuccess, fail: handleFail });
+  },
+  handleLoginNicknameInput(event) {
+    this.setData({ "loginProfileDraft.nickname": event.detail.value });
   },
   handleToggleLegalAgree() {
     this.setData({ legalAgreed: !this.data.legalAgreed });
@@ -66,8 +120,11 @@ Page({
     }
     return openid;
   },
-  saveLogin(user) {
-    const app = getApp();
+  persistLoginUser(user) {
+    const app = getAppInstance();
+    if (!app || !app.globalData) {
+      throw { detail: "小程序正在启动，请稍后重试" };
+    }
     const userWithBase = {
       ...user,
       apiBaseUrl: app.globalData.apiBaseUrl,
@@ -76,29 +133,71 @@ Page({
     };
     app.globalData.currentUser = userWithBase;
     wx.setStorageSync("currentUser", userWithBase);
+    subscription.preloadViewNotificationSubscriptionConfig(userWithBase.id);
+    return userWithBase;
+  },
+  async saveLogin(user) {
+    const app = getAppInstance();
+    if (app && app.globalData) app.globalData.authRecoveryInFlight = false;
+    let finalUser = this.persistLoginUser(user);
+    const draft = this.data.loginProfileDraft || {};
+    const nickname = String(draft.nickname || "").trim();
+    let avatarUrl = String(draft.avatarUrl || "").trim();
+    if (nickname || isLocalAvatarPath(avatarUrl)) {
+      try {
+        if (isLocalAvatarPath(avatarUrl)) {
+          const uploaded = await api.uploadAsset({
+            filePath: avatarUrl,
+            mediaType: "image",
+            ownerUserId: finalUser.id
+          });
+          avatarUrl = uploaded.url || "";
+        }
+        const updated = await api.updateUserProfile(finalUser.id, {
+          nickname: nickname || finalUser.nickname,
+          avatarUrl: avatarUrl || finalUser.avatarUrl || ""
+        });
+        finalUser = this.persistLoginUser(updated.data || finalUser);
+      } catch (error) {
+        wx.showToast({ title: "已登录，头像或昵称稍后可在个人资料补充", icon: "none", duration: 2200 });
+      }
+    }
+    this.setData({ "loginProfileDraft.avatarUrl": "" });
     this.redirectAfterLogin(this.data.returnUrl);
   },
   redirectAfterLogin(returnUrl = "") {
     const target = String(returnUrl || "").trim();
-    if (target && target.startsWith("/pages/") && !target.startsWith("/pages/home/")) {
+    const isMiniProgramPath = target.startsWith("/pages/") || target.startsWith("/subpackages/");
+    if (target && isMiniProgramPath && !target.startsWith("/pages/home/")) {
       wx.redirectTo({ url: target });
       return;
     }
     wx.switchTab({ url: "/pages/home/index" });
   },
+  handleSkipLogin() {
+    // 登录是受保护业务动作的门槛，拒绝授权后只回到公开首页，不能再次回到原门槛页面。
+    wx.switchTab({
+      url: "/pages/home/index",
+      fail: () => wx.reLaunch({ url: "/pages/home/index" })
+    });
+  },
   async loginWithLocalIdentity() {
     const res = await api.mockLogin({
-      nickname: this.data.nickname || getRandomDefaultNickname(),
-      avatarUrl: this.data.avatarUrl,
+      nickname: LOCAL_TEST_NICKNAME,
       openid: this.ensureMockOpenid()
     });
-    this.saveLogin(res.data);
+    await this.saveLogin(res.data);
   },
   async handleWechatLogin() {
     if (this.data.loggingIn) return;
     if (!this.ensureLegalAgreed()) return;
-    const app = getApp();
-    const baseUrl = (app.globalData && app.globalData.apiBaseUrl) || "";
+    const app = getAppInstance();
+    const globalData = getGlobalData();
+    const baseUrl = globalData.apiBaseUrl || "";
+    if (!app || !app.globalData) {
+      wx.showToast({ title: "小程序正在启动，请稍后重试", icon: "none" });
+      return;
+    }
     if (!/^https:\/\//i.test(baseUrl)) {
       wx.showModal({
         title: "当前是本地环境",
@@ -111,13 +210,8 @@ Page({
     wx.showLoading({ title: "登录中" });
     try {
       const code = await this.requestWxCode();
-      const res = await api.wechatLogin({
-        code,
-        nickname: this.data.nickname || getRandomDefaultNickname(),
-        avatarUrl: this.data.avatarUrl
-      });
-      wx.hideLoading();
-      this.saveLogin(res.data);
+      const res = await api.wechatLogin({ code });
+      await this.saveLogin(res.data);
     } catch (error) {
       wx.hideLoading();
       if ((error.detail || "").includes("微信登录未配置")) {

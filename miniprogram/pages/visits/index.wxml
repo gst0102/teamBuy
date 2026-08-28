@@ -1,206 +1,268 @@
-<view class="page-shell radar-page">
+<view class="page-shell radar-page radar-workbench">
   <custom-nav title="客户雷达" />
 
-  <view class="radar-hero">
-    <view class="radar-hero-main">
-      <view class="radar-hero-copy">
-        <view class="radar-hero-kicker">谁值得跟进</view>
-        <view class="radar-hero-title">先看信号，再决定怎么跟</view>
-        <view class="radar-hero-sub">先看谁值得跟。</view>
-        <view class="radar-hero-foot">
-          <view class="radar-hero-pill">今日机会</view>
-          <view class="radar-hero-pill">{{modeConfig.shortName || modeConfig.name}}</view>
-        </view>
-      </view>
-      <view class="radar-hero-visual">
-        <view class="radar-hero-orbit">
-          <view class="hero-orbit-ring outer"></view>
-          <view class="hero-orbit-ring middle"></view>
-          <view class="hero-orbit-ring inner"></view>
-          <view class="hero-orbit-cross horizontal"></view>
-          <view class="hero-orbit-cross vertical"></view>
-          <view class="hero-orbit-center">客</view>
-          <view class="hero-orbit-dot one"></view>
-          <view class="hero-orbit-dot two"></view>
-          <view class="hero-orbit-dot three"></view>
-        </view>
-        <view class="hero-signal-card left">
-          <view>高意向</view>
-          <text>{{summary.highIntent || 0}} 人</text>
-        </view>
-        <view class="hero-signal-card right top">
-          <view>待跟进</view>
-          <text>{{summary.pending || 0}} 条</text>
-        </view>
-        <view class="hero-signal-card right bottom">
-          <view>复活机会</view>
-          <text>{{summary.revival || 0}} 条</text>
-        </view>
-      </view>
+  <view class="radar-workbench-intro">
+    <view class="radar-workbench-kicker">客户信号 · {{modeConfig.name || '资料'}}</view>
+    <view class="radar-workbench-title">先处理最有回应的人</view>
+    <view class="radar-workbench-subtitle">把真实浏览和互动，整理成今天能执行的下一步。</view>
+    <view class="radar-workbench-private"><text class="radar-workbench-private-dot"></text>仅自己可见 · 同行和上游不会进入待跟进</view>
+  </view>
+
+  <view class="radar-workbench-metrics" role="list">
+    <view class="radar-workbench-metric pending" data-key="pending" bindtap="handleMetricTap" role="button">
+      <view class="radar-workbench-metric-value">{{summaryDisplay.pending}}</view>
+      <view class="radar-workbench-metric-label">待跟进</view>
+      <view class="radar-workbench-metric-arrow">›</view>
+    </view>
+    <view class="radar-workbench-metric visitors" data-key="visitors" bindtap="handleMetricTap" role="button">
+      <view class="radar-workbench-metric-value">{{summaryDisplay.visitors}}</view>
+      <view class="radar-workbench-metric-label">活跃访客</view>
+      <view class="radar-workbench-metric-arrow">›</view>
+    </view>
+    <view class="radar-workbench-metric following" data-key="following" bindtap="handleMetricTap" role="button">
+      <view class="radar-workbench-metric-value">{{summaryDisplay.following}}</view>
+      <view class="radar-workbench-metric-label">跟进中</view>
+      <view class="radar-workbench-metric-arrow">›</view>
+    </view>
+    <view class="radar-workbench-metric abandoned" data-key="abandoned" bindtap="handleMetricTap" role="button">
+      <view class="radar-workbench-metric-value">{{summaryDisplay.abandoned}}</view>
+      <view class="radar-workbench-metric-label">已放弃</view>
+      <view class="radar-workbench-metric-arrow">›</view>
     </view>
   </view>
 
-  <view class="radar-tabs">
-    <view
-      wx:for="{{tabs}}"
-      wx:key="key"
-      class="radar-tab {{activeTab === item.key ? 'active' : ''}}"
-      data-key="{{item.key}}"
-      bindtap="handleTabChange"
-    >{{item.label}}</view>
-  </view>
-
-  <view class="source-filter-bar" wx:if="{{sourceFilter}}">
-    <view>
-      <text>当前只看</text>
-      <view>{{sourceFilter.title || '这条资料'}} 的客户反馈</view>
+  <view class="radar-workbench-tabs" role="tablist">
+    <view class="radar-workbench-tab {{activeTab === 'followup' ? 'active' : ''}}" data-key="followup" bindtap="handleTabChange" role="tab">
+      <text>待跟进</text>
+      <text class="radar-workbench-tab-count">{{summaryDisplay.pending}}</text>
     </view>
-    <button bindtap="handleClearSourceFilter">看全部</button>
+    <view class="radar-workbench-tab {{activeTab === 'visitors' ? 'active' : ''}}" data-key="visitors" bindtap="handleTabChange" role="tab">
+      <text>访客</text>
+      <text class="radar-workbench-tab-count">{{summaryDisplay.visitors}}</text>
+    </view>
+    <view class="radar-workbench-tab {{activeTab === 'following' ? 'active' : ''}}" data-key="following" bindtap="handleTabChange" role="tab">
+      <text>跟进中</text>
+      <text class="radar-workbench-tab-count following-count">{{summaryDisplay.following}}</text>
+    </view>
+    <view class="radar-workbench-tab {{activeTab === 'abandoned' ? 'active' : ''}}" data-key="abandoned" bindtap="handleTabChange" role="tab">
+      <text>已放弃</text>
+      <text class="radar-workbench-tab-count">{{summaryDisplay.abandoned}}</text>
+    </view>
   </view>
 
-  <view class="radar-summary-card">
-    <view class="summary-head">
+  <view class="radar-workbench-refresh" wx:if="{{loading}}"><view class="radar-workbench-refresh-dot"></view>正在更新客户信号</view>
+
+  <view class="radar-workbench-state error" wx:if="{{loadError}}">
+    <view class="radar-workbench-state-icon">!</view>
+    <view class="radar-workbench-state-title">雷达暂时没有连上</view>
+    <view class="radar-workbench-state-desc">{{loadError}}</view>
+    <button class="radar-workbench-button primary full" bindtap="handleRetry">重新读取</button>
+  </view>
+
+  <view class="radar-workbench-state" wx:elif="{{anonymous}}">
+    <view class="radar-workbench-state-icon neutral">◌</view>
+    <view class="radar-workbench-state-title">登录后查看你的客户雷达</view>
+    <view class="radar-workbench-state-desc">登录只在你主动使用个人功能时触发；当前可以继续浏览公开资料。</view>
+  </view>
+
+  <view class="radar-workbench-state" wx:elif="{{featureDisabled}}">
+    <view class="radar-workbench-state-icon neutral">—</view>
+    <view class="radar-workbench-state-title">客户信息链暂未开启</view>
+    <view class="radar-workbench-state-desc">运营后台开启后，这里会展示客户浏览、互动和待跟进信息。</view>
+  </view>
+
+  <view class="radar-workbench-state" wx:elif="{{intelligenceLocked}}">
+    <view class="radar-workbench-state-icon neutral">◌</view>
+    <view class="radar-workbench-state-title">发现新的客户信号</view>
+    <view class="radar-workbench-state-desc">{{customerInfoAccessState === 'payment_required' ? '开通会员后即可查看客户详情和跟进信息。' : '点击后重新读取客户信号。'}}</view>
+    <button class="radar-workbench-button primary full" bindtap="handleOpenCustomerSignals">{{customerInfoAccessState === 'payment_required' ? '去支付查看' : '继续查看'}}</button>
+  </view>
+
+  <block wx:else>
+    <view class="radar-workbench-filter" wx:if="{{sourceFilter}}">
+      <view class="radar-workbench-filter-copy">
+        <view class="radar-workbench-filter-label">当前只看资料</view>
+        <view class="radar-workbench-filter-title">{{sourceFilter.title || '当前资料'}}</view>
+      </view>
+      <button class="radar-workbench-filter-clear" bindtap="handleClearSourceFilter">看全部</button>
+    </view>
+
+    <view class="radar-workbench-section-head" wx:if="{{activeTab === 'followup'}}">
       <view>
-        <view class="summary-title">{{summaryView.title}}</view>
-        <view class="summary-sub">{{summaryView.sub}}</view>
+        <view class="radar-workbench-section-title">待处理客户</view>
+        <view class="radar-workbench-section-desc">先处理有明确回应的人，完成跟进后会从列表中移开。</view>
       </view>
-      <view class="summary-badge">{{summaryView.badge}}</view>
+      <view class="radar-workbench-section-count">{{radarCards.length}} 人</view>
     </view>
-    <view class="summary-grid">
-      <view class="summary-item" wx:for="{{summaryView.metrics}}" wx:key="key">
-        <view class="summary-value">{{item.value}}</view>
-        <view class="summary-label">{{item.label}}</view>
-      </view>
-    </view>
-    <view class="assistant-brief">
-      <view class="assistant-brief-label">今日建议</view>
-      <view class="assistant-brief-text">{{assistantBrief}}</view>
-    </view>
-    <view class="summary-soft-row">
-      <view class="summary-soft-pill">优先处理最值得联系的人</view>
-      <view class="summary-soft-pill muted">同行 {{summary.filtered || 0}} 已过滤</view>
-      <view class="summary-soft-pill muted">导出跟进方案</view>
-    </view>
-  </view>
-
-  <view wx:if="{{activeTab === 'followup'}}">
-    <view class="section-head radar-section-head">
+    <view class="radar-workbench-section-head" wx:elif="{{activeTab === 'visitors'}}">
       <view>
-        <view class="section-title">今天优先跟进</view>
-        <view class="section-sub">高意向排前面。</view>
+        <view class="radar-workbench-section-title">活跃访客</view>
+        <view class="radar-workbench-section-desc">只展示可验证的浏览、互动和来源，不把匿名访客猜成实名客户。</view>
       </view>
-      <view class="section-head-side">
-        <view class="section-side-badge">{{radarCards.length}} 条新提醒</view>
-        <view class="section-link" data-tab="followup" bindtap="handleOpenBusinessDashboard">明细</view>
-      </view>
+      <view class="radar-workbench-section-count">{{visitorCards.length}} 人</view>
     </view>
-
-    <view class="empty-state assistant-empty" wx:if="{{!radarCards.length}}">
-      <view>{{radarCopy.emptyFollowup}}</view>
-      <view wx:if="{{sourceFilter}}">这条资料暂时还没有需要优先跟进的人。你可以先看全部雷达，或继续把它发给客户。</view>
-      <view wx:else>先发资料，雷达会亮。</view>
-      <button class="empty-action-btn" bindtap="handleGenerateCompare">先生成一份对比合集</button>
-    </view>
-    <view class="radar-customer-card" wx:for="{{radarCards}}" wx:key="id" data-index="{{index}}" bindtap="handleOpenRadarDetail">
-      <view class="customer-avatar">{{item.avatarText}}</view>
-      <view class="customer-main">
-        <view class="customer-top">
-          <view class="customer-name">{{item.name}}</view>
-          <view class="intent-tag">{{item.intentLabel}}</view>
-        </view>
-        <view class="customer-title">看过：{{item.noteTitle || item.title}}</view>
-        <view class="customer-reason"><text>为什么值得跟：</text>{{item.reason}}</view>
-        <view class="tag-row compact-tags">
-          <text wx:for="{{item.tags}}" wx:key="*this">{{item}}</text>
-          <text>{{item.stateLabel}}</text>
-        </view>
-        <view class="customer-action">
-          <text>AI建议：</text>
-          <view>{{item.action}}</view>
-        </view>
-        <view class="next-step {{item.nextStep.tone}}">
-          <button class="next-step-btn" data-index="{{index}}" catchtap="handleNextStepAction">详情</button>
-        </view>
-      </view>
-    </view>
-
-    <view class="assistant-advice-card" wx:if="{{suggestedActions.length}}">
-      <view class="section-title">AI建议你今天先做这几件事</view>
-      <view class="section-sub assistant-advice-sub">先做轻动作，先把最可能有回应的人接住。</view>
-      <view class="advice-line" wx:for="{{suggestedActions}}" wx:key="*this">
-        <view class="advice-dot"></view>
-        <view>{{item}}</view>
-      </view>
-    </view>
-
-    <view class="timeline-card" wx:if="{{timeline.length}}">
-      <view class="section-title">最近动作</view>
-      <view class="timeline-row" wx:for="{{timeline}}" wx:key="id">
-        <view class="timeline-dot"></view>
-        <view class="timeline-main">
-          <view class="timeline-title">{{item.title}}</view>
-          <view class="timeline-desc">{{item.desc}}</view>
-        </view>
-        <view class="timeline-time">{{item.timeText}}</view>
-      </view>
-    </view>
-  </view>
-
-  <view wx:if="{{activeTab === 'visitors'}}">
-    <view class="section-head radar-section-head">
+    <view class="radar-workbench-section-head" wx:elif="{{activeTab === 'following'}}">
       <view>
-        <view class="section-title">访客画像</view>
-        <view class="section-sub">身份、意向、关注点和行为证据放在一起看。</view>
+        <view class="radar-workbench-section-title">跟进中</view>
+        <view class="radar-workbench-section-desc">已经接手的客户都在这里，继续跟进会留下新的记录。</view>
       </view>
-      <view class="section-link" data-tab="visitors" bindtap="handleOpenBusinessDashboard">明细</view>
+      <view class="radar-workbench-section-count following-count">{{followingCards.length}} 人</view>
     </view>
-    <view class="empty-state assistant-empty" wx:if="{{!visitorCards.length}}">
-      <view>访客画像还在等待数据。</view>
-      <view wx:if="{{sourceFilter}}">这条资料还没有形成访客画像。有人打开、复访或咨询后，会自动出现价格敏感、位置优先、沉默复活等标签。</view>
-      <view wx:else>{{radarCopy.emptyVisitor}}</view>
-    </view>
-    <view class="visitor-profile-card" wx:for="{{visitorCards}}" wx:key="id">
-      <view class="customer-avatar small">{{item.avatarText}}</view>
-      <view class="visitor-main">
-        <view class="customer-top">
-          <view class="customer-name">{{item.name}}</view>
-          <view class="intent-tag muted">{{item.intentLabel}}</view>
-        </view>
-        <view class="customer-reason">{{item.reason}}</view>
-        <view class="tag-row compact-tags">
-          <text wx:for="{{item.tags}}" wx:key="*this">{{item}}</text>
-          <text>{{item.stateLabel}}</text>
-        </view>
-      </view>
-    </view>
-  </view>
-
-  <view wx:if="{{activeTab === 'insights'}}">
-    <view class="section-head radar-section-head">
+    <view class="radar-workbench-section-head" wx:else>
       <view>
-        <view class="section-title">资料优化建议</view>
-        <view class="section-sub">根据客户行为反推资料哪里该补强。</view>
+        <view class="radar-workbench-section-title">已放弃跟进</view>
+        <view class="radar-workbench-section-desc">保留历史资料和记录，可恢复跟进，也可以清空。</view>
       </view>
-      <view class="section-link" data-tab="propertyEffect" bindtap="handleOpenBusinessDashboard">明细</view>
-    </view>
-    <view class="empty-state assistant-empty" wx:if="{{!insights.length}}">
-      <view>{{radarCopy.emptyInsight}}</view>
-      <view wx:if="{{sourceFilter}}">这条资料还没有足够反馈。客户打开、停留、咨询后，我会告诉你标题、价格、联系方式或保障哪里该补强。</view>
-      <view wx:else>{{radarCopy.insightHelp}}</view>
-    </view>
-    <view class="insight-card" wx:for="{{insights}}" wx:key="id">
-      <view class="insight-title">{{item.title}}</view>
-      <view class="insight-stats">{{item.stats}}</view>
-      <view class="insight-suggestion">{{item.suggestion}}</view>
-      <button class="ghost-btn insight-action" data-id="{{item.noteId}}" bindtap="handleOpenResource">{{item.action}}</button>
+      <view class="radar-workbench-section-count abandoned-count">{{abandonedCards.length}} 人</view>
     </view>
 
-    <view class="compare-card">
-      <view>
-        <view class="section-title">{{radarCopy.compareTitle}}</view>
-        <view class="section-sub">{{radarCopy.compareDesc}}</view>
-      </view>
-      <button class="copy-btn compare-btn" bindtap="handleGenerateCompare">{{radarCopy.compareButton}}</button>
+    <view class="radar-workbench-empty" wx:if="{{activeTab === 'followup' && !radarCards.length}}">
+      <view class="radar-workbench-empty-icon">↗</view>
+      <view class="radar-workbench-empty-title">还没有待处理客户</view>
+      <view class="radar-workbench-empty-desc">{{radarCopy.emptyFollowup}}</view>
+      <view class="radar-workbench-empty-hint">客户打开、复访或咨询后，这里会自动出现下一步。</view>
     </view>
-  </view>
+    <view class="radar-workbench-empty" wx:if="{{activeTab === 'visitors' && !visitorCards.length}}">
+      <view class="radar-workbench-empty-icon">◌</view>
+      <view class="radar-workbench-empty-title">还没有活跃访客</view>
+      <view class="radar-workbench-empty-desc">{{radarCopy.emptyVisitor}}</view>
+    </view>
+    <view class="radar-workbench-empty" wx:if="{{activeTab === 'following' && !followingCards.length}}">
+      <view class="radar-workbench-empty-icon following">↗</view>
+      <view class="radar-workbench-empty-title">还没有跟进中的客户</view>
+      <view class="radar-workbench-empty-desc">在客户详情点击“开始跟进”后，客户会从待跟进移到这里。</view>
+    </view>
+    <view class="radar-workbench-empty" wx:if="{{activeTab === 'abandoned' && !abandonedCards.length}}">
+      <view class="radar-workbench-empty-icon abandoned">✓</view>
+      <view class="radar-workbench-empty-title">还没有已放弃客户</view>
+      <view class="radar-workbench-empty-desc">放弃跟进的客户会保留在这里，不再出现在待跟进和活跃访客中。</view>
+    </view>
+
+    <block wx:if="{{activeTab === 'followup'}}">
+      <view wx:for="{{radarCards}}" wx:key="id" class="radar-workbench-card {{item.isHighIntent ? 'high-intent' : 'normal-intent'}}">
+        <view class="radar-workbench-card-head">
+          <view class="radar-workbench-avatar">
+            <image wx:if="{{item.avatarUrl}}" class="radar-workbench-avatar-image" src="{{item.avatarUrl}}" mode="aspectFill" />
+            <text wx:else>{{item.avatarText}}</text>
+          </view>
+          <view class="radar-workbench-card-identity">
+            <view class="radar-workbench-card-name">{{item.name}}</view>
+            <view class="radar-workbench-card-state">{{item.intentLabel}} · {{item.isAnonymous ? '匿名访客' : '微信客户'}}</view>
+          </view>
+          <view class="radar-workbench-status {{item.isHighIntent ? 'high' : 'normal'}}">{{item.isHighIntent ? '优先处理' : '待处理'}}</view>
+        </view>
+        <view class="radar-workbench-evidence">
+          <view class="radar-workbench-evidence-label">刚刚发生</view>
+          <view class="radar-workbench-evidence-text">{{item.recentActivityText}}</view>
+        </view>
+        <view class="radar-workbench-seen">
+          <view class="radar-workbench-seen-label">客户看到的内容</view>
+          <view class="radar-workbench-seen-row">
+            <view class="radar-workbench-seen-text">{{item.seenContentText}}</view>
+            <view wx:if="{{item.sourceId}}" class="radar-workbench-source-link" data-id="{{item.sourceId}}" catchtap="handleOpenResource">原资料 <text>›</text></view>
+          </view>
+        </view>
+        <view class="radar-workbench-tags" wx:if="{{item.tags.length}}"><text wx:for="{{item.tags}}" wx:key="*this">{{item}}</text></view>
+        <view class="radar-workbench-actions">
+          <button class="radar-workbench-button primary" data-customer-id="{{item.customerId}}" data-lead-id="{{item.leadReminderId}}" data-radar-tab="followup" bindtap="handleOpenCustomerDetail">处理情况</button>
+          <button class="radar-workbench-button abandon" data-list="followup" data-index="{{index}}" bindtap="handleAbandonCustomer">放弃跟进</button>
+        </view>
+      </view>
+    </block>
+
+    <block wx:if="{{activeTab === 'visitors'}}">
+      <view wx:for="{{visitorCards}}" wx:key="id" class="radar-workbench-card visitor-card {{item.isHighIntent ? 'high-intent' : 'visitor-intent'}}">
+        <view class="radar-workbench-card-head">
+          <view class="radar-workbench-avatar">
+            <image wx:if="{{item.avatarUrl}}" class="radar-workbench-avatar-image" src="{{item.avatarUrl}}" mode="aspectFill" />
+            <text wx:else>{{item.avatarText}}</text>
+          </view>
+          <view class="radar-workbench-card-identity">
+            <view class="radar-workbench-card-name">{{item.name}}</view>
+            <view class="radar-workbench-card-state">{{item.intentLabel}} · {{item.isAnonymous ? '匿名访客' : '微信客户'}}</view>
+          </view>
+          <view class="radar-workbench-status visitor">活跃访客</view>
+        </view>
+        <view class="radar-workbench-evidence">
+          <view class="radar-workbench-evidence-label">最近发生</view>
+          <view class="radar-workbench-evidence-text">{{item.recentActivityText}}</view>
+        </view>
+        <view class="radar-workbench-seen">
+          <view class="radar-workbench-seen-label">客户看到的内容</view>
+          <view class="radar-workbench-seen-row">
+            <view class="radar-workbench-seen-text">{{item.seenContentText}}</view>
+            <view wx:if="{{item.sourceId}}" class="radar-workbench-source-link" data-id="{{item.sourceId}}" catchtap="handleOpenResource">原资料 <text>›</text></view>
+          </view>
+        </view>
+        <view class="radar-workbench-tags" wx:if="{{item.tags.length}}"><text wx:for="{{item.tags}}" wx:key="*this">{{item}}</text></view>
+        <view class="radar-workbench-actions">
+          <button class="radar-workbench-button primary" data-customer-id="{{item.customerId}}" data-lead-id="{{item.leadReminderId}}" data-radar-tab="visitors" bindtap="handleOpenCustomerDetail">处理情况</button>
+          <button class="radar-workbench-button abandon" data-list="visitors" data-index="{{index}}" bindtap="handleAbandonCustomer">放弃跟进</button>
+        </view>
+      </view>
+    </block>
+
+    <block wx:if="{{activeTab === 'following'}}">
+      <view wx:for="{{followingCards}}" wx:key="id" class="radar-workbench-card following-card">
+        <view class="radar-workbench-card-head">
+          <view class="radar-workbench-avatar following-avatar">
+            <image wx:if="{{item.avatarUrl}}" class="radar-workbench-avatar-image" src="{{item.avatarUrl}}" mode="aspectFill" />
+            <text wx:else>{{item.avatarText}}</text>
+          </view>
+          <view class="radar-workbench-card-identity">
+            <view class="radar-workbench-card-name">{{item.name}}</view>
+            <view class="radar-workbench-card-state">{{item.intentLabel}} · {{item.isAnonymous ? '匿名访客' : '微信客户'}}</view>
+          </view>
+          <view class="radar-workbench-status following">跟进中</view>
+        </view>
+        <view class="radar-workbench-evidence">
+          <view class="radar-workbench-evidence-label">下次跟进</view>
+          <view class="radar-workbench-evidence-text">{{item.nextFollowUpText}}</view>
+        </view>
+        <view class="radar-workbench-seen">
+          <view class="radar-workbench-seen-label">客户看到的内容</view>
+          <view class="radar-workbench-seen-row">
+            <view class="radar-workbench-seen-text">{{item.seenContentText}}</view>
+            <view wx:if="{{item.sourceId}}" class="radar-workbench-source-link" data-id="{{item.sourceId}}" catchtap="handleOpenResource">原资料 <text>›</text></view>
+          </view>
+        </view>
+        <view class="radar-workbench-tags" wx:if="{{item.tags.length}}"><text wx:for="{{item.tags}}" wx:key="*this">{{item}}</text></view>
+        <view class="radar-workbench-actions">
+          <button class="radar-workbench-button primary" data-customer-id="{{item.customerId}}" data-lead-id="{{item.leadReminderId}}" data-radar-tab="following" bindtap="handleOpenCustomerDetail">处理情况</button>
+          <button class="radar-workbench-button abandon" data-list="following" data-index="{{index}}" bindtap="handleAbandonCustomer">放弃跟进</button>
+        </view>
+      </view>
+    </block>
+
+    <block wx:if="{{activeTab === 'abandoned'}}">
+      <view wx:for="{{abandonedCards}}" wx:key="id" class="radar-workbench-card abandoned-card">
+        <view class="radar-workbench-card-head">
+          <view class="radar-workbench-avatar abandoned-avatar">
+            <image wx:if="{{item.avatarUrl}}" class="radar-workbench-avatar-image" src="{{item.avatarUrl}}" mode="aspectFill" />
+            <text wx:else>{{item.avatarText}}</text>
+          </view>
+          <view class="radar-workbench-card-identity">
+            <view class="radar-workbench-card-name">{{item.name}}</view>
+            <view class="radar-workbench-card-state">{{item.isAnonymous ? '匿名访客' : '微信客户'}} · 已放弃</view>
+          </view>
+          <view class="radar-workbench-status abandoned">已放弃</view>
+        </view>
+        <view class="radar-workbench-evidence">
+          <view class="radar-workbench-evidence-label">历史信号</view>
+          <view class="radar-workbench-evidence-text">{{item.recentActivityText}}</view>
+        </view>
+        <view class="radar-workbench-seen">
+          <view class="radar-workbench-seen-label">客户看到的内容</view>
+          <view class="radar-workbench-seen-row">
+            <view class="radar-workbench-seen-text">{{item.seenContentText}}</view>
+            <view wx:if="{{item.sourceId}}" class="radar-workbench-source-link" data-id="{{item.sourceId}}" catchtap="handleOpenResource">原资料 <text>›</text></view>
+          </view>
+        </view>
+        <view class="radar-workbench-actions">
+          <button class="radar-workbench-button restore" data-index="{{index}}" bindtap="handleRestoreAbandoned">恢复跟进</button>
+          <button class="radar-workbench-button delete" data-index="{{index}}" bindtap="handleDeleteAbandoned">清空删除</button>
+        </view>
+      </view>
+    </block>
+  </block>
 </view>

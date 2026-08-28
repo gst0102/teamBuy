@@ -44,6 +44,27 @@ def test_media_storage_truncates_very_long_media_id(tmp_path):
     assert url.endswith(".webp")
 
 
+def test_media_storage_rejects_foreign_absolute_urls_and_deletes_own_absolute_url(tmp_path):
+    service = MediaStorageService(
+        storage_mode="local",
+        storage_dir=tmp_path,
+        public_url_prefix="/media",
+        public_base_url="https://teambuy.example.com",
+    )
+
+    relative_url = service.store_bytes("snapshot_001", "image", b"image", "image/png")
+    stored_file = next(tmp_path.iterdir())
+    own_url = f"https://teambuy.example.com{relative_url}"
+    foreign_url = f"https://evil.example.com{relative_url}"
+
+    assert service.is_managed_url(own_url)
+    assert not service.is_managed_url(foreign_url)
+    assert not service.delete_url(foreign_url)
+    assert stored_file.exists()
+    assert service.delete_url(own_url)
+    assert not stored_file.exists()
+
+
 def test_media_storage_object_backend_uploads_to_s3_compatible_client():
     fake_client = FakeObjectClient()
     service = MediaStorageService(

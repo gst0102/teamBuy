@@ -1,0 +1,29 @@
+<view class="page-shell">
+  <custom-nav title="分享图" />
+
+  <view class="share-wrap" wx:if="{{note}}">
+    <view class="share-preview">
+      <image wx:if="{{shareImage}}" class="share-image" src="{{shareImage}}" mode="aspectFit"></image>
+      <view wx:else class="share-placeholder">
+        <text>{{shareStatusText}}</text>
+      </view>
+    </view>
+
+    <view class="share-status {{shareImageState}}">{{shareStatusText}}</view>
+
+    <view class="share-actions">
+      <button class="save-share" loading="{{savingPoster}}" bindtap="handleSavePoster">保存分享图</button>
+      <button class="preview-link" bindtap="handlePreviewPage">客户页</button>
+    </view>
+
+    <view class="copy-panel" wx:if="{{copyText}}">
+      <view class="panel-title">分享文案</view>
+      <view class="copy-text">{{copyText}}</view>
+      <button class="copy-button" bindtap="handleCopy">复制文案</button>
+    </view>
+
+    <button wx:if="{{shareImageState === 'failed'}}" class="retry-button" bindtap="handleRetry">重试分享图</button>
+  </view>
+
+  <canvas canvas-id="shareCardCanvas" class="share-card-canvas"></canvas>
+</view>

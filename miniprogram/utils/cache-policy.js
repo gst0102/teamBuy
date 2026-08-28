@@ -15,6 +15,10 @@ module.exports = Object.freeze({
   topicTtlMs: MINUTE_MS,
   categoryTtlMs: 10 * MINUTE_MS,
   resourceListTtlMs: MINUTE_MS,
+  // A stale resource list can paint while the page revalidates, but it must
+  // never be effectively permanent after an app restart.
+  resourceListStaleTtlMs: 5 * MINUTE_MS,
+  categoryStaleTtlMs: 30 * MINUTE_MS,
   profileSummaryTtlMs: MINUTE_MS,
   profileSummaryStaleTtlMs: 2 * 60 * MINUTE_MS,
   // Radar mutations invalidate this memory snapshot immediately; a short TTL

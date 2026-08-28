@@ -5,53 +5,68 @@
     "pages/imports/index",
     "pages/import-claim/index",
     "pages/visits/index",
+    "pages/customer-detail/index",
     "pages/profile/index",
+    "pages/view-history/index",
+    "pages/membership/index",
+    "pages/referral-center/index",
     "pages/group-resource-library/index",
     "pages/enterprise-resource-search/index",
     "pages/resource-tools-webview/index",
     "pages/opportunity-radar/index",
-    "pages/opportunity-market/index",
     "pages/opportunity-detail/index",
     "pages/opportunity-saved/index",
     "pages/opportunity-subscription/index",
     "pages/response-package/index",
     "pages/response-package-radar/index",
-    "pages/supply-demand-publish/index",
-    "pages/supply-demand-my/index",
-    "pages/supply-demand-detail/index",
     "pages/help-feedback/index",
     "pages/legal/terms/index",
     "pages/legal/privacy/index",
-    "pages/business-dashboard/index",
     "pages/login/index",
-    "pages/resource-create/index",
-    "pages/business-card-studio/index",
-    "pages/service-offer-studio/index",
-    "pages/property-same/index",
-    "pages/sales-template-select/index",
+    "pages/wecom-bind/index",
     "pages/tag-manage/index",
-    "pages/card-edit/index",
-    "pages/card-view/index",
-    "pages/manager/index",
     "pages/leads/index",
-    "pages/lead-detail/index",
     "pages/customers/index",
     "pages/notes/index",
     "pages/topics/index",
-    "pages/note-edit/index",
-    "pages/note-actions/index",
     "pages/note-preview/index",
-    "pages/note-poster/index",
     "pages/showcases/index",
-    "pages/showcase-analytics/index",
     "pages/showcase-share/index",
-    "pages/showcase-edit/index",
     "pages/showcase-view/index",
     "pages/orders/index",
     "pages/order-detail/index",
     "pages/messages/index",
     "pages/message-thread/index"
   ],
+  "subpackages": [
+    {
+      "root": "subpackages/workbench",
+      "pages": [
+        "resource-create/index",
+        "business-card-studio/index",
+        "service-offer-studio/index",
+        "property-same/index",
+        "card-edit/index",
+        "note-edit/index",
+        "link-confirm/index",
+        "link-editor/index",
+        "property-editor/index",
+        "product-editor/index",
+        "note-actions/index",
+        "note-poster/index",
+        "showcase-edit/index",
+        "showcase-analytics/index",
+        "resource-analytics/index",
+        "business-dashboard/index"
+      ]
+    }
+  ],
+  "plugins": {
+    "contactPlugin": {
+      "version": "1.4.8",
+      "provider": "wx104a1a20c3f81ec2"
+    }
+  },
   "window": {
     "navigationBarTitleText": "\u8d44\u6599\u6574\u7406\u52a9\u624b",
     "navigationBarBackgroundColor": "#eef6ff",
@@ -61,6 +76,9 @@
   },
   "navigateToMiniProgramAppIdList": [
     "wxcfd8224218167d98"
+  ],
+  "requiredPrivateInfos": [
+    "chooseLocation"
   ],
   "tabBar": {
     "color": "#9aa4b2",
@@ -77,14 +95,8 @@
       {
         "pagePath": "pages/library/index",
         "text": "\u8d44\u6599",
-        "iconPath": "static/tab/ziyuan-a.png",
-        "selectedIconPath": "static/tab/ziyuan-b.png"
-      },
-      {
-        "pagePath": "pages/showcases/index",
-        "text": "\u5408\u96c6",
-        "iconPath": "static/tab/tianjiakefu.png",
-        "selectedIconPath": "static/tab/tianjiakefu.png"
+        "iconPath": "static/tab/ziyuan-a-large.png",
+        "selectedIconPath": "static/tab/ziyuan-b-large.png"
       },
       {
         "pagePath": "pages/visits/index",

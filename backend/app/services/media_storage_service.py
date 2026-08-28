@@ -4,8 +4,16 @@ import re
 import hashlib
 from pathlib import Path
 from typing import Protocol
+from urllib.parse import unquote, urlparse
 
 from app.services.helpers import new_id
+
+
+def normalize_public_base_url(value: str) -> str:
+    normalized = str(value or "").strip().rstrip("/")
+    if normalized and not urlparse(normalized).scheme:
+        normalized = f"https://{normalized.lstrip('/')}"
+    return normalized
 
 
 class MediaStorageBackend(Protocol):
@@ -22,6 +30,12 @@ class MediaStorageBackend(Protocol):
     def build_fallback_url(self, media_id: str, media_type: str = "image") -> str:
         ...
 
+    def delete_url(self, url: str) -> bool:
+        ...
+
+    def is_managed_url(self, url: str) -> bool:
+        ...
+
 
 class MockMediaStorageBackend:
     def store_bytes(
@@ -35,14 +49,35 @@ class MockMediaStorageBackend:
         return self.build_fallback_url(media_id, media_type)
 
     def build_fallback_url(self, media_id: str, media_type: str = "image") -> str:
-        extension = "mp4" if media_type == "video" else "webp"
+        extension = "mp4" if media_type == "video" else "pdf" if media_type == "pdf" else "webp"
         return f"/mock-media/{new_id('media')}-{media_id}.{extension}"
+
+    def delete_url(self, url: str) -> bool:
+        # Mock storage never creates a real object. Treat cleanup as complete
+        # so metadata does not stay forever in test/runtime state.
+        return True
+
+    def is_managed_url(self, url: str) -> bool:
+        return str(url or "").startswith("/mock-media/")
 
 
 class LocalMediaStorageBackend:
-    def __init__(self, storage_dir: Path, public_url_prefix: str = "/media"):
+    def __init__(self, storage_dir: Path, public_url_prefix: str = "/media", public_base_url: str = ""):
         self.storage_dir = storage_dir
         self.public_url_prefix = public_url_prefix.rstrip("/") or "/media"
+        self.public_base_url = normalize_public_base_url(public_base_url)
+
+    def _managed_path(self, url: str) -> str:
+        value = str(url or "")
+        parsed = urlparse(value)
+        if parsed.scheme or parsed.netloc:
+            expected = urlparse(self.public_base_url)
+            if not expected.scheme or not expected.netloc:
+                return ""
+            if (parsed.scheme.lower(), parsed.netloc.lower()) != (expected.scheme.lower(), expected.netloc.lower()):
+                return ""
+            return unquote(parsed.path)
+        return unquote(value)
 
     def store_bytes(
         self,
@@ -59,6 +94,29 @@ class LocalMediaStorageBackend:
 
     def build_fallback_url(self, media_id: str, media_type: str = "image") -> str:
         return MockMediaStorageBackend().build_fallback_url(media_id, media_type)
+
+    def delete_url(self, url: str) -> bool:
+        path = self._managed_path(url)
+        prefix = self.public_url_prefix.rstrip("/") or "/media"
+        if not path.startswith(f"{prefix}/"):
+            return False
+        file_name = path[len(prefix) + 1 :]
+        if not file_name or "/" in file_name or "\\" in file_name or file_name in {".", ".."}:
+            return False
+        target = (self.storage_dir / file_name).resolve()
+        storage_root = self.storage_dir.resolve()
+        if target.parent != storage_root:
+            return False
+        try:
+            target.unlink(missing_ok=True)
+            return True
+        except OSError:
+            return False
+
+    def is_managed_url(self, url: str) -> bool:
+        path = self._managed_path(url)
+        prefix = self.public_url_prefix.rstrip("/") or "/media"
+        return path.startswith(f"{prefix}/")
 
 
 class ObjectStorageMediaBackend:
@@ -104,6 +162,25 @@ class ObjectStorageMediaBackend:
     def build_fallback_url(self, media_id: str, media_type: str = "image") -> str:
         return MockMediaStorageBackend().build_fallback_url(media_id, media_type)
 
+    def delete_url(self, url: str) -> bool:
+        prefix = f"{self.public_base_url}/"
+        value = str(url or "")
+        if not value.startswith(prefix):
+            return False
+        object_key = unquote(value[len(prefix) :])
+        if not object_key or ".." in object_key.split("/"):
+            return False
+        if self.key_prefix and not object_key.startswith(f"{self.key_prefix}/"):
+            return False
+        try:
+            self._client().delete_object(Bucket=self.bucket, Key=object_key)
+            return True
+        except Exception:
+            return False
+
+    def is_managed_url(self, url: str) -> bool:
+        return str(url or "").startswith(f"{self.public_base_url}/")
+
     def _object_key(self, media_id: str, media_type: str, content_type: str | None, filename: str | None) -> str:
         file_name = build_media_file_name(media_id, media_type, content_type, filename)
         return f"{self.key_prefix}/{file_name}" if self.key_prefix else file_name
@@ -131,6 +208,7 @@ class MediaStorageService:
         storage_mode: str = "mock",
         storage_dir: Path | None = None,
         public_url_prefix: str = "/media",
+        public_base_url: str = "",
         object_storage_endpoint: str = "",
         object_storage_region: str = "",
         object_storage_bucket: str = "",
@@ -143,6 +221,7 @@ class MediaStorageService:
         self.storage_mode = storage_mode
         self.storage_dir = storage_dir
         self.public_url_prefix = public_url_prefix.rstrip("/") or "/media"
+        self.public_base_url = normalize_public_base_url(public_base_url)
         self.backend = backend or self._build_backend(
             storage_mode=storage_mode,
             storage_dir=storage_dir,
@@ -172,6 +251,29 @@ class MediaStorageService:
     def build_mock_url(self, media_id: str, media_type: str = "image") -> str:
         return MockMediaStorageBackend().build_fallback_url(media_id, media_type)
 
+    def delete_url(self, url: str) -> bool:
+        delete = getattr(self.backend, "delete_url", None)
+        if not callable(delete):
+            return False
+        return bool(delete(url))
+
+    def is_managed_url(self, url: str) -> bool:
+        value = str(url or "")
+        parsed = urlparse(value)
+        managed = getattr(self.backend, "is_managed_url", None)
+        if callable(managed) and managed(url):
+            return True
+        if parsed.scheme or parsed.netloc:
+            expected = urlparse(self.public_base_url)
+            same_origin = bool(expected.scheme and expected.netloc) and (
+                parsed.scheme.lower(), parsed.netloc.lower()
+            ) == (expected.scheme.lower(), expected.netloc.lower())
+            if not same_origin:
+                return False
+        path = parsed.path if parsed.scheme else str(url or "")
+        prefix = self.public_url_prefix.rstrip("/") or "/media"
+        return path.startswith(f"{prefix}/")
+
     def _build_backend(
         self,
         storage_mode: str,
@@ -188,7 +290,7 @@ class MediaStorageService:
         if storage_mode == "local":
             if not storage_dir:
                 raise ValueError("media storage dir is required for STORAGE_MODE=local")
-            return LocalMediaStorageBackend(storage_dir, public_url_prefix)
+            return LocalMediaStorageBackend(storage_dir, public_url_prefix, self.public_base_url)
         if storage_mode in {"cos", "s3"}:
             return ObjectStorageMediaBackend(
                 bucket=object_storage_bucket,
@@ -208,7 +310,10 @@ def build_media_file_name(media_id: str, media_type: str, content_type: str | No
     if len(safe_media_id) > 80:
         digest = hashlib.sha256(media_id.encode("utf-8")).hexdigest()[:16]
         safe_media_id = f"{safe_media_id[:48]}-{digest}"
-    return f"{new_id('media')}-{safe_media_id}.{extension}"
+    # Asset IDs are content-addressed by AppService. Keep their object path
+    # stable so a concurrent upload cannot create another physical copy.
+    prefix = "" if media_id.startswith("asset_") else f"{new_id('media')}-"
+    return f"{prefix}{safe_media_id}.{extension}"
 
 
 def resolve_extension(media_type: str, content_type: str | None, filename: str | None) -> str:

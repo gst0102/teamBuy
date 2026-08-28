@@ -2,8 +2,9 @@
 set -euo pipefail
 
 # Server-side deployment template for the customer data dashboard closeout.
-# Run this on the production server after the new backend files have been
-# synced into /home/ubuntu/teamBuy. Do not run it from a developer laptop.
+# This legacy template refuses a network-dependent build by default. For the
+# current teamBuy production path, use the current-image hotfix procedure in
+# docs/deploy/tencent-cloud-real-sync.md and keep APP_PORT=8004 explicit.
 
 PROJECT_DIR="${PROJECT_DIR:-/home/ubuntu/teamBuy}"
 PUBLIC_BASE_URL="${PUBLIC_BASE_URL:-https://teambuy.lifelove.top}"
@@ -25,8 +26,13 @@ grep -q "get_business_dashboard" backend/app/services/app_service.py
 grep -q "showcase_events" backend/app/core/schema.sql
 
 echo "== Build and restart backend =="
+if [[ "${ALLOW_NETWORK_BUILD:-0}" != "1" ]]; then
+  echo "Refusing docker compose build by default. Use the current-image hotfix procedure."
+  echo "Set ALLOW_NETWORK_BUILD=1 only after confirming a stable package network and a real dependency change."
+  exit 2
+fi
 PIP_INDEX_URL="${PIP_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}" docker compose build backend
-docker compose up -d backend
+APP_PORT="${APP_PORT:-8004}" docker compose up -d backend
 docker compose logs --tail=100 backend
 
 echo "== Verify public routes =="

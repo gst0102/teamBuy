@@ -10,13 +10,10 @@ const ROUTE_TITLES = {
   "pages/enterprise-resource-search/index": "企业资源搜索",
   "pages/help-feedback/index": "帮助与反馈",
   "pages/login/index": "登录",
-  "pages/resource-create/index": "添加资源",
+  "subpackages/workbench/resource-create/index": "添加资源",
   "pages/tag-manage/index": "标签管理",
-  "pages/card-edit/index": "资源编辑",
-  "pages/card-view/index": "资源详情",
-  "pages/manager/index": "线索管理",
+  "subpackages/workbench/card-edit/index": "资源编辑",
   "pages/leads/index": "待联系",
-  "pages/lead-detail/index": "线索详情",
   "pages/customers/index": "客户资料库",
   "pages/topics/index": "专题"
 };
@@ -30,6 +27,10 @@ Component({
     showBack: {
       type: Boolean,
       value: false
+    },
+    rightText: {
+      type: String,
+      value: ""
     }
   },
   data: {
@@ -44,7 +45,7 @@ Component({
       this.setData({
         nav: getButtonPositionData(),
         canGoBack: pages.length > 1,
-        resolvedTitle: ROUTE_TITLES[currentPage && currentPage.route] || this.data.title
+        resolvedTitle: this.data.title || ROUTE_TITLES[currentPage && currentPage.route] || ""
       });
     }
   },

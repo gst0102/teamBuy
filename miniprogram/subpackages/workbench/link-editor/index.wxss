@@ -1,0 +1,41 @@
+page { background: #f3f7fd; }
+.link-editor-page { min-height: 100vh; color: #121d31; }
+.link-loading { padding: 180rpx 30rpx; color: #8591a4; font-size: 25rpx; text-align: center; }
+.link-content { display: grid; gap: 18rpx; padding: 18rpx 22rpx calc(150rpx + env(safe-area-inset-bottom)); }
+.link-card { padding: 24rpx; border: 1rpx solid #e6ebf3; border-radius: 22rpx; background: #fff; box-shadow: 0 8rpx 24rpx rgba(36, 68, 110, .05); box-sizing: border-box; }
+.section-head { display: flex; align-items: center; justify-content: space-between; gap: 16rpx; margin-bottom: 18rpx; }
+.section-title { font-size: 28rpx; font-weight: 900; line-height: 1.3; }
+.preview-link { color: #0d6ff4; font-size: 22rpx; font-weight: 700; }
+.article-cover { width: 100%; height: 315rpx; border-radius: 16rpx; background: #e9f0f9; }
+.article-cover.empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6rpx; border: 2rpx dashed #cad6e6; color: #8290a4; font-size: 22rpx; box-sizing: border-box; }
+.article-cover.empty text { color: #1677ff; font-size: 52rpx; font-weight: 300; line-height: 1; }
+.article-source { margin-top: 19rpx; color: #7f8b9d; font-size: 20rpx; }
+.article-title { margin-top: 10rpx; color: #111a2c; font-size: 33rpx; font-weight: 900; line-height: 1.38; }
+.article-recommendation { margin-top: 18rpx; padding: 17rpx 19rpx; border-left: 6rpx solid #1777ef; border-radius: 0 12rpx 12rpx 0; background: #edf5ff; }
+.article-recommendation text { color: #1267d3; font-size: 19rpx; font-weight: 900; }
+.article-recommendation view { margin-top: 7rpx; color: #344157; font-size: 22rpx; line-height: 1.55; }
+.article-description { margin-top: 16rpx; color: #5d697b; font-size: 22rpx; line-height: 1.6; }
+.article-open { display: flex; align-items: center; justify-content: center; height: 68rpx; margin-top: 20rpx; border-radius: 12rpx; background: linear-gradient(135deg, #1580ff, #0865e9); color: #fff; font-size: 24rpx; font-weight: 900; }
+.edit-card > .section-title { margin-bottom: 7rpx; }
+.section-hint { margin-bottom: 18rpx; color: #8a95a7; font-size: 20rpx; line-height: 1.5; }
+.field { margin-top: 20rpx; }
+.field-label { margin-bottom: 9rpx; color: #354258; font-size: 22rpx; font-weight: 800; }
+.link-input, .title-input, .link-textarea { width: 100%; padding: 0 16rpx; border: 1rpx solid #d9e1ec; border-radius: 11rpx; background: #fff; color: #172238; font-size: 23rpx; box-sizing: border-box; }
+.link-input { height: 66rpx; }
+.title-input { min-height: 78rpx; padding-top: 15rpx; padding-bottom: 15rpx; line-height: 1.5; }
+.link-textarea { min-height: 170rpx; padding: 17rpx; line-height: 1.55; }
+.link-textarea.recommendation { min-height: 145rpx; }
+.link-placeholder { color: #9aa5b5; font-size: 22rpx; }
+.source-url-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14rpx; align-items: center; min-height: 66rpx; padding: 10rpx 15rpx; border-radius: 11rpx; background: #f4f7fb; box-sizing: border-box; }
+.source-url-row view { overflow: hidden; color: #667286; font-size: 19rpx; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.source-url-row text { color: #126fec; font-size: 21rpx; font-weight: 800; white-space: nowrap; }
+.count { margin-top: -29rpx; padding-right: 13rpx; color: #9aa5b5; font-size: 18rpx; text-align: right; pointer-events: none; }
+.privacy-card { display: grid; grid-template-columns: 58rpx minmax(0, 1fr); gap: 14rpx; align-items: center; background: #f4fbf6; }
+.privacy-icon { display: flex; align-items: center; justify-content: center; width: 50rpx; height: 50rpx; border-radius: 50%; background: #dff4e5; color: #258044; font-size: 20rpx; font-weight: 900; }
+.privacy-card view view { color: #245d37; font-size: 22rpx; font-weight: 800; }
+.privacy-card text { display: block; margin-top: 6rpx; color: #64816d; font-size: 19rpx; line-height: 1.5; }
+.link-bottom-bar { position: fixed; z-index: 20; left: 0; right: 0; bottom: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14rpx; padding: 14rpx 22rpx calc(14rpx + env(safe-area-inset-bottom)); border-top: 1rpx solid #e5eaf1; background: rgba(255, 255, 255, .97); box-shadow: 0 -8rpx 24rpx rgba(32, 55, 90, .08); box-sizing: border-box; }
+.delete-button, .save-button { display: flex; align-items: center; justify-content: center; width: 100%; min-width: 0; height: 76rpx; margin: 0; padding: 0; border-radius: 13rpx; font-size: 25rpx; font-weight: 800; line-height: 1; box-sizing: border-box; }
+.delete-button { background: #eef3f9; color: #334155; }
+.save-button { background: linear-gradient(135deg, #1284ff, #0864ea); color: #fff; }
+.delete-button::after, .save-button::after { border: 0; }

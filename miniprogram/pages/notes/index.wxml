@@ -123,6 +123,7 @@
           <view class="migration-line">
             <text>{{item.migrationSourceText}}</text>
             <text class="migration-pill {{item.migrationTone}}">{{item.migrationStatusText}}</text>
+            <text class="same-style-pill" wx:if="{{item.isSameStyle}}">同款</text>
           </view>
           <view class="bookmark-title">{{item.title}}</view>
           <view class="bookmark-summary">{{item.summary ? item.summary : '已收藏，待整理。'}}</view>
@@ -161,6 +162,7 @@
           <view class="migration-line">
             <text>{{item.migrationSourceText}}</text>
             <text class="migration-pill {{item.migrationTone}}">{{item.migrationStatusText}}</text>
+            <text class="same-style-pill" wx:if="{{item.isSameStyle}}">同款</text>
           </view>
           <view class="typed-title">{{item.structuredData.community || item.title}}</view>
           <view class="typed-primary">{{item.primaryValue}}</view>
@@ -176,7 +178,9 @@
           <text class="scrm-shortcut {{item.scrmHasUnread ? 'hot' : ''}}" data-id="{{item.id}}" catchtap="handleOpenScrm">{{item.scrmLabel || '客户信息'}}</text>
           <message-entry mode="center" variant="text" title="消息" desc="" />
           <text class="upload-time">上传时间 {{item.uploadDateText}}</text>
-          <button class="inline-share" open-type="share" data-id="{{item.id}}" disabled="{{item.shareDisabled}}">{{item.shareStatusText || item.cardAction}}</button>
+          <button wx:if="{{item.canShare && item.shareImageReady}}" class="inline-share" open-type="share" catchtap="handleShareTap" data-id="{{item.id}}">发客户</button>
+          <button wx:elif="{{item.canShare}}" class="inline-share pending" data-id="{{item.id}}" catchtap="handlePrepareBusinessCardShare">{{item.shareStatusText}}</button>
+          <button wx:else class="inline-share" data-id="{{item.id}}" catchtap="handleSendCustomer" disabled="{{item.shareState === 'revoked'}}">{{item.shareStatusText}}</button>
           <text class="danger" data-id="{{item.id}}" bindtap="handleDelete">删除</text>
         </view>
       </view>
@@ -192,6 +196,7 @@
           <view class="migration-line">
             <text>{{item.migrationSourceText}}</text>
             <text class="migration-pill {{item.migrationTone}}">{{item.migrationStatusText}}</text>
+            <text class="same-style-pill" wx:if="{{item.isSameStyle}}">同款</text>
           </view>
           <view class="typed-title">{{item.structuredData.productName || item.title}}</view>
           <view class="typed-primary price">{{item.primaryValue}}</view>
@@ -207,7 +212,9 @@
           <text class="scrm-shortcut {{item.scrmHasUnread ? 'hot' : ''}}" data-id="{{item.id}}" catchtap="handleOpenScrm">{{item.scrmLabel || '客户信息'}}</text>
           <message-entry mode="center" variant="text" title="消息" desc="" />
           <text class="upload-time">上传时间 {{item.uploadDateText}}</text>
-          <button class="inline-share" open-type="share" data-id="{{item.id}}" disabled="{{item.shareDisabled}}">{{item.shareStatusText || item.cardAction}}</button>
+          <button wx:if="{{item.canShare && item.shareImageReady}}" class="inline-share" open-type="share" catchtap="handleShareTap" data-id="{{item.id}}">发客户</button>
+          <button wx:elif="{{item.canShare}}" class="inline-share pending" data-id="{{item.id}}" catchtap="handlePrepareBusinessCardShare">{{item.shareStatusText}}</button>
+          <button wx:else class="inline-share" data-id="{{item.id}}" catchtap="handleSendCustomer" disabled="{{item.shareState === 'revoked'}}">{{item.shareStatusText}}</button>
           <text class="danger" data-id="{{item.id}}" bindtap="handleDelete">删除</text>
         </view>
       </view>
@@ -230,6 +237,7 @@
           <view class="migration-line">
             <text>{{item.migrationSourceText}}</text>
             <text class="migration-pill {{item.migrationTone}}">{{item.migrationStatusText}}</text>
+            <text class="same-style-pill" wx:if="{{item.isSameStyle}}">同款</text>
           </view>
           <view class="bookmark-tags" wx:if="{{item.bookmarkTags.length}}">
             <block wx:for="{{item.bookmarkTags}}" wx:for-item="tag" wx:key="*this">
@@ -238,7 +246,9 @@
           </view>
         </view>
         <view class="typed-actions service-actions">
-          <button class="inline-share service-primary-share" open-type="share" data-id="{{item.id}}" disabled="{{item.shareDisabled}}">{{item.shareDisabled ? '封面准备中' : '发客户'}}</button>
+          <button wx:if="{{item.canShare && item.shareImageReady}}" class="inline-share service-primary-share" open-type="share" catchtap="handleShareTap" data-id="{{item.id}}">发客户</button>
+          <button wx:elif="{{item.canShare}}" class="inline-share service-primary-share pending" data-id="{{item.id}}" catchtap="handlePrepareBusinessCardShare">{{item.shareStatusText}}</button>
+          <button wx:else class="inline-share service-primary-share" data-id="{{item.id}}" catchtap="handleSendCustomer" disabled="{{item.shareState === 'revoked'}}">{{item.shareStatusText}}</button>
           <button class="service-more-btn" data-id="{{item.id}}" bindtap="handleEdit">更多</button>
         </view>
       </view>
@@ -265,6 +275,7 @@
           <view class="migration-line">
             <text>{{item.migrationSourceText}}</text>
             <text class="migration-pill {{item.migrationTone}}">{{item.migrationStatusText}}</text>
+            <text class="same-style-pill" wx:if="{{item.isSameStyle}}">同款</text>
           </view>
           <view class="typed-title">{{item.gridTitle || item.title}}</view>
           <view class="typed-primary">{{item.primaryValue}}</view>
@@ -276,7 +287,9 @@
           </view>
         </view>
         <view class="typed-actions service-actions">
-          <button class="inline-share service-primary-share" open-type="share" data-id="{{item.id}}" disabled="{{item.shareDisabled}}">{{item.shareDisabled ? '封面准备中' : '发客户'}}</button>
+          <button wx:if="{{item.canShare && item.shareImageReady}}" class="inline-share service-primary-share" open-type="share" catchtap="handleShareTap" data-id="{{item.id}}">发客户</button>
+          <button wx:elif="{{item.canShare}}" class="inline-share service-primary-share pending" data-id="{{item.id}}" catchtap="handlePrepareBusinessCardShare">{{item.shareStatusText}}</button>
+          <button wx:else class="inline-share service-primary-share" data-id="{{item.id}}" catchtap="handleSendCustomer" disabled="{{item.shareState === 'revoked'}}">{{item.shareStatusText}}</button>
           <button class="service-more-btn" data-id="{{item.id}}" bindtap="handleEdit">更多</button>
         </view>
       </view>
@@ -288,6 +301,7 @@
           <view class="migration-line">
             <text>{{item.migrationSourceText}}</text>
             <text class="migration-pill {{item.migrationTone}}">{{item.migrationStatusText}}</text>
+            <text class="same-style-pill" wx:if="{{item.isSameStyle}}">同款</text>
           </view>
           <view class="note-title">{{item.title}}</view>
           <view class="note-summary">{{item.summary ? item.summary : item.body}}</view>

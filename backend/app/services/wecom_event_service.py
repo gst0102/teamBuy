@@ -25,8 +25,8 @@ def parse_callback_body(
     xml_payload = _xml_to_dict(text)
     encrypted = xml_payload.get("Encrypt")
     if encrypted:
-        callback_token = token or settings.wecom_callback_token
-        callback_aes_key = encoding_aes_key or settings.wecom_encoding_aes_key
+        callback_token = token or settings.wecom_kf_callback_token
+        callback_aes_key = encoding_aes_key or settings.wecom_kf_encoding_aes_key
         signature = query.get("msg_signature") or ""
         timestamp = query.get("timestamp") or ""
         nonce = query.get("nonce") or ""

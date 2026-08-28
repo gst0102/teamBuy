@@ -1,9 +1,14 @@
 <view class="page">
-  <custom-nav title="站内消息" />
+  <custom-nav title="站内消息" showBack="{{true}}" />
+
+  <view class="page-home-entry">
+    <button class="home-link" bindtap="handleBackHome">回到首页</button>
+  </view>
 
   <view class="thread-head" wx:if="{{thread}}">
     <view class="title">{{thread.noteTitle || thread.title}}</view>
     <view class="subtitle">{{thread.orderSkuName ? '订单：' + thread.orderSkuName : '资料咨询'}}</view>
+    <button wx:if="{{canOpenCustomerRadar}}" class="radar-link" bindtap="handleOpenCustomerRadar">查看客户雷达</button>
   </view>
 
   <scroll-view class="message-list" scroll-y>

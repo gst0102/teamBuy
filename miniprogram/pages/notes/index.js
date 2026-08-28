@@ -42,12 +42,6 @@ function hasUnreadCustomerAction(summary, userId, noteId) {
   return latest > readAt;
 }
 
-function getLocalNoteShareImage(note = {}, shareImages = {}) {
-  const user = getCurrentUser() || {};
-  const state = getNoteShareSnapshotState(note, user.id, user);
-  return getShareImageUrlFromState(state);
-}
-
 const SOURCE_FILTERS = [
   { label: "全部", value: "", key: "all" },
   { label: "笔记", value: "note", key: "source:note" },
@@ -144,7 +138,6 @@ Page({
     tagFilters: [],
     topics: [],
     migrationSummary: null,
-    noteShareImages: {},
     loading: false
   },
   onLoad(options) {
@@ -244,11 +237,9 @@ Page({
       .sort((left, right) => Number(Boolean(right.isBusinessCard)) - Number(Boolean(left.isBusinessCard)))
       .slice(0, 1);
     if (!shareableNotes.length) {
-      this.setData({ noteShareImages: {} });
       return;
     }
     if (!this.noteShareGenerating) this.noteShareGenerating = {};
-    const nextImages = { ...(this.data.noteShareImages || {}) };
     for (const note of shareableNotes) {
       if (!note.id) continue;
       if (this.noteShareGenerating[note.id]) continue;
@@ -265,24 +256,17 @@ Page({
         });
         const imagePath = result.snapshot && result.snapshot.url;
         if (imagePath) {
-          nextImages[note.id] = {
-            url: imagePath,
-            sourceRevision: result.sourceRevision,
-            fingerprint: result.fingerprint
-          };
           const savedConfig = result.entity && result.entity.visibilityConfig;
           const updateNote = (item) => item && item.id === note.id
             ? { ...item, visibilityConfig: savedConfig || item.visibilityConfig }
             : item;
           this.setData({
-            noteShareImages: { ...nextImages },
             allNotes: (this.data.allNotes || []).map(updateNote),
             notes: (this.data.notes || []).map(updateNote)
           });
         }
-        this.updateShareState(note.id, Boolean(imagePath || result.direct), false, !(imagePath || result.direct));
+        this.updateShareState(note.id, Boolean(imagePath), false, !imagePath);
       } catch (error) {
-        nextImages[note.id] = "";
         this.updateShareState(note.id, false, false, true);
       } finally {
         this.noteShareGenerating[note.id] = false;
@@ -631,9 +615,8 @@ Page({
       return null;
     }
     const persistedState = getNoteShareSnapshotState(note, (this.data.user || getCurrentUser() || {}).id, this.data.user || getCurrentUser() || {});
-    const persistedImage = getShareImageUrlFromState(persistedState);
-    const shareImage = getLocalNoteShareImage(note, this.data.noteShareImages || {}) || persistedImage;
-    if (!shareImage && !persistedState.direct) {
+    const shareImage = getShareImageUrlFromState(persistedState);
+    if (!shareImage) {
       wx.showToast({ title: "资料分享图正在准备，请稍后再发", icon: "none" });
       this.prepareNoteShareImages([note]);
       setShareMenuEnabled(false);

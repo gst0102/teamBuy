@@ -1,5 +1,5 @@
 <view class="login-page">
-  <custom-nav title="登录" />
+  <custom-nav title="登录" show-back="{{true}}" />
 
   <view class="hero">
     <view class="hero-kicker">资料整理助手</view>
@@ -48,8 +48,18 @@
   </view>
 
   <view class="login-panel">
-    <view class="login-title">登录后保存到你的账号</view>
-    <view class="login-desc">用于生成你的资料页、查看客户线索，下次打开还能继续跟进。</view>
+    <view class="login-profile-option">
+      <view class="login-profile-copy">
+        <view class="login-profile-title">完善资料（可选）</view>
+        <view class="login-profile-desc">头像和昵称只在你主动选择后保存，不影响游客浏览。</view>
+      </view>
+      <button class="login-avatar-button" type="default" bindtap="handleChooseAvatarFromAlbum" hover-class="login-avatar-button-hover">
+        <image wx:if="{{loginProfileDraft.avatarUrl}}" class="login-avatar" src="{{loginProfileDraft.avatarUrl}}" mode="aspectFill"></image>
+        <image wx:else class="login-avatar" src="/static/images/avatar-default.png" mode="aspectFill"></image>
+        <text>相册换头像</text>
+      </button>
+    </view>
+    <input class="login-nickname-input" type="nickname" value="{{loginProfileDraft.nickname}}" placeholder="昵称（可选）" bindinput="handleLoginNicknameInput" />
     <view class="legal-agree-row" bindtap="handleToggleLegalAgree">
       <view class="legal-checkbox {{legalAgreed ? 'checked' : ''}}">{{legalAgreed ? '✓' : ''}}</view>
       <view class="legal-copy">
@@ -61,5 +71,6 @@
     </view>
     <button class="wechat-btn" loading="{{loggingIn}}" disabled="{{loggingIn}}" bindtap="handleWechatLogin">微信一键登录</button>
     <button wx:if="{{allowMockLogin}}" class="mock-btn" loading="{{loggingIn}}" disabled="{{loggingIn}}" bindtap="handleMockLogin">便捷登录</button>
+    <button class="skip-login-btn" bindtap="handleSkipLogin">暂不登录，先浏览首页</button>
   </view>
 </view>

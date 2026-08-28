@@ -1,0 +1,64 @@
+<view class="service-editor-page">
+  <custom-nav title="编辑服务/合作" showBack="{{true}}" rightText="{{saveStatus}}" />
+  <view wx:if="{{loading}}" class="loading-state">正在读取资料…</view>
+  <block wx:else>
+    <view class="editor-content">
+      <view class="editor-card preview-card">
+        <view class="section-head"><view><text class="step">1</text><text class="section-title">客户看到的效果</text></view><view class="preview-link" bindtap="handlePreview">完整预览 ›</view></view>
+        <view class="live-preview">
+          <image wx:if="{{imageMedia.length}}" class="preview-cover" src="{{imageMedia[0].displayUrl || imageMedia[0].url}}" mode="aspectFill" bindtap="handlePreviewCover" />
+          <view wx:else class="preview-cover empty" bindtap="chooseImages"><text>＋</text><view>添加封面</view></view>
+          <view class="preview-copy"><view class="preview-title">{{previewTitle}}</view><view class="preview-headline">{{previewHeadline}}</view><view class="preview-footer"><text>{{previewIdentity}}</text><button>咨询详情</button></view></view>
+        </view>
+      </view>
+
+      <view class="editor-card basic-card">
+        <view class="section-head"><view><text class="step">2</text><text class="section-title">基本信息</text></view></view>
+        <view class="field-row"><view class="field-label">服务/合作名称</view><input class="service-input" value="{{structuredData.serviceName}}" data-key="serviceName" bindinput="handleInput" placeholder="例如：企业代理记账服务" placeholder-class="service-placeholder" /></view>
+        <view class="field-row"><view class="field-label">一句话介绍</view><input class="service-input" value="{{structuredData.headline}}" data-key="headline" bindinput="handleInput" placeholder="例如：代理记账、纳税申报及日常财税咨询" placeholder-class="service-placeholder" /></view>
+        <view class="field-row multiline"><view class="field-label">详细说明<text>（选填）</text></view><textarea class="service-textarea" value="{{structuredData.detailText}}" data-key="detailText" bindinput="handleInput" maxlength="1000" placeholder="介绍服务内容和合作方式；更完整的资料可通过PDF、长图或链接提供" placeholder-class="service-placeholder" /><view class="count">{{detailCount}}/1000</view></view>
+      </view>
+
+      <view wx:if="{{contactCandidates.length}}" id="contact-review" class="editor-card contact-review-card">
+        <view class="contact-review-head">
+          <view>
+            <view class="contact-review-title">发现正文中的手机号</view>
+            <view class="contact-review-hint">逐个确认归属后才能发给客户；号码只显示部分内容。</view>
+          </view>
+          <view class="contact-review-count">{{contactCandidates.length}} 个</view>
+        </view>
+        <view wx:for="{{contactCandidates}}" wx:key="phone" class="contact-review-row">
+          <view class="contact-review-main"><text class="contact-review-phone">{{item.masked}}</text><text class="contact-review-status {{item.status}}">{{item.statusLabel}}</text></view>
+          <view class="contact-review-actions">
+            <button class="contact-review-btn public" data-phone="{{item.phone}}" data-decision="public" bindtap="handleContactDecision">公开电话</button>
+            <button class="contact-review-btn private" data-phone="{{item.phone}}" data-decision="private" bindtap="handleContactDecision">仅自己保存</button>
+            <button class="contact-review-btn remove" data-phone="{{item.phone}}" data-decision="remove" bindtap="handleContactDecision">移出正文</button>
+          </view>
+        </view>
+        <view class="contact-review-foot">公开电话会出现在客户页的联系入口；“仅自己保存”不会进入客户页；移出正文后不保留该号码。</view>
+      </view>
+
+      <view class="editor-card attachments-card">
+        <view class="section-head"><view><text class="step">3</text><text class="section-title">图片与文件</text></view></view>
+        <view wx:if="{{form.media.length}}" class="attachment-list">
+          <view wx:for="{{form.media}}" wx:key="id" class="attachment-row">
+            <image wx:if="{{item.type === 'image'}}" class="attachment-thumb" src="{{item.displayUrl || item.url}}" mode="aspectFill" data-index="{{index}}" bindtap="handlePreviewAttachment" />
+            <view wx:else class="attachment-mark {{item.type}}" data-index="{{index}}" bindtap="handlePreviewAttachment">{{item.type === 'pdf' ? 'PDF' : '链'}}</view>
+            <view class="attachment-copy"><view>{{item.title || item.name || (item.type === 'image' ? '服务图片' : item.type === 'pdf' ? 'PDF文件' : '外部链接')}}</view><text>{{item.type === 'image' ? '首张图片作为封面' : item.type === 'pdf' ? '客户可打开文档' : item.url}}</text></view>
+            <view class="attachment-remove" data-index="{{index}}" bindtap="handleRemoveAttachment">删除</view>
+          </view>
+        </view>
+        <view wx:else class="attachment-empty">添加服务介绍、报价单或合作资料</view>
+        <view class="attachment-add" bindtap="handleChooseAttachment">＋ 添加照片 / PDF / 链接</view>
+        <view wx:if="{{showLinkForm}}" class="link-form"><input class="service-input" value="{{linkDraft.title}}" data-key="title" bindinput="handleLinkInput" placeholder="链接标题（选填）" placeholder-class="service-placeholder" /><input class="service-input" value="{{linkDraft.url}}" data-key="url" bindinput="handleLinkInput" placeholder="https://" placeholder-class="service-placeholder" /><button bindtap="addLink">确认添加</button></view>
+        <view class="radar-note">客户打开图片、PDF、链接或点击咨询后，会记录到客户雷达</view>
+      </view>
+
+      <view class="editor-card other-card">
+        <view class="section-head tappable" bindtap="handleToggleOther"><view><text class="step">4</text><text class="section-title">其他信息</text></view><text class="toggle">{{openOther ? '收起' : '展开'}}</text></view>
+        <block wx:if="{{openOther}}"><view class="field-row"><view class="field-label">服务范围<text>（选填）</text></view><input class="service-input" value="{{structuredData.serviceScope}}" data-key="serviceScope" bindinput="handleInput" placeholder="例如：长沙 / 线上均可" placeholder-class="service-placeholder" /></view><view class="field-row"><view class="field-label">价格或合作条件<text>（选填）</text></view><input class="service-input" value="{{structuredData.pricingOrTerms}}" data-key="pricingOrTerms" bindinput="handleInput" placeholder="例如：根据企业规模和业务量报价" placeholder-class="service-placeholder" /></view></block>
+      </view>
+    </view>
+    <view class="bottom-bar"><button class="delete-button" bindtap="handleDelete">删除资料</button><button class="save-draft-button" bindtap="handleSave" loading="{{saving}}">保存</button><button class="save-button" bindtap="handlePublish" loading="{{saving}}">发客户</button></view>
+  </block>
+</view>

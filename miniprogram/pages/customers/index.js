@@ -1,6 +1,7 @@
 const api = require("../../services/api");
 const { getCurrentUser, formatTime } = require("../../utils/dashboard");
 const { navigateToResourceView } = require("../../utils/resource-navigation");
+const { getCustomerPaymentState } = require("../../utils/customer-access");
 
 const INTENT_FILTERS = [
   { key: "all", label: "全部" },
@@ -102,12 +103,20 @@ function avatarText(name) {
 function leadStatusText(status) {
   const map = {
     pending: "待联系",
+    following: "跟进中",
     contacted: "已联系",
     invalid: "无效",
     paused: "暂不跟进",
     completed: "已完成"
   };
   return map[status] || "待联系";
+}
+
+function openCustomerDetail(customer = {}) {
+  const customerId = customer.visitorIdentityId || customer.viewerUserId || "";
+  const params = [`leadId=${encodeURIComponent(customer.id || "")}`];
+  if (!customer.id && customerId) params.unshift(`customerId=${encodeURIComponent(customerId)}`);
+  wx.navigateTo({ url: `/pages/customer-detail/index?${params.join("&")}` });
 }
 
 function customerStage(item) {
@@ -419,6 +428,16 @@ Page({
   async loadCustomers() {
     const currentUser = getCurrentUser();
     try {
+      const membershipRes = await api.fetchMembership(currentUser.id);
+      const paymentState = getCustomerPaymentState((membershipRes && membershipRes.data) || {});
+      if (paymentState === "unknown") {
+        wx.showToast({ title: "客户信息暂时无法读取，请重试", icon: "none" });
+        return;
+      }
+      if (paymentState === "payment_required") {
+        wx.navigateTo({ url: "/pages/membership/index" });
+        return;
+      }
       const [leadRes, orderRes] = await Promise.all([
         api.fetchLeadReminders(currentUser.id),
         api.fetchOrders({ userId: currentUser.id, role: "seller" }).catch(() => ({ data: { orders: [] } }))
@@ -647,12 +666,12 @@ Page({
       });
       return;
     }
-    wx.navigateTo({ url: `/pages/lead-detail/index?id=${customer.id}` });
+    openCustomerDetail(customer);
   },
   handleOpenSelectedLead() {
     const customer = this.data.selectedCustomer;
     if (!customer) return;
-    wx.navigateTo({ url: `/pages/lead-detail/index?id=${customer.id}` });
+    openCustomerDetail(customer);
   },
   handleOpenSelectedCard() {
     const customer = this.data.selectedCustomer;
@@ -761,7 +780,8 @@ Page({
     this.updateCustomerLead(reminderId, { status: "contacted" }, "已标记联系");
   },
   handleOpenLead(event) {
-    wx.navigateTo({ url: `/pages/lead-detail/index?id=${event.currentTarget.dataset.id}` });
+    const customer = (this.data.filteredCustomers || []).find((item) => item.id === event.currentTarget.dataset.id);
+    if (customer) openCustomerDetail(customer);
   },
   handleOpenCard(event) {
     navigateToResourceView(event.currentTarget.dataset.cardId);

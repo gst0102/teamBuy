@@ -1,4 +1,5 @@
 const api = require("../../services/api");
+const { navigateToNoteEditor } = require("../../utils/resource-navigation");
 
 const TEMPLATE_OPTIONS = [
   {
@@ -74,12 +75,12 @@ Page({
       wx.showToast({ title: "已绑定房源助手", icon: "success" });
       if (noteId) {
         setTimeout(() => {
-          wx.navigateTo({ url: `/pages/note-edit/index?id=${noteId}&template=${template}` });
+          wx.navigateTo({ url: `/subpackages/workbench/link-confirm/index?id=${noteId}&template=${encodeURIComponent(template)}` });
         }, 500);
         return;
       }
       setTimeout(() => {
-        wx.navigateTo({ url: `/pages/card-edit/index?id=${res.data.card.id}` });
+        wx.navigateTo({ url: `/subpackages/workbench/card-edit/index?id=${res.data.card.id}` });
       }, 500);
     } catch (error) {
       wx.showToast({ title: "认领失败", icon: "none" });

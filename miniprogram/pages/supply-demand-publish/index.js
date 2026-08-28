@@ -94,7 +94,7 @@ Page({
     if (!user) return;
     try {
       const [notesRes, showcasesRes] = await Promise.all([
-        fetchNotes({ ownerUserId: user.id }),
+        fetchNotes({ ownerUserId: user.id }, { metadataOnly: true }),
         fetchShowcases(user.id)
       ]);
       const notes = Array.isArray(notesRes.data) ? notesRes.data.slice(0, 20).map((item) => ({

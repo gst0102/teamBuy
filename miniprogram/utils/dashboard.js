@@ -1,22 +1,5 @@
 const { buildTitleCoverData } = require("./title-cover");
 
-const DEFAULT_NICKNAMES = [
-  "硬核生意人",
-  "实战派生意人",
-  "精明生意人",
-  "靠谱生意人",
-  "有胆生意人",
-  "敏锐生意人",
-  "老辣生意人",
-  "进取生意人",
-  "灵活生意人",
-  "果断生意人"
-];
-
-function getRandomDefaultNickname() {
-  return DEFAULT_NICKNAMES[Math.floor(Math.random() * DEFAULT_NICKNAMES.length)];
-}
-
 function getCurrentUser() {
   return getApp().globalData.currentUser || wx.getStorageSync("currentUser");
 }
@@ -219,8 +202,9 @@ function enrichCard(card = {}, categoriesById = {}) {
     structuredData.moveInTime,
     normalized.importBatchId ? "客服导入" : ""
   ].filter(Boolean).join(" · ");
+  const propertyPriceLabel = ["sale", "sell", "出售"].includes(structuredData.listingMode || structuredData.dealType) ? "售价" : "租金";
   const propertyHighlightChips = [
-    propertyPrice ? normalizePropertyValue(propertyPrice, "租金") : "租金待补",
+    propertyPrice ? normalizePropertyValue(propertyPrice, propertyPriceLabel) : `${propertyPriceLabel}待补`,
     propertyLayout ? normalizePropertyValue(propertyLayout, "户型") : "户型待补",
     structuredData.area ? normalizePropertyValue(structuredData.area, "面积") : "",
     structuredData.paymentMethod || ""
@@ -460,7 +444,6 @@ module.exports = {
   formatTime,
   statusText,
   getCurrentUser,
-  getRandomDefaultNickname,
   safeAvatarUrl,
   avatarText,
   enrichCard,

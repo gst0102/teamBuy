@@ -1,0 +1,74 @@
+<view class="page-shell membership-page">
+  <custom-nav showBack="{{true}}" title="客户信息链会员" />
+
+  <view wx:if="{{featureEnabled && membership.paymentRequired !== false && pendingOrder}}" class="pending-payment-banner">
+    <view class="pending-payment-header"><text class="pending-payment-title">有一笔待支付订单</text><text class="pending-payment-countdown">{{pendingOrderCountdown}}</text></view>
+    <view class="pending-payment-copy">订单将在倒计时结束后关闭；30分钟内再次进入可继续支付，不会重复创建订单。</view>
+  </view>
+
+  <view wx:if="{{featureEnabled && membership.paymentRequired !== false}}">
+  <view class="membership-hero">
+    <view class="membership-signal-pill"><view class="signal-pulse"></view><text>客户行为已经发生</text></view>
+    <view class="membership-title">先看信号，再决定怎么跟</view>
+    <view class="membership-sub">看到谁反复查看、关注什么，再决定下一步。</view>
+    <view class="membership-radar" aria-hidden="true">
+      <view class="radar-ring radar-ring-one"></view>
+      <view class="radar-ring radar-ring-two"></view>
+      <view class="radar-ring radar-ring-three"></view>
+      <view class="radar-sweep"></view>
+      <view class="radar-core"></view>
+    </view>
+    <view class="membership-price"><text>¥19.9</text> / 月</view>
+    <button class="membership-cta" bindtap="handleSubscribe" loading="{{loading}}">{{pendingOrder ? '继续支付' : (membership.active ? '续费一个月' : '开通客户信息链')}}</button>
+    <view class="membership-expiry" wx:if="{{membership.active}}">当前有效期至 {{membership.expiresAtText}}</view>
+    <view class="membership-billing" wx:else>{{pendingOrder ? '取消支付不会创建新订单 · 可继续支付' : '按月订阅 · 随时续费'}}</view>
+  </view>
+
+  <view class="membership-section-title"><view class="section-rule"></view><text>开通后你会看到</text><view class="section-rule"></view></view>
+  <view class="benefit-grid">
+    <view class="benefit-card" wx:for="{{benefitItems}}" wx:key="key">
+      <view class="benefit-icon {{item.color}}">{{item.icon}}</view>
+      <view class="benefit-title">{{item.title}}</view>
+    </view>
+  </view>
+
+  <view class="signal-preview-card">
+    <view class="signal-preview-row">
+      <view class="signal-avatar">访</view>
+      <view class="signal-preview-main"><text>某位访客</text><text class="signal-meta">· 打开 3 次</text><view class="signal-line"><view class="signal-line-short"></view><view class="signal-line-long"></view></view></view>
+      <view class="signal-lock">⌑</view>
+    </view>
+    <view class="signal-preview-row">
+      <view class="signal-avatar">访</view>
+      <view class="signal-preview-main"><text>某位访客</text><text class="signal-meta">· 关注价格</text><view class="signal-line"><view class="signal-line-short"></view><view class="signal-line-long"></view></view></view>
+      <view class="signal-lock">⌑</view>
+    </view>
+    <view class="signal-privacy"><text class="privacy-shield">♢</text>隐私保护，只有你能看到</view>
+  </view>
+
+  <view class="membership-note"><text class="note-icon">✓</text>资料和历史客户数据不会丢失，会员到期后可恢复查看。</view>
+
+  <view class="membership-info-panel">
+    <view class="info-panel-header" bindtap="handleToggleMembershipGuide">
+      <view><view class="info-panel-title">会员说明</view><view class="info-panel-sub">先了解免费范围和会员权益</view></view>
+      <text class="info-panel-arrow">{{showMembershipGuide ? '收起' : '展开'}} ›</text>
+    </view>
+    <view class="info-panel-body" wx:if="{{showMembershipGuide}}">
+      <view class="info-row"><text class="info-dot free"></text><view><text class="info-row-title">免费使用</text><text class="info-row-copy">创建、整理、生成、发客户和合集分享不收费；访客数量、打开次数等汇总信号免费可见。</text></view></view>
+      <view class="info-row"><text class="info-dot paid"></text><view><text class="info-row-title">会员解锁</text><text class="info-row-copy">解锁客户身份、联系方式、完整访问轨迹、客户档案与跟进，以及跨资料兴趣提醒。</text></view></view>
+      <view class="info-row"><text class="info-dot rule"></text><view><text class="info-row-title">有效期与数据</text><text class="info-row-copy">按月订阅，当前方案为 19.9 元/月。到期后只锁定客户明细，不删除资料和历史数据，续费后恢复。</text></view></view>
+      <view class="info-row"><text class="info-dot rule"></text><view><text class="info-row-title">退款处理</text><text class="info-row-copy">订单发生退款时，相关会员权益会按退款结果回退。</text></view></view>
+    </view>
+  </view>
+
+  <view class="membership-footer-link" bindtap="handleToggleMembershipGuide">查看会员说明 <text>›</text></view>
+  </view>
+  <view wx:elif="{{featureEnabled}}" class="membership-disabled-card">
+    <view class="membership-disabled-title">客户信息链已开放</view>
+    <view class="membership-disabled-copy">当前可直接查看客户信息。</view>
+  </view>
+  <view wx:else class="membership-disabled-card">
+    <view class="membership-disabled-title">客户信息暂时不可用</view>
+    <view class="membership-disabled-copy">当前暂时无法查看客户信息，请稍后再试。</view>
+  </view>
+</view>

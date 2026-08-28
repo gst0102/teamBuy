@@ -1,88 +1,107 @@
 <view class="page-shell home-page">
   <custom-nav title="首页" />
 
-  <view class="opportunity-hero">
-    <view class="hero-topline">
-      <view class="hero-copy-block">
-        <view class="hero-kicker-row">
-          <view class="hero-kicker">资料整理助手</view>
-        </view>
-        <view class="hero-title">今天收到的资料</view>
-        <view class="hero-subtitle">统一收进资料库，再按房源、商机、服务、商品和日常筛选。</view>
-      </view>
-      <view class="radar-visual">
-        <view class="radar-orbit">
-          <view class="orbit-ring outer"></view>
-          <view class="orbit-ring middle"></view>
-          <view class="orbit-ring"></view>
-          <view class="orbit-cross horizontal"></view>
-          <view class="orbit-cross vertical"></view>
-          <view class="orbit-center">客</view>
-          <view class="orbit-dot one"></view>
-          <view class="orbit-dot two"></view>
-        </view>
-        <view class="radar-person-card left">
-          <view>王女士</view>
-          <text>高意向</text>
-        </view>
-        <view class="radar-person-card right top">
-          <view>李先生</view>
-          <text>待跟进</text>
-        </view>
-        <view class="radar-person-card right bottom">
-          <view>张先生</view>
-          <text>复访</text>
-        </view>
-      </view>
+  <view class="today-label">今天</view>
+  <view class="sales-action-card state-{{salesHomeState.key}}">
+    <view class="action-card-copy">
+      <view class="action-card-eyebrow">{{salesHomeState.eyebrow}}</view>
+      <view class="action-card-title">{{salesHomeState.title}}</view>
+      <view class="action-card-desc">{{salesHomeState.desc}}</view>
+      <button class="action-card-button" bindtap="handlePrimaryAction">{{salesHomeState.action}}<text>→</text></button>
     </view>
-    <view class="hero-bottomline home-main-actions">
-      <view class="hero-scene-pill primary" bindtap="handleQuickAdd">添加资料</view>
-      <view class="hero-scene-pill" bindtap="handleGoLibrary">查看资料库</view>
-      <view class="hero-scene-pill" bindtap="handleGoRadar">客户雷达</view>
+    <view class="home-radar" bindtap="handleGoRadar">
+      <view class="home-radar-ring outer"></view>
+      <view class="home-radar-ring middle"></view>
+      <view class="home-radar-ring inner"></view>
+      <view class="home-radar-axis horizontal"></view>
+      <view class="home-radar-axis vertical"></view>
+      <view class="home-radar-center">客</view>
+      <view class="home-radar-tag sent">已分享 <text>{{homeRadarEntry.todayShareCount}}</text></view>
+      <view class="home-radar-tag opened">打开 <text>{{homeRadarEntry.todayOpenCount}}</text></view>
+      <view class="home-radar-tag followup">跟进 <text>{{homeRadarEntry.todayFollowupCount}}</text></view>
     </view>
   </view>
 
-  <view class="opportunity-panel">
-    <view class="section-head clean">
+  <view class="feedback-section">
+    <view class="home-section-head feedback-section-head">
       <view>
-        <view class="section-title">今日机会</view>
-        <view class="section-sub">先盯谁，再跟谁。</view>
+        <view class="home-section-title">客户反馈</view>
+        <view class="home-section-sub">历史数据持续保留，待跟进只显示当前待办。</view>
       </view>
-      <view class="section-link" bindtap="handleGoRadar">去雷达</view>
-    </view>
-    <view class="home-stat-row">
-      <view class="home-stat" wx:for="{{homeStats}}" wx:key="key" data-key="{{item.key}}" bindtap="handleOpenStatCard">
-        <view class="home-stat-value {{item.valueClass}}">{{item.value}}</view>
-        <view class="home-stat-label">{{item.label}}</view>
+      <view class="feedback-range-tabs" wx:if="{{feedbackRangeReady}}" role="tablist">
+        <view
+          wx:for="{{overviewRangeOptions}}"
+          wx:key="key"
+          class="feedback-range-tab {{overviewRange === item.key ? 'active' : ''}}"
+          data-range="{{item.key}}"
+          bindtap="handleOverviewRangeChange"
+          role="tab"
+        >{{item.label}}</view>
       </view>
     </view>
-    <view class="top-opportunity {{homeOpportunity.statusClass}}" bindtap="handleGoRadar">
-      <view class="intent-pill">{{homeOpportunity.intentLabel}}</view>
-      <view class="top-opportunity-main">
-        <view class="top-opportunity-title">{{homeOpportunity.title}}</view>
-        <view class="top-opportunity-desc">{{homeOpportunity.desc}}</view>
-        <view wx:if="{{homeOpportunity.hasAlert}}" class="top-opportunity-action">{{homeOpportunity.action}}</view>
+    <view class="feedback-range-caption" wx:if="{{feedbackRangeReady}}">{{feedbackRangeTitle}}</view>
+    <view class="feedback-actions">
+      <view class="feedback-action {{feedbackSummary.sentCount > 0 ? 'active' : ''}}" data-stage="sent" bindtap="handleFeedbackStage">
+        <view class="feedback-action-head"><text>已分享</text><text class="feedback-arrow">›</text></view>
+        <view class="feedback-value">{{feedbackSummary.sentCount}}<text> 份</text></view>
+        <view class="feedback-hint">查看已发资料</view>
+      </view>
+      <view class="feedback-action {{feedbackSummary.visitorCount > 0 ? 'active' : ''}}" data-stage="opened" bindtap="handleFeedbackStage">
+        <view class="feedback-action-head"><text>打开访客</text><text class="feedback-arrow">›</text></view>
+        <view class="feedback-value">{{feedbackSummary.visitorCount}}<text> 位</text></view>
+        <view class="feedback-hint">查看访客</view>
+      </view>
+      <view class="feedback-action followup {{feedbackSummary.pendingCount > 0 ? 'active' : ''}}" data-stage="followup" bindtap="handleFeedbackStage">
+        <view class="feedback-action-head"><text>待跟进</text><text class="feedback-arrow">›</text></view>
+        <view class="feedback-value">{{feedbackSummary.pendingCount}}<text> 条</text></view>
+        <view class="feedback-hint">点击处理后移除</view>
       </view>
     </view>
   </view>
 
-  <view class="assistant-panel">
-    <view class="section-head clean">
-      <view>
-        <view class="section-title">快捷工具</view>
-        <view class="section-sub">按需要处理房源、商机、服务、商品和合集。</view>
+  <view class="priority-section" wx:if="{{priorityCustomer.visible}}">
+    <view class="priority-eyebrow">{{priorityCustomer.eyebrow}}</view>
+    <view class="priority-top">
+      <view class="priority-avatar">{{priorityCustomer.avatarText}}</view>
+      <view class="priority-identity">
+        <view class="priority-name">{{priorityCustomer.name}}</view>
+        <view class="priority-signal">{{priorityCustomer.signal}}</view>
       </view>
     </view>
-    <view class="assistant-actions">
-      <view class="assistant-action {{index === 0 ? 'primary' : ''}}" wx:for="{{homeQuickTools}}" wx:key="key" data-action="{{item.action}}" bindtap="handleQuickAction">
-        <image wx:if="{{item.iconImage}}" class="assistant-action-icon" src="{{item.iconImage}}" mode="aspectFit"></image>
-        <view wx:else class="assistant-action-mark">{{item.icon}}</view>
-        <view>
-          <view class="assistant-action-title">{{item.label}}</view>
-          <view class="assistant-action-desc">{{item.desc}}</view>
+    <view class="priority-source">{{priorityCustomer.source}}</view>
+    <view class="priority-suggestion"><text>建议</text>{{priorityCustomer.suggestion}}</view>
+    <view class="priority-actions">
+      <button class="priority-secondary" wx:if="{{!priorityCustomer.locked}}" bindtap="handlePriorityTrack">查看轨迹</button>
+      <button class="priority-primary" bindtap="handlePriorityPrimary">{{priorityCustomer.primaryAction}}</button>
+    </view>
+  </view>
+
+  <view class="recent-section">
+    <view class="home-section-head">
+      <view>
+        <view class="home-section-title">最近常用</view>
+        <view class="home-section-sub">需要发客户时，从这里最快。</view>
+      </view>
+      <view class="home-section-link" bindtap="handleGoLibrary">全部资料</view>
+    </view>
+    <scroll-view scroll-x class="recent-resource-scroll" wx:if="{{recentResources.length}}">
+      <view class="recent-resource-row">
+        <view class="recent-resource-card" wx:for="{{recentResources}}" wx:key="id" data-id="{{item.id}}" bindtap="handleOpenResource">
+          <image wx:if="{{item.coverUrl}}" class="recent-resource-cover" src="{{item.coverUrl}}" mode="aspectFill"></image>
+          <view wx:else class="recent-resource-cover generated tone-{{item.titleCover.tone}}">
+            <view class="recent-resource-badge">{{item.titleCover.badge}}</view>
+            <view class="recent-resource-cover-title">{{item.titleCover.line1}}</view>
+          </view>
+          <view class="recent-resource-title">{{item.title}}</view>
+          <view class="recent-resource-meta">{{item.deliveryStatus.text}} · 打开 {{item.stats.pv}}</view>
         </view>
-        <view class="assistant-action-chip" wx:if="{{item.chip}}">{{item.chip}}</view>
-        <view class="contact-overlay" wx:if="{{item.contact}}" catchtap="handleAssistantBindTap"></view>
+      </view>
+    </scroll-view>
+    <view class="recent-empty" wx:else bindtap="handleQuickAdd">
+      <view class="recent-empty-icon">＋</view>
+      <view>
+        <view class="recent-empty-title">还没有可发送的资料</view>
+        <view class="recent-empty-desc">先添加一份，之后会自动出现在这里。</view>
       </view>
     </view>
   </view>
@@ -92,22 +111,22 @@
       <view class="bind-guide-head">
         <view>
           <view class="bind-guide-kicker">添加资料助手</view>
-          <view class="bind-guide-title">先扫码添加，再粘贴发送</view>
+          <view class="bind-guide-title">添加后发送消息，完成绑定</view>
         </view>
         <view class="bind-guide-close" catchtap="handleCloseAssistantBindModal">×</view>
       </view>
 
-      <view class="bind-guide-qr">
-        <image wx:if="{{assistantBindQrImage}}" class="bind-guide-qr-image" src="{{assistantBindQrImage}}" mode="aspectFit" show-menu-by-longpress="true"></image>
-        <view wx:else class="bind-guide-qr-placeholder">
-          <view class="bind-guide-qr-mark">企微</view>
-          <view class="bind-guide-qr-title">资料助手二维码</view>
-          <view class="bind-guide-qr-desc">放入真实二维码后，用户可长按识别添加。</view>
-        </view>
+      <view class="bind-guide-contact">
+        <contact-cell
+          plugid="{{assistantContactPlugid}}"
+          bind:startmessage="handleAssistantContactStart"
+          bind:completemessage="handleAssistantContactComplete"
+        />
+        <view class="bind-guide-contact-hint">点击按钮添加企业微信“资料助手”</view>
       </view>
 
-      <view class="bind-guide-code">
-        <view class="bind-guide-code-label">绑定话术已复制</view>
+      <view wx:if="{{assistantBindMessage}}" class="bind-guide-code">
+        <view class="bind-guide-code-label">添加成功后，把下面这段完整复制并发送给企业微信资料助手</view>
         <view class="bind-guide-code-text">{{assistantBindMessage}}</view>
       </view>
 
@@ -115,57 +134,32 @@
         <view class="bind-guide-step">
           <view class="bind-guide-step-index">1</view>
           <view>
-            <view class="bind-guide-step-title">长按二维码，添加资料整理助手</view>
-            <view class="bind-guide-step-desc">添加后打开和资料助手的聊天框。</view>
+            <view class="bind-guide-step-title">点击上方按钮，添加资料助手</view>
+            <view class="bind-guide-step-desc">添加完成后返回这里。</view>
           </view>
         </view>
         <view class="bind-guide-step">
           <view class="bind-guide-step-index">2</view>
           <view>
-            <view class="bind-guide-step-title">打开聊天框，粘贴并发送</view>
-            <view class="bind-guide-step-desc">发出上面这句话后，系统会把企业微信身份和当前账号绑定。</view>
+            <view class="bind-guide-step-title">复制下面的完整绑定消息</view>
+            <view class="bind-guide-step-desc">不要只复制口令，整段消息一起发送。</view>
           </view>
         </view>
         <view class="bind-guide-step">
           <view class="bind-guide-step-index">3</view>
           <view>
-            <view class="bind-guide-step-title">以后直接转发房源、资料和图片</view>
-            <view class="bind-guide-step-desc">绑定成功后，再发给助手的内容会自动进入你的资料库。</view>
+            <view class="bind-guide-step-title">粘贴发送给企业微信资料助手</view>
+            <view class="bind-guide-step-desc">会话存档收到口令后完成绑定，之后再发资料即可自动进入资料库。</view>
           </view>
         </view>
       </view>
 
       <view class="bind-guide-actions">
-        <button class="bind-guide-secondary" catchtap="handleCopyAssistantBindMessage">重新复制</button>
-        <button class="bind-guide-primary" catchtap="handleCloseAssistantBindModal">去发送</button>
+        <button wx:if="{{assistantBindMessage}}" class="bind-guide-secondary" catchtap="handleCopyAssistantBindMessage">复制绑定消息</button>
+        <button class="bind-guide-primary" catchtap="handleCloseAssistantBindModal">知道了</button>
       </view>
-      <view class="bind-guide-foot">小程序不能替你自动发送消息，需要你在企业微信聊天里手动发送一次。</view>
+      <view class="bind-guide-foot">如果口令过期，请重新打开资料助手生成一条新的。</view>
     </view>
   </view>
 
-  <view class="panel recent-panel">
-    <view class="section-head">
-      <view>
-        <view class="section-title">最近有反馈的资料</view>
-        <view class="section-sub">客户有动作的内容会排在前面。</view>
-      </view>
-      <view class="section-link" bindtap="handleGoLibrary">看资料</view>
-    </view>
-    <scroll-view scroll-x class="hot-scroll" wx:if="{{hotResources.length}}">
-      <block wx:for="{{hotResources}}" wx:key="id">
-        <view class="hot-card" data-id="{{item.id}}" bindtap="handleOpenResource">
-          <image wx:if="{{item.coverUrl}}" class="hot-cover" src="{{item.coverUrl}}" mode="aspectFill"></image>
-          <view wx:else class="hot-cover placeholder tone-{{item.titleCover.tone}} lite">
-            <view class="title-cover-badge compact">{{item.titleCover.badge}}</view>
-            <view class="title-cover-line">{{item.titleCover.line1}}</view>
-            <view class="title-cover-line second" wx:if="{{item.titleCover.line2}}">{{item.titleCover.line2}}</view>
-            <view class="title-cover-hint">最近有反馈</view>
-          </view>
-          <view class="hot-title">{{item.title}}</view>
-          <view class="resource-meta">打开 {{item.stats.pv}} · 互动 {{item.stats.relayCount}}</view>
-        </view>
-      </block>
-    </scroll-view>
-    <view class="empty-state" wx:else>还没有最近资料，可以先新增一条资料，或把微信里的内容转发给资料助手。</view>
-  </view>
 </view>

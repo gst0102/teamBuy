@@ -10,7 +10,7 @@ teamBuy 是一个面向微信群私域场景的小程序工具，核心能力是
 
 当前企业微信客服后端回调地址已配置成功，并以 `https://teambuy.lifelove.top/api/wecom/kf/teamBuy/callback` 为准；其它企业微信配置项以 `backend/.env` 为准。
 
-企业微信会话内容存档已开通，进入 P0 第三阶段。配置清单固定在 `docs/stage2-docs/10-wecom-archive-config.md`；后端会话存档接口前缀为 `/api/wecom/archive`。会话内容存档使用独立 `WECOM_ARCHIVE_SECRET` 和 RSA 私钥，不复用微信客服 `WECOM_SECRET`。
+企业微信会话内容存档已开通，进入 P0 第三阶段。配置清单固定在 `docs/stage2-docs/10-wecom-archive-config.md`；后端会话存档接口前缀为 `/api/wecom/archive`。会话内容存档使用独立 `WECOM_ARCHIVE_SECRET`、`WECOM_ARCHIVE_CALLBACK_TOKEN`、`WECOM_ARCHIVE_ENCODING_AES_KEY` 和 RSA 私钥，不复用微信客服 `WECOM_KF_SECRET` 或回调凭证。
 
 长期架构计划以 `docs/stage2-docs/08-plugin-architecture.md` 为准：资料整理助手采用“企业微信稳定基座 + 混合驱动 Skill + 小程序笔记与展示页”。企业微信负责入口、消息和通知；通用基座负责会话存档、身份、合规、支付、笔记库和展示页基础能力；可变功能通过 Skill 扩展。
 
@@ -69,7 +69,7 @@ teamBuy 是一个面向微信群私域场景的小程序工具，核心能力是
 - 转化配置：房源/商品展示从编辑态到生成态需要保存 `conversionConfig`，用于控制是否展示联系电话、是否开启轻 SCRM、是否收集线索、房源预约看房/私聊咨询、商品团购接龙、分享图入口和下单按钮预留。该配置不属于房源/商品本体字段，不应混入 `structuredData`。
 - 客户页动作持久化是下一阶段重点，并必须做成 `customer-action-plugin` 这类可复用插件。房源、团购、普通笔记只决定默认启用哪些动作；动作提交统一落通用记录，再投影到线索、预约、接龙和跟进。第一版已落地 `lead-contact` 和 `appointment`：客户页提交电话/微信或预约后会写入 `customer_actions`，并投影到 `lead_reminders`。发布者查看时，房源资料详情“轻 SCRM”板块是单房源客户动作主入口，可按 noteId 查看留资、预约和线索；全局线索列表保留为跨资料待办。长标题是房产中介主动展示卖点的方式，不拆字段、不改标题，只做排版容错。
 - 房产场景继续围绕工作台效率优化：房源状态用 `structuredData.propertyStatus` 管理推广中 / 已租 / 暂停推广，客户页按状态关闭新增转化动作；图片/视频排序属于资料展示状态，调整后必须立即保存；电话拨号后应提示是否标记已联系，并写入跟进记录。
-- 旧资源详情页策略：当前兼容旧 `Card`、`card-view`、`card-edit` 暂不删除，但已认领导入资料必须优先走新 `UserNote` 资料卡链路。后端 Card 响应通过 `sourceNoteId` 映射到新笔记，小程序资源入口有 `sourceNoteId` 时打开 `pages/note-edit/index`；旧页面只作为历史回退和客户分享临时展示。
+- 旧资源详情页策略：标准资料统一进入 `note-preview`，不再保留可访问的 `card-view` 页面。后端公开资料接口可将仍带有 `sourceNoteId` 的历史 Card ID 解析到对应 UserNote；没有标准来源的纯旧 Card 不再作为客户页主链路。
 - 企业微信会话内容存档 P0：事件服务器已保存成功；真实归档链路拆成 `/api/wecom/archive/pull` 和 `/api/wecom/archive/process`。`pull` 负责官方 SDK 拉取/解密/原始消息入库，`process` 负责 `ContentObject -> content-to-note -> UserNote`，重复处理通过 `generatedNoteId` 幂等保护。当前生产已配置官方 SDK 动态库，自动 worker 已开启。会话存档媒体下载转存已实现：`sdkfileid -> GetMediaData -> 服务端媒体处理/转存 -> UserNote.media.url`，小程序本地缓存不能替代正式存储；仍需生产真实图片消息验证。
 - identity-core P0 第一版采用收窄方案：小程序微信 `openid` 是唯一身份锚点，`userId` 只是后端内部主键。企业微信来源 `externalUserId/external_userid` 只做系统内部映射到 `ownerOpenid/ownerUserId`，第一次认领导入后，后续同来源企业微信客服导入和会话存档导入会自动进入该 `openid` 对应用户资料库。P0 不做面向用户的绑定管理、解绑或改绑功能；测试期误认领走后台数据修正。
 - 小程序正式登录接口已新增：前端可调用 `wx.login`，后端 `POST /api/auth/wechat-login` 通过 jscode2session 换 openid 后创建/更新用户；服务器还需配置 `WECHAT_MINIAPP_APPID` 和 `WECHAT_MINIAPP_SECRET` 才能启用真实 openid。未配置前，小程序用设备级唯一 mock openid 兜底，避免两个真机共用“本地测试用户”。后续正式上线仍应把前端传 `ownerUserId` 升级为服务端 session/token 校验。
@@ -109,3 +109,54 @@ teamBuy 是一个面向微信群私域场景的小程序工具，核心能力是
 - `docs/stage2-docs/08-plugin-architecture.md`
 - `docs/stage2-docs/09-p0-p2-roadmap.md`
 - `docs/qa/MVP_测试清单与验收标准.md`
+
+## 2026-08-16：媒体哈希去重与共享归档 24 小时中转留存
+
+- teamBuy 的图片/媒体业务上传统一走 `AppService.process_and_store_media()`；`MediaAsset` 保存原始内容哈希 `originalSha256` 与处理后存储哈希 `storageSha256`，按 `mediaType + hash` 复用资产，`MediaAssetRef` 只记录业务引用关系。
+- 手动 `/api/uploads/asset` 已接入同一套资产登记和去重链路，并返回两个哈希字段；存储对象 key 使用处理后哈希，避免并发重复上传产生不同物理文件。
+- 共享企业微信核心 `WECOM_ARCHIVE_CORE_RAW_RETENTION_HOURS` 默认 24 小时；只有所有项目投递完成后才清理，项目业务库中已经持久化的数据不受影响。
+
+- 会话存档普通消息的业务聚合统一采用“同一发送人、同一会话、首条消息起 60 秒固定窗口”；`note` 消息天然原子。图片加短说明以图片为主体，说明文字仍保留在资料正文。
+
+## 2026-08-22：分享发送链路必须做对抗式审查
+
+这次分享图问题的长期记忆：统一渲染器、跳过 Canvas、快照状态通过，并不等于微信最终分享正确。必须沿着“点击发客户 -> `onShareAppMessage` -> 返回对象 -> 微信卡片”验证最终结果。
+
+- 非名片有原图时，若产品决策是 A 方案，最终返回对象必须带当前登记原图 `imageUrl`；不能因为 `shareSnapshot` 尚未完成就返回“准备中”标题或资料库路径。
+- 微信原生分享没有 `imageUrl` 时可能截取当前页面；因此“无 `imageUrl` + `/pages/library/index` 或首页 path”是阻断性错误，不是可接受降级。
+- `direct` 必须表示最终发送动作可立即完成且带有真实主图 `imageUrl`，不得只表示“没有进入 Canvas”。无图资料必须走插件的 `resource_default` 信息卡快照；名片继续走专用 Canvas。
+- 每次开发前必须写出至少一个能击穿方案的反例，开发后必须验证名片、房源、商品、普通资料、图片资料、合集、无图、缺图、旧版本、失败重试和快速连续点击。
+- `node --check`、JSON 解析、后端 pytest 只能证明基础代码/接口没有明显错误，不能替代小程序发送回调测试和微信开发者工具真机验收。
+
+## 2026-08-26：无主图资料禁止退回微信当前页面截图
+
+- 资料库、资料列表、客户页和通用分享入口都必须通过 `share-snapshot` 统一得到有效缩略图；没有真实主图时由插件生成 `resource_default` 信息卡并上传保存。
+- 最终 `onShareAppMessage` 必须返回有效托管 `imageUrl` 和客户页 `path`；空 `imageUrl` 会让微信截取当前页面，属于阻断性分享错误。
+
+## 2026-08-22：运营开关必须使用数据库配置表
+
+- 客户信息链开关不是 PC 前端状态，也不能继续依赖 Docker 容器内的 `ops-console-state.json`；生产唯一真源是 PostgreSQL `ops_feature_flags` 的 `customer_info_chain` 行。
+- 旧 JSON 仅允许在配置表缺行时一次性迁移；已有数据库行优先，旧文件删除或变化都不能覆盖线上开关。
+- 数据库不可读时，后端必须 fail closed；PC 必须显示“读取失败”并禁止切换，不能把故障显示为“已关闭”或误开放客户身份、联系方式和会员门禁。
+- 任何迁移发布前都要核对当前生产开关值已经写入表中；不能只部署代码后再假设旧容器文件会继续存在。
+
+## 2026-08-22：生产客户页加载失败的长期规避规则
+
+这次真实生产复现证明：不能把“原生分享面板打开了”当作“客户一定能打开”。资料编辑后会进入新的 revision 并撤销 published 状态，旧分享链接返回 404 是预期的安全边界；真正的前端缺口是旧列表状态在异步最新版本校验完成前仍可触发分享。
+
+- 资料库分享准备必须先读取最新 owner note，以最新 `shareState` 和 `revision` 覆盖缓存值；只要不是 `published`，立即清除旧 `shareImageReady`/直出状态，进入重新发布路径。
+- 异步校验开始时先撤销发送按钮资格，不能保留旧 ready 状态等待请求返回；否则会产生“发送成功、客户页 404”的竞态。
+- 客户页必须区分“资料已停止分享/未发布”和“网络加载失败”，前者提供重新发布后重新发送的行动提示，后者提供重试。
+- 对抗式验收必须至少构造：已发布后编辑、校验请求慢/失败、旧 404 分享链接、正常 published 分享、页面请求竞态；并同时检查资料库状态、`onShareAppMessage` 返回对象和客户页最终可见状态。
+
+## 2026-08-22：客户信息链配置表生产落地
+
+- 客户信息链开关已在生产切换为 PostgreSQL `ops_feature_flags` 的 `customer_info_chain` 行；本轮部署后接口实际读取 `enabled=true`、`paymentRequired=false`，没有改变这两个值。
+- 配置表部署采用线上文件基线的最小补丁和显式备份，后端相关容器可重建，但不得重建 PostgreSQL 或覆盖生产 `.env`、secrets、媒体数据。
+- 生产验证必须同时检查公网健康接口、运营接口返回值和数据库行；PC 的显示状态只能作为界面结果，不能作为持久化证据。
+## 2026-08-22：会员支付待支付订单生命周期
+
+- 会员支付同一用户/同一方案的业务订单在 30 分钟内复用；取消微信支付只保留 pending，不生成第二笔订单。
+- pendingOrder.expiresAt 和 pendingOrder.secondsRemaining 由后端返回；小程序只按到期时间展示 mm:ss，不能只依赖本地倒计时决定能否支付。
+- 会员状态、创建订单、发起支付都必须执行超时关闭；旧订单号在超时后不能重新发起支付，超过窗口才允许创建新订单。
+- 已验签且金额/商户/用户一致的微信成功回调，即使本地订单因超时变为 closed，仍需完成该真实支付，避免扣款和权益不一致。

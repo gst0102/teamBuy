@@ -271,8 +271,8 @@
         <text data-id="{{item.id}}" bindtap="handleMarkContacted">标记已联系</text>
       </view>
       <view class="customer-actions secondary">
-        <text data-id="{{item.id}}" bindtap="handleOpenLead">查看客户</text>
-        <text data-id="{{item.id}}" bindtap="handleOpenLead">编辑资料/标签</text>
+        <text data-id="{{item.id}}" bindtap="handleOpenLead">客户详情</text>
+        <text data-id="{{item.id}}" bindtap="handleOpenLead">记录跟进</text>
         <text data-card-id="{{item.cardId}}" bindtap="handleOpenCard">资源详情</text>
       </view>
     </view>
@@ -320,7 +320,7 @@
       </view>
 
       <view class="detail-actions">
-        <button class="detail-secondary" catchtap="handleOpenSelectedLead">查看客户</button>
+        <button class="detail-secondary" catchtap="handleOpenSelectedLead">客户详情</button>
         <button class="detail-secondary" catchtap="handleOpenSelectedCard">来源资料</button>
         <button class="detail-primary" catchtap="handleSelectedPrimaryAction">{{selectedCustomer.nextActionText}}</button>
       </view>

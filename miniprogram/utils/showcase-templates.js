@@ -6,7 +6,7 @@ const SHOWCASE_TEMPLATES = [
     badge: "精选",
     groupBy: "none",
     tone: "green",
-    previewImage: "https://teambuy.lifelove.top/media/showcase-templates/featured-window.webp"
+    previewImage: "/static/showcase/featured-window.jpg"
   },
   {
     id: "moments_story",
@@ -15,7 +15,7 @@ const SHOWCASE_TEMPLATES = [
     badge: "长页",
     groupBy: "custom",
     tone: "warm",
-    previewImage: "https://teambuy.lifelove.top/media/showcase-templates/moments-story.webp"
+    previewImage: "/static/showcase/moments-story.jpg"
   },
   {
     id: "catalog_list",
@@ -24,7 +24,7 @@ const SHOWCASE_TEMPLATES = [
     badge: "目录",
     groupBy: "tag",
     tone: "blue",
-    previewImage: "https://teambuy.lifelove.top/media/showcase-templates/catalog-list.webp"
+    previewImage: "/static/showcase/catalog-list.jpg"
   },
   {
     id: "brand_card",
@@ -33,12 +33,48 @@ const SHOWCASE_TEMPLATES = [
     badge: "名片",
     groupBy: "cardType",
     tone: "teal",
-    previewImage: "https://teambuy.lifelove.top/media/showcase-templates/brand-card.webp"
+    previewImage: "/static/showcase/brand-card.jpg"
   }
 ];
 
+const TEMPLATE_SCENE_MAP = {
+  property: ["featured_window", "catalog_list"],
+  groupbuy: ["moments_story", "catalog_list", "featured_window"],
+  service: ["moments_story", "catalog_list", "featured_window"],
+  notes: ["catalog_list", "moments_story", "featured_window"],
+  business_card: ["brand_card"],
+  mixed: ["catalog_list", "moments_story", "featured_window"]
+};
+const TEMPLATE_SCENE_ALIASES = { property_batch_collection: "featured_window" };
+
+function normalizeSceneType(value) {
+  const key = String(value || "").trim().toLowerCase();
+  if (["property", "房源", "房产", "property_listing", "property_batch_collection"].includes(key)) return "property";
+  if (["groupbuy", "商品", "团购", "groupbuy_product"].includes(key)) return "groupbuy";
+  if (["service", "服务", "案例", "service_offer"].includes(key)) return "service";
+  if (["business_card", "电子名片", "名片"].includes(key)) return "business_card";
+  if (key === "mixed") return "mixed";
+  return "notes";
+}
+
+function getTemplatesForScene(sceneType) {
+  const ids = TEMPLATE_SCENE_MAP[normalizeSceneType(sceneType)] || TEMPLATE_SCENE_MAP.notes;
+  return ids.map((id) => SHOWCASE_TEMPLATES.find((item) => item.id === id)).filter(Boolean);
+}
+
+function getDefaultTemplateId(sceneType) {
+  return (TEMPLATE_SCENE_MAP[normalizeSceneType(sceneType)] || TEMPLATE_SCENE_MAP.notes)[0];
+}
+
+function normalizeTemplateId(sceneType, templateId) {
+  const candidate = TEMPLATE_SCENE_ALIASES[String(templateId || "").trim()] || String(templateId || "").trim();
+  const allowed = TEMPLATE_SCENE_MAP[normalizeSceneType(sceneType)] || TEMPLATE_SCENE_MAP.notes;
+  return allowed.includes(candidate) ? candidate : allowed[0];
+}
+
 function getShowcaseTemplate(templateId) {
-  return SHOWCASE_TEMPLATES.find((item) => item.id === templateId) || SHOWCASE_TEMPLATES[0];
+  const normalized = TEMPLATE_SCENE_ALIASES[String(templateId || "").trim()] || templateId;
+  return SHOWCASE_TEMPLATES.find((item) => item.id === normalized) || SHOWCASE_TEMPLATES[0];
 }
 
 function templateClass(templateId) {
@@ -47,6 +83,11 @@ function templateClass(templateId) {
 
 module.exports = {
   SHOWCASE_TEMPLATES,
+  TEMPLATE_SCENE_MAP,
+  normalizeSceneType,
+  getTemplatesForScene,
+  getDefaultTemplateId,
+  normalizeTemplateId,
   getShowcaseTemplate,
   templateClass
 };

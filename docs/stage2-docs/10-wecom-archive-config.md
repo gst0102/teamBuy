@@ -45,9 +45,9 @@ sqhojPYznIsfZbRYYAxArRQXeobJ50mqk6PoLru6rvJEXslAZhBk9uKBlLm+OCLy
 ```text
 WECOM_ARCHIVE_ENABLED=true
 WECOM_ARCHIVE_SECRET=企业微信后台会话内容存档Secret
-# 可先留空，系统会复用 WECOM_CALLBACK_TOKEN / WECOM_ENCODING_AES_KEY。
-WECOM_ARCHIVE_CALLBACK_TOKEN=
-WECOM_ARCHIVE_ENCODING_AES_KEY=
+# 会话存档必须使用独立凭证，不复用微信客服 / 外部联系人回调凭证。
+WECOM_ARCHIVE_CALLBACK_TOKEN=replace-with-archive-callback-token
+WECOM_ARCHIVE_ENCODING_AES_KEY=replace-with-43-char-archive-encoding-aes-key
 WECOM_ARCHIVE_PRIVATE_KEY_PATH=backend/secrets/wecom_archive_private.pem
 WECOM_ARCHIVE_PUBLIC_KEY_PATH=backend/secrets/wecom_archive_public.pem
 WECOM_ARCHIVE_SDK_LIB_PATH=
@@ -62,9 +62,9 @@ WECOM_ARCHIVE_WORKER_INTERVAL_SECONDS=60
 注意：
 
 - `WECOM_ARCHIVE_SECRET` 不能提交 Git。
-- `WECOM_ARCHIVE_SECRET` 不等于微信客服 `WECOM_SECRET`。
+- `WECOM_ARCHIVE_SECRET` 不等于微信客服 `WECOM_KF_SECRET`。
 - 私钥不能粘贴到企业微信后台，也不能写入文档正文。
-- 会话存档事件服务器当前可以先复用微信客服回调的 `WECOM_CALLBACK_TOKEN` 和 `WECOM_ENCODING_AES_KEY`；如后续拆独立密钥，再填写 `WECOM_ARCHIVE_CALLBACK_TOKEN` 和 `WECOM_ARCHIVE_ENCODING_AES_KEY`。
+- 会话存档事件服务器必须使用独立的 `WECOM_ARCHIVE_CALLBACK_TOKEN` 和 `WECOM_ARCHIVE_ENCODING_AES_KEY`，不能复用微信客服回调凭证。
 - 接官方 SDK 时必须填写 `WECOM_ARCHIVE_SDK_LIB_PATH`。生产 Docker 环境要填容器内绝对路径，例如 `/app/secrets/libWeWorkFinanceSdk_C.so`。
 
 ## 事件服务器配置
@@ -73,8 +73,8 @@ WECOM_ARCHIVE_WORKER_INTERVAL_SECONDS=60
 
 ```text
 URL=https://teambuy.lifelove.top/api/wecom/archive/callback
-Token=backend/.env 里的 WECOM_CALLBACK_TOKEN
-EncodingAESKey=backend/.env 里的 WECOM_ENCODING_AES_KEY
+Token=backend/.env 里的 WECOM_ARCHIVE_CALLBACK_TOKEN
+EncodingAESKey=backend/.env 里的 WECOM_ARCHIVE_ENCODING_AES_KEY
 ```
 
 保存前确认生产环境已经部署包含 `/api/wecom/archive/callback` 的代码。

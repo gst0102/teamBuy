@@ -17,6 +17,7 @@ class ShowcasePageRequest(BaseModel):
     name: str
     description: str | None = None
     bannerUrl: str | None = None
+    sceneType: str | None = None
     templateId: str = "featured_window"
     shareTitle: str | None = None
     contactConfig: dict = Field(default_factory=dict)

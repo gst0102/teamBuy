@@ -1,0 +1,204 @@
+.unified-communication {
+  margin-top: 26rpx;
+  padding: 30rpx;
+  border: 1rpx solid #e3eaf4;
+  border-radius: 28rpx;
+  background: #ffffff;
+  box-shadow: 0 12rpx 34rpx rgba(26, 47, 86, .08);
+  box-sizing: border-box;
+}
+
+.unified-communication-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18rpx;
+}
+
+.unified-communication-head > view {
+  color: #111827;
+  font-size: 32rpx;
+  font-weight: 900;
+}
+
+.unified-communication-head > text {
+  flex: 1;
+  min-width: 0;
+  color: #87909f;
+  font-size: 22rpx;
+  line-height: 1.45;
+  text-align: right;
+}
+
+.unified-communication-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14rpx;
+  margin-top: 16rpx;
+}
+
+.unified-communication-action {
+  min-width: 0;
+  min-height: 132rpx;
+  margin: 0;
+  padding: 20rpx 16rpx;
+  border: 1rpx solid #e5ebf3;
+  border-radius: 20rpx;
+  background: #f8fafc;
+  display: grid;
+  grid-template-columns: 48rpx minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  align-content: center;
+  column-gap: 12rpx;
+  text-align: left;
+  font-family: inherit;
+  line-height: 1.2;
+  box-sizing: border-box;
+}
+
+.unified-communication-action::after {
+  border: 0;
+}
+
+.unified-communication-icon {
+  grid-row: 1 / span 2;
+  width: 48rpx;
+  height: 48rpx;
+  border-radius: 16rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #e8f1ff;
+  color: #176de5;
+  font-size: 22rpx;
+  font-weight: 900;
+}
+
+.unified-communication-title {
+  min-width: 0;
+  overflow: hidden;
+  color: #1f2937;
+  font-size: 26rpx;
+  font-weight: 900;
+  line-height: 1.3;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.unified-communication-action > text {
+  display: block;
+  min-width: 0;
+  margin-top: 6rpx;
+  overflow: hidden;
+  color: #87909f;
+  font-size: 20rpx;
+  line-height: 1.35;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.unified-communication-action.contact,
+.unified-communication-action.private {
+  border-color: #cfeada;
+  background: #f1fbf5;
+}
+
+.unified-communication-action.contact .unified-communication-icon,
+.unified-communication-action.private .unified-communication-icon {
+  background: #d9f3e3;
+  color: #16804a;
+}
+
+.unified-communication-action.message,
+.unified-communication-action.appointment {
+  border-color: #d6e6ff;
+  background: #f3f8ff;
+}
+
+.unified-communication-action.message .unified-communication-icon,
+.unified-communication-action.appointment .unified-communication-icon {
+  background: #e0edff;
+  color: #176de5;
+}
+
+.unified-communication-action.lead {
+  border-color: #ffe0b3;
+  background: #fff8ed;
+}
+
+.unified-communication-action.lead .unified-communication-icon {
+  background: #ffedcc;
+  color: #c56b0a;
+}
+
+.unified-communication-action.email {
+  border-color: #e1e5eb;
+  background: #f8f9fb;
+}
+
+.unified-communication-action.share {
+  border-color: #cfe8dc;
+  background: #f1fbf5;
+}
+
+.unified-communication-action.share .unified-communication-icon {
+  background: #d9f3e3;
+  color: #16804a;
+}
+
+.unified-communication-primary {
+  position: relative;
+  min-height: 94rpx;
+  margin-top: 20rpx;
+  padding: 18rpx 62rpx 18rpx 22rpx;
+  border-radius: 20rpx;
+  background: linear-gradient(135deg, #1976f3, #1262dd);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+}
+
+.unified-communication-primary-icon {
+  flex: 0 0 52rpx;
+  width: 52rpx;
+  height: 52rpx;
+  margin-right: 16rpx;
+  border-radius: 18rpx;
+  background: rgba(255, 255, 255, .18);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-size: 25rpx;
+  font-weight: 900;
+}
+
+.unified-communication-primary-copy {
+  min-width: 0;
+}
+
+.unified-communication-primary-copy > view {
+  font-size: 29rpx;
+  font-weight: 900;
+  line-height: 1.25;
+}
+
+.unified-communication-primary-copy > text {
+  display: block;
+  margin-top: 6rpx;
+  color: rgba(255, 255, 255, .82);
+  font-size: 21rpx;
+  line-height: 1.35;
+}
+
+.unified-communication-arrow {
+  position: absolute;
+  top: 50%;
+  right: 22rpx;
+  transform: translateY(-50%);
+  color: #ffffff;
+  font-size: 44rpx;
+  font-weight: 300;
+  line-height: 1;
+}

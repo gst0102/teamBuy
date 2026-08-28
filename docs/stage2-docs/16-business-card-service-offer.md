@@ -76,7 +76,7 @@
 
 ## 6. 模板库 V1
 
-本阶段把“填写资料”前置改成“先选模板，再改内容”。模板配置保存在 `miniprogram/utils/sales-page-templates.js`，模板选择页为 `miniprogram/pages/sales-template-select/index`。
+本阶段把“填写资料”前置改成“先选模板，再改内容”。模板配置保存在 `miniprogram/utils/sales-page-templates.js`，由电子名片和服务方案工作台直接消费。
 
 模板总览图保存在：
 

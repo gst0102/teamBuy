@@ -3,6 +3,12 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 
+class CustomerInfoChainToggleRequest(BaseModel):
+    enabled: bool | None = None
+    paymentRequired: bool | None = None
+    operatorName: str | None = None
+
+
 class GroupUploadPreviewRequest(BaseModel):
     rawText: str = Field(default="")
 
