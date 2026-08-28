@@ -7058,3 +7058,18 @@ from ip=81.70.84.35
 - 持久化缓存允许陈旧展示不代表可以刷新陈旧时间戳；恢复缓存必须保留原始 `savedAt`，否则网络故障期间每次打开页面都会把旧数据续期。
 - worker 的 `/proc/1/cmdline` 探活只能证明进程仍存在，不能证明任务循环未卡死；上线后仍要结合任务积压、最近成功时间和错误日志观察。
 - 本地没有 Docker CLI 和可用 PostgreSQL 实例，本轮连接池、Compose 健康检查和真实媒体远程流式响应未做运行态验证，不能把本地 pytest 结果当作生产部署证明。
+
+## 2026-08-28：生产制镜临时容器不能继承 sleep 命令
+
+- 用 `docker run ... sleep` 作为临时制镜容器后执行 `docker commit`，会把 `sleep` 写进镜像的默认 `CMD`；如果 Compose 服务没有显式 command，API 会启动成功但只睡眠，不监听端口。
+- 制作发布镜像后必须检查 `docker image inspect ... .Config.Cmd`；API 必须是 uvicorn，worker 必须是 `python -m app.worker`，并在切换前用 Compose 临时 smoke test 验证真实启动命令。
+
+## 2026-08-28：连接池默认 row factory 不能依赖本地 mock
+
+- `ConnectionPool` 的真实连接可能以 `row_factory=None` 返回；将 `None` 传给 Psycopg 查询会在首个 `execute()` 处以 `TypeError: 'NoneType' object is not callable` 失败。
+- 连接上下文必须显式设置 `tuple_row`/`dict_row`，不能只做本地 fake pool 测试；生产部署后要同时观察 API 和两个 worker 的启动日志。
+
+## 2026-08-28：完整构建受阻时的新增依赖发布路径
+
+- 新增依赖时不能只把源码复制进旧镜像；必须把经过校验的 wheel 或完整安装结果放入新镜像，并保留旧镜像回滚标签。
+- 标准构建如果在 `apt-get update` 无进展，停止精确构建进程后只允许一次有证据的网络重试；仍失败时走“生产基础镜像 + 明确依赖 + 源码 hash + 正确 CMD + PostgreSQL smoke test”的受控例外，不能无期限等待或重复重启。

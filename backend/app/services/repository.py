@@ -9,7 +9,7 @@ from typing import Protocol
 
 import psycopg
 from psycopg_pool import ConnectionPool
-from psycopg.rows import dict_row
+from psycopg.rows import dict_row, tuple_row
 
 from app.core.database import normalize_database_url
 from app.models.domain import (
@@ -2875,11 +2875,12 @@ class PostgresRepository:
     @contextmanager
     def _connection(self, row_factory=None):
         with self._pool.connection() as conn:
-            conn.row_factory = row_factory
+            previous_row_factory = conn.row_factory
+            conn.row_factory = row_factory or tuple_row
             try:
                 yield conn
             finally:
-                conn.row_factory = None
+                conn.row_factory = previous_row_factory or tuple_row
 
     def close(self) -> None:
         self._pool.close()

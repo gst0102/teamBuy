@@ -13,7 +13,7 @@ from xml.etree import ElementTree as ET
 import psycopg
 from psycopg_pool import ConnectionPool, PoolTimeout
 from pydantic import BaseModel, Field
-from psycopg.rows import dict_row
+from psycopg.rows import dict_row, tuple_row
 
 from app.core.database import normalize_database_url
 from app.services.helpers import new_id
@@ -193,11 +193,12 @@ class OpsConsoleStore:
     def _postgres_connection(self):
         pool = self._get_postgres_pool()
         with pool.connection() as conn:
+            previous_row_factory = conn.row_factory
             conn.row_factory = dict_row
             try:
                 yield conn
             finally:
-                conn.row_factory = None
+                conn.row_factory = previous_row_factory or tuple_row
 
     def close(self) -> None:
         with self._pool_lock:

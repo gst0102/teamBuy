@@ -1,6 +1,45 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
+
+from psycopg.rows import dict_row, tuple_row
+
+from app.services.ops_console_store import OpsConsoleStore
 from app.services.repository import PostgresRepository
+
+
+class _FakeConnection:
+    def __init__(self):
+        self.row_factory = None
+
+
+class _FakePool:
+    def __init__(self):
+        self.connection_instance = _FakeConnection()
+
+    @contextmanager
+    def connection(self):
+        yield self.connection_instance
+
+
+def test_postgres_pooled_connections_preserve_default_row_factory():
+    pool = _FakePool()
+    repo = object.__new__(PostgresRepository)
+    repo._pool = pool
+
+    with repo._connection():
+        assert pool.connection_instance.row_factory is tuple_row
+    assert pool.connection_instance.row_factory is tuple_row
+
+    with repo._connection(row_factory=dict_row):
+        assert pool.connection_instance.row_factory is dict_row
+    assert pool.connection_instance.row_factory is tuple_row
+
+    store = object.__new__(OpsConsoleStore)
+    store._get_postgres_pool = lambda: pool
+    with store._postgres_connection():
+        assert pool.connection_instance.row_factory is dict_row
+    assert pool.connection_instance.row_factory is tuple_row
 
 
 def test_postgres_repository_maps_core_query_columns():

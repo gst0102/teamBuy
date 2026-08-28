@@ -12720,3 +12720,12 @@
 - 对抗式审查覆盖缓存过期、分页边界、迟到响应、跨用户查询、上传超限、远程媒体超大响应、连接池关闭和延迟任务重复调度；未发现新的确定性业务回归。
 - 验证：全量后端 `303 passed`，Python 编译、Node 语法、Compose YAML 解析、`git diff --check` 通过；本机无 Docker CLI，未进行真实 PostgreSQL/容器启动验证。
 - 本轮未部署生产、未上传微信体验版。由于新增 `psycopg-pool` 运行依赖，生产发布必须重新构建包含新依赖的镜像并按健康检查切换，不能采用只覆盖源码的旧镜像热修复。
+
+## 2026-08-28：性能专项生产部署与真实 PostgreSQL 验证
+
+- 已将性能专项提交 `3aaaf17`（`perf: harden tab loading and production runtime`）部署到腾讯云生产；部署前检查磁盘、Docker 占用、端口和健康状态，并备份到 `/home/ubuntu/teambuy-backups/20260828-205848-perf-runtime`。
+- 标准 Compose 完整构建在 Debian `apt-get update` 阶段两次出现长时间无进展，均已停止，旧容器未因此被长期占用。由于本次新增 `psycopg-pool`，没有采用只覆盖源码的热修复；改用已存在生产镜像作为基础，注入经过 SHA-256 校验的 `psycopg_pool-3.2.6-py3-none-any.whl` 和已同步源码，制作依赖完整的发布镜像。
+- 首个临时镜像 smoke test 暴露了制镜容器的 `sleep` 启动命令和连接池默认 `row_factory=None` 两个问题；已回滚旧镜像恢复服务，修复连接池默认使用 `tuple_row` 并补充回归测试，再制作 r2 镜像。该过程证明切换前必须检查镜像 `CMD`，并用真实 PostgreSQL 网络启动临时容器。
+- 最终运行镜像：`teambuy-backend:deploy-3aaaf17-r2`（`73769cd56f0e`）、`teambuy-backend-worker:deploy-3aaaf17-r2`（`44858b4dfc88`）、`teambuy-archive-worker:deploy-3aaaf17-r2`（`965517eaac58`）；三个服务均已运行并 healthy。旧镜像仍保留为 `rollback-20260828-205848`。
+- 上线验证：生产 PostgreSQL 初始化 smoke test 通过；API、两个 worker 均正常启动；`127.0.0.1:8004/health`、`/health/db` 和公网 `https://teambuy.lifelove.top/health` 全部通过；日志未见启动异常。数据库卷、媒体卷、`backend/.env` 和 `backend/secrets/` 未覆盖。
+- 代码验证：连接池定向回归 `8 passed`；部署前全量后端测试 `303 passed`。小程序仍未清缓存、重新编译或上传体验版，前端性能和分享卡必须由用户在微信开发者工具中人工验收。

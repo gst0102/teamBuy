@@ -10440,3 +10440,16 @@ rm -rf
 ### 已知剩余风险
 
 - 复杂关键词/分类资料筛选仍走原有完整过滤路径；worker 当前探活是进程级，不是任务循环级；生产 PostgreSQL 连接池和新依赖尚未实机验证。
+
+## 2026-08-28 最新交接：性能专项已部署生产并完成真实启动验证
+
+### 已完成
+
+- 性能专项提交 `3aaaf17` 已部署；最终运行镜像为 `teambuy-backend:deploy-3aaaf17-r2`、`teambuy-backend-worker:deploy-3aaaf17-r2`、`teambuy-archive-worker:deploy-3aaaf17-r2`，三个容器均 healthy。
+- 生产 PostgreSQL smoke test、API `/health`、`/health/db`、公网 `/health` 全部通过；两个 worker 已正常启动并产生正常 tick 日志。旧镜像回滚标签为 `rollback-20260828-205848`，备份目录为 `/home/ubuntu/teambuy-backups/20260828-205848-perf-runtime`。
+- 本次新增 `psycopg-pool` 已在三个运行镜像中验证为 `3.2.6`；连接池默认 row factory 的真实生产问题已修复并补测。
+
+### 后续人工动作
+
+- 小程序尚未上传体验版；用户需在微信开发者工具清缓存、重新编译并上传后，按冷启动、返回、缓存命中路径验收资料库、雷达四个数字和资料分享卡。
+- worker 当前 Compose 探活仍是进程级，后续如要提高稳定性，需要继续观察任务积压、最近成功时间和错误日志；本次部署没有引入新的监控系统。
