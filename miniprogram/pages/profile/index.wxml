@@ -69,14 +69,17 @@
   <view class="profile-section tools-section">
     <view class="section-title">我的工具</view>
     <view class="panel tools-panel">
-      <view class="tools-entry" bindtap="handleOpenMutualHelp">
-        <view class="tools-entry-mark">互</view>
-        <view class="tools-entry-copy">
-          <view class="tools-entry-title">互帮互助</view>
-          <view class="tools-entry-sub">用互助积分交换真实的帮助</view>
+      <view class="tools-grid">
+        <view class="tool-item" bindtap="handleOpenMutualHelp">
+          <view class="tool-item-icon mutual">互</view>
+          <text class="tool-item-title">互帮互助</text>
+          <text class="tool-item-status">已上线</text>
         </view>
-        <view class="tools-entry-badge">进入</view>
-        <view class="tools-entry-arrow">›</view>
+        <view class="tool-item disabled" bindtap="handleOpenUnavailableTool">
+          <view class="tool-item-icon groups">群</view>
+          <text class="tool-item-title">微信群工具</text>
+          <text class="tool-item-status">即将上线</text>
+        </view>
       </view>
     </view>
   </view>

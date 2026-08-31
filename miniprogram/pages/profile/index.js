@@ -655,7 +655,10 @@ Page({
     wx.switchTab({ url: "/pages/library/index" });
   },
   handleOpenMutualHelp() {
-    wx.navigateTo({ url: "/subpackages/my-tools/index/index" });
+    wx.navigateTo({ url: "/subpackages/my-tools-mutual-help/index/index" });
+  },
+  handleOpenUnavailableTool() {
+    wx.showToast({ title: "微信群工具即将上线", icon: "none" });
   },
   handleGoBusinessCardEditor() {
     const currentUser = getCurrentUser();

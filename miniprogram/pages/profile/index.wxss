@@ -95,70 +95,86 @@
 }
 
 .tools-panel {
-  padding: 0 22rpx;
+  padding: 0;
   overflow: hidden;
 }
 
-.tools-entry {
-  display: flex;
-  align-items: center;
-  min-height: 124rpx;
-  gap: 18rpx;
+.tools-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.tools-entry-mark {
+.tool-item {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  flex: 0 0 76rpx;
-  width: 76rpx;
-  height: 76rpx;
-  border-radius: 24rpx;
-  background: #fff0e5;
-  color: #ed6a2f;
-  font-size: 31rpx;
-  font-weight: 900;
-}
-
-.tools-entry-copy {
-  flex: 1;
   min-width: 0;
+  min-height: 182rpx;
+  padding: 20rpx 8rpx;
+  box-sizing: border-box;
+  border-right: 1rpx solid #e8edf5;
 }
 
-.tools-entry-title {
-  color: #172033;
-  font-size: 28rpx;
-  font-weight: 900;
+.tool-item:active {
+  background: #fffaf6;
 }
 
-.tools-entry-sub {
-  margin-top: 8rpx;
-  color: #8994a5;
-  font-size: 21rpx;
-  line-height: 1.35;
+.tool-item.disabled {
+  background: #fbfaf9;
 }
 
-.tools-entry-badge {
+.tool-item:nth-child(3n) {
+  border-right: 0;
+}
+
+.tool-item-icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  flex: 0 0 auto;
-  min-width: 72rpx;
-  height: 44rpx;
-  padding: 0 14rpx;
-  border-radius: 999rpx;
-  background: #fff5eb;
-  color: #e9652c;
-  font-size: 21rpx;
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 20rpx;
+  font-size: 29rpx;
   font-weight: 900;
   box-sizing: border-box;
 }
 
-.tools-entry-arrow {
-  flex: 0 0 auto;
-  color: #a0aabd;
-  font-size: 38rpx;
-  line-height: 1;
+.tool-item-icon.mutual {
+  background: #fff0e5;
+  color: #ed6a2f;
+}
+
+.tool-item-icon.groups {
+  background: #f0eff0;
+  color: #999aa0;
+}
+
+.tool-item-title {
+  max-width: 100%;
+  margin-top: 14rpx;
+  overflow: hidden;
+  color: #172033;
+  font-size: 26rpx;
+  font-weight: 900;
+  line-height: 1.2;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tool-item-status {
+  margin-top: 8rpx;
+  color: #e9652c;
+  font-size: 19rpx;
+  font-weight: 800;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.tool-item.disabled .tool-item-title,
+.tool-item.disabled .tool-item-status {
+  color: #9b9da2;
 }
 
 .view-history-empty {
