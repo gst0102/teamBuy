@@ -13388,3 +13388,19 @@
 - 小程序全部 JSON 解析通过；任务分享源 smoke 验证营销语和 `+4 分` 事实字段；目标文件无尾随空格，`git diff --check` 通过。
 - 本轮未修改后端、数据库、生产配置或生产镜像，未创建生产充值订单，未调用 test-confirm，未上传微信体验版。
 - 当前任务和积分仍主要是本地演示数据；需要用户在微信开发者工具清缓存、重新编译并手动预览/上传后，人工确认三处真机效果和分享卡最终图片。
+
+## 2026-09-01：积分核心可扩展化与 Git 安全检查点
+
+### 本轮完成
+
+- 在开始实现前，已将当前包含多轮既有前端、后端、活码、互帮互助和积分充值改动的工作区完整提交为 Git 检查点：`93688f6 chore: checkpoint before extensible points core`。没有执行 reset、checkout、删除或批量清理。
+- 新增 `backend/app/services/points_core.py`，统一提供积分账户初始化、发放、消耗、双边转移和流水查询；通过 `accountType` 支持后续工具复用同一账户体系，并通过来源字段和幂等键追踪业务动作。
+- 互助积分首次 100 分和充值入账已切换到积分核心；充值流水带有 `recharge:<orderId>` 幂等键和充值订单来源信息。互助积分状态接口补充最近流水，并增加 `/api/scrm/mutual-help/ledger` 查询接口。
+- PostgreSQL 兼容字段增加账户类型、来源类型和来源 ID，并增加用户/账户类型约束索引；保留原有互助积分表和接口，未进行生产迁移。
+
+### 验证与边界
+
+- `./.venv312/bin/pytest -q backend/tests/test_mutual_help_points.py backend/tests/test_points_core.py`：4 passed。
+- `./.venv312/bin/python -m compileall -q backend/app backend/tests/test_mutual_help_points.py backend/tests/test_points_core.py` 通过；`git diff --check` 通过。
+- 本轮没有部署生产、没有创建生产充值订单、没有调用 test-confirm、没有上传微信体验版；互帮互助任务前端仍是本地演示，尚未调用该核心完成正式任务结算。
+- 当前实现的跨用户转账在应用层保持单次操作语义；正式接入多副本生产任务前仍需增加 PostgreSQL 行锁/事务级并发验证。

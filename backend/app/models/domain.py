@@ -932,6 +932,10 @@ class MembershipEntitlement(BaseModel):
 class MutualPointAccount(BaseModel):
     id: str
     userId: str
+    # The current physical table is kept for production compatibility, while
+    # accountType lets future tools share the same points core without adding
+    # another balance field or wallet table.
+    accountType: str = "mutual_help"
     balance: int = 0
     totalGranted: int = 0
     totalConsumed: int = 0
@@ -942,12 +946,16 @@ class MutualPointAccount(BaseModel):
 class MutualPointLedger(BaseModel):
     id: str
     userId: str
+    accountType: str = "mutual_help"
     ledgerType: str
     pointsDelta: int
     balanceAfter: int
     reason: str
     relatedOrderId: str | None = None
     idempotencyKey: str | None = None
+    sourceType: str | None = None
+    sourceId: str | None = None
+    metadata: dict = Field(default_factory=dict)
     createdAt: str
 
 

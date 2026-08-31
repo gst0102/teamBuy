@@ -47,6 +47,7 @@ from app.services.message_aggregator import MessageAggregator, WINDOW_SECONDS
 from app.services.ops_console_store import OpsConsoleStore
 from app.services.ocr_service import OcrService
 from app.services.property_table_ocr_service import PropertyTableOcrService
+from app.services.points_core import DEFAULT_POINTS_ACCOUNT_TYPE, PointsCoreService
 from app.services.repository import AppRepository
 from app.services.skill_router_service import SkillRouterService
 from app.services.showcase_templates import allowed_template_ids, default_template_id, normalize_scene_type, normalize_template_id, note_scene_type, scene_accepts_note
@@ -217,6 +218,7 @@ class AppService:
         property_table_ocr_service: PropertyTableOcrService | None = None,
         wechat_miniapp_client: WechatMiniappClient | None = None,
         ops_console_store: OpsConsoleStore | None = None,
+        points_core: PointsCoreService | None = None,
     ):
         self.repo = repo
         self.wecom_mock_service = wecom_mock_service
@@ -228,6 +230,7 @@ class AppService:
         self.normalizer = normalizer
         self.wechat_miniapp_client = wechat_miniapp_client
         self.ops_console_store = ops_console_store
+        self.points_core = points_core or PointsCoreService()
         self.skill_router_service = skill_router_service or SkillRouterService()
         self.content_object_adapter = content_object_adapter or ContentObjectAdapter()
         self._card_list_cache: dict[tuple[str, str, str], tuple[float, list[dict]]] = {}
@@ -2463,32 +2466,13 @@ class AppService:
         user_id = str(user_id or "").strip()
         if not user_id or not self.repo.get_user(user_id):
             raise HTTPException(status_code=404, detail="用户不存在")
-        account = next((item for item in state.mutual_point_accounts if item.userId == user_id), None)
-        if account:
-            return account
-        now = now_iso()
-        account = MutualPointAccount(
-            id=f"mutual_points_{user_id}",
-            userId=user_id,
-            balance=MUTUAL_INITIAL_POINTS,
-            totalGranted=MUTUAL_INITIAL_POINTS,
-            totalConsumed=0,
-            createdAt=now,
-            updatedAt=now,
+        return self.points_core.ensure_account(
+            state,
+            user_id,
+            account_type=DEFAULT_POINTS_ACCOUNT_TYPE,
+            initial_points=MUTUAL_INITIAL_POINTS,
+            initial_reason="首次进入互帮互助赠送积分",
         )
-        state.mutual_point_accounts.append(account)
-        state.mutual_point_ledgers.append(
-            MutualPointLedger(
-                id=new_id("mutual_points_ledger"),
-                userId=user_id,
-                ledgerType="initial_grant",
-                pointsDelta=MUTUAL_INITIAL_POINTS,
-                balanceAfter=MUTUAL_INITIAL_POINTS,
-                reason="首次进入互帮互助赠送积分",
-                createdAt=now,
-            )
-        )
-        return account
 
     def get_mutual_help_status(self, user_id: str) -> dict:
         state = self._load()
@@ -2503,6 +2487,15 @@ class AppService:
         return {
             "config": config,
             "account": account.model_dump(),
+            "recentLedgers": [
+                item.model_dump()
+                for item in self.points_core.list_ledgers(
+                    state,
+                    user_id,
+                    account_type=DEFAULT_POINTS_ACCOUNT_TYPE,
+                    limit=20,
+                )
+            ],
             "orders": orders,
             "rechargePackages": [
                 {
@@ -2644,26 +2637,171 @@ class AppService:
             raise HTTPException(status_code=409, detail="订单状态不能确认付款")
         now = now_iso()
         account = self._ensure_mutual_point_account(state, order.userId)
-        account.balance += order.points
-        account.totalGranted += order.points
-        account.updatedAt = now
         order.status = "paid"
         order.paymentTransactionId = transaction_id
         order.paidAt = now
         order.updatedAt = now
-        ledger = MutualPointLedger(
-            id=new_id("mutual_points_ledger"),
-            userId=order.userId,
-            ledgerType="recharge",
-            pointsDelta=order.points,
-            balanceAfter=account.balance,
+        points_result = self.points_core.grant(
+            state,
+            order.userId,
+            order.points,
+            ledger_type="recharge",
             reason="充值互助积分",
-            relatedOrderId=order.id,
-            createdAt=now,
+            idempotency_key=f"recharge:{order.id}",
+            account_type=DEFAULT_POINTS_ACCOUNT_TYPE,
+            source_type="mutual_recharge_order",
+            source_id=order.id,
+            related_order_id=order.id,
+            metadata={"paymentTransactionId": transaction_id},
         )
-        state.mutual_point_ledgers.append(ledger)
+        account = points_result["account"]
+        ledger = points_result["ledger"]
         self._save(state)
-        return {"order": order.model_dump(), "account": account.model_dump(), "ledger": ledger.model_dump(), "duplicate": False}
+        return {
+            "order": order.model_dump(),
+            "account": account.model_dump(),
+            "ledger": ledger.model_dump(),
+            "duplicate": points_result["duplicate"],
+        }
+
+    def list_points_ledgers(
+        self,
+        user_id: str,
+        *,
+        account_type: str = DEFAULT_POINTS_ACCOUNT_TYPE,
+        limit: int = 100,
+    ) -> list[dict]:
+        state = self._load()
+        self._ensure_points_user(user_id)
+        self.points_core.ensure_account(state, user_id, account_type=account_type)
+        self._save(state)
+        return [
+            item.model_dump()
+            for item in self.points_core.list_ledgers(
+                state,
+                user_id,
+                account_type=account_type,
+                limit=limit,
+            )
+        ]
+
+    def grant_points(
+        self,
+        user_id: str,
+        points: int,
+        *,
+        reason: str,
+        idempotency_key: str,
+        ledger_type: str = "grant",
+        account_type: str = DEFAULT_POINTS_ACCOUNT_TYPE,
+        source_type: str | None = None,
+        source_id: str | None = None,
+        metadata: dict | None = None,
+    ) -> dict:
+        self._ensure_points_user(user_id)
+        with MEMBERSHIP_PAYMENT_LOCK:
+            state = self._load()
+            result = self.points_core.grant(
+                state,
+                user_id,
+                points,
+                ledger_type=ledger_type,
+                reason=reason,
+                idempotency_key=idempotency_key,
+                account_type=account_type,
+                source_type=source_type,
+                source_id=source_id,
+                metadata=metadata,
+            )
+            self._save(state)
+        return self._points_result_to_dict(result)
+
+    def consume_points(
+        self,
+        user_id: str,
+        points: int,
+        *,
+        reason: str,
+        idempotency_key: str,
+        ledger_type: str = "consume",
+        account_type: str = DEFAULT_POINTS_ACCOUNT_TYPE,
+        source_type: str | None = None,
+        source_id: str | None = None,
+        metadata: dict | None = None,
+    ) -> dict:
+        self._ensure_points_user(user_id)
+        with MEMBERSHIP_PAYMENT_LOCK:
+            state = self._load()
+            result = self.points_core.consume(
+                state,
+                user_id,
+                points,
+                ledger_type=ledger_type,
+                reason=reason,
+                idempotency_key=idempotency_key,
+                account_type=account_type,
+                source_type=source_type,
+                source_id=source_id,
+                metadata=metadata,
+            )
+            self._save(state)
+        return self._points_result_to_dict(result)
+
+    def transfer_points(
+        self,
+        from_user_id: str,
+        to_user_id: str,
+        points: int,
+        *,
+        operation_key: str,
+        debit_reason: str,
+        credit_reason: str,
+        account_type: str = DEFAULT_POINTS_ACCOUNT_TYPE,
+        debit_ledger_type: str = "transfer_debit",
+        credit_ledger_type: str = "transfer_credit",
+        source_type: str | None = None,
+        source_id: str | None = None,
+        metadata: dict | None = None,
+    ) -> dict:
+        self._ensure_points_user(from_user_id)
+        self._ensure_points_user(to_user_id)
+        with MEMBERSHIP_PAYMENT_LOCK:
+            state = self._load()
+            result = self.points_core.transfer(
+                state,
+                from_user_id,
+                to_user_id,
+                points,
+                operation_key=operation_key,
+                debit_reason=debit_reason,
+                credit_reason=credit_reason,
+                account_type=account_type,
+                debit_ledger_type=debit_ledger_type,
+                credit_ledger_type=credit_ledger_type,
+                source_type=source_type,
+                source_id=source_id,
+                metadata=metadata,
+            )
+            self._save(state)
+        return {
+            "fromAccount": result["fromAccount"].model_dump(),
+            "toAccount": result["toAccount"].model_dump(),
+            "debitLedger": result["debitLedger"].model_dump(),
+            "creditLedger": result["creditLedger"].model_dump(),
+            "duplicate": result["duplicate"],
+        }
+
+    def _ensure_points_user(self, user_id: str) -> None:
+        if not self.repo.get_user(str(user_id or "").strip()):
+            raise HTTPException(status_code=404, detail="用户不存在")
+
+    @staticmethod
+    def _points_result_to_dict(result: dict) -> dict:
+        return {
+            "account": result["account"].model_dump(),
+            "ledger": result["ledger"].model_dump(),
+            "duplicate": result["duplicate"],
+        }
 
     def record_mutual_help_activity(
         self,

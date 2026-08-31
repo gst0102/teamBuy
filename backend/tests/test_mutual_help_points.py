@@ -17,6 +17,8 @@ def test_mutual_help_initial_points_recharge_and_admin_switches(client, monkeypa
     initial = client.get(f"/api/scrm/mutual-help?userId={user['id']}")
     assert initial.status_code == 200
     assert initial.json()["data"]["account"]["balance"] == 100
+    assert initial.json()["data"]["recentLedgers"][0]["ledgerType"] == "initial_grant"
+    assert initial.json()["data"]["recentLedgers"][0]["accountType"] == "mutual_help"
     assert initial.json()["data"]["config"]["rechargeEnabled"] is True
     assert initial.json()["data"]["config"]["withdrawalEnabled"] is False
 
@@ -33,6 +35,8 @@ def test_mutual_help_initial_points_recharge_and_admin_switches(client, monkeypa
     )
     assert confirmed.status_code == 200
     assert confirmed.json()["data"]["account"]["balance"] == 200
+    assert confirmed.json()["data"]["ledger"]["idempotencyKey"] == f"recharge:{order.json()['data']['order']['id']}"
+    assert confirmed.json()["data"]["ledger"]["sourceType"] == "mutual_recharge_order"
 
     duplicate = client.post(
         f"/api/scrm/mutual-help/recharge/orders/{order.json()['data']['order']['id']}/test-confirm",
@@ -40,6 +44,10 @@ def test_mutual_help_initial_points_recharge_and_admin_switches(client, monkeypa
     )
     assert duplicate.status_code == 200
     assert duplicate.json()["data"]["duplicate"] is True
+
+    ledger = client.get(f"/api/scrm/mutual-help/ledger?userId={user['id']}&limit=10")
+    assert ledger.status_code == 200
+    assert [item["ledgerType"] for item in ledger.json()["data"][:2]] == ["recharge", "initial_grant"]
 
     assert client.post(
         "/api/scrm/mutual-help/activity",

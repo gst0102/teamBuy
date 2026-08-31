@@ -429,6 +429,7 @@ create table if not exists mutual_point_accounts (
     id text primary key,
     payload jsonb not null,
     user_id text not null,
+    account_type text not null default 'mutual_help',
     balance integer not null default 0,
     updated_at_source timestamptz,
     created_at timestamptz not null default now(),
@@ -439,9 +440,13 @@ create table if not exists mutual_point_ledgers (
     id text primary key,
     payload jsonb not null,
     user_id text not null,
+    account_type text not null default 'mutual_help',
     ledger_type text not null,
     points_delta integer not null,
     related_order_id text,
+    idempotency_key text,
+    source_type text,
+    source_id text,
     created_at_source timestamptz,
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now()
@@ -658,8 +663,14 @@ create index if not exists idx_membership_orders_user_status on membership_order
 create unique index if not exists uq_membership_orders_transaction on membership_orders (payment_transaction_id) where payment_transaction_id is not null;
 create index if not exists idx_membership_entitlements_user_expiry on membership_entitlements (user_id, status, expires_at);
 create index if not exists idx_mutual_point_accounts_user on mutual_point_accounts (user_id);
+create unique index if not exists uq_mutual_point_accounts_user_type on mutual_point_accounts (user_id, account_type);
 create index if not exists idx_mutual_point_ledgers_user_time on mutual_point_ledgers (user_id, created_at_source);
+create index if not exists idx_mutual_point_ledgers_user_type_time on mutual_point_ledgers (user_id, account_type, created_at_source);
 create index if not exists idx_mutual_point_ledgers_order on mutual_point_ledgers (related_order_id);
+create index if not exists idx_mutual_point_ledgers_idempotency on mutual_point_ledgers (user_id, account_type, idempotency_key);
+create unique index if not exists uq_mutual_point_ledgers_user_type_idempotency
+    on mutual_point_ledgers (user_id, account_type, idempotency_key)
+    where idempotency_key is not null;
 create index if not exists idx_mutual_recharge_orders_user_status on mutual_recharge_orders (user_id, status, created_at);
 create index if not exists idx_mutual_recharge_orders_transaction on mutual_recharge_orders (payment_transaction_id);
 create index if not exists idx_mutual_activity_events_type_time on mutual_activity_events (event_type, created_at_source);

@@ -2670,14 +2670,19 @@ class PostgresRepository:
         ],
         "mutual_point_accounts": [
             ("user_id", "text", "userId"),
+            ("account_type", "text", "accountType"),
             ("balance", "integer", "balance"),
             ("updated_at_source", "timestamptz", "updatedAt"),
         ],
         "mutual_point_ledgers": [
             ("user_id", "text", "userId"),
+            ("account_type", "text", "accountType"),
             ("ledger_type", "text", "ledgerType"),
             ("points_delta", "integer", "pointsDelta"),
             ("related_order_id", "text", "relatedOrderId"),
+            ("idempotency_key", "text", "idempotencyKey"),
+            ("source_type", "text", "sourceType"),
+            ("source_id", "text", "sourceId"),
             ("created_at_source", "timestamptz", "createdAt"),
         ],
         "mutual_recharge_orders": [
@@ -2961,10 +2966,13 @@ class PostgresRepository:
         ],
         "mutual_point_accounts": [
             ("idx_mutual_point_accounts_user", "user_id"),
+            ("idx_mutual_point_accounts_user_type", "user_id, account_type"),
         ],
         "mutual_point_ledgers": [
             ("idx_mutual_point_ledgers_user_time", "user_id, created_at_source"),
+            ("idx_mutual_point_ledgers_user_type_time", "user_id, account_type, created_at_source"),
             ("idx_mutual_point_ledgers_order", "related_order_id"),
+            ("idx_mutual_point_ledgers_idempotency", "user_id, account_type, idempotency_key"),
         ],
         "mutual_recharge_orders": [
             ("idx_mutual_recharge_orders_user_status", "user_id, status, created_at"),
@@ -4810,6 +4818,27 @@ class PostgresRepository:
                         conn.execute(f"alter table {table_name} add column if not exists {column_name} {column_type}")
                     for index_name, expression in self.INDEXES.get(table_name, []):
                         conn.execute(f"create index if not exists {index_name} on {table_name} ({expression})")
+                # Backfill the new discriminator for rows written before the
+                # shared points core existed, then enforce it for all future
+                # account and ledger records.
+                conn.execute(
+                    "update mutual_point_accounts set account_type = 'mutual_help' where account_type is null"
+                )
+                conn.execute(
+                    "update mutual_point_ledgers set account_type = 'mutual_help' where account_type is null"
+                )
+                conn.execute(
+                    "alter table mutual_point_accounts alter column account_type set default 'mutual_help'"
+                )
+                conn.execute(
+                    "alter table mutual_point_accounts alter column account_type set not null"
+                )
+                conn.execute(
+                    "alter table mutual_point_ledgers alter column account_type set default 'mutual_help'"
+                )
+                conn.execute(
+                    "alter table mutual_point_ledgers alter column account_type set not null"
+                )
                 conn.execute(
                     """
                     create table if not exists ops_feature_flags (
@@ -4826,6 +4855,19 @@ class PostgresRepository:
                     create unique index if not exists uq_mutual_recharge_orders_transaction
                     on mutual_recharge_orders (payment_transaction_id)
                     where payment_transaction_id is not null
+                    """
+                )
+                conn.execute(
+                    """
+                    create unique index if not exists uq_mutual_point_accounts_user_type
+                    on mutual_point_accounts (user_id, account_type)
+                    """
+                )
+                conn.execute(
+                    """
+                    create unique index if not exists uq_mutual_point_ledgers_user_type_idempotency
+                    on mutual_point_ledgers (user_id, account_type, idempotency_key)
+                    where idempotency_key is not null
                     """
                 )
                 conn.execute(

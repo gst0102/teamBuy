@@ -44,6 +44,15 @@ def mutual_help_status(userId: str = Query(...), service: AppService = Depends(g
     return ApiResponse(data=service.get_mutual_help_status(userId))
 
 
+@router.get("/mutual-help/ledger", response_model=ApiResponse[list[dict]])
+def mutual_help_ledger(
+    userId: str = Query(...),
+    limit: int = Query(default=50, ge=1, le=200),
+    service: AppService = Depends(get_app_service),
+):
+    return ApiResponse(data=service.list_points_ledgers(userId, limit=limit))
+
+
 @router.post("/mutual-help/recharge/orders", response_model=ApiResponse[dict])
 def create_mutual_help_recharge_order(
     payload: MutualHelpRechargeRequest,
