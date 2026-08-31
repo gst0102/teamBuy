@@ -14,7 +14,7 @@
           <view class="tool-description">{{item.description}}</view>
         </view>
         <view class="tool-side">
-          <view class="tool-status">{{item.status}}</view>
+          <view wx:if="{{item.status}}" class="tool-status">{{item.status}}</view>
           <view class="tool-arrow">›</view>
         </view>
       </view>

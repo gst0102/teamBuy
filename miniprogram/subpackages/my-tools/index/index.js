@@ -8,7 +8,6 @@ Page({
         icon: "互",
         title: "互帮互助",
         description: "用互助积分交换真实的帮助",
-        status: "已上线",
         available: true
       },
       {

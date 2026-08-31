@@ -73,7 +73,6 @@
         <view class="tool-item" bindtap="handleOpenMutualHelp">
           <view class="tool-item-icon mutual">互</view>
           <text class="tool-item-title">互帮互助</text>
-          <text class="tool-item-status">已上线</text>
         </view>
         <view class="tool-item disabled" bindtap="handleOpenUnavailableTool">
           <view class="tool-item-icon groups">群</view>
