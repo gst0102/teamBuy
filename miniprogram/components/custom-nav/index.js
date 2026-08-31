@@ -31,6 +31,10 @@ Component({
     rightText: {
       type: String,
       value: ""
+    },
+    theme: {
+      type: String,
+      value: "light"
     }
   },
   data: {

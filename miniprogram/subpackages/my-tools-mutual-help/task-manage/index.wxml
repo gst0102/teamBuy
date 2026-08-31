@@ -1,0 +1,83 @@
+<view class="mutual-page theme-{{theme}}">
+  <custom-nav title="任务管理" showBack="{{true}}" theme="{{theme}}" />
+
+  <view class="mutual-content">
+    <view class="theme-switch-row">
+      <text class="theme-switch-label">主题</text>
+      <view class="theme-switch">
+        <view class="theme-option {{theme === 'light' ? 'active' : ''}}" data-theme="light" bindtap="handleThemeChange">浅色</view>
+        <view class="theme-option {{theme === 'dark' ? 'active' : ''}}" data-theme="dark" bindtap="handleThemeChange">深色</view>
+      </view>
+    </view>
+
+    <view class="module-tabs">
+      <view wx:for="{{tabs}}" wx:key="key" class="module-tab {{item.key === activeTab ? 'active' : ''}}" data-tab="{{item.key}}" bindtap="handleTabChange">{{item.label}}</view>
+    </view>
+
+    <view class="manage-intro">
+      <view class="manage-eyebrow">发布者工作台</view>
+      <view class="manage-title">我发布的任务</view>
+    </view>
+
+    <view class="manage-summary">
+      <view><view class="manage-summary-label">当前可用积分</view><view class="manage-summary-value">{{points}} <text>分</text></view></view>
+      <view class="manage-summary-side"><view>已发布</view><strong>{{publishedCount}} 条</strong></view>
+    </view>
+
+    <view class="filter-row manage-filter-row">
+      <view class="filter-chip {{taskStateFilter === 'all' ? 'active' : ''}}" data-filter="all" bindtap="handleStateFilterChange">全部</view>
+      <view class="filter-chip {{taskStateFilter === 'active' ? 'active' : ''}}" data-filter="active" bindtap="handleStateFilterChange">进行中</view>
+      <view class="filter-chip {{taskStateFilter === 'paused' ? 'active' : ''}}" data-filter="paused" bindtap="handleStateFilterChange">已暂停</view>
+      <view class="filter-chip {{taskStateFilter === 'closed' ? 'active' : ''}}" data-filter="closed" bindtap="handleStateFilterChange">已结束</view>
+    </view>
+
+    <view class="manage-task-list" wx:if="{{tasks.length}}">
+      <block wx:for="{{tasks}}" wx:key="id">
+        <view class="manage-task-card" data-id="{{item.id}}" bindtap="handleOpenTask">
+          <view class="manage-task-top">
+            <view class="task-kind {{item.taskKind === 'ordinary' ? 'ordinary' : (item.taskKind === 'wool' ? 'wool' : '')}}">{{item.categoryLabel}}</view>
+            <view class="manage-task-reward">{{item.taskKind === 'wool' ? item.woolCardRewardText : ('+' + item.executorReward + ' 分')}}</view>
+          </view>
+          <view class="manage-task-brand-row">
+            <text>资料整理助手</text>
+            <view class="manage-task-status {{item.taskClosed ? 'closed' : ''}}">{{item.statusLabel}}</view>
+          </view>
+          <view wx:if="{{item.previewImage}}" class="manage-task-cover">
+            <image src="{{item.previewImage}}" mode="aspectFit" show-menu-by-longpress="true"></image>
+            <view class="manage-task-cover-hint">点击任务查看完整图片</view>
+          </view>
+          <view wx:else class="manage-task-icon-row">
+            <view class="manage-task-icon">{{item.taskKind === 'miniapp' ? '小程序' : '任务'}}</view>
+            <text wx:if="{{item.shareReady}}">{{item.taskKind === 'miniapp' ? '打开目标小程序完成体验' : (item.taskKind === 'wool' ? '解锁后查看福利说明' : '按验收标准提交材料')}}</text>
+            <text wx:else>分享准备中，请稍候</text>
+          </view>
+          <view class="manage-task-title">{{item.title}}</view>
+          <view class="manage-task-description">{{item.description}}</view>
+          <view class="manage-task-entry-summary">{{item.taskLinkSummary}}</view>
+          <view class="manage-task-meta">
+            <block wx:if="{{item.taskKind === 'wool'}}"><text>{{item.woolAccessLabel}}</text><text wx:if="{{item.woolAllowTip}}">可自愿打赏</text></block>
+            <block wx:else><text>发布者 -{{item.rewardPoints}} 分/次</text><text>执行者 +{{item.executorReward}} 分</text></block>
+          </view>
+          <view class="manage-task-progress">
+            <view><text>剩余</text><strong>{{item.remaining === null ? '不限' : item.remaining}}</strong></view>
+            <view><text>{{item.taskKind === 'wool' ? '已解锁' : '已完成'}}</text><strong>{{item.taskKind === 'wool' ? item.woolUnlockCount : item.completedCount}}</strong></view>
+            <view wx:if="{{item.taskKind !== 'wool'}}"><text>待验收</text><strong class="pending">{{item.pendingCount}}</strong></view>
+            <view wx:else><text>评论</text><strong>{{item.commentSummary.count}}</strong></view>
+          </view>
+          <view class="manage-task-foot"><text>{{item.deadlineText}}</text><text class="task-go">查看管理 ›</text></view>
+        </view>
+        <view class="manage-task-actions">
+          <button class="manage-share-button" open-type="share" data-id="{{item.id}}" bindtap="handleSelectShareTask" disabled="{{!item.shareReady}}">{{item.shareReady ? '分享任务' : item.shareStatusText}}</button>
+          <button class="manage-delete-button" data-id="{{item.id}}" bindtap="handleDeleteTask">删除任务</button>
+        </view>
+      </block>
+    </view>
+
+    <view class="empty-state" wx:else>
+      <view class="empty-title">{{publishedCount ? '这个筛选下暂无任务' : '还没有发布任务'}}</view>
+      <view class="empty-copy">发布一个任务后，可以在这里查看进度和验收状态。</view>
+      <button class="secondary-action manage-empty-action" bindtap="handleGoPublish">去发布任务</button>
+    </view>
+  </view>
+  <canvas canvas-id="shareCardCanvas" class="share-card-canvas"></canvas>
+</view>

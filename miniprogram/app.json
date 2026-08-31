@@ -10,6 +10,7 @@
     "pages/view-history/index",
     "pages/membership/index",
     "pages/referral-center/index",
+    "pages/referral-detail/index",
     "pages/group-resource-library/index",
     "pages/enterprise-resource-search/index",
     "pages/resource-tools-webview/index",
@@ -58,6 +59,25 @@
         "showcase-analytics/index",
         "resource-analytics/index",
         "business-dashboard/index"
+      ]
+    },
+    {
+      "root": "subpackages/my-tools",
+      "pages": [
+        "index/index"
+      ]
+    },
+    {
+      "root": "subpackages/my-tools-mutual-help",
+      "pages": [
+        "index/index",
+        "task-detail/index",
+        "web-view/index",
+        "task-manage/index",
+        "task-manage/detail/index",
+        "publish/index",
+        "mine/index",
+        "recharge/index"
       ]
     }
   ],

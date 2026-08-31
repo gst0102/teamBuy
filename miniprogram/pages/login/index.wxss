@@ -418,7 +418,8 @@ page {
 }
 
 .wechat-btn,
-.mock-btn {
+.mock-btn,
+.skip-login-btn {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -436,7 +437,8 @@ page {
 }
 
 .wechat-btn::after,
-.mock-btn::after {
+.mock-btn::after,
+.skip-login-btn::after {
   border: 0;
 }
 
@@ -458,25 +460,18 @@ page {
 }
 
 .skip-login-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
   width: 100%;
   min-width: 0;
-  height: 76rpx;
-  margin-top: 18rpx;
+  height: 88rpx;
+  margin-top: 24rpx;
   padding: 0 24rpx;
   border: 2rpx solid #cbd5e1;
   border-radius: 8rpx;
-  color: #475467;
-  background: rgba(255, 255, 255, 0.78);
+  color: #0f7a4c;
+  background: #e9f6ef;
   font-size: 25rpx;
-  font-weight: 700;
+  font-weight: 900;
   line-height: 1;
   white-space: nowrap;
   box-sizing: border-box;
-}
-
-.skip-login-btn::after {
-  border: 0;
 }

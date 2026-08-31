@@ -1,4 +1,5 @@
 {
+  "enableShareAppMessage": true,
   "navigationBarTitleText": "订阅雷达",
   "navigationStyle": "custom",
   "usingComponents": {

@@ -1474,6 +1474,42 @@ function createMembershipPayment(orderId, userId) {
   });
 }
 
+function fetchMutualHelpStatus(userId) {
+  return request({ url: `/api/scrm/mutual-help?userId=${encodeURIComponent(userId)}` });
+}
+
+function createMutualHelpRechargeOrder(userId, points) {
+  return request({
+    url: "/api/scrm/mutual-help/recharge/orders",
+    method: "POST",
+    data: { userId, points }
+  });
+}
+
+function createMutualHelpRechargePayment(orderId, userId) {
+  return request({
+    url: `/api/scrm/mutual-help/recharge/orders/${orderId}/pay`,
+    method: "POST",
+    data: { userId }
+  });
+}
+
+function confirmTestMutualHelpRechargeOrder(orderId, transactionId) {
+  return request({
+    url: `/api/scrm/mutual-help/recharge/orders/${orderId}/test-confirm`,
+    method: "POST",
+    data: { transactionId }
+  });
+}
+
+function recordMutualHelpActivity(payload) {
+  return request({
+    url: "/api/scrm/mutual-help/activity",
+    method: "POST",
+    data: payload
+  });
+}
+
 function confirmTestMembershipOrder(orderId, transactionId) {
   return request({
     url: `/api/scrm/membership/orders/${orderId}/test-confirm`,
@@ -1948,6 +1984,11 @@ module.exports = {
   createMembershipOrder,
   createMembershipPayment,
   confirmTestMembershipOrder,
+  fetchMutualHelpStatus,
+  createMutualHelpRechargeOrder,
+  createMutualHelpRechargePayment,
+  confirmTestMutualHelpRechargeOrder,
+  recordMutualHelpActivity,
   fetchReferralCenter,
   bindReferral,
   bindReferralFromShare,

@@ -10,6 +10,7 @@ from app.schemas.automation import (
     AutomationDeviceHeartbeatRequest,
     AutomationGroupCandidateUpsertRequest,
     AutomationGroupCandidateReviewRequest,
+    AutomationLiveQrMemberCountRequest,
     AutomationMarketingCardRouteRequest,
     AutomationMarketingCardTaskRequest,
     AutomationTaskClaimRequest,
@@ -196,6 +197,7 @@ def claim_task(payload: AutomationTaskClaimRequest, service: AutomationControlSe
             device_id=payload.deviceId,
             active_wechat_account_id=payload.activeWechatAccountId,
             lease_seconds=payload.leaseSeconds,
+            function_ids=set(payload.functionIds) or None,
         )
     except AutomationControlError as exc:
         _raise_control_error(exc)
@@ -271,10 +273,34 @@ def upsert_group_candidate(
             last_seen_at=payload.lastSeenAt,
             idempotency_key=payload.idempotencyKey,
             last_error=payload.lastError,
+            group_member_count=payload.groupMemberCount,
         )
     except AutomationControlError as exc:
         _raise_control_error(exc)
     return ApiResponse(data=candidate.model_dump())
+
+
+@router.post(
+    "/live-qr/member-count",
+    response_model=ApiResponse[dict],
+    dependencies=[Depends(require_automation_device_token)],
+)
+def record_live_qr_member_count(
+    payload: AutomationLiveQrMemberCountRequest,
+    service: AutomationControlService = Depends(get_automation_control_service),
+):
+    try:
+        result = service.record_live_qr_member_count(
+            device_id=payload.deviceId,
+            candidate_id=payload.candidateId,
+            live_qr_code_id=payload.liveQrCodeId,
+            wechat_account_id=payload.wechatAccountId,
+            group_name=payload.groupName,
+            group_member_count=payload.groupMemberCount,
+        )
+    except AutomationControlError as exc:
+        _raise_control_error(exc)
+    return ApiResponse(data=result)
 
 
 @router.get("/group-candidates", response_model=ApiResponse[list[dict]], dependencies=[Depends(require_automation_operator_token)])

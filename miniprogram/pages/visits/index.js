@@ -5,6 +5,7 @@ const { getCurrentUser } = require("../../utils/dashboard");
 const { navigateToNoteView } = require("../../utils/resource-navigation");
 const { getModeConfig, readWorkspaceMode } = require("../../utils/workspace-mode");
 const { getCustomerPaymentState } = require("../../utils/customer-access");
+const { buildPageShareMessage } = require("../../utils/page-share");
 
 const RADAR_ENTRY_TAB_KEY = "teambuy:radarEntryTab";
 const RADAR_SOURCE_FILTER_KEY = "teambuy:radarSourceFilter";
@@ -995,6 +996,14 @@ Page({
       if (requestId === this._radarRequestId) this.setData({ loading: false });
     }
   },
+
+  onShareAppMessage() {
+    return buildPageShareMessage({
+      title: "资料整理助手｜把浏览变成可跟进的客户信号",
+      path: "/pages/home/index"
+    });
+  },
+
   handleTabChange(event) {
     const requestedTab = event.currentTarget.dataset.key || "followup";
     const activeTab = ["followup", "visitors", "following", "abandoned"].includes(requestedTab) ? requestedTab : "followup";

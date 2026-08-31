@@ -1,0 +1,134 @@
+<view class="page-shell referral-detail-page">
+  <custom-nav showBack="{{true}}" title="收益与推广" />
+
+  <view wx:if="{{loading}}" class="state-card">
+    <view class="state-spinner"></view>
+    <view class="state-title">正在加载收益明细</view>
+    <view class="state-copy">正在读取收益记录、推广好友和提现规则。</view>
+  </view>
+
+  <view wx:elif="{{loadError}}" class="state-card error-state-card">
+    <view class="state-icon">!</view>
+    <view class="state-title">暂时无法加载收益数据</view>
+    <view class="state-copy">{{loadError}}</view>
+    <button class="state-retry-btn" bindtap="retryLoad">重新加载</button>
+  </view>
+
+  <block wx:elif="{{loaded}}">
+    <view wx:if="{{refreshing}}" class="refresh-status">正在更新最新收益数据…</view>
+    <view wx:if="{{refreshError}}" class="refresh-error">{{refreshError}}</view>
+
+    <view class="detail-balance-card">
+      <view class="detail-balance-main">
+        <view class="detail-balance-label">可提现</view>
+        <view class="detail-balance-amount">¥{{center.totals.availableYuan}}</view>
+        <view class="detail-balance-meta">累计收益 ¥{{center.rewardTotalYuan}} · 已提现 ¥{{center.totals.withdrawnYuan}}</view>
+      </view>
+      <view class="detail-withdraw-entry" bindtap="goToWithdrawal">
+        <text>去提现</text>
+        <text class="detail-arrow">›</text>
+      </view>
+    </view>
+
+    <view class="tabs-card">
+      <view class="tab-item {{activeTab == 'earnings' ? 'active' : ''}}" bindtap="setTab" data-tab="earnings">收益记录</view>
+      <view class="tab-item {{activeTab == 'friends' ? 'active' : ''}}" bindtap="setTab" data-tab="friends">推广好友</view>
+    </view>
+
+    <block wx:if="{{activeTab == 'earnings'}}">
+      <view id="withdraw-section" class="withdraw-section">
+        <view class="section-head">
+          <view class="section-title">提现</view>
+          <view class="section-caption">微信零钱</view>
+        </view>
+        <view class="withdraw-amount-line">
+          <view class="withdraw-amount-label">选择提现金额</view>
+          <view class="withdraw-available">可提现 ¥{{center.totals.availableYuan}}</view>
+        </view>
+        <view wx:if="{{center.canWithdraw}}" class="withdraw-option-grid">
+          <view wx:for="{{center.withdrawalOptions}}" wx:key="amountFen" class="withdraw-option {{item.selected ? 'selected' : ''}} {{item.selectable ? '' : 'disabled'}}" data-amount-fen="{{item.amountFen}}" bindtap="handleSelectWithdrawalAmount">
+            <text class="withdraw-option-amount">¥{{item.amountYuan}}</text>
+            <text class="withdraw-option-state">{{item.selectable ? '可申请' : '余额不足'}}</text>
+          </view>
+        </view>
+        <view wx:else class="withdraw-unavailable">
+          <view wx:if="{{center.rulesReady && center.balanceReady}}" class="withdraw-unavailable-title">达到 ¥{{center.minimumWithdrawalYuan}} 后可申请提现</view>
+          <view wx:elif="{{!center.rulesReady}}" class="withdraw-unavailable-title">提现规则暂不可用</view>
+          <view wx:else class="withdraw-unavailable-title">余额数据暂不可用</view>
+          <view wx:if="{{center.rulesReady && center.balanceReady}}" class="withdraw-unavailable-copy">当前还差 ¥{{center.withdrawalShortfallYuan}}，先去资料库分享赚取奖励。</view>
+          <view wx:elif="{{!center.rulesReady}}" class="withdraw-unavailable-copy">请重新加载后再试。</view>
+          <view wx:else class="withdraw-unavailable-copy">余额数据暂不可用，请重新加载后再试。</view>
+          <button wx:if="{{center.rulesReady && center.balanceReady && !center.canWithdraw}}" class="share-more-btn" bindtap="goToLibrary">去分享资料</button>
+        </view>
+        <view wx:if="{{center.canWithdraw && selectedWithdrawalFen}}" class="withdraw-selection-hint">已选择 ¥{{selectedWithdrawalYuan}}，提交后会冻结对应奖励</view>
+        <button wx:if="{{center.canWithdraw}}" class="withdraw-submit-btn" loading="{{withdrawSubmitting}}" disabled="{{withdrawSubmitting}}" bindtap="handleWithdraw">{{withdrawSubmitting ? '提交中…' : '申请提现'}}</button>
+      </view>
+
+      <view class="withdraw-rules-card">
+        <view class="section-head">
+          <view class="section-title">提现规则</view>
+          <view class="rules-source">服务端规则</view>
+        </view>
+        <view wx:if="{{center.rulesReady}}">
+          <view class="rule-summary-grid">
+            <view class="rule-summary-item"><text>最低提现</text><strong>¥{{center.minimumWithdrawalYuan}}</strong></view>
+            <view class="rule-summary-item"><text>每日次数</text><strong>{{center.dailyWithdrawalLimit}} 次</strong></view>
+            <view class="rule-summary-item"><text>手续费</text><strong>¥{{center.feeYuan}}</strong></view>
+            <view class="rule-summary-item"><text>申请时段</text><strong>{{center.withdrawalWindowText}}</strong></view>
+          </view>
+          <view class="rule-detail-row"><view class="rule-mark">额</view><view class="rule-detail-copy"><view class="rule-label">可提现额度</view><view class="rule-copy">当前余额达到最低提现金额后，才可提交申请。</view></view></view>
+          <view class="rule-detail-row"><view class="rule-mark">次</view><view class="rule-detail-copy"><view class="rule-label">每日提现次数</view><view class="rule-copy">每日最多提现 {{center.dailyWithdrawalLimit}} 次，按北京时间自然日计算。</view></view></view>
+          <view class="rule-detail-row"><view class="rule-mark">审</view><view class="rule-detail-copy"><view class="rule-label">审核与到账</view><view class="rule-copy">{{center.withdrawalRules.reviewTimeText}}；{{center.withdrawalRules.arrivalTimeText}}。</view></view></view>
+          <view class="rule-detail-row last"><view class="rule-mark">退</view><view class="rule-detail-copy"><view class="rule-label">失败与撤销</view><view class="rule-copy">{{center.withdrawalRules.failureText}}。</view></view></view>
+        </view>
+        <view wx:else class="rules-unavailable">提现规则暂不可用，请重新加载后再试。</view>
+      </view>
+
+      <view class="list-card" wx:if="{{center.rewards.length}}">
+        <view class="section-head"><view class="section-title">收益记录</view></view>
+        <view class="ledger-row" wx:for="{{center.rewards}}" wx:key="id">
+          <view class="ledger-icon">奖</view>
+          <view class="ledger-main">
+            <view class="ledger-title">{{item.inviteeNickname}}开通会员</view>
+            <view class="ledger-time">{{item.createdAtText}}</view>
+          </view>
+          <view class="ledger-side">
+            <view class="ledger-amount">+¥{{item.amountYuan}}</view>
+            <view class="ledger-status">{{item.statusLabel}}</view>
+          </view>
+        </view>
+      </view>
+      <view wx:else class="empty-card">分享商品、资料或合集，好友完成有效会员付费后会显示收益记录。</view>
+
+      <view class="list-card" wx:if="{{center.withdrawals.length}}">
+        <view class="section-head"><view class="section-title">提现记录</view></view>
+        <view class="withdrawal-row" wx:for="{{center.withdrawals}}" wx:key="id">
+          <view class="withdrawal-main"><view class="withdrawal-amount">¥{{item.amountYuan}}</view><view class="withdrawal-meta">申请时间 {{item.createdAtText}}</view><view wx:if="{{item.paidAtText}}" class="withdrawal-meta paid-time">到账时间 {{item.paidAtText}}</view></view>
+          <view class="withdrawal-side"><view class="withdrawal-status status-{{item.displayStatus}}">{{item.statusLabel}}</view><button wx:if="{{item.canConfirm}}" class="confirm-transfer-btn" data-withdrawal-id="{{item.id}}" bindtap="handleConfirmTransfer">确认收款</button><view wx:if="{{item.failureReason}}" class="withdrawal-failure">{{item.failureReason}}</view></view>
+        </view>
+      </view>
+    </block>
+
+    <block wx:elif="{{activeTab == 'friends'}}">
+      <view class="friend-filter-card">
+        <view class="friend-filter {{friendFilter == 'all' ? 'active' : ''}}" bindtap="setFriendFilter" data-filter="all">全部 {{center.inviteeCount}}</view>
+        <view class="friend-filter {{friendFilter == 'paid' ? 'active' : ''}}" bindtap="setFriendFilter" data-filter="paid">已开通 {{center.paidInviteeCount}}</view>
+        <view class="friend-filter {{friendFilter == 'unpaid' ? 'active' : ''}}" bindtap="setFriendFilter" data-filter="unpaid">未产生奖励 {{center.unpaidInviteeCount}}</view>
+      </view>
+      <view class="sort-note">按建立关系时间排序</view>
+      <view wx:if="{{visibleReferrals.length}}" class="friend-list-card">
+        <view class="friend-row" wx:for="{{visibleReferrals}}" wx:key="id">
+          <view class="friend-avatar">友</view>
+          <view class="friend-main">
+            <view class="friend-name">{{item.nickname}}</view>
+            <view class="friend-time">建立关系 {{item.createdAtText}}</view>
+            <view class="friend-reward">{{item.rewardText}}</view>
+          </view>
+          <view class="friend-status">{{item.relationStatusLabel}}</view>
+        </view>
+      </view>
+      <view wx:else class="empty-card">暂时没有符合条件的推广好友。</view>
+      <view class="privacy-note">仅展示直接推广好友的昵称和状态，不展示手机号等敏感信息。</view>
+    </block>
+  </block>
+</view>

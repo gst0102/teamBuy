@@ -146,6 +146,12 @@ class OpsConsoleState(BaseModel):
     customerInfoChainPaymentRequired: bool = True
     customerInfoChainUpdatedAt: str | None = None
     customerInfoChainUpdatedBy: str | None = None
+    mutualHelpRechargeEnabled: bool = True
+    mutualHelpRechargeVisible: bool = True
+    mutualHelpWithdrawalEnabled: bool = False
+    mutualHelpWithdrawalVisible: bool = False
+    mutualHelpUpdatedAt: str | None = None
+    mutualHelpUpdatedBy: str | None = None
     singleGroupResources: list[SingleGroupResource] = Field(default_factory=list)
     groupUploadBatches: list[GroupUploadBatch] = Field(default_factory=list)
     feedbackTickets: list[FeedbackTicket] = Field(default_factory=list)
@@ -156,6 +162,18 @@ class OpsConsoleState(BaseModel):
 
 class OpsConsoleStore:
     CUSTOMER_INFO_CHAIN_KEY = "customer_info_chain"
+    MUTUAL_HELP_KEYS = {
+        "rechargeEnabled": "mutual_help_recharge",
+        "rechargeVisible": "mutual_help_recharge_visible",
+        "withdrawalEnabled": "mutual_help_withdrawal",
+        "withdrawalVisible": "mutual_help_withdrawal_visible",
+    }
+    MUTUAL_HELP_DEFAULTS = {
+        "rechargeEnabled": True,
+        "rechargeVisible": True,
+        "withdrawalEnabled": False,
+        "withdrawalVisible": False,
+    }
 
     def __init__(
         self,
@@ -266,6 +284,129 @@ class OpsConsoleStore:
 
     def set_customer_info_chain_enabled(self, enabled: bool, operator_name: str | None = None) -> dict:
         return self.set_customer_info_chain_config(enabled=enabled, operator_name=operator_name)
+
+    def get_mutual_help_config(self) -> dict:
+        if self.database_url:
+            try:
+                return self._get_postgres_mutual_help_config()
+            except (OSError, RuntimeError, TypeError, ValueError, PoolTimeout, psycopg.Error):
+                logger.exception("failed to read mutual-help configuration")
+                return {
+                    **self.MUTUAL_HELP_DEFAULTS,
+                    "available": False,
+                    "reservePoints": 300,
+                    "initialPoints": 100,
+                }
+        state = self.load()
+        return {
+            "rechargeEnabled": bool(state.mutualHelpRechargeEnabled),
+            "rechargeVisible": bool(state.mutualHelpRechargeVisible),
+            "withdrawalEnabled": bool(state.mutualHelpWithdrawalEnabled),
+            "withdrawalVisible": bool(state.mutualHelpWithdrawalVisible),
+            "updatedAt": state.mutualHelpUpdatedAt,
+            "updatedBy": state.mutualHelpUpdatedBy,
+            "available": True,
+            "reservePoints": 300,
+            "initialPoints": 100,
+        }
+
+    def set_mutual_help_config(
+        self,
+        *,
+        recharge_enabled: bool | None = None,
+        recharge_visible: bool | None = None,
+        withdrawal_enabled: bool | None = None,
+        withdrawal_visible: bool | None = None,
+        operator_name: str | None = None,
+    ) -> dict:
+        values = {
+            "rechargeEnabled": recharge_enabled,
+            "rechargeVisible": recharge_visible,
+            "withdrawalEnabled": withdrawal_enabled,
+            "withdrawalVisible": withdrawal_visible,
+        }
+        if self.database_url:
+            return self._set_postgres_mutual_help_config(values, operator_name)
+        state = self.load()
+        field_names = {
+            "rechargeEnabled": "mutualHelpRechargeEnabled",
+            "rechargeVisible": "mutualHelpRechargeVisible",
+            "withdrawalEnabled": "mutualHelpWithdrawalEnabled",
+            "withdrawalVisible": "mutualHelpWithdrawalVisible",
+        }
+        for key, value in values.items():
+            if value is not None:
+                setattr(state, field_names[key], bool(value))
+        state.mutualHelpUpdatedAt = now_iso()
+        state.mutualHelpUpdatedBy = self._clean_operator(operator_name)
+        self.save(state)
+        return self.get_mutual_help_config()
+
+    def _mutual_help_row_payload(self, rows: list[dict]) -> dict:
+        values = dict(self.MUTUAL_HELP_DEFAULTS)
+        updated_at = None
+        updated_by = None
+        for row in rows:
+            for field, key in self.MUTUAL_HELP_KEYS.items():
+                if row.get("key") == key:
+                    values[field] = bool(row.get("enabled"))
+                    updated_at = self._serialize_timestamp(row.get("updated_at"))
+                    updated_by = row.get("updated_by")
+                    break
+        return {
+            **values,
+            "updatedAt": updated_at,
+            "updatedBy": updated_by,
+            "available": True,
+            "reservePoints": 300,
+            "initialPoints": 100,
+        }
+
+    def _ensure_postgres_mutual_help_rows(self, conn) -> list[dict]:
+        for field, key in self.MUTUAL_HELP_KEYS.items():
+            conn.execute(
+                """
+                insert into ops_feature_flags (key, enabled, payment_required, updated_at, updated_by)
+                values (%s, %s, false, now(), 'system-default')
+                on conflict (key) do nothing
+                """,
+                (key, self.MUTUAL_HELP_DEFAULTS[field]),
+            )
+        return conn.execute(
+            """
+            select key, enabled, updated_at, updated_by
+            from ops_feature_flags
+            where key = any(%s)
+            order by key
+            """,
+            (list(self.MUTUAL_HELP_KEYS.values()),),
+        ).fetchall()
+
+    def _get_postgres_mutual_help_config(self) -> dict:
+        with self._postgres_connection() as conn:
+            with conn.transaction():
+                rows = self._ensure_postgres_mutual_help_rows(conn)
+        return self._mutual_help_row_payload(rows)
+
+    def _set_postgres_mutual_help_config(self, values: dict, operator_name: str | None) -> dict:
+        with self._postgres_connection() as conn:
+            with conn.transaction():
+                self._ensure_postgres_mutual_help_rows(conn)
+                operator = self._clean_operator(operator_name)
+                for field, key in self.MUTUAL_HELP_KEYS.items():
+                    value = values.get(field)
+                    if value is None:
+                        continue
+                    conn.execute(
+                        """
+                        update ops_feature_flags
+                        set enabled = %s, updated_at = %s::timestamptz, updated_by = %s
+                        where key = %s
+                        """,
+                        (bool(value), now_iso(), operator, key),
+                    )
+                rows = self._ensure_postgres_mutual_help_rows(conn)
+        return self._mutual_help_row_payload(rows)
 
     def _read_legacy_customer_info_chain_config(self) -> dict | None:
         """Read only the two legacy feature fields for the one-time DB seed.

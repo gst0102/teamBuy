@@ -1,0 +1,8 @@
+{
+  "enableShareAppMessage": true,
+  "navigationBarTitleText": "我的工具",
+  "navigationStyle": "custom",
+  "usingComponents": {
+    "custom-nav": "/components/custom-nav/index"
+  }
+}

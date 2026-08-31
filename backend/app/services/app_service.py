@@ -18,7 +18,7 @@ import httpx
 from fastapi import HTTPException, status
 
 from app.core.config import settings
-from app.models.domain import AppState, Card, CardMedia, Category, CustomerAction, CustomerRadarSummary, ImportBatch, LeadFollowUpLog, LeadReminder, MediaAsset, MediaAssetRef, MembershipEntitlement, MembershipOrder, MessageRecord, MessageThread, MediaRetryJob, NotificationPreference, OpportunityLead, OpportunityLeadContact, OpportunityLeadFollowup, OpportunityLeadSave, OpportunityLeadSource, OpportunityPushDigest, OpportunitySubscription, RawMessage, ReferralRelation, ReferralReward, ReferralWithdrawal, RelayConfig, RelayEntry, ResourceFreeQuota, ResourcePointLedger, ResourceUnlockRecord, ResourceWallet, ResponsePackage, ResponsePackageEvent, ResponsePackageItem, SameStyleGeneration, ShowcaseEvent, ShowcaseItem, ShowcasePage, SkillRun, SupplyDemandApplication, SupplyDemandCard, SyncCursor, Topic, User, UserNote, ViewEvent, WechatSubscriptionDelivery, WechatSubscriptionGrant, WecomArchiveCursor, WecomArchiveMessage, WecomBindCardToken, WecomIdentityBinding
+from app.models.domain import AppState, Card, CardMedia, Category, CustomerAction, CustomerRadarSummary, ImportBatch, LeadFollowUpLog, LeadReminder, MediaAsset, MediaAssetRef, MembershipEntitlement, MembershipOrder, MessageRecord, MessageThread, MediaRetryJob, MutualActivityEvent, MutualPointAccount, MutualPointLedger, MutualRechargeOrder, NotificationPreference, OpportunityLead, OpportunityLeadContact, OpportunityLeadFollowup, OpportunityLeadSave, OpportunityLeadSource, OpportunityPushDigest, OpportunitySubscription, RawMessage, ReferralRelation, ReferralReward, ReferralWithdrawal, RelayConfig, RelayEntry, ResourceFreeQuota, ResourcePointLedger, ResourceUnlockRecord, ResourceWallet, ResponsePackage, ResponsePackageEvent, ResponsePackageItem, SameStyleGeneration, ShowcaseEvent, ShowcaseItem, ShowcasePage, SkillRun, SupplyDemandApplication, SupplyDemandCard, SyncCursor, Topic, User, UserNote, ViewEvent, WechatSubscriptionDelivery, WechatSubscriptionGrant, WecomArchiveCursor, WecomArchiveMessage, WecomBindCardToken, WecomIdentityBinding
 from app.schemas.auth import MockLoginRequest, UserProfileUpdateRequest, WechatLoginRequest
 from app.schemas.categories import CategoryCreateRequest
 from app.schemas.cards import CardCreateRequest, CardUpdateRequest, CreateRelayRequest, LeadReminderUpdateRequest, LeadReminderUpsertRequest, RecordViewRequest
@@ -194,6 +194,10 @@ SUBSCRIBE_DEDUPE_WINDOW_SECONDS = 30 * 60
 SUBSCRIBE_DELIVERY_MAX_ATTEMPTS = 3
 SUBSCRIBE_RESERVATION_TIMEOUT_SECONDS = 15 * 60
 SUBSCRIBE_FIELD_NAMES = ("messageName", "customerName", "projectName", "messageContent", "reminderTime")
+MUTUAL_INITIAL_POINTS = 100
+MUTUAL_RESERVE_POINTS = 300
+MUTUAL_POINTS_PER_YUAN = 10
+MUTUAL_RECHARGE_PACKAGES = (100, 500, 1000, 2000)
 
 
 class AppService:
@@ -2423,6 +2427,315 @@ class AppService:
         if not self._has_customer_intelligence(user_id):
             raise HTTPException(status_code=402, detail="开通客户信息链会员后可查看完整客户情报")
 
+    def _mutual_help_config(self) -> dict:
+        if self.ops_console_store is None:
+            return {
+                "rechargeEnabled": True,
+                "rechargeVisible": True,
+                "withdrawalEnabled": False,
+                "withdrawalVisible": False,
+                "available": True,
+                "reservePoints": MUTUAL_RESERVE_POINTS,
+                "initialPoints": MUTUAL_INITIAL_POINTS,
+            }
+        return self.ops_console_store.get_mutual_help_config()
+
+    @staticmethod
+    def _mutual_recharge_pending_expires_at(order: MutualRechargeOrder) -> datetime:
+        return parse_iso(order.createdAt) + timedelta(minutes=30)
+
+    def _close_expired_mutual_recharge_orders(self, state: AppState, now: datetime) -> bool:
+        changed = False
+        for order in state.mutual_recharge_orders:
+            if order.status != "pending":
+                continue
+            try:
+                expired = self._mutual_recharge_pending_expires_at(order) <= now
+            except Exception:
+                expired = True
+            if expired:
+                order.status = "closed"
+                order.updatedAt = now.isoformat()
+                changed = True
+        return changed
+
+    def _ensure_mutual_point_account(self, state: AppState, user_id: str) -> MutualPointAccount:
+        user_id = str(user_id or "").strip()
+        if not user_id or not self.repo.get_user(user_id):
+            raise HTTPException(status_code=404, detail="用户不存在")
+        account = next((item for item in state.mutual_point_accounts if item.userId == user_id), None)
+        if account:
+            return account
+        now = now_iso()
+        account = MutualPointAccount(
+            id=f"mutual_points_{user_id}",
+            userId=user_id,
+            balance=MUTUAL_INITIAL_POINTS,
+            totalGranted=MUTUAL_INITIAL_POINTS,
+            totalConsumed=0,
+            createdAt=now,
+            updatedAt=now,
+        )
+        state.mutual_point_accounts.append(account)
+        state.mutual_point_ledgers.append(
+            MutualPointLedger(
+                id=new_id("mutual_points_ledger"),
+                userId=user_id,
+                ledgerType="initial_grant",
+                pointsDelta=MUTUAL_INITIAL_POINTS,
+                balanceAfter=MUTUAL_INITIAL_POINTS,
+                reason="首次进入互帮互助赠送积分",
+                createdAt=now,
+            )
+        )
+        return account
+
+    def get_mutual_help_status(self, user_id: str) -> dict:
+        state = self._load()
+        account = self._ensure_mutual_point_account(state, user_id)
+        self._save(state)
+        config = self._mutual_help_config()
+        orders = sorted(
+            [item.model_dump() for item in state.mutual_recharge_orders if item.userId == user_id],
+            key=lambda item: (item.get("createdAt") or "", item.get("id") or ""),
+            reverse=True,
+        )[:10]
+        return {
+            "config": config,
+            "account": account.model_dump(),
+            "orders": orders,
+            "rechargePackages": [
+                {
+                    "points": points,
+                    "amountFen": points * 100 // MUTUAL_POINTS_PER_YUAN,
+                    "amountYuan": points / MUTUAL_POINTS_PER_YUAN,
+                }
+                for points in MUTUAL_RECHARGE_PACKAGES
+            ],
+        }
+
+    def create_mutual_recharge_order(self, user_id: str, points: int) -> dict:
+        config = self._mutual_help_config()
+        if config.get("available") is False:
+            raise HTTPException(status_code=503, detail="互助积分配置暂时不可用")
+        if not config.get("rechargeEnabled", False):
+            raise HTTPException(status_code=403, detail="充值功能当前未开放")
+        if points not in MUTUAL_RECHARGE_PACKAGES:
+            raise HTTPException(status_code=400, detail="请选择有效的充值档位")
+        user = self.repo.get_user(user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="用户不存在")
+        now = now_iso()
+        now_dt = parse_iso(now)
+        payment_mode = "wechat_pay" if settings.app_env == "production" or settings.wechat_pay_enabled else "test"
+        with MEMBERSHIP_PAYMENT_LOCK:
+            state = self._load()
+            changed = self._close_expired_mutual_recharge_orders(state, now_dt)
+            pending = sorted(
+                (
+                    item for item in state.mutual_recharge_orders
+                    if item.userId == user_id
+                    and item.points == points
+                    and item.status == "pending"
+                    and item.paymentChannel == payment_mode
+                ),
+                key=lambda item: item.createdAt,
+                reverse=True,
+            )
+            reused = bool(pending)
+            order = pending[0] if pending else MutualRechargeOrder(
+                id=new_id("mutual_recharge"),
+                userId=user_id,
+                points=points,
+                amountFen=points * 100 // MUTUAL_POINTS_PER_YUAN,
+                paymentChannel=payment_mode,
+                createdAt=now,
+                updatedAt=now,
+            )
+            if not reused:
+                state.mutual_recharge_orders.append(order)
+                changed = True
+            self._ensure_mutual_point_account(state, user_id)
+            if changed:
+                self._save(state)
+        return {
+            "order": order.model_dump(),
+            "pendingOrder": {
+                **order.model_dump(),
+                "expiresAt": self._mutual_recharge_pending_expires_at(order).isoformat(),
+            },
+            "paymentMode": payment_mode,
+            "testMode": payment_mode == "test",
+            "reused": reused,
+        }
+
+    def create_mutual_recharge_payment(self, order_id: str, user_id: str) -> dict:
+        config = self._mutual_help_config()
+        if config.get("available") is False:
+            raise HTTPException(status_code=503, detail="互助积分配置暂时不可用")
+        if not config.get("rechargeEnabled", False):
+            raise HTTPException(status_code=403, detail="充值功能当前未开放")
+        user = self.repo.get_user(user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="用户不存在")
+        with MEMBERSHIP_PAYMENT_LOCK:
+            state = self._load()
+            order = next((item for item in state.mutual_recharge_orders if item.id == order_id), None)
+            if not order:
+                raise HTTPException(status_code=404, detail="积分充值订单不存在")
+            if order.userId != user_id:
+                raise HTTPException(status_code=403, detail="无权支付该订单")
+            if order.status == "paid":
+                return {"order": order.model_dump(), "paymentRequired": False, "account": self._ensure_mutual_point_account(state, user_id).model_dump()}
+            if self._mutual_recharge_pending_expires_at(order) <= parse_iso(now_iso()):
+                order.status = "closed"
+                order.updatedAt = now_iso()
+                self._save(state)
+                raise HTTPException(status_code=409, detail="订单已超时关闭，请重新发起充值")
+            if order.status != "pending" or order.paymentChannel != "wechat_pay":
+                raise HTTPException(status_code=409, detail="当前订单不能发起微信支付")
+        try:
+            client = WechatPayClient()
+            prepay_id = client.create_jsapi_prepay(
+                openid=user.openid,
+                out_trade_no=order.id,
+                total_fen=order.amountFen,
+                description="互助积分充值",
+            )
+            payment = client.build_jsapi_payment(prepay_id)
+        except WechatPayError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        return {
+            "order": order.model_dump(),
+            "pendingOrder": {
+                **order.model_dump(),
+                "expiresAt": self._mutual_recharge_pending_expires_at(order).isoformat(),
+            },
+            "paymentRequired": True,
+            "payment": payment,
+        }
+
+    def confirm_test_mutual_recharge_payment(self, order_id: str, transaction_id: str) -> dict:
+        if settings.app_env == "production" or settings.wechat_pay_enabled:
+            raise HTTPException(status_code=403, detail="当前支付模式禁止测试确认付款")
+        transaction_id = str(transaction_id or "").strip()
+        if not transaction_id:
+            raise HTTPException(status_code=400, detail="支付流水不能为空")
+        with MEMBERSHIP_PAYMENT_LOCK:
+            state = self._load()
+            order = next((item for item in state.mutual_recharge_orders if item.id == order_id), None)
+            if not order:
+                raise HTTPException(status_code=404, detail="积分充值订单不存在")
+            return self._complete_mutual_recharge_order(state, order, transaction_id)
+
+    def _complete_mutual_recharge_order(self, state: AppState, order: MutualRechargeOrder, transaction_id: str) -> dict:
+        duplicate = next(
+            (item for item in state.mutual_recharge_orders if item.paymentTransactionId == transaction_id and item.id != order.id),
+            None,
+        )
+        if duplicate:
+            raise HTTPException(status_code=409, detail="支付流水已被使用")
+        if order.status == "paid":
+            if order.paymentTransactionId != transaction_id:
+                raise HTTPException(status_code=409, detail="订单已由其他支付流水确认")
+            account = self._ensure_mutual_point_account(state, order.userId)
+            return {"order": order.model_dump(), "account": account.model_dump(), "duplicate": True}
+        if order.status not in {"pending", "closed"}:
+            raise HTTPException(status_code=409, detail="订单状态不能确认付款")
+        now = now_iso()
+        account = self._ensure_mutual_point_account(state, order.userId)
+        account.balance += order.points
+        account.totalGranted += order.points
+        account.updatedAt = now
+        order.status = "paid"
+        order.paymentTransactionId = transaction_id
+        order.paidAt = now
+        order.updatedAt = now
+        ledger = MutualPointLedger(
+            id=new_id("mutual_points_ledger"),
+            userId=order.userId,
+            ledgerType="recharge",
+            pointsDelta=order.points,
+            balanceAfter=account.balance,
+            reason="充值互助积分",
+            relatedOrderId=order.id,
+            createdAt=now,
+        )
+        state.mutual_point_ledgers.append(ledger)
+        self._save(state)
+        return {"order": order.model_dump(), "account": account.model_dump(), "ledger": ledger.model_dump(), "duplicate": False}
+
+    def record_mutual_help_activity(
+        self,
+        user_id: str,
+        event_type: str,
+        task_id: str,
+        task_kind: str = "ordinary",
+        idempotency_key: str = "",
+    ) -> dict:
+        if event_type not in {"published", "completed"}:
+            raise HTTPException(status_code=400, detail="互助活动类型无效")
+        if not self.repo.get_user(user_id):
+            raise HTTPException(status_code=404, detail="用户不存在")
+        task_id = str(task_id or "").strip()
+        if not task_id:
+            raise HTTPException(status_code=400, detail="任务 ID 不能为空")
+        key = (str(idempotency_key or "").strip() or f"{event_type}:{user_id}:{task_id}")[:160]
+        state = self._load()
+        existing = next((item for item in state.mutual_activity_events if item.idempotencyKey == key), None)
+        if existing:
+            return {"event": existing.model_dump(), "duplicate": True}
+        event = MutualActivityEvent(
+            id=new_id("mutual_activity"),
+            eventType=event_type,
+            userId=user_id,
+            taskId=task_id,
+            taskKind=str(task_kind or "ordinary"),
+            idempotencyKey=key,
+            createdAt=now_iso(),
+        )
+        state.mutual_activity_events.append(event)
+        self._save(state)
+        return {"event": event.model_dump(), "duplicate": False}
+
+    def get_mutual_help_operations(self) -> dict:
+        state = self._load()
+        now = datetime.now(tz=SHANGHAI)
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        seven_day_start = today_start - timedelta(days=6)
+
+        def in_scope(value: str | None, start: datetime | None) -> bool:
+            if start is None:
+                return True
+            try:
+                return parse_iso(value) >= start
+            except Exception:
+                return False
+
+        def summarize(start: datetime | None) -> dict:
+            events = [item for item in state.mutual_activity_events if in_scope(item.createdAt, start)]
+            orders = [
+                item for item in state.mutual_recharge_orders
+                if item.status == "paid" and in_scope(item.paidAt or item.createdAt, start)
+            ]
+            return {
+                "publishedTasks": sum(1 for item in events if item.eventType == "published"),
+                "completedTasks": sum(1 for item in events if item.eventType == "completed"),
+                "rechargeOrders": len(orders),
+                "rechargePoints": sum(int(item.points or 0) for item in orders),
+                "rechargeRevenueFen": sum(int(item.amountFen or 0) for item in orders),
+            }
+
+        return {
+            "config": self._mutual_help_config(),
+            "periods": {
+                "today": summarize(today_start),
+                "sevenDays": summarize(seven_day_start),
+                "total": summarize(None),
+            },
+            "generatedAt": now.isoformat(),
+        }
+
     def create_membership_order(self, user_id: str, plan_code: str = SALES_SCRM_PLAN_CODE) -> dict:
         self.require_customer_info_chain_enabled()
         if not self.customer_info_chain_payment_required():
@@ -2562,8 +2875,19 @@ class AppService:
         with MEMBERSHIP_PAYMENT_LOCK:
             state = self._load()
             order = next((item for item in state.membership_orders if item.id == out_trade_no), None)
+            mutual_order = None
             if not order:
-                raise HTTPException(status_code=404, detail="会员订单不存在")
+                mutual_order = next((item for item in state.mutual_recharge_orders if item.id == out_trade_no), None)
+                if not mutual_order:
+                    raise HTTPException(status_code=404, detail="会员或互助积分订单不存在")
+                user = self.repo.get_user(mutual_order.userId)
+                if mutual_order.paymentChannel != "wechat_pay":
+                    raise HTTPException(status_code=409, detail="订单支付渠道不匹配")
+                if not user or user.openid != openid:
+                    raise HTTPException(status_code=400, detail="支付回调用户身份不匹配")
+                if mutual_order.amountFen != total_fen:
+                    raise HTTPException(status_code=400, detail="支付回调金额与订单不一致")
+                return self._complete_mutual_recharge_order(state, mutual_order, transaction_id)
             user = self.repo.get_user(order.userId)
             if order.paymentChannel != "wechat_pay":
                 raise HTTPException(status_code=409, detail="订单支付渠道不匹配")
@@ -3850,11 +4174,15 @@ class AppService:
 
     def get_referral_center(self, user_id: str) -> dict:
         self.require_customer_info_chain_enabled()
-        if not self.repo.get_user(user_id):
-            raise HTTPException(status_code=404, detail="用户不存在")
         state = self._load()
+        users_by_id = {item.id: item for item in state.users}
+        if user_id not in users_by_id:
+            raise HTTPException(status_code=404, detail="用户不存在")
         relations = [item for item in state.referral_relations if item.inviterUserId == user_id]
         rewards = sorted([item for item in state.referral_rewards if item.inviterUserId == user_id], key=lambda item: item.createdAt, reverse=True)
+        rewards_by_invitee: dict[str, list[ReferralReward]] = {}
+        for item in rewards:
+            rewards_by_invitee.setdefault(item.inviteeUserId, []).append(item)
         totals = {status: 0 for status in ["pending", "available", "reserved", "withdrawn", "revoked"]}
         for item in rewards:
             if item.status in {"pending", "revoked"}:
@@ -3867,6 +4195,50 @@ class AppService:
         paid_user_ids = {
             item.inviteeUserId for item in rewards if item.status in {"available", "reserved", "withdrawn"}
         }
+        direct_referrals = []
+        for relation in sorted(relations, key=lambda item: (item.createdAt, item.id), reverse=True):
+            invitee = users_by_id.get(relation.inviteeUserId)
+            invitee_rewards = rewards_by_invitee.get(relation.inviteeUserId, [])
+            pending_rewards = [item for item in invitee_rewards if item.status == "pending"]
+            paid_rewards = [item for item in invitee_rewards if item.status in {"available", "reserved", "withdrawn"}]
+            revoked_rewards = [item for item in invitee_rewards if item.status == "revoked"]
+            latest_reward = invitee_rewards[0] if invitee_rewards else None
+            if paid_rewards:
+                relation_status = "paid"
+                reward_status = latest_reward.status if latest_reward else "pending"
+                reward_amount_fen = sum(max(0, int(item.amountFen or 0)) for item in paid_rewards)
+            elif pending_rewards:
+                relation_status = "pending"
+                reward_status = latest_reward.status if latest_reward else "pending"
+                reward_amount_fen = sum(max(0, int(item.amountFen or 0)) for item in pending_rewards)
+            elif revoked_rewards:
+                relation_status = "revoked"
+                reward_status = "revoked"
+                reward_amount_fen = sum(max(0, int(item.amountFen or 0)) for item in revoked_rewards)
+            else:
+                relation_status = "bound"
+                reward_status = None
+                reward_amount_fen = 0
+            direct_referrals.append(
+                {
+                    "id": relation.id,
+                    "nickname": mask_nickname(invitee.nickname) if invitee and invitee.nickname else "好友",
+                    "createdAt": relation.createdAt,
+                    "source": relation.source,
+                    "relationStatus": relation_status,
+                    "rewardStatus": reward_status,
+                    "rewardAmountFen": reward_amount_fen,
+                }
+            )
+        reward_rows = []
+        for item in rewards:
+            invitee = users_by_id.get(item.inviteeUserId)
+            reward_rows.append(
+                {
+                    **item.model_dump(),
+                    "inviteeNickname": mask_nickname(invitee.nickname) if invitee and invitee.nickname else "直接推广好友",
+                }
+            )
         return {
             "inviteCode": self._invite_code_for_user(user_id),
             "attributionMode": "share_link",
@@ -3882,7 +4254,8 @@ class AppService:
             "withdrawalRules": self.referral_withdrawal_rules(),
             "merchantTransferMchId": settings.wechat_pay_mch_id,
             "totals": totals,
-            "rewards": [item.model_dump() for item in rewards],
+            "rewards": reward_rows,
+            "directReferrals": direct_referrals,
             "withdrawals": sorted(
                 [item.model_dump() for item in state.referral_withdrawals if item.userId == user_id],
                 key=lambda item: (item.get("createdAt") or "", item.get("id") or ""),
@@ -7257,6 +7630,7 @@ class AppService:
         usage: str = "media",
         storage_service: MediaStorageService | None = None,
         preserve_share_format: bool = False,
+        preserve_source_format: bool = False,
     ) -> str:
         if not content:
             raise HTTPException(status_code=400, detail="媒体内容不能为空")
@@ -7274,16 +7648,21 @@ class AppService:
             if existing:
                 self._save_media_asset_ref(existing, owner_user_id, ref_type, ref_id or media_id, usage)
                 return existing.url
-        processed = (
-            self.media_processing_service.process_share_image(content, filename)
-            if preserve_share_format and normalized_type == "image"
-            else self.media_processing_service.process_upload(
+        if preserve_source_format and normalized_type == "image":
+            processed = self.media_processing_service.process_source_image(
+                content,
+                content_type=content_type,
+                filename=filename,
+            )
+        elif preserve_share_format and normalized_type == "image":
+            processed = self.media_processing_service.process_share_image(content, filename)
+        else:
+            processed = self.media_processing_service.process_upload(
                 media_type=normalized_type,
                 content=content,
                 content_type=content_type,
                 filename=filename,
             )
-        )
         storage_sha256 = hashlib.sha256(processed.content).hexdigest()
         existing = self.repo.get_media_asset_by_storage_hash(normalized_type, storage_sha256)
         if existing:

@@ -20,6 +20,23 @@ class MembershipPaymentRequest(BaseModel):
     userId: str
 
 
+class MutualHelpRechargeRequest(BaseModel):
+    userId: str
+    points: int = Field(default=100, ge=100, le=100000)
+
+
+class MutualHelpPaymentRequest(BaseModel):
+    userId: str
+
+
+class MutualHelpActivityRequest(BaseModel):
+    userId: str
+    eventType: str
+    taskId: str
+    taskKind: str = "ordinary"
+    idempotencyKey: str = Field(default="", max_length=160)
+
+
 class CustomerFollowupEnsureRequest(BaseModel):
     ownerUserId: str
     requesterUserId: str

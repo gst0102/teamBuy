@@ -66,6 +66,21 @@
     </view>
   </view>
 
+  <view class="profile-section tools-section">
+    <view class="section-title">我的工具</view>
+    <view class="panel tools-panel">
+      <view class="tools-entry" bindtap="handleOpenMutualHelp">
+        <view class="tools-entry-mark">互</view>
+        <view class="tools-entry-copy">
+          <view class="tools-entry-title">互帮互助</view>
+          <view class="tools-entry-sub">用互助积分交换真实的帮助</view>
+        </view>
+        <view class="tools-entry-badge">进入</view>
+        <view class="tools-entry-arrow">›</view>
+      </view>
+    </view>
+  </view>
+
   <view class="profile-section view-history-section" wx:if="{{user}}">
     <view class="section-title">最近看过</view>
     <view class="panel view-history-panel">
@@ -104,8 +119,8 @@
       <view class="referral-entry-leading">
         <image class="referral-entry-icon" src="/static/icons/referral.svg" mode="aspectFit"></image>
         <view>
-          <view class="referral-entry-title">推广奖励</view>
-          <view class="referral-entry-sub">查看分佣规则、申请提现和提现记录</view>
+          <view class="referral-entry-title">推广中心</view>
+          <view class="referral-entry-sub">查看推广进度、收益与提现</view>
         </view>
       </view>
       <view class="referral-entry-trailing">

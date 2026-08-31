@@ -1,4 +1,5 @@
 {
+  "enableShareAppMessage": true,
   "usingComponents": {
     "note-select-card": "/components/note-select-card/index"
   },

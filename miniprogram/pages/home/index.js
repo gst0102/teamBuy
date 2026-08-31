@@ -4,6 +4,7 @@ const customerIntelligenceStore = require("../../stores/customer-intelligence-st
 const { buildDashboard, getCurrentUser } = require("../../utils/dashboard");
 const { navigateToResourceView } = require("../../utils/resource-navigation");
 const { getModeConfig } = require("../../utils/workspace-mode");
+const { buildPageShareMessage } = require("../../utils/page-share");
 
 const LIBRARY_ENTRY_FILTER_KEY = "teambuy:libraryEntryFilter";
 const RADAR_ENTRY_TAB_KEY = "teambuy:radarEntryTab";
@@ -680,6 +681,12 @@ Page({
     this.dashboardUserId = currentUser.id;
     this.refreshMode(currentUser);
     this.loadDashboard();
+  },
+  onShareAppMessage() {
+    return buildPageShareMessage({
+      title: "资料整理助手｜把资料整理成能成交的内容",
+      path: "/pages/home/index"
+    });
   },
   refreshMode(currentUser) {
     const modeConfig = getModeConfig("notes");

@@ -96,13 +96,20 @@ _sync_task_queue = SyncTaskQueue(
     auto_schedule=settings.sync_task_auto_schedule,
 )
 OCR_TASK_NAMES = {"ocr-recognize-note", "property-table-ocr", "wechat-subscription-send"}
+
+
+def _run_background_maintenance() -> None:
+    _service.recover_stale_subscription_grants()
+    _automation_control_service.schedule_live_qr_member_count_tasks()
+
+
 _ocr_task_worker = BackgroundTaskWorker(
     _sync_task_queue,
     enabled=settings.sync_task_worker_enabled,
     interval_seconds=settings.sync_task_worker_interval_seconds,
     task_names=OCR_TASK_NAMES,
     max_running=max(settings.ocr_task_concurrency, 1),
-    maintenance_callback=_service.recover_stale_subscription_grants,
+    maintenance_callback=_run_background_maintenance,
 )
 async def _run_ocr_recognize_task(payload: dict) -> dict:
     note_id = str(payload.get("noteId") or "")

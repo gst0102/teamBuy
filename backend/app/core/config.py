@@ -107,6 +107,12 @@ class Settings:
     robot_gateway_token: str = env_value("ROBOT_GATEWAY_TOKEN", "")
     automation_operator_token: str = env_value("AUTOMATION_OPERATOR_TOKEN", "")
     automation_device_token: str = env_value("AUTOMATION_DEVICE_TOKEN", "")
+    # Group member counts remain unknown until a real AScript device is
+    # connected and explicitly enabled. Do not create detection tasks by
+    # default or turn missing device data into a false zero count.
+    live_qr_member_count_automation_enabled: bool = env_value(
+        "LIVE_QR_MEMBER_COUNT_AUTOMATION_ENABLED", "false"
+    ).lower() in {"1", "true", "yes"}
     wecom_group_bot_webhooks: str = env_value("WECOM_GROUP_BOT_WEBHOOKS", "")
     storage_mode: str = env_value("STORAGE_MODE", "mock")
     media_storage_dir: Path = ROOT_DIR / env_value("MEDIA_STORAGE_DIR", "backend/mock/media")
@@ -162,7 +168,7 @@ class Settings:
     wechat_transfer_scene_id: str = env_value("WECHAT_TRANSFER_SCENE_ID", "")
     wechat_transfer_notify_url: str = env_value("WECHAT_TRANSFER_NOTIFY_URL", "")
     wechat_transfer_test_min_amount_fen: int = env_int("WECHAT_TRANSFER_TEST_MIN_AMOUNT_FEN", 10)
-    wechat_transfer_min_amount_fen: int = env_int("WECHAT_TRANSFER_MIN_AMOUNT_FEN", 1000)
+    wechat_transfer_min_amount_fen: int = env_int("WECHAT_TRANSFER_MIN_AMOUNT_FEN", 10)
     wechat_transfer_daily_withdrawal_limit: int = env_int("WECHAT_TRANSFER_DAILY_WITHDRAWAL_LIMIT", 1)
     wechat_jscode2session_url: str = env_value("WECHAT_JSCODE2SESSION_URL", "https://api.weixin.qq.com/sns/jscode2session")
     allow_mock_login: bool = env_value("ALLOW_MOCK_LOGIN", "true").lower() in {"1", "true", "yes"}

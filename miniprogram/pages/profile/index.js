@@ -654,6 +654,9 @@ Page({
   handleGoLibrary() {
     wx.switchTab({ url: "/pages/library/index" });
   },
+  handleOpenMutualHelp() {
+    wx.navigateTo({ url: "/subpackages/my-tools/index/index" });
+  },
   handleGoBusinessCardEditor() {
     const currentUser = getCurrentUser();
     if (!currentUser) {

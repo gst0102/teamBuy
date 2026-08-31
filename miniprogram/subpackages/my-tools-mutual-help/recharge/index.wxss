@@ -1,0 +1,163 @@
+.recharge-page {
+  min-height: 100vh;
+  color: #172033;
+  background: #f5f7fb;
+}
+
+.recharge-content {
+  padding: 44rpx 32rpx 72rpx;
+}
+
+.recharge-intro .eyebrow {
+  color: #d85d2b;
+  font-size: 25rpx;
+  font-weight: 800;
+}
+
+.recharge-intro .title {
+  margin-top: 14rpx;
+  font-size: 48rpx;
+  font-weight: 900;
+}
+
+.recharge-intro .subtitle {
+  margin-top: 14rpx;
+  color: #718096;
+  font-size: 25rpx;
+  line-height: 1.6;
+}
+
+.balance-card {
+  margin-top: 34rpx;
+  padding: 32rpx;
+  border: 2rpx solid #f0d7b2;
+  border-radius: 28rpx;
+  background: linear-gradient(135deg, #fff1da, #ffe2b3);
+}
+
+.balance-label,
+.balance-tip {
+  color: #8c6b46;
+  font-size: 24rpx;
+}
+
+.balance-value {
+  margin: 14rpx 0 8rpx;
+  color: #172033;
+  font-size: 72rpx;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.balance-value text {
+  margin-left: 10rpx;
+  font-size: 28rpx;
+  font-weight: 600;
+}
+
+.section-title {
+  margin: 42rpx 0 18rpx;
+  font-size: 31rpx;
+  font-weight: 900;
+}
+
+.package-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18rpx;
+}
+
+.package-card {
+  position: relative;
+  min-height: 144rpx;
+  padding: 26rpx;
+  border: 2rpx solid #e0e6ef;
+  border-radius: 24rpx;
+  background: #fff;
+  box-sizing: border-box;
+}
+
+.package-card.active {
+  border-color: #ef7b42;
+  background: #fff8ee;
+  box-shadow: 0 8rpx 20rpx rgba(216, 93, 43, .1);
+}
+
+.package-points {
+  color: #172033;
+  font-size: 34rpx;
+  font-weight: 900;
+}
+
+.package-points text {
+  font-size: 23rpx;
+  font-weight: 600;
+}
+
+.package-price {
+  margin-top: 12rpx;
+  color: #d85d2b;
+  font-size: 27rpx;
+  font-weight: 800;
+}
+
+.package-mark {
+  position: absolute;
+  top: 20rpx;
+  right: 20rpx;
+  color: #d85d2b;
+  font-size: 21rpx;
+}
+
+.closed-card {
+  margin-top: 28rpx;
+  padding: 24rpx;
+  border: 2rpx solid #e7d9c7;
+  border-radius: 20rpx;
+  background: #fffaf4;
+}
+
+.closed-title {
+  color: #8c6b46;
+  font-size: 27rpx;
+  font-weight: 800;
+}
+
+.closed-copy,
+.status-text,
+.recharge-note {
+  margin-top: 10rpx;
+  color: #8a93a3;
+  font-size: 23rpx;
+  line-height: 1.6;
+}
+
+.status-text {
+  color: #c26d1a;
+}
+
+.recharge-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 88rpx;
+  margin-top: 38rpx;
+  padding: 0;
+  border: 0;
+  border-radius: 24rpx;
+  background: #ef6d35;
+  color: #fff;
+  font-size: 30rpx;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.recharge-button[disabled] {
+  background: #c8cdd5;
+  color: #fff;
+}
+
+.recharge-button::after {
+  border: 0;
+}

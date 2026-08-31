@@ -1,0 +1,139 @@
+<view class="mutual-page form-page theme-{{theme}}">
+  <custom-nav title="发布任务" showBack="{{true}}" theme="{{theme}}" />
+
+  <view class="mutual-content">
+    <view class="theme-switch-row">
+      <text class="theme-switch-label">主题</text>
+      <view class="theme-switch">
+        <view class="theme-option {{theme === 'light' ? 'active' : ''}}" data-theme="light" bindtap="handleThemeChange">浅色</view>
+        <view class="theme-option {{theme === 'dark' ? 'active' : ''}}" data-theme="dark" bindtap="handleThemeChange">深色</view>
+      </view>
+    </view>
+
+    <view class="module-tabs">
+      <view wx:for="{{tabs}}" wx:key="key" class="module-tab {{item.key === activeTab ? 'active' : ''}}" data-tab="{{item.key}}" bindtap="handleTabChange">{{item.label}}</view>
+    </view>
+
+    <view class="form-intro">
+      <view class="form-title">{{kindCopy.formTitle}}</view>
+      <view class="form-subtitle">{{kindCopy.formSubtitle}}</view>
+    </view>
+
+    <view class="type-switch">
+      <view class="type-switch-item {{taskKind === 'miniapp' ? 'active' : ''}}" data-kind="miniapp" bindtap="handleTaskKindChange">小程序任务</view>
+      <view class="type-switch-item {{taskKind === 'wool' ? 'active' : ''}}" data-kind="wool" bindtap="handleTaskKindChange">羊毛</view>
+      <view class="type-switch-item {{taskKind === 'ordinary' ? 'active' : ''}}" data-kind="ordinary" bindtap="handleTaskKindChange">普通任务</view>
+    </view>
+    <view class="type-explanation">
+      <view class="type-explanation-label">当前发布：{{taskKind === 'miniapp' ? '小程序任务' : (taskKind === 'wool' ? '羊毛' : '普通任务')}}</view>
+      <view class="type-explanation-copy">{{kindCopy.explanation}}</view>
+    </view>
+
+    <view class="form-card">
+      <view class="form-field">
+        <view class="form-label-row"><view class="form-label">任务标题 <text class="form-required">*</text></view><text class="form-hint">让人一眼知道要做什么</text></view>
+        <input class="form-input" value="{{draft.title}}" data-field="title" maxlength="50" placeholder="{{kindCopy.titlePlaceholder}}" bindinput="handleInput" />
+      </view>
+
+      <view class="form-field task-links-field">
+        <view class="form-label-row"><view class="form-label">{{kindCopy.linkLabel}} <text wx:if="{{taskKind === 'miniapp'}}" class="form-required">*</text></view><text class="form-hint">{{kindCopy.linkHint}}</text></view>
+        <view wx:if="{{draft.taskLinks.length}}" class="task-link-list">
+          <view wx:for="{{draft.taskLinks}}" wx:key="id" class="task-link-chip">
+            <view class="task-link-chip-icon {{item.type}}">{{item.typeLabel}}</view>
+            <view class="task-link-chip-copy"><text>{{item.displayTitle}}</text><text>{{item.type === 'miniapp' ? '点击后打开目标小程序' : (item.openMode === 'webview' ? '小程序内打开网页' : '复制后用手机浏览器打开')}}</text></view>
+            <view class="task-link-chip-remove" data-index="{{index}}" bindtap="handleRemoveTaskLink">删除</view>
+          </view>
+        </view>
+        <input class="form-input task-link-input" value="{{draft.linkInput}}" data-field="linkInput" maxlength="1000" placeholder="{{kindCopy.linkPlaceholder}}" bindinput="handleInput" />
+        <view class="task-link-add-row">
+          <input class="form-input task-link-title-input" value="{{draft.linkTitle}}" data-field="linkTitle" maxlength="30" placeholder="入口名称（选填）" bindinput="handleInput" />
+          <button class="add-task-link-button" bindtap="handleAddTaskLink">添加入口</button>
+        </view>
+        <view class="block-hint">{{kindCopy.linkHelp}}</view>
+      </view>
+
+      <block wx:if="{{taskKind === 'miniapp'}}">
+        <view class="form-field">
+          <view class="form-label-row"><view class="form-label">体验说明</view><text class="form-hint">选填</text></view>
+          <textarea class="form-textarea" value="{{draft.miniDescription}}" data-field="miniDescription" maxlength="500" placeholder="{{kindCopy.contentPlaceholder}}" bindinput="handleInput"></textarea>
+        </view>
+        <view class="publish-summary"><text>每次完成</text><strong>发布者 -5 分 · 执行者 +4 分</strong></view>
+      </block>
+
+      <block wx:else>
+        <view class="form-field">
+          <view class="form-label-row"><view class="form-label">{{taskKind === 'wool' ? '羊毛分类' : '任务分类'}} <text class="form-required">*</text></view><text class="form-hint">方便筛选和理解</text></view>
+          <view class="category-list">
+            <view wx:for="{{categories}}" wx:key="*this" class="category-chip {{draft.category === item ? 'active' : ''}}" data-category="{{item}}" bindtap="handleCategoryChange">{{item}}</view>
+          </view>
+        </view>
+
+        <view class="form-field">
+          <view class="form-label-row"><view class="form-label">{{kindCopy.contentLabel}} <text class="form-required">*</text></view><text class="form-hint">{{kindCopy.contentHint}}</text></view>
+          <view class="ordered-blocks">
+            <view wx:for="{{draft.contentBlocks}}" wx:key="id" class="ordered-block {{item.type}}">
+              <view class="ordered-block-header"><text>{{item.type === 'text' ? '文字段' : '图片段'}}</text><text class="ordered-block-index">按顺序展示</text></view>
+              <textarea wx:if="{{item.type === 'text'}}" class="block-textarea" value="{{item.text}}" data-block-field="contentBlocks" data-index="{{index}}" maxlength="1500" placeholder="{{kindCopy.contentPlaceholder}}" bindinput="handleBlockInput"></textarea>
+              <view wx:elif="{{item.type === 'image'}}" class="image-block">
+                <image src="{{item.url}}" mode="aspectFit"></image>
+              </view>
+              <view class="remove-block" data-block-field="contentBlocks" data-index="{{index}}" bindtap="handleRemoveBlock">删除</view>
+            </view>
+          </view>
+          <view class="block-add-row">
+            <button wx:if="{{draft.contentBlocks.length < 12}}" class="add-text-button" data-block-field="contentBlocks" bindtap="handleAddTextBlock">＋ 文字段</button>
+            <button wx:if="{{draft.contentBlocks.length < 12}}" class="add-image-button" data-block-field="contentBlocks" bindtap="handleChooseImages">＋ 图片段</button>
+          </view>
+          <view class="block-hint">{{taskKind === 'wool' ? '建议按“福利介绍 → 领取步骤 → 注意事项”添加文字和图片。' : '按添加顺序展示，文字和图片可以组合成完整说明。'}}</view>
+        </view>
+
+        <view wx:if="{{taskKind === 'ordinary'}}" class="form-field">
+          <view class="form-label-row"><view class="form-label">验收标准 <text class="form-required">*</text></view><text class="form-hint">支持文字 / 图片 / 混合</text></view>
+          <view class="ordered-blocks">
+            <view wx:for="{{draft.acceptanceBlocks}}" wx:key="id" class="ordered-block {{item.type}}">
+              <view class="ordered-block-header"><text>{{item.type === 'text' ? '文字段' : '图片段'}}</text><text class="ordered-block-index">按顺序展示</text></view>
+              <textarea wx:if="{{item.type === 'text'}}" class="block-textarea" value="{{item.text}}" data-block-field="acceptanceBlocks" data-index="{{index}}" maxlength="1500" placeholder="例如：步骤2，提交截图并说明遇到的问题" bindinput="handleBlockInput"></textarea>
+              <view wx:elif="{{item.type === 'image'}}" class="image-block">
+                <image src="{{item.url}}" mode="aspectFit"></image>
+              </view>
+              <view class="remove-block" data-block-field="acceptanceBlocks" data-index="{{index}}" bindtap="handleRemoveBlock">删除</view>
+            </view>
+          </view>
+          <view class="block-add-row">
+            <button wx:if="{{draft.acceptanceBlocks.length < 12}}" class="add-text-button" data-block-field="acceptanceBlocks" bindtap="handleAddTextBlock">＋ 文字段</button>
+            <button wx:if="{{draft.acceptanceBlocks.length < 12}}" class="add-image-button" data-block-field="acceptanceBlocks" bindtap="handleChooseImages">＋ 图片段</button>
+          </view>
+          <view class="block-hint">验收标准也支持文字和图片混排，执行者会按这里的顺序准备提交材料。</view>
+        </view>
+
+        <view class="form-field">
+          <view class="form-label-row"><view class="form-label">{{kindCopy.quotaLabel}}</view><text class="form-hint">选填，空白表示不限</text></view>
+          <input class="form-input" type="number" value="{{draft.quota}}" data-field="quota" maxlength="6" placeholder="{{taskKind === 'wool' ? '例如：100 人可领取' : '例如：3'}}" bindinput="handleInput" />
+        </view>
+
+        <view wx:if="{{taskKind === 'ordinary'}}" class="form-field">
+          <view class="form-label-row"><view class="form-label">奖励积分 <text class="form-required">*</text></view><text class="form-hint">最低 5 分，执行者得 0.8 倍</text></view>
+          <input class="form-input" type="number" value="{{draft.rewardPoints}}" data-field="rewardPoints" maxlength="6" bindinput="handleInput" />
+        </view>
+        <view wx:if="{{taskKind === 'wool'}}" class="wool-policy-form">
+          <view class="form-field">
+            <view class="form-label-row"><view class="form-label">查看方式 <text class="form-required">*</text></view><text class="form-hint">先免费预览，付费后看完整内容</text></view>
+            <view class="policy-options">
+              <view class="policy-option {{draft.woolUnlockFee === '0' ? 'active' : ''}}" data-mode="free" bindtap="handleWoolUnlockMode">免费查看</view>
+              <view class="policy-option {{draft.woolUnlockFee !== '0' ? 'active' : ''}}" data-mode="paid" bindtap="handleWoolUnlockMode">付积分查看</view>
+            </view>
+            <input wx:if="{{draft.woolUnlockFee !== '0'}}" class="form-input" type="number" value="{{draft.woolUnlockFee}}" data-field="woolUnlockFee" maxlength="6" placeholder="请输入查看费用，例如 2" bindinput="handleInput" />
+          </view>
+
+          <view class="wool-toggle-row">
+            <view><view class="form-label">允许使用后打赏</view><view class="form-hint">觉得福利有用，查看者可自愿给你打赏积分</view></view>
+            <view class="wool-toggle {{draft.woolAllowTip ? 'active' : ''}}" bindtap="handleWoolTipToggle"><view></view></view>
+          </view>
+        </view>
+        <view wx:if="{{taskKind === 'ordinary' || taskKind === 'wool'}}" class="publish-summary"><text>当前可用积分 {{currentPoints}} 分</text><strong>{{kindCopy.settlementHint}}</strong></view>
+      </block>
+
+      <button class="submit-button" loading="{{publishing}}" disabled="{{publishing}}" bindtap="handlePublish">确认发布</button>
+    </view>
+  </view>
+</view>

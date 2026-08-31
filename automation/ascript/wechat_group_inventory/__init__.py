@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
-"""Read-only inventory of native WeChat group chats for both dual-app slots.
+"""Read-only inventory and member-count checks for native WeChat groups.
 
 The script reads both WeChat's built-in ``通讯录 -> 群聊`` list and the
 scrollable home conversation list. The latter is needed for groups that were
-not saved into Contacts. It never opens a group, reads messages, sends a
-message, joins a group, or changes a group remark.
+not saved into Contacts. The daily member-count task opens only the requested
+group header and its “聊天信息” page. It never reads messages, sends a message,
+joins a group, or changes a group remark.
 
 Native WeChat groups do not expose an invitation QR in this list. The PC API
 therefore receives ``source=wechat_native`` and a null ``groupQRCode``.
@@ -584,6 +585,32 @@ def _group_names_and_total():
     return names, total
 
 
+def _group_rows():
+    try:
+        tree = _dump()
+    except Exception:
+        return []
+    rows = []
+    seen = set()
+    for path in _walk(tree):
+        item = path[-1]
+        if (
+            item.get("packageName") != WECHAT_PACKAGE
+            or item.get("id") != WECHAT_PACKAGE + ":id/cg1"
+        ):
+            continue
+        rect = _rect(item)
+        name = str(item.get("text") or "").strip()
+        if not name or not _valid_rect(rect):
+            continue
+        key = (name, rect[1], rect[3])
+        if key in seen:
+            continue
+        seen.add(key)
+        rows.append({"name": name, "rect": rect})
+    return sorted(rows, key=lambda item: item["rect"][1])
+
+
 def _scroll_bounds():
     try:
         tree = _dump()
@@ -642,6 +669,248 @@ def _post_json(path, payload):
     with urllib.request.urlopen(request, timeout=8) as response:
         body = response.read().decode("utf-8")
         return json.loads(body) if body else {}
+
+
+def _claim_member_count_task(account_id):
+    if not BACKEND_URL or not DEVICE_TOKEN:
+        return None
+    response = _post_json(
+        "/api/automation/tasks/claim",
+        {
+            "deviceId": DEVICE_ID,
+            "activeWechatAccountId": account_id,
+            "leaseSeconds": 120,
+            "functionIds": ["wechat.scan_live_qr_member_count"],
+        },
+    )
+    return (response.get("data") or None) if isinstance(response, dict) else None
+
+
+def _complete_member_count_task(task, account_id, result):
+    return _post_json(
+        "/api/automation/tasks/{}/complete".format(task["id"]),
+        {
+            "deviceId": DEVICE_ID,
+            "leaseToken": task["leaseToken"],
+            "activeWechatAccountId": account_id,
+            "result": result,
+        },
+    )
+
+
+def _fail_member_count_task(task, account_id, error_message, result=None):
+    return _post_json(
+        "/api/automation/tasks/{}/fail".format(task["id"]),
+        {
+            "deviceId": DEVICE_ID,
+            "leaseToken": task["leaseToken"],
+            "activeWechatAccountId": account_id,
+            "errorMessage": error_message,
+            "result": result or {"source": "wechat.group_inventory"},
+        },
+    )
+
+
+def _top_right_action_point():
+    width, _ = _device_size()
+    candidates = []
+    try:
+        tree = _dump()
+        for path in _walk(tree):
+            item = path[-1]
+            if item.get("packageName") != WECHAT_PACKAGE or item.get("clickable") is not True:
+                continue
+            rect = _rect(item)
+            if not _valid_rect(rect) or rect[1] > 320 or rect[0] < width * 0.65:
+                continue
+            desc = str(item.get("desc") or item.get("contentDesc") or "").strip()
+            priority = 0 if desc in {"更多", "More", "更多功能"} else 1
+            candidates.append((priority, rect[0], rect))
+    except Exception as exc:
+        print("读取聊天页右上角操作失败:", exc)
+    if not candidates:
+        return None
+    _, _, rect = sorted(candidates, key=lambda value: (value[0], -value[1]))[0]
+    return int((rect[0] + rect[2]) / 2), int((rect[1] + rect[3]) / 2)
+
+
+def _member_count_from_texts(texts):
+    patterns = (
+        r"(?:聊天信息|群聊信息)\s*[（(]\s*(\d{1,5})\s*[)）]",
+        r"(\d{1,5})\s*(?:位|个|名)\s*成员",
+        r"成员[^0-9]{0,5}(\d{1,5})",
+    )
+    for raw in texts:
+        text = " ".join(str(raw or "").split())
+        for pattern in patterns:
+            match = re.search(pattern, text)
+            if match:
+                return int(match.group(1))
+    return None
+
+
+def _read_group_member_count():
+    texts = []
+    try:
+        tree = _dump()
+        for path in _walk(tree):
+            item = path[-1]
+            if item.get("packageName") != WECHAT_PACKAGE or item.get("visible") is False:
+                continue
+            text = str(item.get("text") or "").strip()
+            if text:
+                texts.append(text)
+    except Exception:
+        pass
+    try:
+        texts.extend(str(item.get("text") or "") for item in (Ocr.find_all() or []))
+    except Exception:
+        pass
+    return _member_count_from_texts(texts)
+
+
+def _open_group_from_contacts(group_name):
+    previous = None
+    for _ in range(MAX_SCROLLS + 1):
+        rows = _group_rows()
+        for row in rows:
+            if row["name"] != group_name:
+                continue
+            rect = row["rect"]
+            _tap((rect[0] + rect[2]) / 2, (rect[1] + rect[3]) / 2)
+            if _wait_for(
+                lambda: (
+                    _point_for_text(group_name, max_top=260)
+                    and _top_right_action_point()
+                ),
+                timeout=8,
+            ):
+                return True
+            raise RuntimeError("未能打开目标群聊页面")
+        signature = tuple((row["name"], row["rect"][1]) for row in rows)
+        if signature and signature == previous:
+            break
+        previous = signature
+        left, top, right, bottom = _scroll_bounds()
+        if bottom - top < 300:
+            break
+        _swipe((left + right) / 2, bottom - 180, (left + right) / 2, top + 180)
+    return False
+
+
+def _open_group_from_chat_list(group_name):
+    """Open an exact group from the home conversation list when it is not saved in Contacts."""
+    _open_chat_list()
+    _reset_chat_list_to_top()
+    previous = None
+    for _ in range(MAX_CHAT_SCROLLS + 1):
+        rows = _chat_rows()
+        for row in rows:
+            if row["name"] != group_name:
+                continue
+            rect = row["rect"]
+            _tap((rect[0] + rect[2]) / 2, (rect[1] + rect[3]) / 2)
+            if _wait_for(
+                lambda: (
+                    _point_for_text(group_name, max_top=260)
+                    and _top_right_action_point()
+                ),
+                timeout=8,
+            ):
+                return True
+            raise RuntimeError("未能从微信会话列表打开目标群聊页面")
+        signature = _chat_list_signature(rows)
+        if signature and signature == previous:
+            break
+        previous = signature
+        left, top, right, bottom = _scroll_bounds()
+        if bottom - top < 300:
+            break
+        _swipe((left + right) / 2, bottom - 260, (left + right) / 2, top + 500)
+        if not _wait_for(lambda: _chat_list_moved(signature), timeout=3, interval=0.25):
+            break
+    return False
+
+
+def _read_group_member_count_from_chat():
+    more = _wait_for(_top_right_action_point, timeout=8)
+    if not more:
+        raise RuntimeError("群聊页面未找到右上角更多按钮")
+    _tap(*more)
+    count = _wait_for(_read_group_member_count, timeout=8)
+    action.Key.back()
+    time.sleep(0.8)
+    if count is None:
+        raise RuntimeError("群聊详情页未识别到成员人数")
+    return count
+
+
+def _return_to_group_list():
+    action.Key.back()
+    if not _wait_for(lambda: bool(_group_names_and_total()[0]), timeout=8):
+        raise RuntimeError("读取成员人数后未能返回通讯录群聊列表")
+
+
+def _return_to_chat_list():
+    action.Key.back()
+    if not _wait_for(lambda: bool(_chat_rows()), timeout=8):
+        raise RuntimeError("读取成员人数后未能返回微信会话列表")
+
+
+def _process_member_count_tasks(account_id, nickname):
+    results = []
+    for _ in range(50):
+        task = _claim_member_count_task(account_id)
+        if not task:
+            break
+        payload = task.get("payload") or {}
+        group_name = " ".join(str(payload.get("groupName") or "").split())
+        candidate_id = str(payload.get("candidateId") or "")
+        live_qr_code_id = str(payload.get("liveQrCodeId") or "")
+        try:
+            if not group_name or not candidate_id or not live_qr_code_id:
+                raise RuntimeError("人数检测任务缺少群名或绑定信息")
+            opened_from = "contacts"
+            if not _open_group_from_contacts(group_name):
+                opened_from = "chat_list"
+                if not _open_group_from_chat_list(group_name):
+                    raise RuntimeError("通讯录和微信会话列表均未找到：{}".format(group_name))
+            count = _read_group_member_count_from_chat()
+            if opened_from == "contacts":
+                _return_to_group_list()
+            else:
+                _return_to_chat_list()
+            _post_json(
+                "/api/automation/live-qr/member-count",
+                {
+                    "deviceId": DEVICE_ID,
+                    "candidateId": candidate_id,
+                    "liveQrCodeId": live_qr_code_id,
+                    "wechatAccountId": account_id,
+                    "groupName": group_name,
+                    "groupMemberCount": count,
+                },
+            )
+            _complete_member_count_task(
+                task,
+                account_id,
+                {"groupName": group_name, "groupMemberCount": count, "source": "wechat_group_info"},
+            )
+            results.append({"groupName": group_name, "groupMemberCount": count, "status": "success"})
+            print("已回传群人数", nickname, group_name, count)
+        except Exception as exc:
+            try:
+                _fail_member_count_task(task, account_id, str(exc), {"groupName": group_name})
+            except Exception as post_exc:
+                print("人数检测失败状态回传失败:", post_exc)
+            results.append({"groupName": group_name, "status": "failed", "error": str(exc)})
+            print("群人数检测失败", group_name, exc)
+            try:
+                if not _group_names_and_total()[0]:
+                    _open_group_chat_list()
+            except Exception as recover_exc:
+                print("群人数检测页面恢复失败:", recover_exc)
+    return results
 
 
 def _heartbeat(account_id, nickname):
@@ -706,6 +975,8 @@ for slot_index, slot_name in enumerate(INSTANCE_SLOTS):
         _open_group_chat_list()
         contacts_group_names = _scan_all_group_names()
         print("通讯录群聊扫描完成", slot_name, len(contacts_group_names))
+        member_count_results = _process_member_count_tasks(account_id, nickname)
+        print("活码群人数检测完成", slot_name, len(member_count_results))
         _open_chat_list()
         chat_group_names, chat_scan_stop_reason, chat_scan_scrolls = _scan_chat_group_names()
         print("微信会话列表群扫描完成", slot_name, len(chat_group_names))
@@ -735,6 +1006,8 @@ for slot_index, slot_name in enumerate(INSTANCE_SLOTS):
                 "chatListGroupCount": len(chat_group_names),
                 "chatListScanStopReason": chat_scan_stop_reason,
                 "chatListScanScrolls": chat_scan_scrolls,
+                "memberCountChecks": member_count_results,
+                "memberCountCheckCount": len(member_count_results),
                 "preparedCount": len(prepared),
                 "postedCount": len(posted),
                 "backendWriteConfirmed": bool(BACKEND_URL and DEVICE_TOKEN),

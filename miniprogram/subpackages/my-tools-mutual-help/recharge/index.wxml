@@ -1,0 +1,35 @@
+<view class="recharge-page">
+  <custom-nav title="充值积分" showBack="{{true}}" />
+
+  <view class="recharge-content">
+    <view class="recharge-intro">
+      <view class="eyebrow">互帮互助</view>
+      <view class="title">补充互助积分</view>
+      <view class="subtitle">充值后可发布更多任务，也可以继续参与任务交换。</view>
+    </view>
+
+    <view class="balance-card">
+      <view class="balance-label">当前互助积分</view>
+      <view class="balance-value">{{account ? account.balance : '--'}} <text>分</text></view>
+      <view class="balance-tip">一套积分用于发布、完成和解锁任务</view>
+    </view>
+
+    <view class="section-title">选择充值档位</view>
+    <view class="package-grid">
+      <view wx:for="{{packages}}" wx:key="points" class="package-card {{selectedPoints === item.points ? 'active' : ''}}" data-points="{{item.points}}" bindtap="handleSelectPackage">
+        <view class="package-points">{{item.points}} <text>分</text></view>
+        <view class="package-price">¥{{item.amountYuan}}</view>
+        <view wx:if="{{selectedPoints === item.points}}" class="package-mark">已选择</view>
+      </view>
+    </view>
+
+    <view wx:if="{{!rechargeVisible || !rechargeEnabled}}" class="closed-card">
+      <view class="closed-title">充值入口暂未开放</view>
+      <view class="closed-copy">功能暂未开放，请稍后再试。</view>
+    </view>
+    <view wx:if="{{statusText}}" class="status-text">{{statusText}}</view>
+
+    <button class="recharge-button" loading="{{loading}}" disabled="{{loading || !rechargeEnabled || !rechargeVisible}}" bindtap="handleRecharge">立即充值 ¥{{selectedPoints / 10}}</button>
+    <view class="recharge-note">充值成功后积分自动到账。</view>
+  </view>
+</view>

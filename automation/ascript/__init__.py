@@ -35,7 +35,7 @@ FEATURES = {
     },
     "wechat_group_inventory": {
         "title": "扫描微信群",
-        "subtitle": "扫描原生群聊并入库",
+        "subtitle": "扫描群聊；人数检测待 AScript",
         "module": "wechat_group_inventory",
     },
     "wechat_group_library": {
@@ -161,7 +161,7 @@ HTML = r"""
   <div class="grid">
     <button onclick="pick('xhs_find_group')"><span class="num">1</span><span class="title">小红书找群</span><span class="sub">搜索群信息并回传 PC</span></button>
     <button onclick="pick('join_wechat_group')"><span class="num">2</span><span class="title">加微信群</span><span class="sub">读取待加入任务</span></button>
-    <button onclick="pick('wechat_group_inventory')"><span class="num">3</span><span class="title">扫描微信群</span><span class="sub">原生群聊入库</span></button>
+    <button onclick="pick('wechat_group_inventory')"><span class="num">3</span><span class="title">扫描微信群</span><span class="sub">群入库；人数检测待 AScript</span></button>
     <button onclick="pick('wechat_group_library')"><span class="num">4</span><span class="title">微信群库</span><span class="sub">查看 PC 群库状态</span></button>
     <button onclick="pick('wechat_marketing')"><span class="num">5</span><span class="title">群营销</span><span class="sub">执行已审核任务</span></button>
     <button onclick="pick('wechat_accounts')"><span class="num">6</span><span class="title">微信账号</span><span class="sub">识别两个微信昵称</span></button>

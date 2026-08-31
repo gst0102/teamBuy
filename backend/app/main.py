@@ -18,6 +18,7 @@ from app.api.routes_dashboard import router as dashboard_router
 from app.api.routes_enterprise_resources import router as enterprise_resources_router
 from app.api.routes_h5 import router as h5_router
 from app.api.routes_imports import router as imports_router
+from app.api.routes_live_qr import router as live_qr_router
 from app.api.routes_location import router as location_router
 from app.api.routes_messages import router as messages_router
 from app.api.routes_notes import router as notes_router
@@ -210,6 +211,7 @@ app.include_router(auth_router)
 app.include_router(automation_router)
 app.include_router(h5_router)
 app.include_router(imports_router)
+app.include_router(live_qr_router)
 app.include_router(cards_router)
 app.include_router(dashboard_router)
 app.include_router(enterprise_resources_router)

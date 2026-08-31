@@ -1,4 +1,5 @@
 {
+  "enableShareAppMessage": true,
   "navigationBarTitleText": "\u7f16\u8f91\u8d44\u6599",
   "navigationStyle": "custom",
   "usingComponents": {

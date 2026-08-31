@@ -1,4 +1,5 @@
 {
+  "enableShareAppMessage": true,
   "navigationBarTitleText": "已保存线索",
   "navigationStyle": "custom",
   "usingComponents": {

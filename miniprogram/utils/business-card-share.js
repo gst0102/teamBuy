@@ -200,7 +200,7 @@ function normalizeUnifiedShareCardModel(source = {}) {
   return {
     layoutId,
     templateKind,
-    // v10 has one fixed 5:4 contract, but the presentation is derived from
+    // v11 has one fixed 5:4 contract, but the presentation is derived from
     // the only input that changes the visual hierarchy: a usable real image.
     // Business cards remain identity-first because an avatar is not a
     // substitute for the person's contact information.
@@ -220,6 +220,7 @@ function normalizeUnifiedShareCardModel(source = {}) {
     serviceData: source.serviceData || {},
     linkData: source.linkData || {},
     collectionData: source.collectionData || {},
+    marketingLine: String(source.marketingLine || "").trim(),
     primaryImageUrl,
     imageCount: blocks.filter((item) => item.type === "image").length,
     footer: String(source.footer || SHARE_CARD_FOOTER).trim() || SHARE_CARD_FOOTER
@@ -384,7 +385,21 @@ function drawWrappedText(ctx, text, x, y, maxWidth, lineHeight, maxLines = 2) {
   return lines.length * lineHeight;
 }
 
-function typedInfoPalette(layoutId) {
+function typedInfoPalette(layoutId, templateKind = "") {
+  if (templateKind === "mutual_task") {
+    return {
+      accent: "#d85d2b",
+      accentText: "#b45c36",
+      soft: "#fff0df",
+      bg0: "#fff8ef",
+      bg1: "#f8f1e8",
+      icon: "互",
+      border: "#f0d7c0",
+      divider: "#eee0d2",
+      title: "#3b2b26",
+      subText: "#806d61"
+    };
+  }
   return {
     text_info: { accent: "#1677ff", accentText: "#1769c2", soft: "#e8f2ff", bg0: "#eef7ff", bg1: "#f8fbff", icon: "文" },
     image_info: { accent: "#7b61ff", accentText: "#5946bd", soft: "#f0edff", bg0: "#f3f1ff", bg1: "#fbfaff", icon: "图" },
@@ -475,9 +490,9 @@ function drawImageFirstTitle(ctx, model, palette) {
 async function drawImageFirstLayout(ctx, model, primaryImagePath) {
   const width = RESOURCE_DEFAULT_SHARE_WIDTH;
   const height = RESOURCE_DEFAULT_SHARE_HEIGHT;
-  const palette = typedInfoPalette(model.layoutId);
+  const palette = typedInfoPalette(model.layoutId, model.templateKind);
   const background = ctx.createLinearGradient(0, 0, width, height);
-  background.addColorStop(0, "#edf4fb");
+  background.addColorStop(0, palette.bg0 || "#edf4fb");
   background.addColorStop(1, palette.bg1);
   ctx.setFillStyle(background);
   ctx.fillRect(0, 0, width, height);
@@ -507,16 +522,22 @@ async function drawImageFirstLayout(ctx, model, primaryImagePath) {
   ctx.setFillStyle("rgba(255,255,255,0.82)");
   ctx.setFontSize(20);
   drawOneLine(ctx, "资料整理助手", 536, 77, 150);
+  if (model.templateKind === "mutual_task" && model.marketingLine) {
+    fillRoundRect(ctx, 50, 112, 650, 40, 16, "rgba(255,246,234,0.94)");
+    ctx.setFillStyle(palette.accentText);
+    ctx.setFontSize(21);
+    drawOneLine(ctx, model.marketingLine, 68, 139, 614);
+  }
   drawImageFirstTitle(ctx, model, palette);
 
   const detail = shareDetailText(model);
   if (detail) {
-    ctx.setFillStyle("#273444");
+    ctx.setFillStyle(palette.title || "#273444");
     ctx.setFontSize(24);
     drawWrappedText(ctx, detail, 52, 444, 646, 32, 2);
   }
   drawInfoFactPills(ctx, (model.facts || []).filter(Boolean).slice(0, 3), 52, 510, 646, palette);
-  ctx.setStrokeStyle("#e5ebf1");
+  ctx.setStrokeStyle(palette.divider || "#e5ebf1");
   ctx.setLineWidth(2);
   ctx.beginPath();
   ctx.moveTo(52, 536);
@@ -531,7 +552,7 @@ async function drawTypedInfoLayout(ctx, model) {
   const width = RESOURCE_DEFAULT_SHARE_WIDTH;
   const height = RESOURCE_DEFAULT_SHARE_HEIGHT;
   const layoutId = model.layoutId;
-  const palette = typedInfoPalette(layoutId);
+  const palette = typedInfoPalette(layoutId, model.templateKind);
   const background = ctx.createLinearGradient(0, 0, width, height);
   background.addColorStop(0, palette.bg0);
   background.addColorStop(1, palette.bg1);
@@ -539,7 +560,7 @@ async function drawTypedInfoLayout(ctx, model) {
   ctx.fillRect(0, 0, width, height);
 
   fillRoundRect(ctx, 32, 28, 686, 544, 30, "#ffffff");
-  ctx.setStrokeStyle("#dbe8e1");
+  ctx.setStrokeStyle(palette.border || "#dbe8e1");
   ctx.setLineWidth(2);
   drawRoundRect(ctx, 32, 28, 686, 544, 30);
   ctx.stroke();
@@ -565,6 +586,12 @@ async function drawTypedInfoLayout(ctx, model) {
   ctx.setFontSize(21);
   drawOneLine(ctx, "资料整理助手", 542, 94, 140);
 
+  if (model.templateKind === "mutual_task" && model.marketingLine) {
+    ctx.setFillStyle(palette.accentText);
+    ctx.setFontSize(24);
+    drawOneLine(ctx, model.marketingLine, 64, 132, 622);
+  }
+
   fillRoundRect(ctx, 64, 142, 96, 96, 24, palette.soft);
   ctx.setFillStyle(palette.accentText);
   ctx.setTextAlign("center");
@@ -574,12 +601,12 @@ async function drawTypedInfoLayout(ctx, model) {
 
   const contentX = 190;
   const contentWidth = 500;
-  ctx.setFillStyle("#102a1d");
+  ctx.setFillStyle(palette.title || "#102a1d");
   ctx.setFontSize(38);
   drawWrappedText(ctx, model.title || "资料详情", contentX, 176, contentWidth, 48, 2);
 
   const summary = (model.textBlocks || []).filter(Boolean).slice(0, 2).join(" ");
-  ctx.setFillStyle("#667085");
+  ctx.setFillStyle(palette.subText || "#667085");
   ctx.setFontSize(24);
   const detail = shareDetailText(model) || summary;
   if (detail) drawWrappedText(ctx, detail, contentX, 280, contentWidth, 36, 2);
@@ -589,7 +616,7 @@ async function drawTypedInfoLayout(ctx, model) {
 
   ctx.restore();
 
-  ctx.setStrokeStyle("#e5eee9");
+  ctx.setStrokeStyle(palette.divider || "#e5eee9");
   ctx.setLineWidth(2);
   ctx.beginPath();
   ctx.moveTo(64, 470);

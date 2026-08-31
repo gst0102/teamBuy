@@ -9,6 +9,14 @@ class CustomerInfoChainToggleRequest(BaseModel):
     operatorName: str | None = None
 
 
+class MutualHelpConfigUpdateRequest(BaseModel):
+    rechargeEnabled: bool | None = None
+    rechargeVisible: bool | None = None
+    withdrawalEnabled: bool | None = None
+    withdrawalVisible: bool | None = None
+    operatorName: str | None = None
+
+
 class GroupUploadPreviewRequest(BaseModel):
     rawText: str = Field(default="")
 
@@ -79,6 +87,25 @@ class RuleLearningSampleUpdateRequest(BaseModel):
     status: str | None = None
     operatorName: str | None = None
     reviewNote: str | None = None
+
+
+class LiveQrCodeCreateRequest(BaseModel):
+    name: str = Field(default="", max_length=80)
+    targetUrl: str = Field(default="", max_length=2000)
+    description: str | None = Field(default=None, max_length=240)
+    targetExpiresAt: str | None = Field(default=None, max_length=80)
+    groupMemberCount: int | None = Field(default=None, ge=0, le=10000)
+    automationGroupCandidateId: str | None = Field(default=None, max_length=128)
+
+
+class LiveQrCodeUpdateRequest(BaseModel):
+    name: str | None = Field(default=None, max_length=80)
+    targetUrl: str | None = Field(default=None, max_length=2000)
+    description: str | None = Field(default=None, max_length=240)
+    targetExpiresAt: str | None = Field(default=None, max_length=80)
+    status: str | None = None
+    groupMemberCount: int | None = Field(default=None, ge=0, le=10000)
+    automationGroupCandidateId: str | None = Field(default=None, max_length=128)
 
 
 class OpportunityLeadContactPayload(BaseModel):

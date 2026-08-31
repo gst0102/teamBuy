@@ -348,6 +348,92 @@ def test_xhs_group_candidate_still_requires_qr(client, monkeypatch):
     assert response.status_code == 422
 
 
+def test_live_qr_member_count_is_scheduled_and_recorded_from_bound_native_group(client, monkeypatch):
+    import app.services.automation_control_service as automation_module
+
+    monkeypatch.setattr(settings, "live_qr_member_count_automation_enabled", True)
+    monkeypatch.setattr(settings, "admin_token", "ops-admin-test-token")
+    monkeypatch.setattr(settings, "automation_operator_token", "automation-operator-test-token")
+    monkeypatch.setattr(settings, "automation_device_token", "automation-device-test-token")
+    monkeypatch.setattr(automation_module, "now_iso", lambda: "2099-01-02T09:00:00+08:00")
+    assert heartbeat(client, device_id="android-live-qr", account_id="wechat-live-qr").status_code == 200
+    candidate = client.post(
+        "/api/automation/group-candidates",
+        headers=DEVICE_HEADERS,
+        json={
+            "deviceId": "android-live-qr",
+            "wechatAccountId": "wechat-live-qr",
+            "source": "wechat_native",
+            "groupName": "外贸群",
+            "joinStatus": "success",
+        },
+    ).json()["data"]
+    qr = client.post(
+        "/api/ops-admin/live-qr-codes",
+        headers={"X-Admin-Token": "ops-admin-test-token"},
+        json={"name": "外贸群", "targetUrl": "https://example.com/group"},
+    ).json()["data"]
+
+    from app.api.dependencies import get_automation_control_service
+    from app.main import app
+
+    automation_service = app.dependency_overrides[get_automation_control_service]()
+    scheduled = automation_service.schedule_live_qr_member_count_tasks()
+    assert scheduled["linked"] == 1
+    assert scheduled["scheduled"] == 1
+    repeated = automation_service.schedule_live_qr_member_count_tasks()
+    assert repeated["scheduled"] == 0
+
+    claimed = client.post(
+        "/api/automation/tasks/claim",
+        headers=DEVICE_HEADERS,
+        json={
+            "deviceId": "android-live-qr",
+            "activeWechatAccountId": "wechat-live-qr",
+            "functionIds": ["wechat.scan_live_qr_member_count"],
+        },
+    )
+    assert claimed.status_code == 200
+    task = claimed.json()["data"]
+    assert task["payload"]["candidateId"] == candidate["id"]
+    assert task["payload"]["liveQrCodeId"] == qr["id"]
+
+    recorded = client.post(
+        "/api/automation/live-qr/member-count",
+        headers=DEVICE_HEADERS,
+        json={
+            "deviceId": "android-live-qr",
+            "candidateId": candidate["id"],
+            "liveQrCodeId": qr["id"],
+            "wechatAccountId": "wechat-live-qr",
+            "groupName": "外贸群",
+            "groupMemberCount": 201,
+        },
+    )
+    assert recorded.status_code == 200
+    assert recorded.json()["data"]["groupMemberCount"] == 201
+    listed = client.get(
+        "/api/ops-admin/live-qr-codes?page=1&pageSize=10",
+        headers={"X-Admin-Token": "ops-admin-test-token"},
+    ).json()["data"]
+    assert listed["items"][0]["groupMemberCount"] == 201
+    assert listed["items"][0]["groupMemberCountState"] == "replace"
+
+
+def test_live_qr_member_count_is_deferred_until_ascript_is_enabled(client, monkeypatch):
+    from app.api.dependencies import get_automation_control_service
+    from app.main import app
+
+    monkeypatch.setattr(settings, "live_qr_member_count_automation_enabled", False)
+    automation_service = app.dependency_overrides[get_automation_control_service]()
+
+    assert automation_service.schedule_live_qr_member_count_tasks() == {
+        "scheduled": 0,
+        "linked": 0,
+        "skipped": "deferred_until_ascript",
+    }
+
+
 def test_operator_can_review_native_group_without_device_token(client, monkeypatch):
     monkeypatch.setattr(settings, "automation_operator_token", "automation-operator-test-token")
     monkeypatch.setattr(settings, "automation_device_token", "automation-device-test-token")

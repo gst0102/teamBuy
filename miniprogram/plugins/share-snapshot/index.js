@@ -15,9 +15,6 @@ const SNAPSHOT_STATUS_READY = "ready";
 // snapshot is exported and persisted before native sharing is enabled, so a
 // missing imageUrl can never fall through to a library-page screenshot.
 const SHARE_CARD_STYLE_VERSION = "share_card_v10";
-// Keep the public style id stable for the already deployed v10 API, but make
-// a visual-template change invalidate every older v10 snapshot. This is the
-// migration boundary for the approved business-card and collection templates.
 const SHARE_CARD_TEMPLATE_REVISION = "share_template_business_collection_v4";
 const shareSnapshotInFlight = {};
 const shareSnapshotMemory = {};
@@ -51,6 +48,21 @@ function buildShareCardTitle(title, fallback = "资料整理助手") {
 }
 
 function normalizeShareCardSource(source = {}) {
+  const facts = Array.isArray(source.facts)
+    ? source.facts.map((item) => cleanShareText(item)).filter(Boolean).slice(0, 3)
+    : [];
+  const blocks = Array.isArray(source.blocks)
+    ? source.blocks
+      .filter((item) => item && ["text", "image"].includes(item.type))
+      .map((item, index) => ({
+        id: item.id || `share_block_${index}`,
+        type: item.type,
+        text: item.type === "text" ? String(item.text || "").trim() : "",
+        url: item.type === "image" ? String(item.url || item.displayUrl || "").trim() : "",
+        sortOrder: Number.isFinite(Number(item.sortOrder)) ? Number(item.sortOrder) : index
+      }))
+      .filter((item) => item.type === "image" ? Boolean(item.url) : Boolean(item.text))
+    : [];
   return {
     title: cleanShareText(source.title, "资料整理助手"),
     // Do not inject a second “open the mini program” CTA into the JPG. The
@@ -62,7 +74,14 @@ function normalizeShareCardSource(source = {}) {
     // back to home (or a list page) is how WeChat ends up showing an unrelated
     // page screenshot when a snapshot is missing.
     path: cleanShareText(source.path),
-    shareTargetLabel: cleanShareText(source.shareTargetLabel || source.badge, "资料")
+    shareTargetLabel: cleanShareText(source.shareTargetLabel || source.badge, "资料"),
+    layoutId: cleanShareText(source.layoutId || source.kind, "text_info"),
+    templateKind: cleanShareText(source.templateKind),
+    marketingLine: cleanShareText(source.marketingLine),
+    facts,
+    blocks,
+    primaryImageUrl: cleanShareText(source.primaryImageUrl || source.coverUrl),
+    footer: cleanShareText(source.footer, "资料整理助手 · 点击查看完整资料")
   };
 }
 
@@ -101,9 +120,10 @@ function buildShowcaseShareSource(item = {}) {
   };
 }
 
-async function prepareShareCardImage(page, source = {}) {
+async function prepareShareCardImage(page, source = {}, options = {}) {
   if (!page || !page.setData) return "";
   const share = normalizeShareCardSource(source);
+  const ownerUserId = String(options.ownerUserId || "").trim();
   const generation = Number(page.__shareCardGeneration || 0) + 1;
   page.__shareCardGeneration = generation;
   setShareMenuEnabled(false);
@@ -118,13 +138,11 @@ async function prepareShareCardImage(page, source = {}) {
       canvasId: SHARE_CARD_CANVAS_ID,
       variant: "resource",
       upload: true,
+      ownerUserId,
       source: {
-        title: share.title,
-        summary: share.summary,
-        badge: share.badge,
+        ...share,
         hint: share.summary,
-        growthHint: "点击生成同款",
-        shareTargetLabel: share.shareTargetLabel
+        growthHint: "点击查看任务"
       }
     });
     if (page.__shareCardGeneration !== generation) return "";

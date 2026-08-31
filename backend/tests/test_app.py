@@ -866,6 +866,143 @@ def test_ops_admin_overview_and_leaderboards(client, monkeypatch):
     assert any(item["noteId"] == note.id and item["actionCount"] >= 1 for item in content_data["notes"])
 
 
+def test_ops_admin_user_activity_summary_uses_deduped_visitors_and_paginates(client, monkeypatch):
+    monkeypatch.setattr(settings, "admin_token", "ops-secret")
+    headers = {"X-Admin-Token": "ops-secret"}
+    owner = client.post("/api/auth/mock-login", json={"nickname": "汇总用户", "openid": "openid_activity_owner"}).json()["data"]
+    visitor = client.post("/api/auth/mock-login", json={"nickname": "访问用户", "openid": "openid_activity_visitor"}).json()["data"]
+    service = client.app.dependency_overrides[get_app_service]()
+    current = parse_iso(now_iso())
+    today = current.isoformat()
+    within_seven_days = (current - timedelta(days=2)).isoformat()
+    older_than_seven_days = (current - timedelta(days=8)).isoformat()
+
+    for note_id, created_at in (
+        ("note_activity_today", today),
+        ("note_activity_recent", within_seven_days),
+        ("note_activity_old", older_than_seven_days),
+    ):
+        service.repo.save_user_note(UserNote(
+            id=note_id,
+            ownerUserId=owner["id"],
+            status="active",
+            title=note_id,
+            summary="汇总测试资料",
+            body="汇总测试正文",
+            createdAt=created_at,
+            updatedAt=created_at,
+        ))
+
+    def view_event(event_id: str, viewed_at: str, *, anonymous_id: str | None = None, viewer_user_id: str | None = None, view_type: str = "anonymous"):
+        return ViewEvent(
+            id=event_id,
+            cardId="note_activity_today",
+            viewerUserId=viewer_user_id,
+            viewType=view_type,
+            anonymousId=anonymous_id,
+            viewedAt=viewed_at,
+            dateKey=viewed_at[:10],
+        )
+
+    service.repo.add_view_event(view_event("view_activity_anon_a", today, anonymous_id="anon_activity"))
+    service.repo.add_view_event(view_event("view_activity_anon_b", today, anonymous_id="anon_activity"))
+    service.repo.add_view_event(view_event("view_activity_registered_a", today, viewer_user_id=visitor["id"], view_type="logged_in"))
+    service.repo.add_view_event(view_event("share_activity_today", today, view_type="share"))
+    service.repo.add_view_event(view_event("share_activity_old", older_than_seven_days, view_type="share"))
+    service.repo.add_showcase_event(ShowcaseEvent(
+        id="showcase_share_activity_today",
+        showcaseId="showcase_activity",
+        ownerUserId=owner["id"],
+        eventType="share",
+        viewType="anonymous",
+        createdAt=today,
+        dateKey=today[:10],
+    ))
+    service.repo.add_showcase_event(ShowcaseEvent(
+        id="showcase_view_activity_anon",
+        showcaseId="showcase_activity",
+        ownerUserId=owner["id"],
+        eventType="view",
+        viewType="anonymous",
+        anonymousId="anon_activity",
+        createdAt=today,
+        dateKey=today[:10],
+    ))
+
+    summary = client.get(
+        "/api/ops-admin/user-activity-summary",
+        params={"period": "today", "sortBy": "shares", "sortOrder": "desc"},
+        headers=headers,
+    )
+    assert summary.status_code == 200
+    owner_row = next(item for item in summary.json()["data"]["items"] if item["userId"] == owner["id"])
+    assert owner_row == {
+        "userId": owner["id"],
+        "nickname": "汇总用户",
+        "createdAt": owner["createdAt"],
+        "notes": 1,
+        "shares": 2,
+        "anonymousVisitors": 1,
+        "registeredVisitors": 1,
+    }
+    assert summary.json()["data"]["period"]["rangeLabel"].startswith(f"{current:%Y-%m-%d} 00:00")
+
+    seven_days = client.get(
+        "/api/ops-admin/user-activity-summary",
+        params={"period": "7d", "keyword": "汇总用户"},
+        headers=headers,
+    )
+    assert seven_days.status_code == 200
+    seven_days_row = seven_days.json()["data"]["items"][0]
+    assert seven_days_row["notes"] == 2
+    assert seven_days_row["shares"] == 2
+
+    total = client.get(
+        "/api/ops-admin/user-activity-summary",
+        params={"period": "total", "keyword": "汇总用户"},
+        headers=headers,
+    )
+    assert total.status_code == 200
+    total_row = total.json()["data"]["items"][0]
+    assert total_row["notes"] == 3
+    assert total_row["shares"] == 3
+    assert total.json()["data"]["period"]["rangeLabel"] == "全部时间"
+
+    for sort_by in ("notes", "shares", "anonymousVisitors", "registeredVisitors"):
+        ascending = client.get(
+            "/api/ops-admin/user-activity-summary",
+            params={"period": "today", "keyword": "汇总用户", "sortBy": sort_by, "sortOrder": "asc"},
+            headers=headers,
+        )
+        assert ascending.status_code == 200
+        assert ascending.json()["data"]["sortBy"] == sort_by
+        assert ascending.json()["data"]["sortOrder"] == "asc"
+
+    for index in range(11):
+        client.post(
+            "/api/auth/mock-login",
+            json={"nickname": f"page-user-{index:02d}", "openid": f"openid_activity_page_{index}"},
+        )
+    paged = client.get(
+        "/api/ops-admin/user-activity-summary",
+        params={"period": "total", "keyword": "page-user-", "page": 2},
+        headers=headers,
+    )
+    assert paged.status_code == 200
+    paged_data = paged.json()["data"]
+    assert paged_data["pageSize"] == 10
+    assert paged_data["total"] == 11
+    assert paged_data["totalPages"] == 2
+    assert len(paged_data["items"]) == 1
+
+    invalid_sort = client.get(
+        "/api/ops-admin/user-activity-summary",
+        params={"sortBy": "createdAt"},
+        headers=headers,
+    )
+    assert invalid_sort.status_code == 400
+
+
 def test_ops_admin_group_upload_preview_and_save_batch(client, monkeypatch):
     monkeypatch.setattr(settings, "admin_token", "ops-secret")
     headers = {"X-Admin-Token": "ops-secret"}

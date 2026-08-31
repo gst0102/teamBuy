@@ -1098,6 +1098,12 @@ def test_referral_generates_only_direct_50_percent_reward_and_refund_revokes(cli
     assert invitee_result["totals"]["available"] == 995
     assert inviter_result["secondLevelRewardEnabled"] is False
     assert len(inviter_result["rewards"]) == 1
+    assert inviter_result["rewards"][0]["inviteeNickname"] == "销售*"
+    direct_referrals = inviter_result["directReferrals"]
+    assert len(direct_referrals) == 1
+    assert direct_referrals[0]["nickname"] == "销售*"
+    assert all(item["relationStatus"] == "paid" for item in direct_referrals)
+    assert [item["rewardAmountFen"] for item in direct_referrals] == [995]
 
     refunded = client.post(
         f"/api/scrm/membership/orders/{order['id']}/test-refund",
@@ -1178,13 +1184,37 @@ def test_referral_withdrawal_minimum_amount_switches_by_environment(client, monk
     assert "每日最多提现" in second_same_day.json()["detail"]
 
     monkeypatch.setattr(settings, "app_env", "production")
+    monkeypatch.setattr(settings, "wechat_transfer_min_amount_fen", 10)
     below_production_minimum = client.post(
         "/api/scrm/referrals/withdrawals",
-        json={"userId": user["id"], "amountFen": 995},
+        json={"userId": user["id"], "amountFen": 9},
         headers={"Authorization": f"Bearer {user['authToken']}"},
     )
     assert below_production_minimum.status_code == 400
-    assert "10.00" in below_production_minimum.json()["detail"]
+    assert "0.10" in below_production_minimum.json()["detail"]
+
+    production_user = login(client, "openid_ref_production_minimum", "正式门槛测试")
+    production_state = service._load()
+    production_state.referral_rewards.append(
+        ReferralReward(
+            id="referral_reward_production_minimum",
+            inviterUserId=production_user["id"],
+            inviteeUserId="production_minimum_invitee",
+            sourceOrderId="production_minimum_order",
+            amountFen=10,
+            status="available",
+            availableAt=now,
+            createdAt=now,
+            updatedAt=now,
+        )
+    )
+    service._save(production_state)
+    exact_production_minimum = client.post(
+        "/api/scrm/referrals/withdrawals",
+        json={"userId": production_user["id"], "amountFen": 10},
+        headers={"Authorization": f"Bearer {production_user['authToken']}"},
+    )
+    assert exact_production_minimum.status_code == 200, exact_production_minimum.text
 
 
 def test_referral_withdrawal_supports_partial_fixed_amount_selection(client, monkeypatch):

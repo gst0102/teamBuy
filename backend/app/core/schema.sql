@@ -422,6 +422,58 @@ create table if not exists membership_entitlements (
     updated_at timestamptz not null default now()
 );
 
+-- Mutual-help points are a separate ledger from resource-tool points and
+-- membership/referral money.  The balance is only a projection; every
+-- recharge must also have a ledger row.
+create table if not exists mutual_point_accounts (
+    id text primary key,
+    payload jsonb not null,
+    user_id text not null,
+    balance integer not null default 0,
+    updated_at_source timestamptz,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+create table if not exists mutual_point_ledgers (
+    id text primary key,
+    payload jsonb not null,
+    user_id text not null,
+    ledger_type text not null,
+    points_delta integer not null,
+    related_order_id text,
+    created_at_source timestamptz,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+create table if not exists mutual_recharge_orders (
+    id text primary key,
+    payload jsonb not null,
+    user_id text not null,
+    points integer not null,
+    amount_fen integer not null,
+    status text not null,
+    payment_channel text not null,
+    payment_transaction_id text,
+    paid_at timestamptz,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+create table if not exists mutual_activity_events (
+    id text primary key,
+    payload jsonb not null,
+    event_type text not null,
+    user_id text not null,
+    task_id text not null,
+    task_kind text not null,
+    idempotency_key text not null,
+    created_at_source timestamptz,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
 create table if not exists notification_preferences (
     id text primary key,
     payload jsonb not null,
@@ -500,6 +552,19 @@ create table if not exists same_style_generations (
     owner_user_id text,
     idempotency_key text,
     source_note_id text,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+create table if not exists live_qr_codes (
+    id text primary key,
+    payload jsonb not null,
+    code text,
+    status text,
+    scan_count integer not null default 0,
+    last_scanned_at timestamptz,
+    target_expires_at timestamptz,
+    target_updated_at timestamptz,
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now()
 );
@@ -592,6 +657,14 @@ create unique index if not exists uq_wecom_archive_messages_msg_id on wecom_arch
 create index if not exists idx_membership_orders_user_status on membership_orders (user_id, status, updated_at);
 create unique index if not exists uq_membership_orders_transaction on membership_orders (payment_transaction_id) where payment_transaction_id is not null;
 create index if not exists idx_membership_entitlements_user_expiry on membership_entitlements (user_id, status, expires_at);
+create index if not exists idx_mutual_point_accounts_user on mutual_point_accounts (user_id);
+create index if not exists idx_mutual_point_ledgers_user_time on mutual_point_ledgers (user_id, created_at_source);
+create index if not exists idx_mutual_point_ledgers_order on mutual_point_ledgers (related_order_id);
+create index if not exists idx_mutual_recharge_orders_user_status on mutual_recharge_orders (user_id, status, created_at);
+create index if not exists idx_mutual_recharge_orders_transaction on mutual_recharge_orders (payment_transaction_id);
+create index if not exists idx_mutual_activity_events_type_time on mutual_activity_events (event_type, created_at_source);
+create index if not exists idx_mutual_activity_events_user_time on mutual_activity_events (user_id, created_at_source);
+create unique index if not exists uq_mutual_activity_events_idempotency on mutual_activity_events (idempotency_key);
 create index if not exists idx_referral_relations_inviter on referral_relations (inviter_user_id, created_at);
 create unique index if not exists uq_referral_relations_invitee on referral_relations (invitee_user_id);
 create index if not exists idx_referral_rewards_inviter_status on referral_rewards (inviter_user_id, status, updated_at);
@@ -599,3 +672,6 @@ create unique index if not exists uq_referral_rewards_order on referral_rewards 
 create index if not exists idx_referral_withdrawals_user_status on referral_withdrawals (user_id, status, updated_at);
 create index if not exists idx_same_style_owner_time on same_style_generations (owner_user_id, created_at);
 create unique index if not exists uq_same_style_owner_key on same_style_generations (owner_user_id, idempotency_key);
+create index if not exists idx_live_qr_codes_code on live_qr_codes (code);
+create index if not exists idx_live_qr_codes_status_updated on live_qr_codes (status, updated_at);
+create unique index if not exists uq_live_qr_codes_code on live_qr_codes (code);

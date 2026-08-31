@@ -4,10 +4,11 @@ from datetime import datetime, timedelta, timezone
 import hashlib
 import re
 
-from app.models.domain import AutomationDevice, AutomationGroupCandidate, AutomationTask, UserNote
+from app.core.config import settings
+from app.models.domain import AutomationDevice, AutomationGroupCandidate, AutomationTask, LiveQrCode, UserNote
 from app.services.helpers import new_id
 from app.services.repository import AppRepository
-from app.services.time_utils import now_iso, parse_iso
+from app.services.time_utils import SHANGHAI, now_iso, parse_iso
 
 
 class AutomationControlError(Exception):
@@ -116,7 +117,13 @@ class AutomationControlService:
         device_id: str,
         active_wechat_account_id: str | None,
         lease_seconds: int,
+        function_ids: set[str] | None = None,
     ) -> AutomationTask | None:
+        if not settings.live_qr_member_count_automation_enabled and function_ids is not None:
+            function_ids = set(function_ids)
+            function_ids.discard("wechat.scan_live_qr_member_count")
+            if not function_ids:
+                return None
         device = self.repo.get_automation_device(device_id)
         if not device:
             raise AutomationControlError(404, "automation device is not registered")
@@ -136,6 +143,7 @@ class AutomationControlService:
             now=now,
             lease_expires_at=lease_expires_at,
             lease_token=new_id("lease"),
+            function_ids=function_ids,
         )
         self._save_device_status(device, active_wechat_account_id, "busy" if task else "ready", now)
         return task
@@ -226,6 +234,7 @@ class AutomationControlService:
         last_seen_at: str | None,
         idempotency_key: str | None,
         last_error: str | None,
+        group_member_count: int | None = None,
     ) -> AutomationGroupCandidate:
         if not self.repo.get_automation_device(device_id):
             raise AutomationControlError(404, "automation device is not registered")
@@ -272,6 +281,21 @@ class AutomationControlService:
             lastActivityAt=existing.lastActivityAt if existing else None,
             lastVerifiedAt=existing.lastVerifiedAt if existing else None,
             lastSeenAt=last_seen_at or now,
+            groupMemberCount=(
+                group_member_count
+                if group_member_count is not None
+                else (existing.groupMemberCount if existing else None)
+            ),
+            groupMemberCountCheckedAt=(
+                now
+                if group_member_count is not None
+                else (existing.groupMemberCountCheckedAt if existing else None)
+            ),
+            groupMemberCountSource=(
+                "wechat_group_info"
+                if group_member_count is not None
+                else (existing.groupMemberCountSource if existing else None)
+            ),
             idempotencyKey=key,
             lastError=last_error,
             createdAt=existing.createdAt if existing else now,
@@ -299,6 +323,157 @@ class AutomationControlService:
 
     def list_group_candidates(self, wechat_account_id: str | None, limit: int) -> list[AutomationGroupCandidate]:
         return self.repo.list_automation_group_candidates(wechat_account_id, limit)
+
+    @staticmethod
+    def _same_shanghai_day(value: str | None, now: str) -> bool:
+        if not value:
+            return False
+        try:
+            current = parse_iso(now).astimezone(SHANGHAI).date()
+            checked = parse_iso(value).astimezone(SHANGHAI).date()
+            return current == checked
+        except (TypeError, ValueError, AttributeError):
+            return False
+
+    @staticmethod
+    def _fresh_automation_device(device: AutomationDevice, now: str) -> bool:
+        if device.status in {"offline", "paused", "degraded"} or not device.lastHeartbeatAt:
+            return False
+        try:
+            return parse_iso(now) - parse_iso(device.lastHeartbeatAt) <= timedelta(minutes=10)
+        except (TypeError, ValueError):
+            return False
+
+    def schedule_live_qr_member_count_tasks(self) -> dict:
+        """Create at most one native-WeChat count task per live QR per day.
+
+        The scheduler deliberately does not infer a group from a fuzzy name. A
+        QR is linked only when its explicit candidate id exists, or when exactly
+        one native candidate has the same normalized group name. This keeps a
+        duplicate WeChat group name from silently reporting the wrong count.
+        """
+        if not settings.live_qr_member_count_automation_enabled:
+            return {"scheduled": 0, "linked": 0, "skipped": "deferred_until_ascript"}
+        now = now_iso()
+        current = parse_iso(now).astimezone(SHANGHAI)
+        if current.hour < 8:
+            return {"scheduled": 0, "linked": 0, "skipped": "before_morning_window"}
+
+        candidates = self.repo.list_automation_group_candidates(None, 500)
+        native_by_name: dict[str, list[AutomationGroupCandidate]] = {}
+        for candidate in candidates:
+            if candidate.source != "wechat_native" or not candidate.groupName:
+                continue
+            key = " ".join(str(candidate.groupName).split())
+            native_by_name.setdefault(key, []).append(candidate)
+
+        scheduled = 0
+        linked = 0
+        for qr in self.repo.list_live_qr_codes():
+            if qr.status != "active":
+                continue
+            candidate = (
+                self.repo.get_automation_group_candidate(qr.automationGroupCandidateId)
+                if qr.automationGroupCandidateId
+                else None
+            )
+            if not candidate:
+                matches = native_by_name.get(" ".join(str(qr.name).split()), [])
+                if len(matches) != 1:
+                    continue
+                candidate = matches[0]
+                qr = qr.model_copy(
+                    update={
+                        "automationGroupCandidateId": candidate.id,
+                        "groupMemberCount": candidate.groupMemberCount,
+                        "groupMemberCountCheckedAt": candidate.groupMemberCountCheckedAt,
+                        "groupMemberCountSource": candidate.groupMemberCountSource,
+                        "updatedAt": now,
+                    }
+                )
+                self.repo.save_live_qr_code(qr)
+                linked += 1
+            if candidate.source != "wechat_native" or not candidate.groupName:
+                continue
+            device = self.repo.get_automation_device(candidate.deviceId)
+            if not device or device.activeWechatAccountId not in {None, candidate.wechatAccountId}:
+                continue
+            if not self._fresh_automation_device(device, now):
+                continue
+            if self._same_shanghai_day(candidate.groupMemberCountCheckedAt, now):
+                continue
+            key = "live-qr-member-count:{}:{}".format(qr.id, current.date().isoformat())
+            existing_task = self.repo.find_automation_task_by_idempotency_key(key)
+            task = self.create_task(
+                function_id="wechat.scan_live_qr_member_count",
+                device_id=candidate.deviceId,
+                target_wechat_account_id=candidate.wechatAccountId,
+                payload={
+                    "liveQrCodeId": qr.id,
+                    "candidateId": candidate.id,
+                    "wechatAccountId": candidate.wechatAccountId,
+                    "groupName": candidate.groupName,
+                },
+                idempotency_key=key,
+            )
+            if existing_task is None and task.idempotencyKey == key:
+                scheduled += 1
+        return {"scheduled": scheduled, "linked": linked, "date": current.date().isoformat()}
+
+    def record_live_qr_member_count(
+        self,
+        *,
+        device_id: str,
+        candidate_id: str,
+        live_qr_code_id: str,
+        wechat_account_id: str,
+        group_name: str,
+        group_member_count: int,
+    ) -> dict:
+        device = self.repo.get_automation_device(device_id)
+        if not device:
+            raise AutomationControlError(404, "automation device is not registered")
+        if device.activeWechatAccountId and device.activeWechatAccountId != wechat_account_id:
+            raise AutomationControlError(409, "member count account does not match the latest device heartbeat")
+        candidate = self.repo.get_automation_group_candidate(candidate_id)
+        if not candidate:
+            raise AutomationControlError(404, "automation group candidate not found")
+        if candidate.deviceId != device_id or candidate.wechatAccountId != wechat_account_id:
+            raise AutomationControlError(409, "member count candidate belongs to another device or account")
+        if " ".join(str(candidate.groupName or "").split()) != " ".join(str(group_name or "").split()):
+            raise AutomationControlError(409, "member count group name does not match the candidate")
+        qr = self.repo.get_live_qr_code(live_qr_code_id)
+        if not qr:
+            raise AutomationControlError(404, "live QR code not found")
+        if qr.automationGroupCandidateId != candidate.id:
+            raise AutomationControlError(409, "live QR code is not linked to this group candidate")
+        now = now_iso()
+        updated_candidate = candidate.model_copy(
+            update={
+                "groupMemberCount": int(group_member_count),
+                "groupMemberCountCheckedAt": now,
+                "groupMemberCountSource": "wechat_group_info",
+                "lastSeenAt": now,
+                "updatedAt": now,
+                "lastError": None,
+            }
+        )
+        self.repo.save_automation_group_candidate(updated_candidate)
+        updated_qr = qr.model_copy(
+            update={
+                "groupMemberCount": int(group_member_count),
+                "groupMemberCountCheckedAt": now,
+                "groupMemberCountSource": "wechat_group_info",
+                "updatedAt": now,
+            }
+        )
+        self.repo.save_live_qr_code(updated_qr)
+        return {
+            "liveQrCodeId": updated_qr.id,
+            "candidateId": updated_candidate.id,
+            "groupMemberCount": updated_qr.groupMemberCount,
+            "groupMemberCountCheckedAt": updated_qr.groupMemberCountCheckedAt,
+        }
 
     def list_marketing_cards(self, limit: int) -> list[dict]:
         """Return only published card metadata that the PC operator may route.

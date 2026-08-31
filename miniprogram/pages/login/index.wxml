@@ -69,8 +69,8 @@
         <text catchtap="handleOpenPrivacy">《隐私政策》</text>
       </view>
     </view>
+    <button class="skip-login-btn" bindtap="handleSkipLogin">游客模式 · 先浏览首页</button>
     <button class="wechat-btn" loading="{{loggingIn}}" disabled="{{loggingIn}}" bindtap="handleWechatLogin">微信一键登录</button>
     <button wx:if="{{allowMockLogin}}" class="mock-btn" loading="{{loggingIn}}" disabled="{{loggingIn}}" bindtap="handleMockLogin">便捷登录</button>
-    <button class="skip-login-btn" bindtap="handleSkipLogin">暂不登录，先浏览首页</button>
   </view>
 </view>

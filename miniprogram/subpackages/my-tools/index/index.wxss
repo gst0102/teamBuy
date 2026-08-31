@@ -1,0 +1,140 @@
+.tools-page {
+  min-height: 100vh;
+  padding: 0 28rpx calc(52rpx + env(safe-area-inset-bottom));
+  background:
+    radial-gradient(circle at 90% 3%, rgba(255, 157, 82, 0.2), transparent 260rpx),
+    linear-gradient(180deg, #fff8ef 0%, #f7f4ef 42%, #f8fafb 100%);
+  color: #20262e;
+  box-sizing: border-box;
+}
+
+.tools-page .custom-nav {
+  margin-left: -28rpx;
+  margin-right: -28rpx;
+}
+
+.tools-content {
+  padding-top: 28rpx;
+}
+
+.tools-kicker {
+  color: #e7672e;
+  font-size: 21rpx;
+  font-weight: 900;
+  letter-spacing: 1rpx;
+}
+
+.tools-title {
+  margin-top: 10rpx;
+  color: #20262e;
+  font-size: 43rpx;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.tools-subtitle {
+  margin-top: 10rpx;
+  color: #7c8188;
+  font-size: 23rpx;
+  line-height: 1.55;
+}
+
+.tools-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+  margin-top: 34rpx;
+}
+
+.tool-card {
+  display: flex;
+  align-items: center;
+  gap: 18rpx;
+  min-height: 136rpx;
+  padding: 24rpx;
+  border: 1rpx solid #ebe7e2;
+  border-radius: 26rpx;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 10rpx 26rpx rgba(50, 48, 44, 0.06);
+  box-sizing: border-box;
+}
+
+.tool-card:active {
+  opacity: 0.78;
+}
+
+.tool-card.disabled {
+  background: rgba(255, 255, 255, 0.68);
+  box-shadow: none;
+}
+
+.tool-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 78rpx;
+  width: 78rpx;
+  height: 78rpx;
+  border-radius: 25rpx;
+  background: #fff0e5;
+  color: #e7672e;
+  font-size: 31rpx;
+  font-weight: 900;
+}
+
+.tool-card.disabled .tool-icon {
+  background: #f0eeeb;
+  color: #999d9f;
+}
+
+.tool-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.tool-title {
+  color: #30363d;
+  font-size: 29rpx;
+  font-weight: 900;
+}
+
+.tool-description {
+  margin-top: 8rpx;
+  color: #8b9095;
+  font-size: 21rpx;
+  line-height: 1.4;
+}
+
+.tool-side {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  flex: 0 0 auto;
+}
+
+.tool-status {
+  color: #e7672e;
+  font-size: 20rpx;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.tool-card.disabled .tool-status {
+  color: #a0a3a5;
+}
+
+.tool-arrow {
+  color: #a3a7aa;
+  font-size: 38rpx;
+  line-height: 1;
+}
+
+.tools-note {
+  margin-top: 28rpx;
+  padding: 18rpx 20rpx;
+  border-radius: 17rpx;
+  background: rgba(255, 255, 255, 0.58);
+  color: #969a9e;
+  font-size: 20rpx;
+  line-height: 1.5;
+}

@@ -8,6 +8,9 @@ from app.schemas.common import ApiResponse
 from app.schemas.scrm import (
     MembershipCheckoutRequest,
     MembershipPaymentRequest,
+    MutualHelpActivityRequest,
+    MutualHelpPaymentRequest,
+    MutualHelpRechargeRequest,
     CustomerFollowupEnsureRequest,
     CustomerFollowupActionRequest,
     ReferralBindRequest,
@@ -34,6 +37,53 @@ def membership_status(userId: str = Query(...), service: AppService = Depends(ge
 @router.get("/notification-config", response_model=ApiResponse[dict])
 def notification_config(userId: str = Query(...), service: AppService = Depends(get_app_service)):
     return ApiResponse(data=service.get_notification_config(userId))
+
+
+@router.get("/mutual-help", response_model=ApiResponse[dict])
+def mutual_help_status(userId: str = Query(...), service: AppService = Depends(get_app_service)):
+    return ApiResponse(data=service.get_mutual_help_status(userId))
+
+
+@router.post("/mutual-help/recharge/orders", response_model=ApiResponse[dict])
+def create_mutual_help_recharge_order(
+    payload: MutualHelpRechargeRequest,
+    service: AppService = Depends(get_app_service),
+):
+    return ApiResponse(data=service.create_mutual_recharge_order(payload.userId, payload.points))
+
+
+@router.post("/mutual-help/recharge/orders/{order_id}/pay", response_model=ApiResponse[dict])
+def create_mutual_help_recharge_payment(
+    order_id: str,
+    payload: MutualHelpPaymentRequest,
+    service: AppService = Depends(get_app_service),
+):
+    return ApiResponse(data=service.create_mutual_recharge_payment(order_id, payload.userId))
+
+
+@router.post("/mutual-help/recharge/orders/{order_id}/test-confirm", response_model=ApiResponse[dict])
+def confirm_test_mutual_help_recharge(
+    order_id: str,
+    payload: TestPaymentConfirmRequest,
+    service: AppService = Depends(get_app_service),
+):
+    return ApiResponse(data=service.confirm_test_mutual_recharge_payment(order_id, payload.transactionId))
+
+
+@router.post("/mutual-help/activity", response_model=ApiResponse[dict])
+def record_mutual_help_activity(
+    payload: MutualHelpActivityRequest,
+    service: AppService = Depends(get_app_service),
+):
+    return ApiResponse(
+        data=service.record_mutual_help_activity(
+            payload.userId,
+            payload.eventType,
+            payload.taskId,
+            payload.taskKind,
+            payload.idempotencyKey,
+        )
+    )
 
 
 @router.post("/notification-subscriptions", response_model=ApiResponse[dict])

@@ -15,6 +15,7 @@ from app.schemas.ops_admin import (
     FeedbackTicketCreateRequest,
     FeedbackTicketUpdateRequest,
     CustomerInfoChainToggleRequest,
+    MutualHelpConfigUpdateRequest,
     GroupBotChannelUpsertRequest,
     GroupUploadCreateRequest,
     GroupUploadPreviewRequest,
@@ -153,6 +154,133 @@ def _period_metadata(period_key: str, period_days: int, period_label: str, perio
 def _is_since(value: str | None, start: datetime) -> bool:
     parsed = _parse_datetime(value)
     return bool(parsed and parsed >= start)
+
+
+def _user_activity_period(period: str | None) -> tuple[str, str, datetime | None, dict]:
+    key = str(period or "today").strip().lower()
+    if key == "total":
+        now = datetime.now(tz=SHANGHAI)
+        return key, "总量", None, {
+            "key": key,
+            "days": None,
+            "label": "总量",
+            "startAt": None,
+            "endAt": now.isoformat(),
+            "rangeLabel": "全部时间",
+            "generatedAt": now.isoformat(),
+        }
+    period_key, period_days, period_label, period_start = _period_start(key)
+    return period_key, period_label, period_start, _period_metadata(
+        period_key,
+        period_days,
+        period_label,
+        period_start,
+    )
+
+
+def _is_user_activity_in_scope(value: str | None, period_start: datetime | None) -> bool:
+    return period_start is None or _is_since(value, period_start)
+
+
+def _user_activity_summary(state, period: str | None, page: int, page_size: int, sort_by: str, sort_order: str, keyword: str | None) -> dict:
+    period_key, period_label, period_start, period_metadata = _user_activity_period(period)
+    valid_sort_fields = {"notes", "shares", "anonymousVisitors", "registeredVisitors"}
+    if sort_by not in valid_sort_fields:
+        raise HTTPException(status_code=400, detail="排序字段只支持 notes、shares、anonymousVisitors 或 registeredVisitors")
+    if sort_order not in {"asc", "desc"}:
+        raise HTTPException(status_code=400, detail="排序方向只支持 asc 或 desc")
+
+    user_ids = {item.id for item in state.users}
+    notes_by_owner = Counter()
+    shares_by_owner = Counter()
+    anonymous_by_owner: dict[str, set[str]] = defaultdict(set)
+    registered_by_owner: dict[str, set[str]] = defaultdict(set)
+    card_owner_by_id = {item.id: item.ownerUserId for item in state.cards}
+    note_owner_by_id: dict[str, str] = {}
+
+    for note in state.user_notes:
+        note_owner_by_id[note.id] = note.ownerUserId
+        if note.sourceCardId:
+            note_owner_by_id[note.sourceCardId] = note.ownerUserId
+        if note.ownerUserId in user_ids and _is_user_activity_in_scope(note.createdAt, period_start):
+            notes_by_owner[note.ownerUserId] += 1
+
+    def add_visitor(owner_user_id: str | None, viewer_user_id: str | None, anonymous_id: str | None) -> None:
+        if owner_user_id not in user_ids:
+            return
+        if viewer_user_id and viewer_user_id in user_ids:
+            registered_by_owner[owner_user_id].add(str(viewer_user_id))
+        elif anonymous_id:
+            anonymous_by_owner[owner_user_id].add(str(anonymous_id))
+
+    for event in state.showcase_events:
+        if not _is_user_activity_in_scope(event.createdAt, period_start):
+            continue
+        if event.eventType == "share":
+            if event.ownerUserId in user_ids:
+                shares_by_owner[event.ownerUserId] += 1
+        elif event.eventType == "view":
+            add_visitor(event.ownerUserId, event.viewerUserId, event.anonymousId)
+
+    for event in state.view_events:
+        if not _is_user_activity_in_scope(event.viewedAt, period_start):
+            continue
+        owner_user_id = card_owner_by_id.get(event.cardId) or note_owner_by_id.get(event.cardId)
+        if owner_user_id not in user_ids:
+            continue
+        if event.viewType == "share":
+            shares_by_owner[owner_user_id] += 1
+        else:
+            add_visitor(owner_user_id, event.viewerUserId, event.anonymousId)
+
+    query = (keyword or "").strip().lower()
+    rows = []
+    for user in state.users:
+        searchable = f"{user.nickname} {user.id} {user.openid}".lower()
+        if query and query not in searchable:
+            continue
+        rows.append({
+            "userId": user.id,
+            "nickname": user.nickname or "微信用户",
+            "createdAt": user.createdAt,
+            "notes": notes_by_owner[user.id],
+            "shares": shares_by_owner[user.id],
+            "anonymousVisitors": len(anonymous_by_owner[user.id]),
+            "registeredVisitors": len(registered_by_owner[user.id]),
+        })
+
+    reverse = sort_order == "desc"
+    rows.sort(
+        key=lambda item: (
+            item[sort_by],
+            item["nickname"].lower(),
+            item["userId"],
+        ),
+        reverse=reverse,
+    )
+    total = len(rows)
+    total_pages = max((total + page_size - 1) // page_size, 1)
+    page = min(max(page, 1), total_pages)
+    offset = (page - 1) * page_size
+    return {
+        "period": period_metadata,
+        "periodKey": period_key,
+        "periodLabel": period_label,
+        "items": rows[offset:offset + page_size],
+        "page": page,
+        "pageSize": page_size,
+        "total": total,
+        "totalPages": total_pages,
+        "sortBy": sort_by,
+        "sortOrder": sort_order,
+        "definitions": {
+            "notes": "按资料创建时间统计",
+            "shares": "资料和合集的分享事件次数",
+            "anonymousVisitors": "按匿名 ID 去重的访问用户数",
+            "registeredVisitors": "按登录用户 ID 去重的访问用户数",
+        },
+        "attributionNote": "匿名和注册用户只按访问身份去重，不代表由该用户直接带来的新注册；日期范围按东八区自然日计算。",
+    }
 
 
 def _is_note_updated_since(note, start: datetime) -> bool:
@@ -523,6 +651,38 @@ def update_customer_info_chain_config(
     return ApiResponse(data=store.set_customer_info_chain_config(
         enabled=payload.enabled,
         payment_required=payload.paymentRequired,
+        operator_name=payload.operatorName,
+    ))
+
+
+@router.get("/api/ops-admin/mutual-help", response_model=ApiResponse[dict])
+def get_mutual_help_operations(
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+):
+    _verify_admin_token(x_admin_token)
+    return ApiResponse(data=service.get_mutual_help_operations())
+
+
+@router.put("/api/ops-admin/mutual-help", response_model=ApiResponse[dict])
+def update_mutual_help_config(
+    payload: MutualHelpConfigUpdateRequest,
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    store: OpsConsoleStore = Depends(get_ops_console_store),
+):
+    _verify_admin_token(x_admin_token)
+    if all(value is None for value in (
+        payload.rechargeEnabled,
+        payload.rechargeVisible,
+        payload.withdrawalEnabled,
+        payload.withdrawalVisible,
+    )):
+        raise HTTPException(status_code=400, detail="至少提供一个互助积分配置项")
+    return ApiResponse(data=store.set_mutual_help_config(
+        recharge_enabled=payload.rechargeEnabled,
+        recharge_visible=payload.rechargeVisible,
+        withdrawal_enabled=payload.withdrawalEnabled,
+        withdrawal_visible=payload.withdrawalVisible,
         operator_name=payload.operatorName,
     ))
 
@@ -1100,6 +1260,31 @@ def get_user_leaderboard(
         rows.append(row)
     rows.sort(key=lambda item: (item["activeScore"], item["showcaseViewCount"], item["customerActionCount"], item["lastActiveAt"]), reverse=True)
     return ApiResponse(data={"items": rows[:100], "total": len(rows)})
+
+
+@router.get("/api/ops-admin/user-activity-summary", response_model=ApiResponse[dict])
+def get_user_activity_summary(
+    period: str = Query(default="today"),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=10, alias="pageSize", ge=1, le=10),
+    sort_by: str = Query(default="notes", alias="sortBy"),
+    sort_order: str = Query(default="desc", alias="sortOrder"),
+    keyword: str | None = Query(default=None),
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+):
+    _verify_admin_token(x_admin_token)
+    return ApiResponse(
+        data=_user_activity_summary(
+            state=service.repo.load(),
+            period=period,
+            page=page,
+            page_size=page_size,
+            sort_by=sort_by,
+            sort_order=sort_order,
+            keyword=keyword,
+        )
+    )
 
 
 @router.get("/api/ops-admin/content-leaderboard", response_model=ApiResponse[dict])

@@ -40,6 +40,7 @@ class AutomationTaskClaimRequest(BaseModel):
     deviceId: str = Field(min_length=1, max_length=128)
     activeWechatAccountId: str | None = Field(default=None, max_length=128)
     leaseSeconds: int = Field(default=120, ge=30, le=900)
+    functionIds: list[str] = Field(default_factory=list, max_length=16)
 
 
 class AutomationTaskCompleteRequest(BaseModel):
@@ -72,6 +73,17 @@ class AutomationGroupCandidateUpsertRequest(BaseModel):
     lastSeenAt: str | None = None
     idempotencyKey: str | None = Field(default=None, max_length=256)
     lastError: str | None = Field(default=None, max_length=2000)
+    groupMemberCount: int | None = Field(default=None, ge=0, le=10000)
+
+
+class AutomationLiveQrMemberCountRequest(BaseModel):
+    deviceId: str = Field(min_length=1, max_length=128)
+    candidateId: str = Field(min_length=1, max_length=128)
+    liveQrCodeId: str = Field(min_length=1, max_length=128)
+    wechatAccountId: str = Field(min_length=1, max_length=128)
+    groupName: str = Field(min_length=1, max_length=200)
+    groupMemberCount: int = Field(ge=0, le=10000)
+    checkedAt: str | None = Field(default=None, max_length=80)
 
 
 class AutomationGroupCandidateReviewRequest(BaseModel):

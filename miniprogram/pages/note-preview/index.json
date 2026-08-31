@@ -1,4 +1,5 @@
 {
+  "enableShareAppMessage": true,
   "navigationBarTitleText": "客户页预览",
   "navigationStyle": "custom",
   "usingComponents": {

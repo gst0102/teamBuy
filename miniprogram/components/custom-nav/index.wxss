@@ -56,3 +56,18 @@
   transform: rotate(45deg);
   margin-left: 8rpx;
 }
+
+.custom-nav.theme-dark .custom-nav__title,
+.custom-nav.theme-dark .custom-nav__right-text {
+  color: #f3f6fa;
+}
+
+.custom-nav.theme-dark .custom-nav__back {
+  background: #202a35;
+  border-color: #3a4a5b;
+  box-shadow: 0 8rpx 18rpx rgba(0, 0, 0, 0.22);
+}
+
+.custom-nav.theme-dark .custom-nav__back-icon {
+  border-color: #f3f6fa;
+}

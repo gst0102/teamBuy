@@ -653,6 +653,317 @@
       .metric-detail-table td:nth-child(4) {
         color: #1769d2;
       }
+      .user-activity-panel {
+        margin-top: 0;
+        border-color: #c7d8eb;
+        background: linear-gradient(180deg, #fff, #fbfdff);
+      }
+      .user-activity-toolbar,
+      .user-activity-footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+      .user-activity-toolbar {
+        margin: -2px 0 12px;
+      }
+      .user-activity-tabs {
+        display: inline-flex;
+        gap: 4px;
+        padding: 4px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #f8fafc;
+      }
+      .user-activity-tabs button,
+      .table-sort-button {
+        border: 0;
+        font: inherit;
+        cursor: pointer;
+      }
+      .user-activity-tabs button {
+        padding: 7px 13px;
+        border-radius: 7px;
+        background: transparent;
+        color: var(--sub);
+        white-space: nowrap;
+      }
+      .user-activity-tabs button.active {
+        background: #fff;
+        color: var(--brand);
+        box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
+        font-weight: 700;
+      }
+      .table-sort-button {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 0;
+        background: transparent;
+        color: inherit;
+        white-space: nowrap;
+      }
+      .table-sort-button:hover,
+      .table-sort-button:focus-visible {
+        color: var(--brand);
+        outline: none;
+      }
+      .table-sort-indicator {
+        color: #94a3b8;
+        font-size: 12px;
+      }
+      .user-activity-table th:first-child,
+      .user-activity-table td:first-child {
+        min-width: 220px;
+      }
+      .user-activity-table td:not(:first-child) {
+        font-variant-numeric: tabular-nums;
+      }
+      .user-activity-table td:not(:first-child) {
+        color: var(--brand);
+        font-weight: 700;
+      }
+      .user-activity-footer {
+        padding-top: 12px;
+      }
+      .user-activity-pagination {
+        display: flex;
+        gap: 8px;
+      }
+      .user-activity-pagination button {
+        min-width: 72px;
+        padding: 8px 12px;
+      }
+      .live-qr-intro {
+        border-color: #c8d7ed;
+        background: linear-gradient(135deg, #ffffff 0%, #f8fbff 100%);
+      }
+      .live-qr-form {
+        display: grid;
+        gap: 12px;
+      }
+      .live-qr-form label {
+        display: grid;
+        gap: 6px;
+        color: var(--sub);
+        font-size: 13px;
+      }
+      .live-qr-form-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .live-qr-form-status {
+        min-height: 20px;
+        color: var(--sub);
+        font-size: 13px;
+        line-height: 1.5;
+      }
+      .live-qr-auto-rule {
+        display: grid;
+        gap: 4px;
+        padding: 12px;
+        border: 1px solid #dbe5f2;
+        border-radius: 10px;
+        background: #f8fbff;
+        color: var(--sub);
+        font-size: 13px;
+        line-height: 1.5;
+      }
+      .live-qr-auto-rule strong { color: var(--text); }
+      .live-qr-upload {
+        display: grid;
+        gap: 7px;
+        padding: 12px;
+        border: 1px dashed #c8d7ed;
+        border-radius: 10px;
+        background: #f8fbff;
+      }
+      .live-qr-upload-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .live-qr-upload input[type="file"] {
+        flex: 1 1 220px;
+        min-width: 0;
+        padding: 7px 9px;
+        background: #fff;
+        font-size: 12px;
+      }
+      .live-qr-overview {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 10px;
+        margin-bottom: 16px;
+      }
+      .live-qr-overview-card {
+        display: grid;
+        gap: 5px;
+        min-height: 96px;
+        padding: 14px 15px;
+        border: 1px solid #dbe5f2;
+        border-radius: 12px;
+        background: #fff;
+        color: var(--text);
+        text-align: left;
+        cursor: pointer;
+        transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease;
+      }
+      .live-qr-overview-card:hover { transform: translateY(-1px); box-shadow: 0 5px 14px rgba(15, 23, 42, .08); }
+      .live-qr-overview-card.active { border-color: #1769d2; box-shadow: 0 0 0 3px rgba(23, 105, 210, .1); }
+      .live-qr-overview-card .overview-label { color: var(--sub); font-size: 12px; }
+      .live-qr-overview-card strong { font-size: 26px; line-height: 1; }
+      .live-qr-overview-card small { color: var(--sub); font-size: 11px; }
+      .live-qr-overview-card.tone-expired { border-color: #f0c8c1; background: #fff8f6; }
+      .live-qr-overview-card.tone-expired strong { color: #b54732; }
+      .live-qr-overview-card.tone-one { border-color: #f1d3a9; background: #fffaf1; }
+      .live-qr-overview-card.tone-one strong { color: #c26d1a; }
+      .live-qr-overview-card.tone-two strong { color: #b77b21; }
+      .live-qr-overview-card.tone-three strong { color: #1769d2; }
+      .live-qr-overview-card.tone-member-warning { border-color: #f1d3a9; background: #fffaf1; }
+      .live-qr-overview-card.tone-member-warning strong { color: #c26d1a; }
+      .live-qr-overview-card.tone-member-replace { border-color: #f0c8c1; background: #fff8f6; }
+      .live-qr-overview-card.tone-member-replace strong { color: #b54732; }
+      .live-qr-overview-card.tone-member-unknown { border-color: #dbe5f2; background: #f8fbff; }
+      .live-qr-overview-card.tone-member-unknown strong { color: #64748b; }
+      .live-qr-member-reminder {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin: -4px 0 16px;
+        padding: 12px 14px;
+        border: 1px solid #f0c8c1;
+        border-radius: 10px;
+        background: #fff8f6;
+        color: #8f3828;
+        font-size: 13px;
+        line-height: 1.5;
+      }
+      .live-qr-member-reminder strong { white-space: nowrap; }
+      .live-qr-member-reminder[hidden] { display: none; }
+      .live-qr-list-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 14px;
+      }
+      .live-qr-list-filters { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+      .live-qr-list-toolbar label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--sub);
+        font-size: 13px;
+        white-space: nowrap;
+      }
+      .live-qr-list-toolbar select { width: 150px; padding: 8px 10px; }
+      .live-qr-policy-list {
+        display: grid;
+        gap: 10px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+      .live-qr-policy-list li {
+        display: grid;
+        grid-template-columns: 28px minmax(0, 1fr);
+        gap: 10px;
+        align-items: start;
+        padding: 11px 0;
+        border-bottom: 1px solid #edf2f7;
+        color: var(--sub);
+        font-size: 13px;
+        line-height: 1.55;
+      }
+      .live-qr-policy-list li:last-child { border-bottom: 0; }
+      .live-qr-policy-list b {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background: #eef6ff;
+        color: #1769d2;
+        font-size: 12px;
+      }
+      .live-qr-table th, .live-qr-table td { vertical-align: top; }
+      .live-qr-table th:first-child, .live-qr-table td:first-child { min-width: 210px; }
+      .live-qr-table th:nth-child(2), .live-qr-table td:nth-child(2) { min-width: 250px; }
+      .live-qr-table th:nth-child(3), .live-qr-table td:nth-child(3) { min-width: 150px; }
+      .live-qr-table th:nth-child(4), .live-qr-table td:nth-child(4) { min-width: 120px; }
+      .live-qr-preview {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 104px;
+        height: 136px;
+        margin-bottom: 8px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+        overflow: hidden;
+      }
+      .live-qr-preview canvas { display: block; width: 102px; height: 134px; }
+      .live-qr-preview img { width: 64px; height: 64px; object-fit: contain; }
+      .live-qr-name { font-weight: 700; white-space: normal; }
+      .live-qr-target {
+        max-width: 330px;
+        overflow: hidden;
+        color: var(--sub);
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .live-qr-expiry { display: grid; gap: 4px; white-space: nowrap; }
+      .live-qr-expiry.expired { color: #b54732; }
+      .live-qr-expiry.urgent { color: var(--warn); }
+      .live-qr-members { display: grid; gap: 4px; white-space: nowrap; }
+      .live-qr-members strong { color: var(--sub); }
+      .live-qr-members.warning strong { color: #c26d1a; }
+      .live-qr-members.replace strong { color: #b54732; }
+      .live-qr-members.unknown strong { color: var(--sub); font-weight: 500; }
+      .live-qr-row-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        min-width: 250px;
+      }
+      .live-qr-row-actions button, .live-qr-row-actions a {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 32px;
+        padding: 6px 9px;
+        border: 0;
+        border-radius: 8px;
+        background: #eef2f7;
+        color: var(--text);
+        font: inherit;
+        font-size: 12px;
+        text-decoration: none;
+        white-space: nowrap;
+        cursor: pointer;
+      }
+      .live-qr-row-actions button:hover, .live-qr-row-actions a:hover {
+        background: #dce8f7;
+        color: #1769d2;
+      }
+      .live-qr-row-actions button.danger { background: #fff0ed; color: #b54732; }
+      .live-qr-row-actions button.danger:hover { background: #fbd9d1; color: #8f3828; }
+      .live-qr-pagination {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding-top: 14px;
+      }
+      .live-qr-pagination-actions { display: flex; gap: 8px; }
+      .live-qr-pagination-actions button { min-width: 72px; padding: 8px 12px; }
       @media (max-width: 1100px) {
         .layout { grid-template-columns: 1fr; }
         .sidebar { display: none; }
@@ -666,6 +977,11 @@
         .automation-account-picker { width: 100%; }
         .automation-pagination { align-items: flex-start; flex-direction: column; }
         .automation-marketing-form { grid-template-columns: 1fr; align-items: stretch; }
+        .user-activity-toolbar,
+        .user-activity-footer { align-items: flex-start; flex-direction: column; }
+        .live-qr-overview { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .live-qr-list-toolbar { align-items: flex-start; flex-direction: column; }
+        .live-qr-pagination { align-items: flex-start; flex-direction: column; }
       }
     </style>
   </head>
@@ -684,6 +1000,7 @@
             <div class="nav-group-items">
               <button data-tab="users">用户排行</button>
               <button data-tab="content">内容排行</button>
+              <button data-tab="useractivity">用户使用数据</button>
             </div>
           </div>
           <div class="nav-group" data-group="group-operations">
@@ -693,6 +1010,7 @@
             <div class="nav-group-items">
               <button data-tab="automation">群自动化运营</button>
               <button data-tab="upload">群二维码批量上传</button>
+              <button data-tab="liveqr">二维码活码</button>
               <button data-tab="botchannels">群发渠道映射</button>
               <button data-tab="joinway">小程序加群配置</button>
             </div>
@@ -706,6 +1024,7 @@
               <button data-tab="supplyreview">供给审核</button>
               <button data-tab="packages">回应包记录</button>
               <button data-tab="wallets">积分账本</button>
+              <button data-tab="mutualhelp">互助积分</button>
             </div>
           </div>
           <div class="nav-group" data-group="system-feedback">
@@ -940,6 +1259,48 @@
                   </thead>
                   <tbody id="noteTable"></tbody>
                 </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="tab-useractivity" class="tab-panel hidden">
+          <div class="panel user-activity-panel" id="userActivityPanel">
+            <div class="section-head">
+              <div>
+                <h2>用户使用数据</h2>
+                <div class="subtle">按用户汇总资料、分享和访问身份，不展示逐条客户明细</div>
+              </div>
+              <span class="subtle" id="userActivityRange">东八区统计</span>
+            </div>
+            <div class="user-activity-toolbar">
+              <div class="user-activity-tabs" id="userActivityPeriodSwitch" aria-label="用户使用数据时间范围">
+                <button type="button" data-user-activity-period="today" class="active">今日</button>
+                <button type="button" data-user-activity-period="7d">近 7 日</button>
+                <button type="button" data-user-activity-period="total">总量</button>
+              </div>
+              <div class="subtle" id="userActivityMeta">读取中……</div>
+            </div>
+            <div class="table-wrap">
+              <table class="user-activity-table">
+                <thead>
+                  <tr>
+                    <th>用户</th>
+                    <th>首次注册</th>
+                    <th><button type="button" class="table-sort-button" data-user-activity-sort="notes" aria-sort="descending">资料 <span class="table-sort-indicator">↓</span></button></th>
+                    <th><button type="button" class="table-sort-button" data-user-activity-sort="shares" aria-sort="none">分享 <span class="table-sort-indicator">↕</span></button></th>
+                    <th><button type="button" class="table-sort-button" data-user-activity-sort="anonymousVisitors" aria-sort="none">匿名 <span class="table-sort-indicator">↕</span></button></th>
+                    <th><button type="button" class="table-sort-button" data-user-activity-sort="registeredVisitors" aria-sort="none">注册访客 <span class="table-sort-indicator">↕</span></button></th>
+                  </tr>
+                </thead>
+                <tbody id="userActivityBody"></tbody>
+              </table>
+            </div>
+            <div class="user-activity-footer">
+              <div class="subtle" id="userActivityPageMeta">读取中……</div>
+              <div class="user-activity-pagination">
+                <button type="button" class="secondary" id="userActivityPrevBtn" data-user-activity-page="prev">上一页</button>
+                <button type="button" class="secondary" id="userActivityNextBtn" data-user-activity-page="next">下一页</button>
               </div>
             </div>
           </div>
@@ -1196,6 +1557,111 @@
                 <tbody id="uploadBatchTable"></tbody>
               </table>
             </div>
+          </div>
+        </section>
+
+        <section id="tab-liveqr" class="tab-panel hidden">
+          <div class="panel live-qr-intro" style="margin-bottom: 16px;">
+            <div class="section-head">
+              <div>
+                <h2>二维码活码</h2>
+                <span class="subtle">投放到小红书的外层二维码不变，只更换当前群二维码图片</span>
+              </div>
+              <button class="secondary" id="refreshLiveQrBtn" type="button">刷新列表</button>
+            </div>
+            <div class="tip">外层二维码打开固定落地页，页面展示当前内层群二维码；微信里请长按内层二维码并选择“识别图中二维码”。上传或更换内层群码时，系统自动从当前时间起计算 7 天有效期。群人数检测暂未启用，后续接入并验证 AScript 后再开放。</div>
+          </div>
+          <div class="live-qr-overview" id="liveQrOverview" aria-label="活码到期和群人数概览"></div>
+          <div class="live-qr-member-reminder" id="liveQrMemberReminder" role="status" aria-live="polite" hidden></div>
+          <div class="grid forms" style="margin-bottom: 16px;">
+            <div class="form-card">
+              <div class="section-head">
+                <h2 id="liveQrFormTitle">创建二维码活码</h2>
+                <span class="subtle">外层编号创建后不改变</span>
+              </div>
+              <div class="live-qr-form" id="liveQrFormCard">
+                <input id="liveQrId" type="hidden" />
+                <label>展示群名 / 活码名称<input id="liveQrName" maxlength="80" placeholder="例如：诚信互助 ⭐ 3群" /></label>
+                <div class="live-qr-upload">
+                  <div class="subtle">上传当前群二维码图片，后台自动识别并保存原图</div>
+                  <div class="live-qr-upload-row">
+                    <input id="liveQrTargetQrFile" type="file" accept="image/png,image/jpeg,image/webp,image/*" />
+                    <button class="secondary" id="decodeLiveQrBtn" type="button">识别二维码内容</button>
+                  </div>
+                  <div class="subtle">只解析二维码内容，不识别图片里的文字；保存时会把这张内层二维码用于落地页展示。</div>
+                </div>
+                <div class="live-qr-upload">
+                  <div class="subtle">真实群头像（建议上传微信里的群头像拼图）</div>
+                  <div class="live-qr-upload-row">
+                    <input id="liveQrGroupAvatarFile" type="file" accept="image/png,image/jpeg,image/webp,image/*" />
+                    <span class="subtle" id="liveQrGroupAvatarName">保存时上传，卡片顶部使用真实图片</span>
+                  </div>
+                  <div class="subtle">不会再绘制系统人形占位；已有活码可编辑后补传或替换群头像。</div>
+                </div>
+                <label>识别出的群二维码链接<input id="liveQrTargetUrl" maxlength="2000" placeholder="选择图片后点击识别" readonly /></label>
+                <div class="subtle">仅用于确认识别结果，不作为外层二维码的跳转地址；外层入口永远打开落地页。</div>
+                <div class="live-qr-auto-rule"><strong>有效期与人数</strong><span>内层群二维码每次上传或更换后，系统自动从当前时间起计算 7 天；群人数检测暂未启用，后续接入并验证 AScript 后再开放。</span></div>
+                <label>备注<textarea id="liveQrDescription" maxlength="240" placeholder="例如：小红书投放、长沙房源群"></textarea></label>
+                <div class="live-qr-form-actions">
+                  <button class="primary" id="saveLiveQrBtn" type="button">创建活码</button>
+                  <button class="secondary" id="cancelLiveQrEditBtn" type="button" hidden>取消编辑</button>
+                </div>
+                <div id="liveQrFormStatus" class="live-qr-form-status"></div>
+              </div>
+            </div>
+            <div class="form-card">
+              <div class="section-head">
+                <h2>运营规则</h2>
+                <span class="subtle">先看状态，再换群码</span>
+              </div>
+              <ul class="live-qr-policy-list">
+                <li><b>01</b><span>外层二维码只认固定落地页，内层群码更新不会改变编号和投放图片。</span></li>
+                <li><b>02</b><span>落地页显示已上传的真实群头像、群名和当前内层群码；微信里长按内层群码选择“识别图中二维码”。</span></li>
+                <li><b>03</b><span>列表里的“已过期 / 1 天内到期”针对当前群二维码目标，不代表外层活码失效。</span></li>
+                <li><b>04</b><span>群码过期后落地页会提示更新；暂停会保留访问次数，恢复后继续使用最近群码。</span></li>
+                <li><b>05</b><span>访问次数是入口请求次数，不是去重人数；后续如需渠道归因，再单独增加渠道字段。</span></li>
+                <li><b>06</b><span>群人数检测暂未启用；后续接入并验证 AScript 后，再按 180–199 人提示关注、200 人及以上提示更换群二维码，未检测不会误报为安全。</span></li>
+              </ul>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="section-head">
+              <div>
+                <h2>已创建的二维码活码</h2>
+                <span id="liveQrSummary" class="subtle">输入管理员 Token 后加载</span>
+              </div>
+            </div>
+            <div class="live-qr-list-toolbar">
+              <span class="subtle">点击上方数字可快速查看对应列表，列表内可直接更换或删除二维码</span>
+              <div class="live-qr-list-filters">
+              <label for="liveQrExpiryFilter">按目标有效期筛选
+                <select id="liveQrExpiryFilter">
+                  <option value="all">全部活码</option>
+                  <option value="expired">已过期</option>
+                  <option value="1d">剩 1 天</option>
+                  <option value="2d">剩 2 天</option>
+                  <option value="3d">剩 3 天</option>
+                </select>
+              </label>
+              <label for="liveQrMemberFilter">按群人数筛选
+                <select id="liveQrMemberFilter">
+                  <option value="all">全部人数</option>
+                  <option value="warning">180–199 人</option>
+                  <option value="replace">200 人及以上</option>
+                  <option value="unknown">未检查人数</option>
+                </select>
+              </label>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table class="live-qr-table">
+                <thead>
+                  <tr><th>投放卡片与外层二维码</th><th>当前目标</th><th>目标有效期</th><th>群人数</th><th>访问次数</th><th>状态</th><th>操作</th></tr>
+                </thead>
+                <tbody id="liveQrTable"></tbody>
+              </table>
+            </div>
+            <div id="liveQrPagination" class="live-qr-pagination" aria-label="二维码活码分页"></div>
           </div>
         </section>
 
@@ -1533,6 +1999,43 @@
           </div>
         </section>
 
+        <section id="tab-mutualhelp" class="tab-panel hidden">
+          <div class="section-head">
+            <div>
+              <h2>互助积分</h2>
+              <span class="subtle">充值、任务活动和入口开关；提现当前默认关闭并隐藏。</span>
+            </div>
+            <button class="primary" id="refreshMutualHelpBtn" type="button">刷新</button>
+          </div>
+          <div class="grid metrics" id="mutualHelpMetricCards"></div>
+          <div class="panel" style="margin-top: 16px;">
+            <div class="section-head">
+              <div>
+                <h2>入口控制</h2>
+                <span class="subtle">关闭会阻断后端接口；隐藏只控制用户端入口显示。</span>
+              </div>
+              <span class="badge" id="mutualHelpConfigState">读取中</span>
+            </div>
+            <div class="grid two-col">
+              <div class="form-card">
+                <div class="section-head"><h3>充值</h3><span class="subtle" id="mutualRechargeState">-</span></div>
+                <div class="row">
+                  <button class="secondary" id="toggleMutualRechargeEnabledBtn" type="button">切换充值开关</button>
+                  <button class="secondary" id="toggleMutualRechargeVisibleBtn" type="button">切换充值显示</button>
+                </div>
+              </div>
+              <div class="form-card">
+                <div class="section-head"><h3>提现</h3><span class="subtle" id="mutualWithdrawalState">-</span></div>
+                <div class="row">
+                  <button class="secondary" id="toggleMutualWithdrawalEnabledBtn" type="button">切换提现开关</button>
+                  <button class="secondary" id="toggleMutualWithdrawalVisibleBtn" type="button">切换提现显示</button>
+                </div>
+              </div>
+            </div>
+            <div class="tip" style="margin-top: 14px;">当前策略：新用户赠送 100 分；提现未开放。未来开放时，账户需要保留 300 分，只有超出部分可申请。</div>
+          </div>
+        </section>
+
         <section id="tab-packages" class="tab-panel hidden">
           <div class="panel" style="margin-bottom: 16px;">
             <div class="row">
@@ -1756,7 +2259,17 @@
     <script>
       const state = {
         overviewPeriod: "today",
+        userActivity: {
+          period: "today",
+          page: 1,
+          pageSize: 10,
+          sortBy: "notes",
+          sortOrder: "desc",
+          totalPages: 1,
+          requestId: 0,
+        },
         uploadPreview: null,
+        mutualHelp: null,
         opportunityLeads: [],
         opportunityDashboard: null,
         resourceWalletUsers: [],
@@ -1775,7 +2288,8 @@
         automationCandidatePageSize: 10,
         singleQrImageData: "",
         selectedPurposes: ["找同行"],
-        batchFile: null
+        batchFile: null,
+        liveQr: { page: 1, pageSize: 10, total: 0, totalPages: 1, items: [], editingId: "", requestId: 0, expiryFilter: "all", memberFilter: "all", expirySummary: { expired: 0, "1d": 0, "2d": 0, "3d": 0 }, memberSummary: { normal: 0, warning: 0, replace: 0, unknown: 0 }, serverDate: "" }
       };
 
       const purposeOptions = ["找客户", "找同行", "找供应链", "找合作", "自定义"];
@@ -1825,6 +2339,10 @@
 
       function formatDate(value) {
         return value ? value.replace("T", " ").slice(0, 16) : "-";
+      }
+
+      function toDateTimeLocalValue(value) {
+        return value ? String(value).replace("T", " ").slice(0, 16).replace(" ", "T") : "";
       }
 
       function formatFen(value) {
@@ -1937,6 +2455,102 @@
           document.getElementById("metricDetailMeta").textContent = error.message || "请刷新后重试";
           document.getElementById("metricDetailBody").innerHTML = '<tr><td colspan="4" class="subtle">没有拿到明细，请检查管理员 Token 后重试。</td></tr>';
         }
+      }
+
+      function renderUserActivityLoading() {
+        document.getElementById("userActivityMeta").textContent = "正在读取……";
+        document.getElementById("userActivityPageMeta").textContent = "正在读取……";
+        document.getElementById("userActivityBody").innerHTML = '<tr><td colspan="6" class="subtle">正在读取用户汇总数据……</td></tr>';
+      }
+
+      function renderUserActivity(data = {}) {
+        const activityState = state.userActivity;
+        const period = data.period || {};
+        const items = data.items || [];
+        activityState.page = Number(data.page || 1);
+        activityState.pageSize = Number(data.pageSize || 10);
+        activityState.totalPages = Math.max(Number(data.totalPages || 1), 1);
+        activityState.sortBy = data.sortBy || activityState.sortBy;
+        activityState.sortOrder = data.sortOrder || activityState.sortOrder;
+        document.getElementById("userActivityRange").textContent = period.rangeLabel || "东八区统计";
+        document.getElementById("userActivityMeta").textContent = `${data.periodLabel || period.label || "今日"} · ${data.attributionNote || "按服务端口径汇总"}`;
+        document.getElementById("userActivityBody").innerHTML = items.map((item) => `
+          <tr>
+            <td><strong>${escapeHtml(item.userId || "-")}</strong><div class="subtle">${escapeHtml(item.nickname || "微信用户")}</div></td>
+            <td>${formatDate(item.createdAt)}</td>
+            <td>${Number(item.notes || 0)}</td>
+            <td>${Number(item.shares || 0)}</td>
+            <td>${Number(item.anonymousVisitors || 0)}</td>
+            <td>${Number(item.registeredVisitors || 0)}</td>
+          </tr>
+        `).join("") || '<tr><td colspan="6" class="subtle">当前范围暂无用户数据</td></tr>';
+        document.querySelectorAll("[data-user-activity-period]").forEach((button) => {
+          button.classList.toggle("active", button.dataset.userActivityPeriod === activityState.period);
+        });
+        document.querySelectorAll("[data-user-activity-sort]").forEach((button) => {
+          const active = button.dataset.userActivitySort === activityState.sortBy;
+          const indicator = button.querySelector(".table-sort-indicator");
+          button.setAttribute("aria-sort", active ? (activityState.sortOrder === "desc" ? "descending" : "ascending") : "none");
+          if (indicator) indicator.textContent = active ? (activityState.sortOrder === "desc" ? "↓" : "↑") : "↕";
+        });
+        const total = Number(data.total || 0);
+        document.getElementById("userActivityPageMeta").textContent = total
+          ? `第 ${activityState.page} / ${activityState.totalPages} 页 · 共 ${total} 位用户 · 每页 ${activityState.pageSize} 行`
+          : "暂无用户数据";
+        const previous = document.getElementById("userActivityPrevBtn");
+        const next = document.getElementById("userActivityNextBtn");
+        previous.disabled = activityState.page <= 1;
+        next.disabled = activityState.page >= activityState.totalPages;
+      }
+
+      async function loadUserActivity() {
+        const activityState = state.userActivity;
+        const requestId = (activityState.requestId || 0) + 1;
+        activityState.requestId = requestId;
+        renderUserActivityLoading();
+        const query = new URLSearchParams({
+          period: activityState.period,
+          page: String(activityState.page),
+          pageSize: String(activityState.pageSize),
+          sortBy: activityState.sortBy,
+          sortOrder: activityState.sortOrder,
+        });
+        try {
+          const data = await request(`/api/ops-admin/user-activity-summary?${query.toString()}`);
+          if (requestId !== activityState.requestId) return;
+          renderUserActivity(data || {});
+        } catch (error) {
+          if (requestId !== activityState.requestId) return;
+          document.getElementById("userActivityRange").textContent = "读取失败";
+          document.getElementById("userActivityMeta").textContent = error.message || "请刷新后重试";
+          document.getElementById("userActivityPageMeta").textContent = "没有拿到用户汇总数据";
+          document.getElementById("userActivityBody").innerHTML = '<tr><td colspan="6" class="subtle">请检查管理员 Token 后重试。</td></tr>';
+          throw error;
+        }
+      }
+
+      function changeUserActivityPeriod(period) {
+        if (!["today", "7d", "total"].includes(period) || period === state.userActivity.period) return;
+        state.userActivity.period = period;
+        state.userActivity.page = 1;
+        loadUserActivity().catch((error) => alert(error.message));
+      }
+
+      function changeUserActivitySort(sortBy) {
+        if (!["notes", "shares", "anonymousVisitors", "registeredVisitors"].includes(sortBy)) return;
+        const activityState = state.userActivity;
+        activityState.sortOrder = activityState.sortBy === sortBy && activityState.sortOrder === "desc" ? "asc" : "desc";
+        activityState.sortBy = sortBy;
+        activityState.page = 1;
+        loadUserActivity().catch((error) => alert(error.message));
+      }
+
+      function changeUserActivityPage(direction) {
+        const activityState = state.userActivity;
+        const nextPage = activityState.page + (direction === "next" ? 1 : -1);
+        if (nextPage < 1 || nextPage > activityState.totalPages) return;
+        activityState.page = nextPage;
+        loadUserActivity().catch((error) => alert(error.message));
       }
 
       function renderTrend(items = [], periodLabel = "今日") {
@@ -2515,6 +3129,438 @@
         renderSingleGroups(data || []);
       }
 
+      function liveQrExpiryMarkup(item) {
+        const status = item.targetExpiryState || "unknown";
+        const className = status === "expired" ? "expired" : status === "expiring_soon" ? "urgent" : "";
+        const label = status === "expired"
+          ? "已过期"
+          : status === "expiring_soon"
+            ? `还剩 ${Number(item.targetExpiresInDays || 1)} 天`
+            : status === "unknown"
+              ? "未设置有效期"
+              : `还剩 ${Number(item.targetExpiresInDays || 0)} 天`;
+        return `<div class="live-qr-expiry ${className}"><strong>${label}</strong><span class="subtle">${escapeHtml(formatDate(item.targetExpiresAt))}</span></div>`;
+      }
+
+      function liveQrMemberMarkup(item) {
+        const state = item.groupMemberCountState || "unknown";
+        const count = item.groupMemberCount;
+        const label = state === "unknown"
+          ? "未检测"
+          : state === "replace"
+            ? `${Number(count)} 人 · 换群`
+            : state === "warning"
+              ? `${Number(count)} 人 · 关注`
+              : `${Number(count)} 人`;
+        return `<div class="live-qr-members ${state}"><strong>${escapeHtml(label)}</strong><span class="subtle">${escapeHtml(formatDate(item.groupMemberCountCheckedAt))}</span></div>`;
+      }
+
+      function renderLiveQrOverview() {
+        const summary = state.liveQr.expirySummary || {};
+        const memberSummary = state.liveQr.memberSummary || {};
+        const currentFilter = state.liveQr.expiryFilter || "all";
+        const currentMemberFilter = state.liveQr.memberFilter || "all";
+        const cards = [
+          { filter: "expired", label: "已过期", value: Number(summary.expired || 0), hint: "需要立即更换", tone: "expired" },
+          { filter: "1d", label: "剩 1 天", value: Number(summary["1d"] || 0), hint: "建议优先处理", tone: "one" },
+          { filter: "2d", label: "剩 2 天", value: Number(summary["2d"] || 0), hint: "提前准备新群码", tone: "two" },
+          { filter: "3d", label: "剩 3 天", value: Number(summary["3d"] || 0), hint: "纳入本周计划", tone: "three" },
+          { memberFilter: "warning", label: "180–199 人", value: Number(memberSummary.warning || 0), hint: "接近阈值 · 点击查看", tone: "member-warning" },
+          { memberFilter: "replace", label: "200 人及以上", value: Number(memberSummary.replace || 0), hint: "建议换群 · 点击查看", tone: "member-replace" },
+          { memberFilter: "unknown", label: "人数未检查", value: Number(memberSummary.unknown || 0), hint: "需要补充检查", tone: "member-unknown" }
+        ];
+        document.getElementById("liveQrOverview").innerHTML = cards.map((card) => `
+          <button class="live-qr-overview-card tone-${card.tone} ${(card.memberFilter ? currentMemberFilter === card.memberFilter : currentFilter === card.filter) ? "active" : ""}" type="button" ${card.memberFilter ? `data-live-qr-member-filter="${card.memberFilter}"` : `data-live-qr-filter="${card.filter}"`} aria-pressed="${(card.memberFilter ? currentMemberFilter === card.memberFilter : currentFilter === card.filter)}">
+            <span class="overview-label">${card.label}</span>
+            <strong>${card.value}</strong>
+            <small>${card.hint}</small>
+          </button>`).join("");
+      }
+
+      function showLiveQrDailyMemberReminder(data) {
+        const node = document.getElementById("liveQrMemberReminder");
+        const summary = data.memberSummary || {};
+        const warning = Number(summary.warning || 0);
+        const replace = Number(summary.replace || 0);
+        if (!warning && !replace) {
+          node.hidden = true;
+          node.textContent = "";
+          return;
+        }
+        const serverDate = data.serverDate || new Date().toISOString().slice(0, 10);
+        const key = `teamBuy:liveQrMemberReminder:${serverDate}:${warning}:${replace}`;
+        const alreadyShown = localStorage.getItem(key) === "1";
+        node.innerHTML = `<strong>今日群人数提醒</strong><span>${replace ? `${replace} 个群已达到 200 人，建议尽快更换二维码。` : ""}${warning ? `${warning} 个群处于 180–199 人，请提前关注。` : ""}</span>`;
+        node.hidden = alreadyShown;
+        if (!alreadyShown) localStorage.setItem(key, "1");
+      }
+
+      function liveQrImageUrl(item) {
+        const raw = item.qrImageUrl || ("/live-qr/" + encodeURIComponent(item.code) + ".png?v=" + encodeURIComponent(item.version || 1));
+        try {
+          return new URL(raw, window.location.href).toString();
+        } catch (error) {
+          return raw;
+        }
+      }
+
+      function liveQrAvatarUrl(item) {
+        const raw = item.groupAvatarUrl || "";
+        if (!raw) return "";
+        try {
+          return new URL(raw, window.location.href).toString();
+        } catch (error) {
+          return raw;
+        }
+      }
+
+      function loadLiveQrAsset(url) {
+        return new Promise((resolve, reject) => {
+          const image = new Image();
+          image.onload = () => resolve(image);
+          image.onerror = () => reject(new Error("图片加载失败"));
+          image.src = url;
+        });
+      }
+
+      function liveQrRoundedRect(context, x, y, width, height, radius) {
+        const r = Math.min(radius, width / 2, height / 2);
+        context.beginPath();
+        context.moveTo(x + r, y);
+        context.arcTo(x + width, y, x + width, y + height, r);
+        context.arcTo(x + width, y + height, x, y + height, r);
+        context.arcTo(x, y + height, x, y, r);
+        context.arcTo(x, y, x + width, y, r);
+        context.closePath();
+      }
+
+      function drawLiveQrAvatarPlaceholder(context, x, y, size) {
+        liveQrRoundedRect(context, x, y, size, size, size * 0.24);
+        context.fillStyle = "#f0eee8";
+        context.fill();
+        context.strokeStyle = "#d8d3c8";
+        context.lineWidth = 3;
+        context.stroke();
+        context.fillStyle = "#8b8d85";
+        context.font = '400 22px -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif';
+        context.textAlign = "center";
+        context.textBaseline = "middle";
+        context.fillText("未上传群头像", x + size / 2, y + size / 2);
+      }
+
+      function drawLiveQrAvatarImage(context, image, x, y, size) {
+        liveQrRoundedRect(context, x, y, size, size, size * 0.24);
+        context.save();
+        context.clip();
+        const sourceWidth = image.naturalWidth || image.width || size;
+        const sourceHeight = image.naturalHeight || image.height || size;
+        const scale = Math.max(size / sourceWidth, size / sourceHeight);
+        const drawWidth = sourceWidth * scale;
+        const drawHeight = sourceHeight * scale;
+        context.drawImage(image, x + (size - drawWidth) / 2, y + (size - drawHeight) / 2, drawWidth, drawHeight);
+        context.restore();
+      }
+
+      function liveQrCardTitle(item) {
+        const name = String(item.name || "群聊入口").trim() || "群聊入口";
+        return "群聊：" + (name.length > 17 ? name.slice(0, 16) + "…" : name);
+      }
+
+      function renderLiveQrCard(item, targetCanvas) {
+        const avatarUrl = liveQrAvatarUrl(item);
+        return Promise.all([
+          loadLiveQrAsset(liveQrImageUrl(item)),
+          avatarUrl ? loadLiveQrAsset(avatarUrl).catch(() => null) : Promise.resolve(null)
+        ]).then(function(images) {
+            const image = images[0];
+            const avatar = images[1];
+            const width = 900;
+            const height = 1200;
+            const context = targetCanvas.getContext("2d");
+            targetCanvas.width = width;
+            targetCanvas.height = height;
+            context.fillStyle = "#f8f5ef";
+            context.fillRect(0, 0, width, height);
+            context.fillStyle = "#ffffff";
+            liveQrRoundedRect(context, 38, 38, width - 76, height - 76, 38);
+            context.fill();
+
+            const avatarSize = 190;
+            const avatarX = (width - avatarSize) / 2;
+            const avatarY = 78;
+            if (avatar) drawLiveQrAvatarImage(context, avatar, avatarX, avatarY, avatarSize);
+            else drawLiveQrAvatarPlaceholder(context, avatarX, avatarY, avatarSize);
+
+            context.textAlign = "center";
+            context.textBaseline = "middle";
+            context.fillStyle = "#20221f";
+            context.font = '700 38px -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif';
+            context.fillText(liveQrCardTitle(item), width / 2, 310);
+
+            const qrSize = 620;
+            const qrX = (width - qrSize) / 2;
+            const qrY = 364;
+            context.drawImage(image, qrX, qrY, qrSize, qrSize);
+
+            context.fillStyle = "#d96b4d";
+            context.font = '700 28px -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif';
+            context.fillText("扫码进入最新群入口", width / 2, 1050);
+            context.fillStyle = "#8b8d85";
+            context.font = '400 22px -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif';
+            context.fillText("外层入口不变，群码更新后无需重新发布", width / 2, 1100);
+            return targetCanvas;
+        });
+      }
+
+      async function downloadLiveQrCard(item) {
+        const canvas = Array.from(document.querySelectorAll("canvas[data-live-qr-card]")).find((node) => node.dataset.liveQrCard === item.id) || document.createElement("canvas");
+        if (canvas.width !== 900 || canvas.height !== 1200) await renderLiveQrCard(item, canvas);
+        const link = document.createElement("a");
+        link.download = (item.name || item.code || "群二维码") + "-投放卡片.png";
+        link.href = canvas.toDataURL("image/png");
+        link.click();
+      }
+
+      function renderLiveQrPagination() {
+        const { page, totalPages, total, pageSize } = state.liveQr;
+        document.getElementById("liveQrSummary").textContent = total
+          ? `当前筛选 ${total} 个活码 · 第 ${page}/${totalPages} 页 · 每页 ${pageSize} 个`
+          : state.liveQr.expiryFilter === "all" ? "还没有创建活码" : "当前筛选没有匹配的活码";
+        document.getElementById("liveQrPagination").innerHTML = total ? `
+          <span class="subtle">第 ${page} / ${totalPages} 页</span>
+          <div class="live-qr-pagination-actions">
+            <button class="secondary" type="button" data-action="live-qr-page" data-page="${page - 1}" ${page <= 1 ? "disabled" : ""}>上一页</button>
+            <button class="secondary" type="button" data-action="live-qr-page" data-page="${page + 1}" ${page >= totalPages ? "disabled" : ""}>下一页</button>
+          </div>` : "";
+      }
+
+      function renderLiveQrs(items = []) {
+        state.liveQr.items = items;
+        renderLiveQrOverview();
+        document.getElementById("liveQrTable").innerHTML = items.map((item) => {
+          const active = item.status === "active";
+          return `
+            <tr>
+              <td>
+                <div class="live-qr-preview"><canvas data-live-qr-card="${escapeHtml(item.id)}" role="img" aria-label="${escapeHtml(item.name)}投放二维码卡片"></canvas></div>
+                <div class="live-qr-name">${escapeHtml(item.name)}</div>
+                <div class="subtle">编号 ${escapeHtml(item.code)}</div>
+              </td>
+              <td>
+                <div class="live-qr-target" title="${escapeHtml(item.targetUrl)}">${escapeHtml(item.targetUrl)}</div>
+                <div class="subtle">目标更新：${escapeHtml(formatDate(item.targetUpdatedAt))}</div>
+              </td>
+              <td>${liveQrExpiryMarkup(item)}</td>
+              <td>${liveQrMemberMarkup(item)}</td>
+              <td><strong>${Number(item.scanCount || 0)}</strong><div class="subtle">最近 ${escapeHtml(formatDate(item.lastScannedAt))}</div></td>
+              <td><span class="badge ${active ? "" : "warn"}">${active ? "使用中" : "已暂停"}</span></td>
+              <td><div class="live-qr-row-actions">
+                <button type="button" data-action="edit-live-qr" data-id="${escapeHtml(item.id)}">更换二维码</button>
+                <button type="button" data-action="copy-live-qr" data-url="${escapeHtml(item.publicUrl)}">复制入口</button>
+                <button type="button" data-action="download-live-qr" data-id="${escapeHtml(item.id)}">下载投放卡片</button>
+                <a href="${escapeHtml(item.qrImageUrl)}" download="${escapeHtml(item.code)}-原始码.png">下载原始码</a>
+                <button type="button" data-action="toggle-live-qr" data-id="${escapeHtml(item.id)}" data-status="${active ? "paused" : "active"}">${active ? "暂停" : "恢复"}</button>
+                <button class="danger" type="button" data-action="delete-live-qr" data-id="${escapeHtml(item.id)}">删除</button>
+              </div></td>
+            </tr>`;
+        }).join("") || `<tr><td colspan="7" class="subtle">${state.liveQr.expiryFilter === "all" && state.liveQr.memberFilter === "all" ? "暂无活码。先创建一条，再把外层二维码投放到小红书。" : "当前筛选没有匹配的活码。可以换一个筛选条件。"}</td></tr>`;
+        items.forEach((item) => {
+          const canvas = Array.from(document.querySelectorAll("canvas[data-live-qr-card]")).find((node) => node.dataset.liveQrCard === item.id);
+          if (canvas) renderLiveQrCard(item, canvas).catch(() => {
+            const context = canvas.getContext("2d");
+            context.clearRect(0, 0, canvas.width, canvas.height);
+            context.fillStyle = "#8b8d85";
+            context.font = "14px sans-serif";
+            context.textAlign = "center";
+            context.fillText("二维码加载失败", 450, 600);
+          });
+        });
+        renderLiveQrPagination();
+      }
+
+      async function loadLiveQrs(page = state.liveQr.page) {
+        const requestId = ++state.liveQr.requestId;
+        const data = await request(`/api/ops-admin/live-qr-codes?page=${Number(page) || 1}&pageSize=${state.liveQr.pageSize}&expiryFilter=${encodeURIComponent(state.liveQr.expiryFilter || "all")}&memberFilter=${encodeURIComponent(state.liveQr.memberFilter || "all")}`);
+        if (requestId !== state.liveQr.requestId) return;
+        state.liveQr.page = Number(data.page) || 1;
+        state.liveQr.total = Number(data.total) || 0;
+        state.liveQr.totalPages = Number(data.totalPages) || 1;
+        state.liveQr.expiryFilter = data.expiryFilter || state.liveQr.expiryFilter || "all";
+        state.liveQr.expirySummary = data.expirySummary || state.liveQr.expirySummary;
+        state.liveQr.memberFilter = data.memberFilter || state.liveQr.memberFilter || "all";
+        state.liveQr.memberSummary = data.memberSummary || state.liveQr.memberSummary;
+        state.liveQr.serverDate = data.serverDate || state.liveQr.serverDate || "";
+        document.getElementById("liveQrExpiryFilter").value = state.liveQr.expiryFilter;
+        document.getElementById("liveQrMemberFilter").value = state.liveQr.memberFilter;
+        renderLiveQrs(data.items || []);
+        showLiveQrDailyMemberReminder(data);
+      }
+
+      async function selectLiveQrExpiryFilter(filter) {
+        state.liveQr.expiryFilter = filter;
+        state.liveQr.page = 1;
+        document.getElementById("liveQrExpiryFilter").value = filter;
+        await loadLiveQrs(1);
+        document.getElementById("liveQrTable").closest(".panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+
+      async function selectLiveQrMemberFilter(filter) {
+        state.liveQr.memberFilter = filter;
+        state.liveQr.page = 1;
+        document.getElementById("liveQrMemberFilter").value = filter;
+        await loadLiveQrs(1);
+        document.getElementById("liveQrTable").closest(".panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+
+      async function decodeLiveQrImage() {
+        const fileInput = document.getElementById("liveQrTargetQrFile");
+        const file = fileInput.files?.[0];
+        if (!file) throw new Error("请先选择群二维码图片");
+        const formData = new FormData();
+        formData.append("file", file);
+        const button = document.getElementById("decodeLiveQrBtn");
+        button.disabled = true;
+        document.getElementById("liveQrFormStatus").textContent = "正在读取二维码内容…";
+        try {
+          const response = await fetch(apiUrl("/api/ops-admin/live-qr-decode"), {
+            method: "POST",
+            headers: { "X-Admin-Token": getToken() },
+            body: formData
+          });
+          const payload = await response.json();
+          if (!response.ok) throw new Error(payload.detail || payload.message || "二维码解析失败");
+          document.getElementById("liveQrTargetUrl").value = payload.data?.targetUrl || "";
+          document.getElementById("liveQrFormStatus").textContent = "二维码链接已识别；保存时会上传原图，并自动设置7天有效期。";
+        } finally {
+          button.disabled = false;
+        }
+      }
+
+      function resetLiveQrForm() {
+        state.liveQr.editingId = "";
+        document.getElementById("liveQrId").value = "";
+        document.getElementById("liveQrName").value = "";
+        document.getElementById("liveQrTargetUrl").value = "";
+        document.getElementById("liveQrDescription").value = "";
+        document.getElementById("liveQrTargetQrFile").value = "";
+        document.getElementById("liveQrGroupAvatarFile").value = "";
+        document.getElementById("liveQrGroupAvatarName").textContent = "保存时上传，卡片顶部使用真实图片";
+        document.getElementById("liveQrFormTitle").textContent = "创建二维码活码";
+        document.getElementById("saveLiveQrBtn").textContent = "创建活码";
+        document.getElementById("cancelLiveQrEditBtn").hidden = true;
+        document.getElementById("liveQrFormStatus").textContent = "";
+      }
+
+      function editLiveQr(id) {
+        const item = state.liveQr.items.find((entry) => entry.id === id);
+        if (!item) return;
+        state.liveQr.editingId = item.id;
+        document.getElementById("liveQrId").value = item.id;
+        document.getElementById("liveQrName").value = item.name || "";
+        document.getElementById("liveQrTargetUrl").value = item.targetUrl || "";
+        document.getElementById("liveQrDescription").value = item.description || "";
+        document.getElementById("liveQrFormTitle").textContent = `更换二维码：${item.name || "活码"}`;
+        document.getElementById("saveLiveQrBtn").textContent = "保存更换";
+        document.getElementById("cancelLiveQrEditBtn").hidden = false;
+        document.getElementById("liveQrFormStatus").textContent = "保存后外层编号和已投放二维码图片不变。";
+        document.getElementById("liveQrTargetUrl").focus();
+        document.getElementById("liveQrFormCard")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+
+      async function saveLiveQr() {
+        const name = document.getElementById("liveQrName").value.trim();
+        let targetUrl = document.getElementById("liveQrTargetUrl").value.trim();
+        const targetQrFile = document.getElementById("liveQrTargetQrFile").files?.[0];
+        const avatarFile = document.getElementById("liveQrGroupAvatarFile").files?.[0];
+        if (!name) throw new Error("请填写活码名称");
+        if (!state.liveQr.editingId && !targetQrFile) throw new Error("创建活码前请先上传当前群二维码图片");
+        if (targetQrFile && !targetUrl) {
+          await decodeLiveQrImage();
+          targetUrl = document.getElementById("liveQrTargetUrl").value.trim();
+        }
+        if (!(targetUrl.startsWith("http://") || targetUrl.startsWith("https://"))) throw new Error("当前群二维码链接必须是完整的 http 或 https 地址");
+        const body = {
+          name,
+          description: document.getElementById("liveQrDescription").value.trim() || null
+        };
+        if (!state.liveQr.editingId || !targetQrFile) body.targetUrl = targetUrl;
+        const editingId = state.liveQr.editingId;
+        document.getElementById("saveLiveQrBtn").disabled = true;
+        try {
+          let saved = await request(editingId ? `/api/ops-admin/live-qr-codes/${encodeURIComponent(editingId)}` : "/api/ops-admin/live-qr-codes", {
+            method: editingId ? "PATCH" : "POST",
+            body: JSON.stringify(body)
+          });
+          if (targetQrFile && saved?.id) {
+            const targetQrForm = new FormData();
+            targetQrForm.append("file", targetQrFile);
+            const targetQrResponse = await fetch(apiUrl(`/api/ops-admin/live-qr-codes/${encodeURIComponent(saved.id)}/target-qr`), {
+              method: "POST",
+              headers: { "X-Admin-Token": getToken() },
+              body: targetQrForm
+            });
+            const targetQrPayload = await targetQrResponse.json();
+            if (!targetQrResponse.ok) throw new Error(targetQrPayload.detail || targetQrPayload.message || "群二维码上传失败");
+            saved = targetQrPayload.data;
+          }
+          if (avatarFile && saved?.id) {
+            const avatarForm = new FormData();
+            avatarForm.append("file", avatarFile);
+            const avatarResponse = await fetch(apiUrl(`/api/ops-admin/live-qr-codes/${encodeURIComponent(saved.id)}/avatar`), {
+              method: "POST",
+              headers: { "X-Admin-Token": getToken() },
+              body: avatarForm
+            });
+            const avatarPayload = await avatarResponse.json();
+            if (!avatarResponse.ok) throw new Error(avatarPayload.detail || avatarPayload.message || "群头像上传失败");
+          }
+          const statusMessage = editingId ? "已更换当前群二维码，有效期自动重置为7天，外层入口保持不变。" : "活码已创建，有效期自动设置为7天，可以下载外层二维码投放。";
+          resetLiveQrForm();
+        document.getElementById("liveQrFormStatus").textContent = statusMessage;
+          if (!editingId) state.liveQr.page = 1;
+          await loadLiveQrs(editingId ? state.liveQr.page : 1);
+        } finally {
+          document.getElementById("saveLiveQrBtn").disabled = false;
+        }
+      }
+
+      document.getElementById("liveQrGroupAvatarFile").addEventListener("change", (event) => {
+        const file = event.target.files?.[0];
+        document.getElementById("liveQrGroupAvatarName").textContent = file ? `${file.name} · 保存时上传` : "保存时上传，卡片顶部使用真实图片";
+      });
+
+      async function toggleLiveQr(id, status) {
+        const item = state.liveQr.items.find((entry) => entry.id === id);
+        if (!item) return;
+        const action = status === "paused" ? "暂停" : "恢复";
+        if (!window.confirm(`确认${action}“${item.name}”？`)) return;
+        await request(`/api/ops-admin/live-qr-codes/${encodeURIComponent(id)}`, {
+          method: "PATCH",
+          body: JSON.stringify({ status })
+        });
+        await loadLiveQrs();
+      }
+
+      async function deleteLiveQr(id) {
+        const item = state.liveQr.items.find((entry) => entry.id === id);
+        if (!item) return;
+        if (!window.confirm(`确认删除“${item.name}”？删除后这个外层入口将停止工作，且不能撤销。`)) return;
+        await request(`/api/ops-admin/live-qr-codes/${encodeURIComponent(id)}`, { method: "DELETE" });
+        if (state.liveQr.editingId === id) resetLiveQrForm();
+        const nextPage = state.liveQr.page > 1 && state.liveQr.items.length === 1 ? state.liveQr.page - 1 : state.liveQr.page;
+        await loadLiveQrs(nextPage);
+      }
+
+      async function copyLiveQr(url) {
+        try {
+          await navigator.clipboard.writeText(url);
+        } catch (error) {
+          window.prompt("复制这个活码入口", url);
+          return;
+        }
+        document.getElementById("liveQrFormStatus").textContent = "入口已复制，可以粘贴到投放文案或保存备用。";
+      }
+
       async function loadJoinWays() {
         const data = await request("/api/ops-admin/wecom-group-join-ways");
         renderJoinWays(data || []);
@@ -2923,6 +3969,55 @@
         renderWalletUsers(data.items || []);
       }
 
+      function renderMutualHelpOperations(data = {}) {
+        state.mutualHelp = data;
+        const periods = [
+          ["today", "今日", data.periods?.today || {}],
+          ["sevenDays", "近 7 日", data.periods?.sevenDays || {}],
+          ["total", "总量", data.periods?.total || {}]
+        ];
+        document.getElementById("mutualHelpMetricCards").innerHTML = periods.map(([, label, item]) => `
+          <div class="metric-card">
+            <div class="metric-label">${label}</div>
+            <div class="metric-value">${Number(item.publishedTasks || 0)}</div>
+            <div class="metric-sub">发布任务</div>
+            <div class="metric-detail">完成 ${Number(item.completedTasks || 0)} · 充值 ${Number(item.rechargeOrders || 0)} 笔</div>
+          </div>
+        `).join("");
+        const config = data.config || {};
+        const available = config.available !== false;
+        document.getElementById("mutualHelpConfigState").textContent = available ? "配置正常" : "配置读取失败，已禁用操作";
+        document.getElementById("mutualHelpConfigState").className = `badge ${available ? "" : "warn"}`;
+        document.getElementById("mutualRechargeState").textContent = `${config.rechargeEnabled ? "已开启" : "已关闭"} · ${config.rechargeVisible ? "用户可见" : "用户隐藏"}`;
+        document.getElementById("mutualWithdrawalState").textContent = `${config.withdrawalEnabled ? "已开启" : "已关闭"} · ${config.withdrawalVisible ? "用户可见" : "用户隐藏"}`;
+        [
+          "toggleMutualRechargeEnabledBtn",
+          "toggleMutualRechargeVisibleBtn",
+          "toggleMutualWithdrawalEnabledBtn",
+          "toggleMutualWithdrawalVisibleBtn"
+        ].forEach((id) => { document.getElementById(id).disabled = !available; });
+      }
+
+      async function loadMutualHelpOperations() {
+        const data = await request("/api/ops-admin/mutual-help");
+        renderMutualHelpOperations(data || {});
+      }
+
+      async function updateMutualHelpFlag(field, label) {
+        const config = (state.mutualHelp && state.mutualHelp.config) || {};
+        if (config.available === false) throw new Error("互助积分配置读取失败，暂不能修改");
+        const nextValue = !Boolean(config[field]);
+        if (!window.confirm(`确认${nextValue ? "开启" : "关闭"}${label}？`)) return;
+        await request("/api/ops-admin/mutual-help", {
+          method: "PUT",
+          body: JSON.stringify({
+            [field]: nextValue,
+            operatorName: "ops"
+          })
+        });
+        await loadMutualHelpOperations();
+      }
+
       async function loadResponsePackages() {
         const keyword = document.getElementById("packageKeyword").value.trim();
         const data = await request(`/api/ops/response-packages${keyword ? `?keyword=${encodeURIComponent(keyword)}` : ""}`);
@@ -2977,7 +4072,7 @@
 
       async function refreshAll() {
         saveToken();
-        await Promise.all([
+        const requests = [
           loadOverview(),
           loadCustomerOperations(),
           loadWecomBindCardAsset(),
@@ -2990,12 +4085,20 @@
           loadOpportunityDashboard(),
           loadOpportunities(),
           loadWalletUsers(),
+          loadMutualHelpOperations(),
           loadResponsePackages(),
           loadSupplyReviewCards(),
           loadRuleLearningSamples(),
           loadFeedback(),
           loadQueue()
-        ]);
+        ];
+        if (!document.getElementById("tab-useractivity").classList.contains("hidden")) {
+          requests.push(loadUserActivity());
+        }
+        if (!document.getElementById("tab-liveqr").classList.contains("hidden")) {
+          requests.push(loadLiveQrs());
+        }
+        await Promise.all(requests);
       }
 
       async function previewUpload() {
@@ -3237,9 +4340,22 @@
                 document.getElementById("automationAuthState").textContent = error.message;
               });
             }
+            if (button.dataset.tab === "useractivity") {
+              loadUserActivity().catch((error) => alert(error.message));
+            }
+            if (button.dataset.tab === "liveqr") {
+              loadLiveQrs().catch((error) => {
+                document.getElementById("liveQrSummary").textContent = error.message;
+              });
+            }
           });
         });
         document.getElementById("saveTokenBtn").addEventListener("click", saveToken);
+        document.getElementById("refreshMutualHelpBtn").addEventListener("click", () => loadMutualHelpOperations().catch((error) => alert(error.message)));
+        document.getElementById("toggleMutualRechargeEnabledBtn").addEventListener("click", () => updateMutualHelpFlag("rechargeEnabled", "充值").catch((error) => alert(error.message)));
+        document.getElementById("toggleMutualRechargeVisibleBtn").addEventListener("click", () => updateMutualHelpFlag("rechargeVisible", "充值显示").catch((error) => alert(error.message)));
+        document.getElementById("toggleMutualWithdrawalEnabledBtn").addEventListener("click", () => updateMutualHelpFlag("withdrawalEnabled", "提现").catch((error) => alert(error.message)));
+        document.getElementById("toggleMutualWithdrawalVisibleBtn").addEventListener("click", () => updateMutualHelpFlag("withdrawalVisible", "提现显示").catch((error) => alert(error.message)));
         document.getElementById("overviewPeriodSwitch").addEventListener("click", (event) => {
           const button = event.target.closest("button[data-period]");
           if (!button || button.disabled) return;
@@ -3256,6 +4372,59 @@
           if (!card) return;
           event.preventDefault();
           openMetricDetail(card.dataset.metric);
+        });
+        document.getElementById("userActivityPanel").addEventListener("click", (event) => {
+          const periodButton = event.target.closest("[data-user-activity-period]");
+          if (periodButton) {
+            changeUserActivityPeriod(periodButton.dataset.userActivityPeriod);
+            return;
+          }
+          const sortButton = event.target.closest("[data-user-activity-sort]");
+          if (sortButton) {
+            changeUserActivitySort(sortButton.dataset.userActivitySort);
+            return;
+          }
+          const pageButton = event.target.closest("[data-user-activity-page]");
+          if (pageButton && !pageButton.disabled) changeUserActivityPage(pageButton.dataset.userActivityPage);
+        });
+        document.getElementById("refreshLiveQrBtn").addEventListener("click", () => loadLiveQrs().catch((error) => alert(error.message)));
+        document.getElementById("saveLiveQrBtn").addEventListener("click", () => saveLiveQr().catch((error) => alert(error.message)));
+        document.getElementById("decodeLiveQrBtn").addEventListener("click", () => decodeLiveQrImage().catch((error) => {
+          document.getElementById("liveQrFormStatus").textContent = error.message;
+          alert(error.message);
+        }));
+        document.getElementById("cancelLiveQrEditBtn").addEventListener("click", resetLiveQrForm);
+        document.getElementById("liveQrExpiryFilter").addEventListener("change", (event) => {
+          selectLiveQrExpiryFilter(event.target.value).catch((error) => alert(error.message));
+        });
+        document.getElementById("liveQrMemberFilter").addEventListener("change", (event) => {
+          selectLiveQrMemberFilter(event.target.value).catch((error) => alert(error.message));
+        });
+        document.getElementById("liveQrOverview").addEventListener("click", (event) => {
+          const card = event.target.closest("[data-live-qr-filter]");
+          if (card) {
+            selectLiveQrExpiryFilter(card.dataset.liveQrFilter).catch((error) => alert(error.message));
+            return;
+          }
+          const memberCard = event.target.closest("[data-live-qr-member-filter]");
+          if (memberCard) selectLiveQrMemberFilter(memberCard.dataset.liveQrMemberFilter).catch((error) => alert(error.message));
+        });
+        document.getElementById("liveQrTable").addEventListener("click", (event) => {
+          const button = event.target.closest("[data-action]");
+          if (!button) return;
+          if (button.dataset.action === "edit-live-qr") editLiveQr(button.dataset.id);
+          if (button.dataset.action === "copy-live-qr") copyLiveQr(button.dataset.url);
+          if (button.dataset.action === "download-live-qr") {
+            const item = state.liveQr.items.find((entry) => entry.id === button.dataset.id);
+            if (item) downloadLiveQrCard(item).catch((error) => alert(error.message));
+          }
+          if (button.dataset.action === "toggle-live-qr") toggleLiveQr(button.dataset.id, button.dataset.status).catch((error) => alert(error.message));
+          if (button.dataset.action === "delete-live-qr") deleteLiveQr(button.dataset.id).catch((error) => alert(error.message));
+        });
+        document.getElementById("liveQrPagination").addEventListener("click", (event) => {
+          const button = event.target.closest("[data-action='live-qr-page']");
+          if (!button || button.disabled) return;
+          loadLiveQrs(Number(button.dataset.page) || 1).catch((error) => alert(error.message));
         });
         document.getElementById("closeMetricDetailBtn").addEventListener("click", closeMetricDetail);
         document.getElementById("refreshAutomationBtn").addEventListener("click", () => loadAutomationData().catch((error) => alert(error.message)));

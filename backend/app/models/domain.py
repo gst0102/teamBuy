@@ -60,6 +60,8 @@ SupplyDemandApplicationStatus = Literal["pending", "accepted", "rejected", "clos
 OpportunityPushDigestStatus = Literal["pending", "read", "dismissed"]
 MembershipOrderStatus = Literal["pending", "paid", "refunded", "closed"]
 MembershipEntitlementStatus = Literal["active", "expired", "revoked"]
+MutualRechargeOrderStatus = Literal["pending", "paid", "closed", "refunded"]
+MutualActivityEventType = Literal["published", "completed"]
 ReferralRewardStatus = Literal["pending", "available", "reserved", "withdrawn", "revoked"]
 ReferralWithdrawalStatus = Literal[
     "pending",
@@ -621,6 +623,9 @@ class AutomationGroupCandidate(BaseModel):
     lastActivityAt: str | None = None
     lastVerifiedAt: str | None = None
     lastSeenAt: str | None = None
+    groupMemberCount: int | None = None
+    groupMemberCountCheckedAt: str | None = None
+    groupMemberCountSource: str | None = None
     idempotencyKey: str | None = None
     lastError: str | None = None
     createdAt: str
@@ -924,6 +929,52 @@ class MembershipEntitlement(BaseModel):
     updatedAt: str
 
 
+class MutualPointAccount(BaseModel):
+    id: str
+    userId: str
+    balance: int = 0
+    totalGranted: int = 0
+    totalConsumed: int = 0
+    createdAt: str
+    updatedAt: str
+
+
+class MutualPointLedger(BaseModel):
+    id: str
+    userId: str
+    ledgerType: str
+    pointsDelta: int
+    balanceAfter: int
+    reason: str
+    relatedOrderId: str | None = None
+    idempotencyKey: str | None = None
+    createdAt: str
+
+
+class MutualRechargeOrder(BaseModel):
+    id: str
+    userId: str
+    points: int
+    amountFen: int
+    status: MutualRechargeOrderStatus = "pending"
+    paymentChannel: str = "test"
+    paymentTransactionId: str | None = None
+    paidAt: str | None = None
+    refundedAt: str | None = None
+    createdAt: str
+    updatedAt: str
+
+
+class MutualActivityEvent(BaseModel):
+    id: str
+    eventType: MutualActivityEventType
+    userId: str
+    taskId: str
+    taskKind: str = "ordinary"
+    idempotencyKey: str
+    createdAt: str
+
+
 class NotificationPreference(BaseModel):
     id: str
     userId: str
@@ -1036,6 +1087,29 @@ class SameStyleGeneration(BaseModel):
     updatedAt: str
 
 
+class LiveQrCode(BaseModel):
+    id: str
+    code: str
+    name: str
+    description: str | None = None
+    groupAvatarUrl: str | None = None
+    targetQrImageUrl: str | None = None
+    targetQrImageUpdatedAt: str | None = None
+    automationGroupCandidateId: str | None = None
+    groupMemberCount: int | None = None
+    groupMemberCountCheckedAt: str | None = None
+    groupMemberCountSource: str | None = None
+    targetUrl: str
+    targetExpiresAt: str | None = None
+    status: Literal["active", "paused"] = "active"
+    version: int = 1
+    scanCount: int = 0
+    lastScannedAt: str | None = None
+    targetUpdatedAt: str
+    createdAt: str
+    updatedAt: str
+
+
 class AppState(BaseModel):
     users: list[User] = Field(default_factory=list)
     wecom_identity_bindings: list[WecomIdentityBinding] = Field(default_factory=list)
@@ -1088,6 +1162,10 @@ class AppState(BaseModel):
     opportunity_push_digests: list[OpportunityPushDigest] = Field(default_factory=list)
     membership_orders: list[MembershipOrder] = Field(default_factory=list)
     membership_entitlements: list[MembershipEntitlement] = Field(default_factory=list)
+    mutual_point_accounts: list[MutualPointAccount] = Field(default_factory=list)
+    mutual_point_ledgers: list[MutualPointLedger] = Field(default_factory=list)
+    mutual_recharge_orders: list[MutualRechargeOrder] = Field(default_factory=list)
+    mutual_activity_events: list[MutualActivityEvent] = Field(default_factory=list)
     notification_preferences: list[NotificationPreference] = Field(default_factory=list)
     wechat_subscription_grants: list[WechatSubscriptionGrant] = Field(default_factory=list)
     wechat_subscription_deliveries: list[WechatSubscriptionDelivery] = Field(default_factory=list)
@@ -1095,3 +1173,4 @@ class AppState(BaseModel):
     referral_rewards: list[ReferralReward] = Field(default_factory=list)
     referral_withdrawals: list[ReferralWithdrawal] = Field(default_factory=list)
     same_style_generations: list[SameStyleGeneration] = Field(default_factory=list)
+    live_qr_codes: list[LiveQrCode] = Field(default_factory=list)

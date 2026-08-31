@@ -1,0 +1,630 @@
+page {
+  background: #fff8f1;
+  color: #3c2b27;
+}
+
+.page-shell {
+  min-height: 100vh;
+  padding: 12rpx 28rpx 56rpx;
+  background:
+    radial-gradient(circle at 92% 4%, rgba(246, 178, 107, 0.26), transparent 260rpx),
+    linear-gradient(180deg, #fff8f1 0%, #fffaf5 46%, #fffdfb 100%);
+  box-sizing: border-box;
+}
+
+button,
+button::after {
+  border: 0;
+}
+
+button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0 24rpx;
+  line-height: 1;
+  box-sizing: border-box;
+}
+
+.state-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: 20rpx;
+  padding: 72rpx 34rpx;
+  border: 1rpx solid #f2dfd1;
+  border-radius: 28rpx;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 16rpx 42rpx rgba(155, 76, 44, 0.08);
+  text-align: center;
+}
+
+.state-spinner {
+  width: 48rpx;
+  height: 48rpx;
+  border: 6rpx solid #f9d9c6;
+  border-top-color: #e86f51;
+  border-radius: 50%;
+  animation: referral-detail-spin 0.9s linear infinite;
+}
+
+@keyframes referral-detail-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.state-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 60rpx;
+  height: 60rpx;
+  border-radius: 50%;
+  background: #fff0e8;
+  color: #c5573f;
+  font-size: 34rpx;
+  font-weight: 900;
+}
+
+.state-title {
+  margin-top: 24rpx;
+  color: #3c2b27;
+  font-size: 30rpx;
+  font-weight: 900;
+}
+
+.state-copy {
+  max-width: 600rpx;
+  margin-top: 12rpx;
+  color: #8e756b;
+  font-size: 23rpx;
+  line-height: 1.6;
+}
+
+.state-retry-btn {
+  min-width: 220rpx;
+  min-height: 76rpx;
+  margin-top: 28rpx;
+  border-radius: 20rpx;
+  background: #e86f51;
+  color: #ffffff;
+  font-size: 25rpx;
+  font-weight: 900;
+}
+
+.refresh-status,
+.refresh-error {
+  margin: 12rpx 4rpx 0;
+  color: #9a786b;
+  font-size: 21rpx;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.refresh-error {
+  color: #b85a43;
+}
+
+.detail-balance-card,
+.tabs-card,
+.withdraw-section,
+.withdraw-rules-card,
+.list-card,
+.friend-filter-card,
+.friend-list-card {
+  margin-top: 18rpx;
+  border: 1rpx solid #f2e3d8;
+  border-radius: 26rpx;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 12rpx 32rpx rgba(155, 76, 44, 0.06);
+  box-sizing: border-box;
+}
+
+.detail-balance-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18rpx;
+  padding: 26rpx 24rpx;
+  background: linear-gradient(135deg, #fff2e6 0%, #fffaf5 100%);
+}
+
+.detail-balance-main {
+  min-width: 0;
+}
+
+.detail-balance-label,
+.withdraw-amount-label,
+.section-caption,
+.withdraw-available,
+.sort-note,
+.friend-time,
+.ledger-time,
+.withdrawal-meta,
+.rules-source {
+  color: #9a8177;
+  font-size: 21rpx;
+  line-height: 1.5;
+}
+
+.detail-balance-amount {
+  margin-top: 5rpx;
+  color: #d45e43;
+  font-size: 58rpx;
+  font-variant-numeric: tabular-nums;
+  font-weight: 900;
+  line-height: 1.1;
+}
+
+.detail-balance-meta {
+  margin-top: 8rpx;
+  color: #8c7167;
+  font-size: 21rpx;
+  line-height: 1.5;
+}
+
+.detail-withdraw-entry {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  min-width: 148rpx;
+  min-height: 68rpx;
+  border-radius: 19rpx;
+  background: #e86f51;
+  color: #ffffff;
+  font-size: 25rpx;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.detail-arrow {
+  margin-left: 8rpx;
+  font-size: 32rpx;
+  font-weight: 400;
+}
+
+.tabs-card {
+  display: flex;
+  align-items: center;
+  padding: 6rpx;
+}
+
+.tab-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  min-height: 74rpx;
+  border-radius: 19rpx;
+  color: #94776b;
+  font-size: 25rpx;
+  font-weight: 800;
+}
+
+.tab-item.active {
+  background: #ffe2d6;
+  color: #d45e43;
+}
+
+.withdraw-section,
+.withdraw-rules-card,
+.list-card,
+.friend-list-card {
+  padding: 24rpx;
+}
+
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+}
+
+.section-title {
+  color: #3c2b27;
+  font-size: 29rpx;
+  font-weight: 900;
+}
+
+.withdraw-amount-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  margin-top: 24rpx;
+}
+
+.withdraw-amount-label {
+  color: #5d463c;
+  font-size: 24rpx;
+  font-weight: 800;
+}
+
+.withdraw-available {
+  color: #d45e43;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.withdraw-option-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12rpx;
+  margin-top: 16rpx;
+}
+
+.withdraw-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 106rpx;
+  padding: 12rpx 6rpx;
+  border: 2rpx solid #f0dfd4;
+  border-radius: 18rpx;
+  background: #fffaf5;
+  box-sizing: border-box;
+}
+
+.withdraw-option.selected {
+  border-color: #e86f51;
+  background: #fff0e8;
+  box-shadow: 0 0 0 2rpx rgba(232, 111, 81, 0.08);
+}
+
+.withdraw-option.disabled {
+  opacity: 0.48;
+}
+
+.withdraw-option-amount {
+  color: #49332b;
+  font-size: 31rpx;
+  font-variant-numeric: tabular-nums;
+  font-weight: 900;
+  line-height: 1.15;
+}
+
+.withdraw-option.selected .withdraw-option-amount,
+.withdraw-option.selected .withdraw-option-state {
+  color: #d45e43;
+}
+
+.withdraw-option-state {
+  margin-top: 7rpx;
+  color: #9a8177;
+  font-size: 20rpx;
+  line-height: 1;
+}
+
+.withdraw-unavailable {
+  margin-top: 16rpx;
+  padding: 22rpx 18rpx;
+  border-radius: 18rpx;
+  background: #fff8f1;
+  text-align: center;
+}
+
+.withdraw-unavailable-title {
+  color: #5d463c;
+  font-size: 25rpx;
+  font-weight: 900;
+}
+
+.withdraw-unavailable-copy {
+  margin-top: 8rpx;
+  color: #9a8177;
+  font-size: 22rpx;
+  line-height: 1.55;
+}
+
+.share-more-btn {
+  min-height: 62rpx;
+  margin: 18rpx auto 0;
+  border-radius: 17rpx;
+  background: #ffe2d6;
+  color: #d45e43;
+  font-size: 23rpx;
+  font-weight: 900;
+}
+
+.withdraw-selection-hint {
+  margin-top: 14rpx;
+  color: #a17855;
+  font-size: 21rpx;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.withdraw-submit-btn {
+  width: 100%;
+  min-height: 76rpx;
+  margin-top: 18rpx;
+  border-radius: 20rpx;
+  background: #e86f51;
+  color: #ffffff;
+  font-size: 25rpx;
+  font-weight: 900;
+}
+
+.withdraw-submit-btn[disabled] {
+  opacity: 0.58;
+}
+
+.withdraw-rules-card {
+  border-color: #efdfd2;
+  background: #fffaf6;
+}
+
+.rule-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10rpx;
+  margin-top: 18rpx;
+}
+
+.rule-summary-item {
+  display: flex;
+  flex-direction: column;
+  min-height: 84rpx;
+  padding: 14rpx;
+  border-radius: 16rpx;
+  background: #fff2e7;
+}
+
+.rule-summary-item text {
+  color: #9a8177;
+  font-size: 20rpx;
+}
+
+.rule-summary-item strong {
+  margin-top: 5rpx;
+  color: #5d463c;
+  font-size: 25rpx;
+  line-height: 1.3;
+}
+
+.rule-detail-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 14rpx;
+  padding: 18rpx 0;
+  border-top: 1rpx solid #f1e3da;
+}
+
+.rule-detail-row:first-of-type {
+  margin-top: 16rpx;
+}
+
+.rule-detail-row.last {
+  padding-bottom: 0;
+}
+
+.rule-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 50rpx;
+  width: 50rpx;
+  height: 50rpx;
+  border-radius: 16rpx;
+  background: #ffe2d6;
+  color: #d45e43;
+  font-size: 21rpx;
+  font-weight: 900;
+}
+
+.rule-detail-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.rule-label {
+  color: #5d463c;
+  font-size: 24rpx;
+  font-weight: 800;
+}
+
+.rule-copy {
+  margin-top: 4rpx;
+  color: #8a7066;
+  font-size: 21rpx;
+  line-height: 1.6;
+}
+
+.rules-unavailable {
+  margin-top: 18rpx;
+  padding: 20rpx;
+  border-radius: 16rpx;
+  background: #fff1e9;
+  color: #b85a43;
+  font-size: 22rpx;
+  line-height: 1.55;
+}
+
+.list-card {
+  padding-bottom: 8rpx;
+}
+
+.ledger-row,
+.withdrawal-row,
+.friend-row {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+  padding: 18rpx 0;
+  border-top: 1rpx solid #f4e9e1;
+}
+
+.ledger-row:first-of-type,
+.withdrawal-row:first-of-type,
+.friend-row:first-of-type {
+  margin-top: 12rpx;
+}
+
+.ledger-icon,
+.friend-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 54rpx;
+  width: 54rpx;
+  height: 54rpx;
+  border-radius: 18rpx;
+  background: #ffe2d6;
+  color: #d45e43;
+  font-size: 22rpx;
+  font-weight: 900;
+}
+
+.friend-avatar {
+  background: #fff0d7;
+  color: #c78326;
+}
+
+.ledger-main,
+.withdrawal-main,
+.friend-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.ledger-title,
+.friend-name {
+  overflow: hidden;
+  color: #49332b;
+  font-size: 25rpx;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ledger-time,
+.friend-time {
+  margin-top: 4rpx;
+}
+
+.ledger-side {
+  flex: 0 0 auto;
+  text-align: right;
+}
+
+.ledger-amount,
+.withdrawal-amount {
+  color: #d45e43;
+  font-size: 26rpx;
+  font-variant-numeric: tabular-nums;
+  font-weight: 900;
+}
+
+.ledger-status,
+.friend-reward {
+  margin-top: 4rpx;
+  color: #a17855;
+  font-size: 20rpx;
+  white-space: nowrap;
+}
+
+.withdrawal-row {
+  align-items: flex-start;
+}
+
+.withdrawal-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8rpx;
+  max-width: 54%;
+}
+
+.withdrawal-status {
+  color: #d45e43;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.withdrawal-status.status-paid {
+  color: #6b8e69;
+}
+
+.withdrawal-status.status-failed,
+.withdrawal-status.status-cancelled,
+.withdrawal-status.status-rejected {
+  color: #b85a43;
+}
+
+.confirm-transfer-btn {
+  width: 170rpx;
+  min-height: 54rpx;
+  border-radius: 14rpx;
+  background: #e86f51;
+  color: #ffffff;
+  font-size: 21rpx;
+  font-weight: 800;
+}
+
+.withdrawal-failure {
+  color: #b85a43;
+  font-size: 21rpx;
+  line-height: 1.4;
+  text-align: right;
+}
+
+.friend-filter-card {
+  display: flex;
+  align-items: center;
+  padding: 6rpx;
+}
+
+.friend-filter {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  min-height: 68rpx;
+  border-radius: 17rpx;
+  color: #94776b;
+  font-size: 21rpx;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.friend-filter.active {
+  background: #ffe2d6;
+  color: #d45e43;
+}
+
+.sort-note {
+  margin: 14rpx 4rpx 0;
+  color: #a58a7c;
+}
+
+.friend-list-card {
+  padding-bottom: 8rpx;
+}
+
+.friend-status {
+  flex: 0 0 auto;
+  max-width: 180rpx;
+  padding: 8rpx 12rpx;
+  border-radius: 999rpx;
+  background: #e8f2e5;
+  color: #6b8e69;
+  font-size: 20rpx;
+  font-weight: 800;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.privacy-note,
+.empty-card {
+  margin-top: 16rpx;
+  padding: 22rpx 18rpx;
+  border-radius: 18rpx;
+  background: rgba(255, 255, 255, 0.8);
+  color: #a58a7c;
+  font-size: 21rpx;
+  line-height: 1.55;
+  text-align: center;
+}

@@ -47,6 +47,27 @@ class MediaProcessingService:
             return self.process_video(content, filename)
         return ProcessedMedia(content, content_type, filename, len(content), len(content), False)
 
+    def process_source_image(
+        self,
+        content: bytes,
+        content_type: str | None = None,
+        filename: str | None = None,
+    ) -> ProcessedMedia:
+        """Validate an image while preserving its pixels for QR recognition."""
+        try:
+            image = Image.open(BytesIO(content))
+            image.verify()
+        except Exception as exc:
+            raise ValueError("图片必须是有效的图像文件") from exc
+        return ProcessedMedia(
+            content=content,
+            content_type=content_type or "image/png",
+            filename=filename,
+            original_size=len(content),
+            stored_size=len(content),
+            compressed=False,
+        )
+
     def process_image(self, content: bytes, filename: str | None = None) -> ProcessedMedia:
         try:
             image = Image.open(BytesIO(content))

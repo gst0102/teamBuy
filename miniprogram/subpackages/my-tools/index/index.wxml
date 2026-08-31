@@ -1,0 +1,24 @@
+<view class="tools-page">
+  <custom-nav title="我的工具" showBack="{{true}}" />
+
+  <view class="tools-content">
+    <view class="tools-kicker">资料整理助手</view>
+    <view class="tools-title">把常用工具放在一起</view>
+    <view class="tools-subtitle">让资料和社群里的日常事情更顺手。</view>
+
+    <view class="tools-list">
+      <view wx:for="{{tools}}" wx:key="key" class="tool-card {{item.available ? '' : 'disabled'}}" data-index="{{index}}" bindtap="handleOpenTool">
+        <view class="tool-icon">{{item.icon}}</view>
+        <view class="tool-copy">
+          <view class="tool-title">{{item.title}}</view>
+          <view class="tool-description">{{item.description}}</view>
+        </view>
+        <view class="tool-side">
+          <view class="tool-status">{{item.status}}</view>
+          <view class="tool-arrow">›</view>
+        </view>
+      </view>
+    </view>
+
+  </view>
+</view>

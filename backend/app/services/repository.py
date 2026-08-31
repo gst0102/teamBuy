@@ -24,6 +24,7 @@ from app.models.domain import (
     ImportBatch,
     ImportNotification,
     LeadReminder,
+    LiveQrCode,
     MessageRecord,
     MessageThread,
     MediaAsset,
@@ -48,6 +49,10 @@ from app.models.domain import (
     OpportunityPushDigest,
     MembershipOrder,
     MembershipEntitlement,
+    MutualPointAccount,
+    MutualPointLedger,
+    MutualRechargeOrder,
+    MutualActivityEvent,
     ReferralRelation,
     ReferralReward,
     ReferralWithdrawal,
@@ -177,6 +182,24 @@ class AppRepository(Protocol):
         ...
 
     def save_showcase_page(self, showcase: ShowcasePage) -> None:
+        ...
+
+    def get_live_qr_code(self, qr_id: str) -> LiveQrCode | None:
+        ...
+
+    def get_live_qr_code_by_code(self, code: str) -> LiveQrCode | None:
+        ...
+
+    def list_live_qr_codes(self) -> list[LiveQrCode]:
+        ...
+
+    def save_live_qr_code(self, qr_code: LiveQrCode) -> None:
+        ...
+
+    def delete_live_qr_code(self, qr_id: str) -> bool:
+        ...
+
+    def record_live_qr_scan(self, code: str, scanned_at: str) -> LiveQrCode | None:
         ...
 
     def list_referral_relations(self) -> list[ReferralRelation]:
@@ -554,6 +577,7 @@ class AppRepository(Protocol):
         now: str,
         lease_expires_at: str,
         lease_token: str,
+        function_ids: set[str] | None = None,
     ) -> AutomationTask | None:
         ...
 
@@ -947,6 +971,58 @@ class JsonRepository:
         state.showcase_pages = [item for item in state.showcase_pages if item.id != showcase.id]
         state.showcase_pages.append(showcase)
         self.save(state)
+
+    def get_live_qr_code(self, qr_id: str) -> LiveQrCode | None:
+        return next((item for item in self.load().live_qr_codes if item.id == qr_id), None)
+
+    def get_live_qr_code_by_code(self, code: str) -> LiveQrCode | None:
+        return next((item for item in self.load().live_qr_codes if item.code == code), None)
+
+    def list_live_qr_codes(self) -> list[LiveQrCode]:
+        return sorted(self.load().live_qr_codes, key=lambda item: (item.updatedAt, item.id), reverse=True)
+
+    def save_live_qr_code(self, qr_code: LiveQrCode) -> None:
+        with self._automation_lock:
+            state = self.load()
+            state.live_qr_codes = [item for item in state.live_qr_codes if item.id != qr_code.id]
+            state.live_qr_codes.append(qr_code)
+            self.save(state)
+
+    def delete_live_qr_code(self, qr_id: str) -> bool:
+        with self._automation_lock:
+            state = self.load()
+            kept = [item for item in state.live_qr_codes if item.id != qr_id]
+            if len(kept) == len(state.live_qr_codes):
+                return False
+            state.live_qr_codes = kept
+            self.save(state)
+            return True
+
+    def record_live_qr_scan(self, code: str, scanned_at: str) -> LiveQrCode | None:
+        with self._automation_lock:
+            state = self.load()
+            current = next(
+                (item for item in state.live_qr_codes if item.code == code and item.status == "active"),
+                None,
+            )
+            if not current:
+                return None
+            if current.targetExpiresAt:
+                try:
+                    if parse_iso(current.targetExpiresAt) <= parse_iso(scanned_at):
+                        return None
+                except (TypeError, ValueError):
+                    pass
+            updated = current.model_copy(
+                update={
+                    "scanCount": int(current.scanCount or 0) + 1,
+                    "lastScannedAt": scanned_at,
+                }
+            )
+            state.live_qr_codes = [item for item in state.live_qr_codes if item.id != updated.id]
+            state.live_qr_codes.append(updated)
+            self.save(state)
+            return updated
 
     def list_referral_relations(self) -> list[ReferralRelation]:
         return list(self.load().referral_relations)
@@ -1737,6 +1813,7 @@ class JsonRepository:
         now: str,
         lease_expires_at: str,
         lease_token: str,
+        function_ids: set[str] | None = None,
     ) -> AutomationTask | None:
         with self._automation_lock:
             state = self.load()
@@ -1758,6 +1835,8 @@ class JsonRepository:
             candidates = []
             for item in state.automation_tasks:
                 if item.deviceId != device_id:
+                    continue
+                if function_ids and item.functionId not in function_ids:
                     continue
                 if item.status == "pending":
                     claimable = True
@@ -2121,6 +2200,7 @@ class PostgresRepository:
         "cards": "cards",
         "user_notes": "user_notes",
         "showcase_pages": "showcase_pages",
+        "live_qr_codes": "live_qr_codes",
         "view_events": "view_events",
         "showcase_events": "showcase_events",
         "relay_entries": "relay_entries",
@@ -2163,6 +2243,10 @@ class PostgresRepository:
         "opportunity_push_digests": "opportunity_push_digests",
         "membership_orders": "membership_orders",
         "membership_entitlements": "membership_entitlements",
+        "mutual_point_accounts": "mutual_point_accounts",
+        "mutual_point_ledgers": "mutual_point_ledgers",
+        "mutual_recharge_orders": "mutual_recharge_orders",
+        "mutual_activity_events": "mutual_activity_events",
         "notification_preferences": "notification_preferences",
         "wechat_subscription_grants": "wechat_subscription_grants",
         "wechat_subscription_deliveries": "wechat_subscription_deliveries",
@@ -2251,6 +2335,14 @@ class PostgresRepository:
             ("intake_id", "text", "intakeId"),
             ("idempotency_key", "text", "idempotencyKey"),
             ("published_at", "timestamptz", "publishedAt"),
+        ],
+        "live_qr_codes": [
+            ("code", "text", "code"),
+            ("status", "text", "status"),
+            ("scan_count", "integer", "scanCount"),
+            ("last_scanned_at", "timestamptz", "lastScannedAt"),
+            ("target_expires_at", "timestamptz", "targetExpiresAt"),
+            ("target_updated_at", "timestamptz", "targetUpdatedAt"),
         ],
         "view_events": [
             ("card_id", "text", "cardId"),
@@ -2576,6 +2668,35 @@ class PostgresRepository:
             ("status", "text", "status"),
             ("expires_at", "timestamptz", "expiresAt"),
         ],
+        "mutual_point_accounts": [
+            ("user_id", "text", "userId"),
+            ("balance", "integer", "balance"),
+            ("updated_at_source", "timestamptz", "updatedAt"),
+        ],
+        "mutual_point_ledgers": [
+            ("user_id", "text", "userId"),
+            ("ledger_type", "text", "ledgerType"),
+            ("points_delta", "integer", "pointsDelta"),
+            ("related_order_id", "text", "relatedOrderId"),
+            ("created_at_source", "timestamptz", "createdAt"),
+        ],
+        "mutual_recharge_orders": [
+            ("user_id", "text", "userId"),
+            ("points", "integer", "points"),
+            ("amount_fen", "integer", "amountFen"),
+            ("status", "text", "status"),
+            ("payment_channel", "text", "paymentChannel"),
+            ("payment_transaction_id", "text", "paymentTransactionId"),
+            ("paid_at", "timestamptz", "paidAt"),
+        ],
+        "mutual_activity_events": [
+            ("event_type", "text", "eventType"),
+            ("user_id", "text", "userId"),
+            ("task_id", "text", "taskId"),
+            ("task_kind", "text", "taskKind"),
+            ("idempotency_key", "text", "idempotencyKey"),
+            ("created_at_source", "timestamptz", "createdAt"),
+        ],
         "notification_preferences": [
             ("user_id", "text", "userId"),
             ("important_customer_view_enabled", "boolean", "importantCustomerViewEnabled"),
@@ -2664,6 +2785,10 @@ class PostgresRepository:
         "showcase_pages": [
             ("idx_showcase_pages_owner_status", "owner_user_id, status, updated_at"),
             ("idx_showcase_pages_published", "status, published_at"),
+        ],
+        "live_qr_codes": [
+            ("idx_live_qr_codes_code", "code"),
+            ("idx_live_qr_codes_status_updated", "status, updated_at"),
         ],
         "view_events": [
             ("idx_view_events_card_time", "card_id, viewed_at"),
@@ -2833,6 +2958,22 @@ class PostgresRepository:
         ],
         "membership_entitlements": [
             ("idx_membership_entitlements_user_expiry", "user_id, status, expires_at"),
+        ],
+        "mutual_point_accounts": [
+            ("idx_mutual_point_accounts_user", "user_id"),
+        ],
+        "mutual_point_ledgers": [
+            ("idx_mutual_point_ledgers_user_time", "user_id, created_at_source"),
+            ("idx_mutual_point_ledgers_order", "related_order_id"),
+        ],
+        "mutual_recharge_orders": [
+            ("idx_mutual_recharge_orders_user_status", "user_id, status, created_at"),
+            ("idx_mutual_recharge_orders_transaction", "payment_transaction_id"),
+        ],
+        "mutual_activity_events": [
+            ("idx_mutual_activity_events_type_time", "event_type, created_at_source"),
+            ("idx_mutual_activity_events_user_time", "user_id, created_at_source"),
+            ("idx_mutual_activity_events_idempotency", "idempotency_key"),
         ],
         "notification_preferences": [
             ("idx_notification_preferences_user", "user_id"),
@@ -3155,6 +3296,61 @@ class PostgresRepository:
 
     def save_showcase_page(self, showcase: ShowcasePage) -> None:
         self._save_model("showcase_pages", showcase)
+
+    def get_live_qr_code(self, qr_id: str) -> LiveQrCode | None:
+        payload = self.get_payload_by_id("live_qr_codes", qr_id)
+        return LiveQrCode.model_validate(payload) if payload else None
+
+    def get_live_qr_code_by_code(self, code: str) -> LiveQrCode | None:
+        rows = self._list_payloads(
+            "live_qr_codes",
+            "code = %s",
+            (code,),
+            "updated_at desc, id desc",
+        )
+        return LiveQrCode.model_validate(rows[0]) if rows else None
+
+    def list_live_qr_codes(self) -> list[LiveQrCode]:
+        rows = self._list_payloads("live_qr_codes", "true", (), "updated_at desc, id desc")
+        return [LiveQrCode.model_validate(row) for row in rows]
+
+    def save_live_qr_code(self, qr_code: LiveQrCode) -> None:
+        self._save_model("live_qr_codes", qr_code)
+
+    def delete_live_qr_code(self, qr_id: str) -> bool:
+        self._ensure_known_table("live_qr_codes")
+        with self._connection() as conn:
+            result = conn.execute("delete from live_qr_codes where id = %s", (qr_id,))
+        return bool(result.rowcount)
+
+    def record_live_qr_scan(self, code: str, scanned_at: str) -> LiveQrCode | None:
+        self._ensure_known_table("live_qr_codes")
+        with self._connection(row_factory=dict_row) as conn:
+            with conn.transaction():
+                row = conn.execute(
+                    """
+                    update live_qr_codes
+                    set scan_count = coalesce(scan_count, 0) + 1,
+                        last_scanned_at = %s,
+                        payload = jsonb_set(
+                            jsonb_set(
+                                payload,
+                                '{scanCount}',
+                                to_jsonb(coalesce(scan_count, 0) + 1),
+                                true
+                            ),
+                            '{lastScannedAt}',
+                            to_jsonb(%s::text),
+                            true
+                        )
+                    where code = %s
+                      and status = 'active'
+                      and (target_expires_at is null or target_expires_at > %s)
+                    returning payload
+                    """,
+                    (scanned_at, scanned_at, code, scanned_at),
+                ).fetchone()
+        return LiveQrCode.model_validate(row["payload"]) if row else None
 
     def list_referral_relations(self) -> list[ReferralRelation]:
         rows = self._list_payloads("referral_relations", "true", (), "created_at asc, id asc")
@@ -4177,6 +4373,7 @@ class PostgresRepository:
         now: str,
         lease_expires_at: str,
         lease_token: str,
+        function_ids: set[str] | None = None,
     ) -> AutomationTask | None:
         with self._connection(row_factory=dict_row) as conn:
             with conn.transaction():
@@ -4194,11 +4391,18 @@ class PostgresRepository:
                 ).fetchone()
                 if active:
                     return None
+                function_filter = ""
+                claim_params: list[object] = [device_id]
+                if function_ids:
+                    function_filter = "and function_id = any(%s)"
+                    claim_params.append(list(function_ids))
+                claim_params.extend([now, active_wechat_account_id])
                 row = conn.execute(
-                    """
+                    f"""
                     select payload
                     from automation_tasks
                     where device_id = %s
+                      {function_filter}
                       and (
                         status = 'pending'
                         or (status = 'running' and lease_expires_at is not null and lease_expires_at <= %s::timestamptz)
@@ -4212,7 +4416,7 @@ class PostgresRepository:
                     limit 1
                     for update skip locked
                     """,
-                    (device_id, now, active_wechat_account_id),
+                    tuple(claim_params),
                 ).fetchone()
                 if not row:
                     return None
@@ -4619,6 +4823,19 @@ class PostgresRepository:
                 )
                 conn.execute(
                     """
+                    create unique index if not exists uq_mutual_recharge_orders_transaction
+                    on mutual_recharge_orders (payment_transaction_id)
+                    where payment_transaction_id is not null
+                    """
+                )
+                conn.execute(
+                    """
+                    create unique index if not exists uq_mutual_activity_events_idempotency
+                    on mutual_activity_events (idempotency_key)
+                    """
+                )
+                conn.execute(
+                    """
                     create unique index if not exists uq_users_openid
                     on users (openid)
                     where openid is not null
@@ -4745,6 +4962,12 @@ class PostgresRepository:
                     create unique index if not exists uq_showcase_pages_owner_idempotency
                     on showcase_pages (owner_user_id, idempotency_key)
                     where idempotency_key is not null
+                    """
+                )
+                conn.execute(
+                    """
+                    create unique index if not exists uq_live_qr_codes_code
+                    on live_qr_codes (code)
                     """
                 )
                 conn.execute(

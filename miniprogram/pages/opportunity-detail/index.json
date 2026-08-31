@@ -1,4 +1,5 @@
 {
+  "enableShareAppMessage": true,
   "navigationBarTitleText": "线索详情",
   "navigationStyle": "custom",
   "usingComponents": {
