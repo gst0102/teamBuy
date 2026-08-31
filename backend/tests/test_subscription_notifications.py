@@ -101,6 +101,43 @@ def test_subscription_preference_and_grant_request_are_idempotent(client):
     assert config["preferences"]["ordinaryAnonymousViewEnabled"] is False
 
 
+def test_mutual_help_subscription_uses_separate_template_and_does_not_require_customer_chain(client, monkeypatch):
+    mutual_template_id = "qGm4PS5qUjU9VR4oDerB9CUWN3h3hCkRYUp_X5T--WY"
+    monkeypatch.setattr(settings, "wechat_miniapp_mutual_help_subscribe_template_id", mutual_template_id)
+    monkeypatch.setattr(
+        settings,
+        "wechat_miniapp_mutual_help_subscribe_field_keys_json",
+        '{"taskName":"thing1","taskProgress":"phrase2","updateTime":"time3","executor":"thing4","initiator":"thing5"}',
+    )
+    owner = login(client, "openid_mutual_help_subscription", "互助发布人")
+    service = client.app.dependency_overrides[get_app_service]()
+    monkeypatch.setattr(service, "customer_info_chain_enabled", lambda: False)
+
+    config = client.get("/api/scrm/notification-config", params={"userId": owner["id"]})
+    assert config.status_code == 200
+    mutual_config = config.json()["data"]["mutualHelp"]
+    assert mutual_config == {
+        "enabled": True,
+        "templateId": mutual_template_id,
+        "page": "/subpackages/my-tools-mutual-help/task-manage/index",
+    }
+
+    accepted = client.post(
+        "/api/scrm/notification-subscriptions",
+        json={
+            "userId": owner["id"],
+            "templateId": mutual_template_id,
+            "purpose": "mutual_help_task",
+            "status": "accept",
+            "source": "mutual_help_publish",
+            "requestId": "mutual-help-subscription-request",
+        },
+    )
+    assert accepted.status_code == 200
+    grant = service.repo.get_wechat_subscription_grant(accepted.json()["data"]["grant"]["id"])
+    assert grant and grant.templateId == mutual_template_id
+
+
 def test_production_public_view_ignores_spoofed_viewer_identity_and_queues_anonymous_notification(client, monkeypatch):
     monkeypatch.setattr(settings, "app_env", "production")
     owner = login(client, "openid_subscription_secure_owner", "资料发布人")

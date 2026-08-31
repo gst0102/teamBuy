@@ -104,6 +104,7 @@ def record_notification_subscription(payload: NotificationSubscriptionRequest, s
             payload.status,
             payload.source,
             payload.requestId,
+            payload.purpose,
         )
     )
 

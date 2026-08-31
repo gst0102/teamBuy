@@ -146,6 +146,17 @@ class Settings:
         "WECHAT_MINIAPP_SUBSCRIBE_FIELD_KEYS",
         '{"messageName":"thing13","customerName":"thing16","projectName":"thing14","messageContent":"thing3","reminderTime":"time11"}',
     )
+    wechat_miniapp_mutual_help_subscribe_template_id: str = env_value(
+        "WECHAT_MINIAPP_MUTUAL_HELP_SUBSCRIBE_TEMPLATE_ID", ""
+    )
+    wechat_miniapp_mutual_help_subscribe_page: str = env_value(
+        "WECHAT_MINIAPP_MUTUAL_HELP_SUBSCRIBE_PAGE",
+        "/subpackages/my-tools-mutual-help/task-manage/index",
+    )
+    wechat_miniapp_mutual_help_subscribe_field_keys_json: str = env_value(
+        "WECHAT_MINIAPP_MUTUAL_HELP_SUBSCRIBE_FIELD_KEYS",
+        '{"taskName":"thing1","taskProgress":"phrase2","updateTime":"time3","executor":"thing4","initiator":"thing5"}',
+    )
     wechat_pay_enabled: bool = env_value("WECHAT_PAY_ENABLED", "false").lower() in {"1", "true", "yes"}
     wechat_pay_mch_id: str = env_value("WECHAT_PAY_MCH_ID", "")
     wechat_pay_api_v3_key: str = env_value("WECHAT_PAY_API_V3_KEY", "")
@@ -233,9 +244,10 @@ class Settings:
             if key and isinstance(url, str) and url.startswith(("http://", "https://"))
         }
 
-    def wechat_miniapp_subscribe_field_keys(self) -> dict[str, str]:
+    @staticmethod
+    def _parse_subscribe_field_keys(value_json: str) -> dict[str, str]:
         try:
-            value = json.loads(self.wechat_miniapp_subscribe_field_keys_json or "{}")
+            value = json.loads(value_json or "{}")
         except json.JSONDecodeError:
             return {}
         if not isinstance(value, dict):
@@ -245,6 +257,12 @@ class Settings:
             for key, field in value.items()
             if str(key) and isinstance(field, str) and field.strip()
         }
+
+    def wechat_miniapp_subscribe_field_keys(self) -> dict[str, str]:
+        return self._parse_subscribe_field_keys(self.wechat_miniapp_subscribe_field_keys_json)
+
+    def wechat_miniapp_mutual_help_subscribe_field_keys(self) -> dict[str, str]:
+        return self._parse_subscribe_field_keys(self.wechat_miniapp_mutual_help_subscribe_field_keys_json)
 
 
 settings = Settings()

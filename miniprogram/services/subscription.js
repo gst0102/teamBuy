@@ -75,11 +75,12 @@ function isAcceptedStatus(status) {
   return status === "accept" || status === "acceptWithAudio";
 }
 
-async function recordPendingAuthorization(user, templateId, pending) {
+async function recordPendingAuthorization(user, templateId, pending, purpose) {
   try {
     const response = await api.recordNotificationSubscription({
       userId: user.id,
       templateId,
+      purpose,
       status: pending.status,
       source: pending.source || "share",
       requestId: pending.requestId
@@ -97,6 +98,11 @@ async function recordPendingAuthorization(user, templateId, pending) {
     writePending(user.id, templateId, pending);
     return { ok: false, accepted: false, status: pending.status, reason: "record_failed" };
   }
+}
+
+function templateConfigForPurpose(config, purpose) {
+  if (purpose === "mutual_help_task") return (config && config.mutualHelp) || {};
+  return config || {};
 }
 
 function preloadViewNotificationSubscriptionConfig(userId) {
@@ -119,22 +125,24 @@ function preloadViewNotificationSubscriptionConfig(userId) {
   return promise;
 }
 
-function requestViewNotificationSubscription(source = "share") {
+function requestNotificationSubscription(source = "share", purpose = "customer") {
   const user = currentUser();
   if (!user || !user.id || typeof wx.requestSubscribeMessage !== "function") {
     return Promise.resolve({ accepted: false, reason: "not_available" });
   }
-  if (inFlightByUser[user.id]) return inFlightByUser[user.id];
+  const inFlightKey = `${user.id}:${purpose}`;
+  if (inFlightByUser[inFlightKey]) return inFlightByUser[inFlightKey];
   const promise = (async () => {
     // The send action must wait for the server-side feature/template config;
     // preload is intentionally not a prerequisite for tapping "send".
     const config = await preloadViewNotificationSubscriptionConfig(user.id);
-    const templateId = String(config && config.enabled ? config.templateId || "" : "").trim();
+    const templateConfig = templateConfigForPurpose(config, purpose);
+    const templateId = String(templateConfig && templateConfig.enabled ? templateConfig.templateId || "" : "").trim();
     if (!templateId) return { accepted: false, reason: "not_available" };
 
     const pending = readPending(user.id, templateId);
     if (pending) {
-      const recorded = await recordPendingAuthorization(user, templateId, pending);
+      const recorded = await recordPendingAuthorization(user, templateId, pending, purpose);
       if (recorded.ok) return recorded;
       return { ...recorded, status: pending.status };
     }
@@ -149,7 +157,7 @@ function requestViewNotificationSubscription(source = "share") {
         success(result = {}) {
           const status = result[templateId] || "reject";
           const pendingAuthorization = { requestId, status, source };
-          recordPendingAuthorization(user, templateId, pendingAuthorization).then((recorded) => {
+          recordPendingAuthorization(user, templateId, pendingAuthorization, purpose).then((recorded) => {
             resolve(recorded.ok ? recorded : { ...recorded, status });
           });
         },
@@ -160,13 +168,22 @@ function requestViewNotificationSubscription(source = "share") {
       });
     });
   })().finally(() => {
-    delete inFlightByUser[user.id];
+    delete inFlightByUser[inFlightKey];
   });
-  inFlightByUser[user.id] = promise;
+  inFlightByUser[inFlightKey] = promise;
   return promise;
+}
+
+function requestViewNotificationSubscription(source = "share") {
+  return requestNotificationSubscription(source, "customer");
+}
+
+function requestMutualHelpNotificationSubscription(source = "mutual_help_task") {
+  return requestNotificationSubscription(source, "mutual_help_task");
 }
 
 module.exports = {
   requestViewNotificationSubscription,
+  requestMutualHelpNotificationSubscription,
   preloadViewNotificationSubscriptionConfig
 };

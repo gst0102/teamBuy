@@ -1827,15 +1827,27 @@ class AppService:
             for item in state.membership_entitlements
         )
 
+    @staticmethod
+    def _mutual_help_notification_config() -> dict:
+        template_id = settings.wechat_miniapp_mutual_help_subscribe_template_id
+        field_keys = settings.wechat_miniapp_mutual_help_subscribe_field_keys()
+        return {
+            "enabled": bool(template_id and field_keys),
+            "templateId": template_id,
+            "page": settings.wechat_miniapp_mutual_help_subscribe_page,
+        }
+
     def get_notification_config(self, user_id: str) -> dict:
         if not self.repo.get_user(user_id):
             raise HTTPException(status_code=404, detail="用户不存在")
+        mutual_help_config = self._mutual_help_notification_config()
         if not self.customer_info_chain_enabled():
             return {
                 "enabled": False,
                 "featureEnabled": False,
                 "templateId": settings.wechat_miniapp_subscribe_template_id,
                 "page": settings.wechat_miniapp_subscribe_page,
+                "mutualHelp": mutual_help_config,
                 "member": False,
                 "preferences": {
                     "importantCustomerViewEnabled": False,
@@ -1850,6 +1862,7 @@ class AppService:
             "featureEnabled": True,
             "templateId": settings.wechat_miniapp_subscribe_template_id,
             "page": settings.wechat_miniapp_subscribe_page,
+            "mutualHelp": mutual_help_config,
             "member": member,
             "preferences": self._notification_preference_payload(preference, member),
         }
@@ -1886,12 +1899,30 @@ class AppService:
         self.repo.save_notification_preference(preference)
         return self._notification_preference_payload(preference, self._is_paid_customer_member(user_id))
 
-    def record_notification_subscription(self, user_id: str, template_id: str, status_value: str, source: str, request_id: str | None = None) -> dict:
+    def record_notification_subscription(
+        self,
+        user_id: str,
+        template_id: str,
+        status_value: str,
+        source: str,
+        request_id: str | None = None,
+        purpose: str = "customer",
+    ) -> dict:
         if not self.repo.get_user(user_id):
             raise HTTPException(status_code=404, detail="用户不存在")
-        self.require_customer_info_chain_enabled()
-        expected_template_id = settings.wechat_miniapp_subscribe_template_id
-        if not expected_template_id or template_id != expected_template_id:
+        normalized_purpose = str(purpose or "customer").strip() or "customer"
+        if normalized_purpose == "customer":
+            self.require_customer_info_chain_enabled()
+            expected_template_id = settings.wechat_miniapp_subscribe_template_id
+            field_keys = settings.wechat_miniapp_subscribe_field_keys()
+        elif normalized_purpose == "mutual_help_task":
+            expected_template_id = settings.wechat_miniapp_mutual_help_subscribe_template_id
+            field_keys = settings.wechat_miniapp_mutual_help_subscribe_field_keys()
+        else:
+            raise HTTPException(status_code=400, detail="订阅消息用途无效")
+        if not expected_template_id or not field_keys:
+            raise HTTPException(status_code=400, detail="订阅模板未配置")
+        if template_id != expected_template_id:
             raise HTTPException(status_code=400, detail="订阅模板不匹配")
         normalized_status = str(status_value or "").strip()
         if normalized_status not in SUBSCRIBE_ACCEPT_STATUSES and normalized_status not in {"reject", "ban"}:

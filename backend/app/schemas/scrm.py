@@ -103,6 +103,7 @@ class NotificationSubscriptionRequest(BaseModel):
     status: str
     source: str = "share"
     requestId: str | None = None
+    purpose: str = "customer"
 
 
 class NotificationPreferenceRequest(BaseModel):
