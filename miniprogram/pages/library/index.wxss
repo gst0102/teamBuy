@@ -886,15 +886,6 @@
   font-size: 24rpx;
 }
 
-.share-image-canvas {
-  position: fixed;
-  left: -9999rpx;
-  top: -9999rpx;
-  width: 750rpx;
-  height: 1800rpx;
-  pointer-events: none;
-}
-
 .library-load-more {
   padding: 24rpx 0 150rpx;
   color: #8a94a6;
@@ -2136,3 +2127,63 @@
 .bind-guide-secondary { background:#edf5ff; color:#1677ff; }
 .bind-guide-primary::after,.bind-guide-secondary::after { border:0; }
 .bind-guide-foot { margin-top:18rpx; color:#98a2b3; font-size:21rpx; line-height:1.45; text-align:center; }
+
+/* 2026-09 bottom-tab typography: keep search dense, but make content readable at a glance. */
+.library-page .library-mode { font-size: 31rpx; }
+.library-page .library-search-input { font-size: 28rpx; }
+.library-page .library-filter-trigger-label { font-size: 22rpx; }
+.library-page .library-sales-chip { font-size: 26rpx; }
+.library-page .library-entry-filter { font-size: 24rpx; }
+.library-page .library-section-title { font-size: 34rpx; }
+.library-page .library-section-meta { font-size: 24rpx; }
+.library-page .library-resource-card { grid-template-columns: 150rpx minmax(0, 1fr) 120rpx; }
+.library-page .library-resource-title { font-size: 29rpx; }
+.library-page .library-card-identity { font-size: 24rpx; }
+.library-page .library-card-headline { font-size: 23rpx; }
+.library-page .library-resource-tag { font-size: 20rpx; }
+.library-page .library-resource-meta { font-size: 22rpx; }
+.library-page .library-resource-signal { font-size: 21rpx; }
+.library-page .library-send-button {
+  height: 68rpx;
+  padding: 0;
+  font-size: 23rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.library-page .library-more-button { font-size: 28rpx; }
+.library-page .library-fixed-primary,
+.library-page .library-fixed-secondary { height: 76rpx; font-size: 27rpx; }
+.library-page .library-filter-empty-title { font-size: 31rpx; }
+.library-page .library-filter-empty-sub { font-size: 24rpx; }
+.library-page .library-filter-empty-reset { font-size: 25rpx; }
+.library-page .library-loading-state,
+.library-page .library-load-error { font-size: 24rpx; }
+.library-page .library-load-error-title { font-size: 31rpx; }
+.library-page .library-load-error-sub { font-size: 24rpx; }
+.library-page .library-retry-button { font-size: 25rpx; }
+.library-page .library-first-title { font-size: 36rpx; }
+.library-page .library-first-sub { font-size: 24rpx; }
+.library-page .library-first-cta { font-size: 28rpx; }
+.library-page .library-assistant-title { font-size: 28rpx; }
+.library-page .library-assistant-desc { font-size: 23rpx; }
+.library-page .collection-empty-title { font-size: 26rpx; }
+.library-page .collection-empty-desc { font-size: 22rpx; }
+.library-page .library-filter-sheet-head { font-size: 36rpx; }
+.library-page .library-filter-sheet-sub { font-size: 24rpx; }
+.library-page .library-filter-current-label { font-size: 27rpx; }
+.library-page .library-filter-current-value { font-size: 24rpx; }
+.library-page .library-filter-label { font-size: 27rpx; }
+.library-page .library-filter-chip { font-size: 25rpx; }
+.library-page .library-filter-tag-search input { font-size: 25rpx; }
+.library-page .library-filter-all-tags { font-size: 24rpx; }
+.library-page .library-filter-reset,
+.library-page .library-filter-apply { font-size: 26rpx; }
+.library-page .bind-guide-kicker { font-size: 24rpx; }
+.library-page .bind-guide-title { font-size: 36rpx; }
+.library-page .bind-guide-code-label { font-size: 23rpx; }
+.library-page .bind-guide-code-text { font-size: 30rpx; }
+.library-page .bind-guide-step-title { font-size: 28rpx; }
+.library-page .bind-guide-step-desc { font-size: 24rpx; }
+.library-page .bind-guide-primary,
+.library-page .bind-guide-secondary { font-size: 27rpx; }
+.library-page .bind-guide-foot { font-size: 23rpx; }

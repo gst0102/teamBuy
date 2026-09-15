@@ -1,7 +1,7 @@
 <view class="custom-nav theme-{{theme}}" style="padding-top: {{nav.top}}; height: {{nav.navHeight}};">
   <view class="custom-nav__row" style="height: {{nav.height}};">
     <view class="custom-nav__side" style="width: {{nav.sideWidth}};">
-      <view wx:if="{{showBack && canGoBack}}" class="custom-nav__back" bindtap="handleBack">
+      <view wx:if="{{showBack && (canGoBack || fallbackUrl)}}" class="custom-nav__back" bindtap="handleBack">
         <view class="custom-nav__back-icon"></view>
       </view>
     </view>

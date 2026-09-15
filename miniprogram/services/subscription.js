@@ -102,6 +102,7 @@ async function recordPendingAuthorization(user, templateId, pending, purpose) {
 
 function templateConfigForPurpose(config, purpose) {
   if (purpose === "mutual_help_task") return (config && config.mutualHelp) || {};
+  if (purpose === "live_qr_expiry") return (config && config.liveQr) || {};
   return config || {};
 }
 
@@ -182,8 +183,13 @@ function requestMutualHelpNotificationSubscription(source = "mutual_help_task") 
   return requestNotificationSubscription(source, "mutual_help_task");
 }
 
+function requestLiveQrExpiryNotificationSubscription(source = "live_qr_expiry") {
+  return requestNotificationSubscription(source, "live_qr_expiry");
+}
+
 module.exports = {
   requestViewNotificationSubscription,
   requestMutualHelpNotificationSubscription,
+  requestLiveQrExpiryNotificationSubscription,
   preloadViewNotificationSubscriptionConfig
 };

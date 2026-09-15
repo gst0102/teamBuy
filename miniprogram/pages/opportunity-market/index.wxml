@@ -50,23 +50,42 @@
     </view>
   </view>
 
-  <view wx:for="{{cards}}" wx:key="id" class="market-card {{item.type}}">
-    <view class="card-head">
-      <view class="badge">{{item.badge}}</view>
-      <view class="time">{{item.timeText}}</view>
+  <view wx:if="{{loading && !cards.length}}" class="empty-state loading-state">
+    <view>正在读取供需信息</view>
+    <view class="empty-sub">真实商机加载完成后会显示在这里。</view>
+  </view>
+  <view wx:elif="{{loadError && !cards.length}}" class="empty-state retry-state" bindtap="loadMarket">
+    <view>供需信息暂时无法读取</view>
+    <view class="empty-sub">网络恢复后点击重试，不会展示虚构商机。</view>
+    <button>重新加载</button>
+  </view>
+  <view wx:if="{{loading && cards.length}}" class="inline-loading">正在更新供需结果…</view>
+  <block wx:if="{{cards.length}}">
+    <view wx:for="{{cards}}" wx:key="id" class="market-card {{item.type}}">
+      <view class="card-head">
+        <view class="badge">{{item.badge}}</view>
+        <view class="time">{{item.timeText}}</view>
+      </view>
+      <view class="card-title">{{item.title}}</view>
+      <view class="card-summary">{{item.summary}}</view>
+      <view class="field-grid">
+        <view><text>城市</text><strong>{{item.city}}</strong></view>
+        <view><text>行业</text><strong>{{item.industry}}</strong></view>
+        <view><text>类型</text><strong>{{item.demandType}}</strong></view>
+        <view><text>联系</text><strong>{{item.contactStatus}}</strong></view>
+      </view>
+      <view class="card-actions">
+        <button class="primary" data-id="{{item.id}}" bindtap="handleOpenDetail">查看详情</button>
+        <button class="secondary" data-id="{{item.id}}" catchtap="handleSave">保存</button>
+      </view>
     </view>
-    <view class="card-title">{{item.title}}</view>
-    <view class="card-summary">{{item.summary}}</view>
-    <view class="field-grid">
-      <view><text>城市</text><strong>{{item.city}}</strong></view>
-      <view><text>行业</text><strong>{{item.industry}}</strong></view>
-      <view><text>类型</text><strong>{{item.demandType}}</strong></view>
-      <view><text>联系</text><strong>{{item.contactStatus}}</strong></view>
-    </view>
-    <view class="card-actions">
-      <button class="primary" data-id="{{item.id}}" bindtap="handleOpenDetail">查看详情</button>
-      <button class="secondary" data-id="{{item.id}}" catchtap="handleSave">保存</button>
-    </view>
+    <view wx:if="{{loadingMore}}" class="load-more">正在加载更多…</view>
+    <view wx:elif="{{!hasMore && cards.length}}" class="load-more">已经看到这里了</view>
+    <view wx:if="{{loadError && cards.length}}" class="inline-load-error" bindtap="loadMarket">最新结果读取失败，点击重试</view>
+  </block>
+  <view wx:if="{{!loading && !loadError && !cards.length}}" class="empty-state">
+    <view>暂时没有匹配的真实商机</view>
+    <view class="empty-sub">换个筛选条件试试，或先完善自己的合作名片。</view>
   </view>
 <canvas canvas-id="shareCardCanvas" class="share-card-canvas"></canvas>
 </view>

@@ -150,3 +150,16 @@
 button::after {
   border: 0;
 }
+/* Typography scale v2: keep published demand status and applications readable. */
+.my-publish-page .hero-kicker { font-size: 24rpx; }
+.my-publish-page .hero-title { font-size: 40rpx; }
+.my-publish-page .hero-sub { font-size: 26rpx; }
+.my-publish-page .card-title { font-size: 29rpx; }
+.my-publish-page .card-summary { font-size: 25rpx; }
+.my-publish-page .status-pill,
+.my-publish-page .type-pill { font-size: 21rpx; }
+.my-publish-page .meta-row { font-size: 23rpx; }
+.my-publish-page .actions button { display: flex; align-items: center; justify-content: center; min-height: 68rpx; font-size: 25rpx; }
+.my-publish-page .section-title { font-size: 30rpx; }
+.my-publish-page .section-sub { font-size: 23rpx; }
+.my-publish-page .application-card { font-size: 25rpx; }

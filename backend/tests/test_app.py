@@ -22,12 +22,14 @@ from zipfile import ZipFile, ZIP_DEFLATED
 class FakeSyncTask:
     def __init__(self):
         self.id = "sync_task_test"
+        self.status = "queued"
+        self.result = None
 
     def model_dump(self):
         return {
             "id": self.id,
             "name": "wecom-callback-real-sync",
-            "status": "queued",
+            "status": self.status,
             "createdAt": "2026-06-08T10:00:00+08:00",
             "updatedAt": "2026-06-08T10:00:00+08:00",
             "result": None,
@@ -45,6 +47,10 @@ class FakeSyncTaskQueue:
     def enqueue(self, name, payload=None, max_attempts=3):
         self.enqueued.append((name, payload, max_attempts))
         return FakeSyncTask()
+
+    def enqueue_once(self, name, payload, *, idempotency_key, max_attempts=3):
+        self.enqueued.append((name, payload, idempotency_key, max_attempts))
+        return FakeSyncTask(), True
 
     def list_recent(self):
         return [FakeSyncTask()]
@@ -2455,6 +2461,161 @@ def test_business_card_summary_is_lightweight_and_returns_latest_card(client):
     assert older["id"] != newer["id"]
 
 
+def test_business_opportunity_card_list_detail_and_one_point_unlock(client, monkeypatch):
+    owner = client.post(
+        "/api/auth/mock-login",
+        json={
+            "nickname": "跨境顾问",
+            "openid": "openid_business_opportunity_owner",
+            "phone": "13800138000",
+            "wechat": "cross_border_wx",
+            "avatarUrl": "https://cdn.example.test/opportunity-avatar.png",
+        },
+    ).json()["data"]
+    viewer = client.post(
+        "/api/auth/mock-login",
+        json={"nickname": "合作查看者", "openid": "openid_business_opportunity_viewer"},
+    ).json()["data"]
+    service = client.app.dependency_overrides[get_app_service]()
+    now = now_iso()
+    service.repo.save_user_note(
+        UserNote(
+            id="note_business_opportunity_1",
+            ownerUserId=owner["id"],
+            status="active",
+            shareState="published",
+            title="跨境顾问电子名片",
+            summary="帮助品牌拓展海外渠道。",
+            body="熟悉跨境业务与海外仓协同。",
+            visibilityConfig={
+                "cardType": "business_card",
+                "structuredData": {
+                    "name": "跨境顾问",
+                    "title": "外贸顾问",
+                    "company": "远航贸易",
+                    "city": "深圳",
+                    "headline": "帮助品牌拓展海外渠道",
+                    "serviceKeywords": ["海外市场", "跨境电商"],
+                    "industry": "外贸",
+                    "subIndustry": "跨境电商",
+                    "industryTags": ["B2B", "海外仓"],
+                    "cooperationIntent": {"direction": "我正在找合作", "text": "寻找华东地区物流合作伙伴"},
+                },
+                "businessOpportunity": {
+                    "enabled": True,
+                    "discoverable": True,
+                    "industry": "外贸",
+                    "subIndustry": "跨境电商",
+                    "industryTags": ["B2B", "海外仓"],
+                    "cooperationIntent": {"direction": "我正在找合作", "text": "寻找华东地区物流合作伙伴"},
+                },
+                "conversionConfig": {"showContactPhone": True, "enablePrivateConsultation": True},
+            },
+            createdAt=now,
+            updatedAt=now,
+        )
+    )
+
+    listing = client.get(
+        "/api/business-opportunities/cards",
+        params={"mode": "intent", "industry": "外贸", "subIndustry": "跨境电商"},
+    )
+    assert listing.status_code == 200
+    assert listing.json()["data"]["items"][0]["id"] == "note_business_opportunity_1"
+    assert listing.json()["data"]["items"][0]["cooperationIntent"]["text"] == "寻找华东地区物流合作伙伴"
+    assert "phone" not in json.dumps(listing.json()["data"], ensure_ascii=False)
+
+    detail = client.get(
+        "/api/business-opportunities/cards/note_business_opportunity_1",
+        params={"viewerUserId": viewer["id"]},
+    )
+    assert detail.status_code == 200
+    assert detail.json()["data"]["contactLocked"] is True
+    assert detail.json()["data"]["contacts"] == []
+
+    first_unlock = client.post(
+        "/api/business-opportunities/cards/note_business_opportunity_1/unlock",
+        json={"userId": viewer["id"]},
+    )
+    second_unlock = client.post(
+        "/api/business-opportunities/cards/note_business_opportunity_1/unlock",
+        json={"userId": viewer["id"]},
+    )
+    assert first_unlock.status_code == 200
+    assert first_unlock.json()["data"]["charged"] is True
+    assert first_unlock.json()["data"]["card"]["contacts"][0]["contactValue"] == "13800138000"
+    assert second_unlock.status_code == 200
+    assert second_unlock.json()["data"]["duplicate"] is True
+    assert second_unlock.json()["data"]["wallet"]["balance"] == 99
+
+    owner_detail = client.get(
+        "/api/business-opportunities/cards/note_business_opportunity_1",
+        params={"viewerUserId": owner["id"]},
+    )
+    assert owner_detail.status_code == 200
+    assert owner_detail.json()["data"]["isMine"] is True
+    assert owner_detail.json()["data"]["contacts"][0]["contactValue"] == "13800138000"
+
+    poor_viewer = client.post(
+        "/api/auth/mock-login",
+        json={"nickname": "积分不足用户", "openid": "openid_business_opportunity_poor"},
+    ).json()["data"]
+    poor_wallet = service._ensure_resource_wallet(poor_viewer["id"])
+    poor_wallet.balance = 0
+    service.repo.save_resource_wallet(poor_wallet)
+    insufficient = client.post(
+        "/api/business-opportunities/cards/note_business_opportunity_1/unlock",
+        json={"userId": poor_viewer["id"]},
+    )
+    assert insufficient.status_code == 402
+    assert insufficient.json()["detail"] == "积分余额不足"
+
+    # Production GETs may be public, but the optional viewer id must come from
+    # the verified session rather than a forged query parameter.
+    monkeypatch.setattr(settings, "app_env", "production")
+    anonymous_forged_view = client.get(
+        "/api/business-opportunities/cards/note_business_opportunity_1",
+        params={"viewerUserId": owner["id"]},
+    )
+    assert anonymous_forged_view.status_code == 200
+    assert anonymous_forged_view.json()["data"]["isMine"] is False
+    assert anonymous_forged_view.json()["data"]["contacts"] == []
+
+    forged_owner_view = client.get(
+        "/api/business-opportunities/cards/note_business_opportunity_1",
+        params={"viewerUserId": owner["id"]},
+        headers={"Authorization": f"Bearer {viewer['authToken']}"},
+    )
+    assert forged_owner_view.status_code == 200
+    assert forged_owner_view.json()["data"]["isMine"] is False
+    # The forged query is ignored; the verified viewer identity is used. That
+    # viewer has already paid for this card, so the active unlock is reusable.
+    assert forged_owner_view.json()["data"]["contacts"][0]["contactValue"] == "13800138000"
+
+    owner_session_view = client.get(
+        "/api/business-opportunities/cards/note_business_opportunity_1",
+        params={"viewerUserId": viewer["id"]},
+        headers={"Authorization": f"Bearer {owner['authToken']}"},
+    )
+    assert owner_session_view.status_code == 200
+    assert owner_session_view.json()["data"]["isMine"] is True
+    assert owner_session_view.json()["data"]["contacts"][0]["contactValue"] == "13800138000"
+
+    forged_unlock = client.post(
+        "/api/business-opportunities/cards/note_business_opportunity_1/unlock",
+        json={"userId": owner["id"]},
+        headers={"Authorization": f"Bearer {viewer['authToken']}"},
+    )
+    assert forged_unlock.status_code == 403
+
+    expired_intent = service._business_card_intent(
+        {"cooperationIntent": {"text": "过期合作意向", "expiresAt": "2020-01-01T00:00:00+08:00"}},
+        {},
+    )
+    assert expired_intent["active"] is False
+    assert expired_intent["expired"] is True
+
+
 def test_service_offer_customer_actions_project_to_leads(client):
     owner = client.post("/api/auth/mock-login", json={"nickname": "服务顾问", "openid": "openid_service_owner"}).json()["data"]
     activate_customer_intelligence(client, owner["id"], "service_offer")
@@ -4010,6 +4171,38 @@ def test_wecom_sync_task_logs_lists_background_queue_logs(client):
 
     assert response.status_code == 200
     assert response.json()["data"] == []
+
+
+def test_automation_completion_accepts_unverified_and_queues_idempotently(client, monkeypatch):
+    monkeypatch.setattr(settings, "automation_device_token", "device-token")
+    fake_queue = FakeSyncTaskQueue()
+    client.app.dependency_overrides[get_sync_task_queue] = lambda: fake_queue
+
+    response = client.post(
+        "/api/automation/runs/complete",
+        headers={"X-Automation-Device-Token": "device-token"},
+        json={
+            "deviceId": "android-01",
+            "runId": "run-unverified-001",
+            "status": "unverified",
+            "batchNo": 1,
+            "groupCodes": ["c1001"],
+            "accounts": [],
+            "scanSummary": {},
+            "queueSummary": {},
+            "forwardSummary": {},
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()["data"]
+    assert payload["status"] == "unverified"
+    assert payload["email"]["queued"] is True
+    assert payload["email"]["sent"] is None
+    assert fake_queue.enqueued[0][0] == "automation-completion-email"
+    assert fake_queue.enqueued[0][1]["report"]["status"] == "unverified"
+    assert fake_queue.enqueued[0][2] == "automation-completion-email:android-01:run-unverified-001"
+    assert fake_queue.enqueued[0][3] == 5
 
 
 def test_wecom_config_check_reports_missing_real_fields(client, monkeypatch):
@@ -7432,6 +7625,11 @@ def test_sales_profile_is_public_source_and_conversion_can_hide_contact(client):
         "/api/notes/manual-draft",
         json={"ownerUserId": login["id"], "cardType": "business_card", "inputMode": "blank", "rawText": ""},
     ).json()["data"]
+    private_preview = client.get(f"/api/notes/{note['id']}", params={"ownerUserId": login["id"]})
+    assert private_preview.status_code == 200
+    assert private_preview.json()["data"]["ownerProfile"]["phone"] == "13900002222"
+    assert private_preview.json()["data"]["ownerProfile"]["wechat"] == "wx_consultant"
+    assert private_preview.json()["data"]["ownerProfile"]["email"] == "hello@example.com"
     hidden = client.put(
         f"/api/notes/{note['id']}",
         json={
@@ -7462,6 +7660,17 @@ def test_business_card_public_page_exposes_only_owned_featured_resources_and_rec
         "/api/notes/manual-draft",
         json={"ownerUserId": other["id"], "cardType": "text_note", "inputMode": "blank", "title": "别人的资料"},
     ).json()["data"]
+    own_note_update = client.put(
+        f"/api/notes/{own_note['id']}",
+        json={
+            "ownerUserId": owner["id"], "title": "我的精选资料", "summary": "图片与PDF资料", "body": "公开资料",
+            "media": [
+                {"id": "featured-image", "type": "image", "url": "https://cdn.example.test/featured.jpg", "name": "案例图片"},
+                {"id": "featured-pdf", "type": "pdf", "url": "https://cdn.example.test/brief.pdf", "name": "合作说明 PDF", "mimeType": "application/pdf"},
+            ],
+        },
+    )
+    assert own_note_update.status_code == 200
     card = client.post(
         "/api/notes/manual-draft",
         json={"ownerUserId": owner["id"], "cardType": "business_card", "inputMode": "blank"},
@@ -7482,6 +7691,8 @@ def test_business_card_public_page_exposes_only_owned_featured_resources_and_rec
     assert client.post(f"/api/notes/{card['id']}/publish", json={"ownerUserId": owner["id"]}).status_code == 200
     public = client.get(f"/api/notes/public/{card['id']}").json()["data"]
     assert [item["id"] for item in public["featuredResources"]] == [own_note["id"]]
+    assert [item["type"] for item in public["featuredResources"][0]["media"]] == ["image", "pdf"]
+    assert public["featuredResources"][0]["media"][1]["mimeType"] == "application/pdf"
     interaction = client.post(
         f"/api/notes/{card['id']}/events",
         json={"eventType": "featured_note_open", "anonymousId": "anon_featured", "sessionId": "featured-session", "metadata": {"featuredNoteId": own_note["id"]}},

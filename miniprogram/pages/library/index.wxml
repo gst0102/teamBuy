@@ -193,5 +193,4 @@
     </view>
   </view>
 
-  <canvas canvas-id="libraryShareCanvas" class="share-image-canvas"></canvas>
 </view>

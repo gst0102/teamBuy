@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import timedelta
 
 from app.api.dependencies import get_app_service, get_sync_task_queue
 from app.core.config import settings
-from app.models.domain import UserNote, WechatSubscriptionGrant
+from app.models.domain import LiveQrCode, UserNote, WechatSubscriptionGrant
 from app.schemas.cards import RecordViewRequest
-from app.services.time_utils import now_iso
+from app.services.time_utils import now_iso, parse_iso
 from app.services.wechat_miniapp_client import WechatMiniappClientError
 
 
@@ -136,6 +137,105 @@ def test_mutual_help_subscription_uses_separate_template_and_does_not_require_cu
     assert accepted.status_code == 200
     grant = service.repo.get_wechat_subscription_grant(accepted.json()["data"]["grant"]["id"])
     assert grant and grant.templateId == mutual_template_id
+
+
+def test_live_qr_expiry_subscription_is_separate_and_queues_once(client, monkeypatch):
+    live_template_id = "N1kBsCXhW0w4DYMDnNjjrD8mYqx68yj8pRQBzSDY1Kg"
+    monkeypatch.setattr(settings, "wechat_miniapp_live_qr_subscribe_template_id", live_template_id)
+    monkeypatch.setattr(
+        settings,
+        "wechat_miniapp_live_qr_subscribe_field_keys_json",
+        '{"serviceName":"thing1","expiresAt":"time2","warmTip":"thing3","cloudId":"thing4"}',
+    )
+    owner = login(client, "openid_live_qr_subscription", "活码提醒用户")
+    service = client.app.dependency_overrides[get_app_service]()
+    now = now_iso()
+    live = LiveQrCode(
+        id="live_qr_subscription_test",
+        code="qr_subscription_test",
+        ownerUserId=owner["id"],
+        name="微信群活码 1",
+        targetUrl="https://example.com/group",
+        targetExpiresAt=(parse_iso(now) + timedelta(days=1)).isoformat(),
+        targetUpdatedAt=now,
+        createdAt=now,
+        updatedAt=now,
+    )
+    service.repo.save_live_qr_code(live)
+    accepted = client.post(
+        "/api/scrm/notification-subscriptions",
+        json={
+            "userId": owner["id"],
+            "templateId": live_template_id,
+            "purpose": "live_qr_expiry",
+            "status": "accept",
+            "requestId": "live-qr-subscription-request",
+        },
+    )
+    assert accepted.status_code == 200
+    queue = client.app.dependency_overrides[get_sync_task_queue]()
+    assert service.queue_live_qr_expiry_notifications(queue)["queued"] == 1
+    delivery = service.repo.list_wechat_subscription_deliveries(owner["id"])[0]
+    assert delivery.notificationType == "live_qr_expiry"
+    assert delivery.resourceType == "live_qr"
+    assert delivery.templateId == live_template_id
+    assert service.queue_live_qr_expiry_notifications(queue)["queued"] == 0
+
+
+def test_live_qr_expiry_delivery_is_not_blocked_by_customer_chain(client, monkeypatch):
+    live_template_id = "N1kBsCXhW0w4DYMDnNjjrD8mYqx68yj8pRQBzSDY1Kg"
+    monkeypatch.setattr(settings, "wechat_miniapp_live_qr_subscribe_template_id", live_template_id)
+    monkeypatch.setattr(
+        settings,
+        "wechat_miniapp_live_qr_subscribe_field_keys_json",
+        '{"serviceName":"thing1","expiresAt":"time2","warmTip":"thing3","cloudId":"thing4"}',
+    )
+    owner = login(client, "openid_live_qr_delivery", "活码发送用户")
+    service = client.app.dependency_overrides[get_app_service]()
+    monkeypatch.setattr(service, "customer_info_chain_enabled", lambda: False)
+    now = now_iso()
+    live = LiveQrCode(
+        id="live_qr_delivery_test",
+        code="qr_delivery_test",
+        ownerUserId=owner["id"],
+        name="微信群活码 2",
+        targetUrl="https://example.com/group-2",
+        targetExpiresAt=(parse_iso(now) + timedelta(days=1)).isoformat(),
+        targetUpdatedAt=now,
+        createdAt=now,
+        updatedAt=now,
+    )
+    service.repo.save_live_qr_code(live)
+    accepted = client.post(
+        "/api/scrm/notification-subscriptions",
+        json={
+            "userId": owner["id"],
+            "templateId": live_template_id,
+            "purpose": "live_qr_expiry",
+            "status": "accept",
+            "requestId": "live-qr-delivery-request",
+        },
+    )
+    assert accepted.status_code == 200
+    queue = client.app.dependency_overrides[get_sync_task_queue]()
+    service.queue_live_qr_expiry_notifications(queue)
+    delivery = service.repo.list_wechat_subscription_deliveries(owner["id"])[0]
+
+    class FakeWechatClient:
+        def is_configured(self):
+            return True
+
+        async def send_subscribe_message(self, **kwargs):
+            assert kwargs["template_id"] == live_template_id
+            assert kwargs["page"] == f"/pages/group-resource-library/index?tab=live-qr&qrId={live.id}"
+            assert kwargs["data"]["thing1"]["value"] == "我的活码"
+            return {"errcode": 0}
+
+    service.wechat_miniapp_client = FakeWechatClient()
+    result = asyncio.run(service.send_wechat_subscription_task({"deliveryId": delivery.id}))
+    assert result["syncStatus"] == "success"
+    assert service.repo.get_wechat_subscription_delivery(delivery.id).status == "sent"
+    assert service.repo.get_wechat_subscription_grant(delivery.grantId).status == "consumed"
 
 
 def test_production_public_view_ignores_spoofed_viewer_identity_and_queues_anonymous_notification(client, monkeypatch):

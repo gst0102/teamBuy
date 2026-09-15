@@ -124,3 +124,12 @@
   color: #94a3b8;
   text-align: center;
 }
+/* Typography scale v2: make the message inbox scannable. */
+.page .summary > view > text:first-child { font-size: 36rpx; }
+.page .summary > view > text:last-child { font-size: 23rpx; }
+.page .empty { font-size: 25rpx; }
+.page .thread-card .title { font-size: 27rpx; }
+.page .thread-card .time { font-size: 22rpx; }
+.page .thread-card .subtitle,
+.page .thread-card .last { font-size: 24rpx; }
+.page .unread { font-size: 20rpx; }

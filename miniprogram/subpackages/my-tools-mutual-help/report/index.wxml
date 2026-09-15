@@ -1,0 +1,34 @@
+<view class="mutual-page report-page theme-{{theme}}">
+  <custom-nav title="任务报表" showBack="{{true}}" fallbackUrl="/subpackages/my-tools-mutual-help/mine/index" theme="{{theme}}" />
+
+  <view class="report-content">
+    <view class="report-intro">
+      <view class="report-eyebrow">执行记录</view>
+      <view class="report-title">我的任务报表</view>
+      <view class="report-caption">参与、验收与积分到账情况一目了然</view>
+    </view>
+
+    <view wx:if="{{errorText}}" class="report-error" bindtap="handleRetry">{{errorText}} · 点击重试</view>
+    <view wx:if="{{!errorText}}" class="report-summary-card">
+      <view class="report-summary-head"><text>累计表现</text><text class="report-summary-mark">互助记录</text></view>
+      <view class="report-summary-grid">
+        <view class="report-metric"><text>参与任务</text><strong>{{summary.participationCount || 0}}</strong></view>
+        <view class="report-metric done"><text>已完成</text><strong>{{summary.completedCount || 0}}</strong></view>
+        <view class="report-metric waiting"><text>待验收</text><strong>{{summary.pendingCount || 0}}</strong></view>
+        <view class="report-metric points"><text>已到账积分</text><strong>{{summary.earnedPoints || 0}}</strong></view>
+      </view>
+      <view wx:if="{{summary.pendingPoints}}" class="report-pending-note">另有 {{summary.pendingPoints}} 分待验收</view>
+    </view>
+
+    <view class="report-list-heading"><view class="section-heading">参与明细</view><text>{{items.length}} 条记录</text></view>
+    <view wx:if="{{loading}}" class="report-empty">正在同步你的任务记录…</view>
+    <view wx:elif="{{!items.length && !errorText}}" class="report-empty"><view class="report-empty-title">还没有任务记录</view><view>开始体验任务后，进度和积分会自动汇总在这里。</view></view>
+    <view wx:for="{{items}}" wx:key="id" class="report-item" data-task-id="{{item.taskId}}" bindtap="handleOpenTask">
+      <view class="report-item-top"><view class="report-kind">{{item.taskKind === 'miniapp' ? '小程序任务' : (item.taskKind === 'wool' ? '福利记录' : '普通任务')}}</view><view class="report-status {{item.status}}">{{item.statusLabel}}</view></view>
+      <view class="report-item-title">{{item.title}}</view>
+      <view class="report-item-bottom"><text>{{item.dateText}}</text><text wx:if="{{item.rewardText}}" class="report-reward {{item.rewardSettled ? 'settled' : ''}}">{{item.rewardText}}</text></view>
+      <view wx:if="{{item.rejectionReason}}" class="report-rejection">退回原因：{{item.rejectionReason}}</view>
+      <view class="report-chevron">查看任务 ›</view>
+    </view>
+  </view>
+</view>

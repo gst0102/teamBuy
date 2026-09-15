@@ -62,3 +62,27 @@ page { background: #f3f7fd; }
 .bottom-bar { position: fixed; z-index: 20; right: 0; bottom: 0; left: 0; display: grid; grid-template-columns: 1fr 0.82fr 1.18fr; gap: 12rpx; padding: 14rpx 22rpx calc(14rpx + env(safe-area-inset-bottom)); border-top: 1rpx solid #e5eaf1; background: rgba(255,255,255,.96); box-shadow: 0 -8rpx 24rpx rgba(32,55,90,.08); box-sizing: border-box; }
 .delete-button, .save-draft-button, .save-button { display: flex; align-items: center; justify-content: center; height: 76rpx; margin: 0; padding: 0; border-radius: 13rpx; font-size: 24rpx; font-weight: 800; line-height: 1; box-sizing: border-box; white-space: nowrap; }
 .delete-button { background: #eef3f9; color: #334155; }.save-draft-button { border: 1rpx solid #cfe0f7; background: #f4f8ff; color: #1677ff; }.save-button { background: linear-gradient(135deg,#1284ff,#0864ea); color: #fff; }.delete-button::after, .save-draft-button::after, .save-button::after { border: 0; }
+/* Typography scale v2: make service editing and contact review readable. */
+.service-editor-page .loading-state { font-size: 25rpx; }
+.service-editor-page .section-title { font-size: 32rpx; }
+.service-editor-page .preview-link { font-size: 24rpx; }
+.service-editor-page .preview-title { font-size: 34rpx; }
+.service-editor-page .preview-headline { font-size: 27rpx; }
+.service-editor-page .field-label { font-size: 26rpx; }
+.service-editor-page .service-input,
+.service-editor-page .service-textarea { font-size: 28rpx; }
+.service-editor-page .count { font-size: 22rpx; }
+.service-editor-page .contact-review-title { font-size: 28rpx; }
+.service-editor-page .contact-review-hint { font-size: 23rpx; }
+.service-editor-page .contact-review-phone { font-size: 25rpx; }
+.service-editor-page .contact-review-status { font-size: 22rpx; }
+.service-editor-page .contact-review-btn { display: flex; align-items: center; justify-content: center; min-height: 68rpx; font-size: 24rpx; }
+.service-editor-page .attachment-row { font-size: 24rpx; }
+.service-editor-page .attachment-empty { font-size: 24rpx; }
+.service-editor-page .attachment-add,
+.service-editor-page .link-form button { font-size: 25rpx; }
+.service-editor-page .radar-note { font-size: 23rpx; }
+.service-editor-page .other-card { font-size: 25rpx; }
+.service-editor-page .tappable { font-size: 24rpx; }
+.service-editor-page .toggle { font-size: 24rpx; }
+.service-editor-page .bottom-bar button { display: flex; align-items: center; justify-content: center; min-height: 72rpx; font-size: 26rpx; }

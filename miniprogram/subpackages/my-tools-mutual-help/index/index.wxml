@@ -1,5 +1,5 @@
-<view class="mutual-page theme-{{theme}}">
-  <custom-nav title="" showBack="{{true}}" theme="{{theme}}" />
+<view class="mutual-page theme-{{theme}} task-hall-page">
+  <custom-nav title="" showBack="{{true}}" fallbackUrl="/pages/profile/index" theme="{{theme}}" />
 
   <view class="mutual-content">
     <view class="theme-switch-row">
@@ -13,7 +13,7 @@
     <view class="mutual-heading">
       <view>
         <view class="mutual-title">互帮互助</view>
-        <view class="mutual-subtitle">用互助积分交换真实的帮助，让每一次完成都有清楚的标准。</view>
+        <view class="mutual-subtitle">更多人可参与，选任务就能轻松互动。</view>
       </view>
     </view>
 
@@ -26,45 +26,61 @@
         <view class="points-card-info">
           <view class="points-label">{{pointsLabel}}</view>
           <view class="points-line"><text class="points-value">{{points}}</text><text class="points-unit">分</text></view>
-          <view class="points-tip">当前余额 · 可用于发布任务</view>
+          <view class="points-tip">完成任务按规则到账，也可用于发布任务</view>
         </view>
         <view class="points-card-actions">
           <button class="rule-button" bindtap="handleOpenRules">规则</button>
         </view>
       </view>
-    </view>
-
-    <view class="mutual-growth-banner">
-      <view class="growth-badge">互助</view>
-      <view class="growth-copy">
-        <view class="growth-title">互助赚积分，让别人帮你完成</view>
-        <view class="growth-subtitle">完成别人的任务，赚取积分，发布自己的需求</view>
+      <view wx:if="{{rewardPointsVisible}}" class="points-breakdown">
+        <view class="point-balance-item point-balance-base">
+          <view class="point-balance-name"><text class="point-type-dot"></text>基础积分</view>
+          <view class="point-balance-value">{{basePoints}} 分</view>
+          <view class="point-balance-help">首次赠送 / 平台任务</view>
+        </view>
+        <view wx:if="{{rewardPointsVisible}}" class="point-balance-item point-balance-reward">
+          <view class="point-balance-name"><text class="point-type-dot"></text>充值积分</view>
+          <view class="point-balance-value">{{rewardPoints}} 分</view>
+          <view class="point-balance-help">充值获得 / 提现账户</view>
+        </view>
       </view>
-      <view class="growth-arrow">›</view>
     </view>
 
-    <view class="section-row">
+    <view class="section-row hall-section-row">
       <view>
         <view class="section-heading">任务大厅</view>
+        <view class="section-helper">找到适合你的任务，按完成标准提交</view>
       </view>
       <view class="section-controls">
         <view class="segmented-control">
           <view class="segment-item {{sortMode === 'publisher' ? 'active' : ''}}" data-sort="publisher" bindtap="handleSortChange">积分优先</view>
-          <view class="segment-item {{sortMode === 'reward' ? 'active' : ''}}" data-sort="reward" bindtap="handleSortChange">赏金最高</view>
-        </view>
-        <view class="layout-switch" aria-label="任务卡片布局">
-          <view class="layout-option {{listColumns === 1 ? 'active' : ''}}" data-columns="1" bindtap="handleColumnsChange">1x</view>
-          <view class="layout-option {{listColumns === 2 ? 'active' : ''}}" data-columns="2" bindtap="handleColumnsChange">2x</view>
+          <view class="segment-item {{sortMode === 'reward' ? 'active' : ''}}" data-sort="reward" bindtap="handleSortChange">奖励最高</view>
         </view>
       </view>
     </view>
 
-    <scroll-view class="filter-row" scroll-x="true" show-scrollbar="false">
-      <view class="filter-chip {{taskFilter === 'all' ? 'active' : ''}}" data-filter="all" bindtap="handleFilterChange">全部任务</view>
-      <view class="filter-chip {{taskFilter === 'miniapp' ? 'active' : ''}}" data-filter="miniapp" bindtap="handleFilterChange">小程序任务</view>
-      <view class="filter-chip {{taskFilter === 'wool' ? 'active' : ''}}" data-filter="wool" bindtap="handleFilterChange">羊毛</view>
-      <view class="filter-chip {{taskFilter === 'ordinary' ? 'active' : ''}}" data-filter="ordinary" bindtap="handleFilterChange">普通任务</view>
-    </scroll-view>
+    <view class="hall-toolbar">
+      <scroll-view class="filter-row" scroll-x="true" show-scrollbar="false">
+        <view class="filter-chip {{taskFilter === 'all' ? 'active' : ''}}" data-filter="all" bindtap="handleFilterChange">全部任务</view>
+        <view class="filter-chip {{taskFilter === 'miniapp' ? 'active' : ''}}" data-filter="miniapp" bindtap="handleFilterChange">小程序任务</view>
+        <view class="filter-chip {{taskFilter === 'wool' ? 'active' : ''}}" data-filter="wool" bindtap="handleFilterChange">羊毛</view>
+        <view class="filter-chip {{taskFilter === 'ordinary' ? 'active' : ''}}" data-filter="ordinary" bindtap="handleFilterChange">普通任务</view>
+      </scroll-view>
+      <view class="layout-switch" aria-label="任务卡片布局">
+        <view class="layout-option {{listColumns === 1 ? 'active' : ''}}" data-columns="1" bindtap="handleColumnsChange">列表</view>
+        <view class="layout-option {{listColumns === 2 ? 'active' : ''}}" data-columns="2" bindtap="handleColumnsChange">双列</view>
+      </view>
+    </view>
+
+    <view wx:if="{{syncing}}" class="empty-state sync-status loading-state">
+      <view class="empty-title">正在同步最新任务</view>
+      <view class="empty-copy">先展示本地快照，服务端结果回来后会自动更新。</view>
+    </view>
+
+    <view wx:if="{{syncError}}" class="empty-state sync-status retry-state" bindtap="refresh">
+      <view class="empty-title">最新任务暂时无法读取</view>
+      <view class="empty-copy">当前显示的是上次快照，点击这里重试。</view>
+    </view>
 
     <view class="task-list columns-{{listColumns}}" wx:if="{{tasks.length}}">
       <view wx:for="{{tasks}}" wx:key="id" class="task-card" data-id="{{item.id}}" bindtap="handleOpenTask">
@@ -73,14 +89,14 @@
           <view class="task-reward">{{item.taskKind === 'wool' ? item.woolCardRewardText : item.rewardText}}</view>
         </view>
         <view class="task-title">{{item.title}}</view>
+        <view wx:if="{{item.taskKind !== 'wool'}}" class="task-frequency">{{item.repeatPolicy === 'daily' && item.completedToday ? item.participationStatusText : item.participationFrequencyText}}</view>
         <view class="task-description">{{item.description}}</view>
-        <view class="task-entry-summary">{{item.taskLinkSummary}}</view>
-        <view class="task-publisher">{{item.publisherPointsText}}</view>
-        <view class="task-foot"><text>{{item.remainingText}} · {{item.deadlineText}}</text><text class="task-go">去完成 ›</text></view>
+        <view wx:if="{{item.commentSummary.count}}" class="task-comment-summary">{{item.commentSummary.text}}</view>
+        <view class="task-foot"><text>{{item.remainingText}} · {{item.deadlineText}}</text><text class="task-go">{{item.taskKind === 'wool' ? '去查看' : '去完成'}} ›</text></view>
       </view>
     </view>
 
-    <view class="empty-state" wx:else>
+    <view class="empty-state" wx:elif="{{!syncing}}">
       <view class="empty-title">暂时没有匹配的任务</view>
       <view class="empty-copy">换个任务类型，或者稍后再来看看。</view>
     </view>

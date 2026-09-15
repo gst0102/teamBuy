@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -15,6 +17,93 @@ class MutualHelpConfigUpdateRequest(BaseModel):
     withdrawalEnabled: bool | None = None
     withdrawalVisible: bool | None = None
     operatorName: str | None = None
+
+
+class ContentPinUpdateRequest(BaseModel):
+    pinned: bool
+    operatorName: str = Field(default="ops", min_length=1, max_length=80)
+
+
+class ContentSafetyRuleCreateRequest(BaseModel):
+    term: str = Field(min_length=1, max_length=200)
+    matchType: Literal["contains", "exact"] = "contains"
+    category: str = Field(default="platform_custom", min_length=1, max_length=80)
+    severity: Literal["high", "medium", "low"] = "medium"
+    action: Literal["block", "review", "warn"] = "review"
+    scopes: list[str] = Field(default_factory=list, max_length=30)
+    enabled: bool = True
+    expiresAt: str | None = None
+    reason: str = Field(default="", max_length=240)
+    operatorName: str = Field(default="ops", min_length=1, max_length=80)
+
+
+class ContentSafetyRuleUpdateRequest(BaseModel):
+    term: str | None = Field(default=None, min_length=1, max_length=200)
+    matchType: Literal["contains", "exact"] | None = None
+    category: str | None = Field(default=None, min_length=1, max_length=80)
+    severity: Literal["high", "medium", "low"] | None = None
+    action: Literal["block", "review", "warn"] | None = None
+    scopes: list[str] | None = Field(default=None, max_length=30)
+    enabled: bool | None = None
+    expiresAt: str | None = None
+    reason: str | None = Field(default=None, max_length=240)
+    operatorName: str = Field(default="ops", min_length=1, max_length=80)
+
+
+class ContentSafetyTestRequest(BaseModel):
+    contentType: str = Field(min_length=1, max_length=80)
+    fields: dict = Field(default_factory=dict)
+    contentRevision: str = Field(default="", max_length=160)
+
+
+class ContentModerationReviewRequest(BaseModel):
+    action: Literal["approve", "reject"]
+    operatorName: str = Field(default="ops", min_length=1, max_length=80)
+    note: str = Field(default="", max_length=240)
+
+
+class GroupResourceAdminUpdateRequest(BaseModel):
+    enabled: bool
+    operatorName: str = Field(default="ops", min_length=1, max_length=80)
+
+
+class MobileToolAdminUpdateRequest(BaseModel):
+    tool: Literal["mutual_help", "group_resource", "business_opportunity"]
+    enabled: bool
+    operatorName: str = Field(default="ops", min_length=1, max_length=80)
+
+
+class ToolRecordsBulkActionRequest(BaseModel):
+    tool: Literal["mutual_help", "group_resource", "business_opportunity"]
+    recordIds: list[str] = Field(default_factory=list, max_length=100)
+    action: Literal["archive", "mark_test", "delete"]
+    testOnly: bool = False
+    operatorName: str = Field(default="ops", min_length=1, max_length=80)
+    reason: str = Field(default="运营清理", max_length=240)
+
+
+class MutualHelpAdminTaskCreateRequest(BaseModel):
+    """Small operator-facing form for publishing a platform task."""
+
+    ownerUserId: str | None = Field(default=None, max_length=160)
+    taskKind: Literal["miniapp", "ordinary", "wool"] = "ordinary"
+    title: str = Field(min_length=1, max_length=120)
+    description: str = Field(default="", max_length=500)
+    acceptanceText: str = Field(default="", max_length=1000)
+    shortLink: str = Field(default="", max_length=1000)
+    rewardPointType: Literal["base", "reward"] = "base"
+    rewardPoints: int = Field(default=5, ge=0, le=10000)
+    executorReward: int = Field(default=4, ge=0, le=10000)
+    remaining: int | None = Field(default=None, ge=0, le=100000)
+    repeatPolicy: Literal["once", "daily"] = "once"
+    deadlineText: str = Field(default="长期开放", max_length=60)
+    operatorName: str = Field(default="ops", min_length=1, max_length=80)
+
+
+class MutualPlatformBudgetAdjustRequest(BaseModel):
+    delta: int = Field(ge=-1000000, le=1000000)
+    reason: str = Field(default="平台充值积分任务预算调整", max_length=240)
+    operatorName: str = Field(default="ops", min_length=1, max_length=80)
 
 
 class GroupUploadPreviewRequest(BaseModel):
@@ -41,6 +130,19 @@ class SingleGroupResourceCreateRequest(BaseModel):
     customTags: list[str] = Field(default_factory=list)
     qrImageData: str | None = None
     operatorName: str | None = None
+
+
+class GroupResourceReviewActionRequest(BaseModel):
+    operatorName: str = Field(default="ops", min_length=1, max_length=80)
+    reason: str = Field(default="", max_length=240)
+    extraPenalty: int = Field(default=0, ge=0, le=1000)
+    refundViewers: bool = True
+    pausePublisher: bool = False
+
+
+class GroupResourceComplaintRequest(BaseModel):
+    userId: str = Field(default="", min_length=1, max_length=160)
+    reason: str = Field(default="", min_length=1, max_length=120)
 
 
 class WecomGroupJoinWayCreateRequest(BaseModel):
@@ -106,6 +208,11 @@ class LiveQrCodeUpdateRequest(BaseModel):
     status: str | None = None
     groupMemberCount: int | None = Field(default=None, ge=0, le=10000)
     automationGroupCandidateId: str | None = Field(default=None, max_length=128)
+
+
+class LiveQrStyleUpdateRequest(BaseModel):
+    ownerUserId: str = Field(default="", min_length=1, max_length=128)
+    styleMode: Literal["plain", "source"] = "plain"
 
 
 class OpportunityLeadContactPayload(BaseModel):

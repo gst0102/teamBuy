@@ -101,7 +101,7 @@
 
 .tools-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .tool-item {
@@ -124,7 +124,7 @@
   background: #fbfaf9;
 }
 
-.tool-item:nth-child(3n) {
+.tool-item:nth-child(4n) {
   border-right: 0;
 }
 
@@ -146,13 +146,26 @@
 }
 
 .tool-item-icon.groups {
-  background: #f0eff0;
-  color: #999aa0;
+  background: #e8f2ff;
+  color: #1677ff;
+  box-shadow: 0 8rpx 18rpx rgba(22, 119, 255, 0.12);
+}
+
+.tool-item-icon.opportunity {
+  background: #f1ecff;
+  color: #6f4bd8;
+  box-shadow: 0 8rpx 18rpx rgba(111, 75, 216, 0.12);
+}
+
+.tool-item-icon.account {
+  background: #eaf8f5;
+  color: #168b83;
+  box-shadow: 0 8rpx 18rpx rgba(22, 139, 131, 0.12);
 }
 
 .tool-item-title {
   max-width: 100%;
-  margin-top: 14rpx;
+  margin-top: 28rpx;
   overflow: hidden;
   color: #172033;
   font-size: 26rpx;
@@ -1053,15 +1066,6 @@
   text-align: center;
 }
 
-.profile-business-card-share-canvas {
-  position: fixed;
-  left: -9999rpx;
-  top: -9999rpx;
-  width: 750rpx;
-  height: 1800rpx;
-  pointer-events: none;
-}
-
 .asset-message-row {
   display: flex;
   align-items: center;
@@ -1571,3 +1575,25 @@
   height: 72rpx;
   margin-top: 22rpx;
 }
+
+/* 2026-09 bottom-tab typography: make personal assets and entry actions easier to scan. */
+.profile-card .profile-sub { font-size: 26rpx; }
+.profile-card .profile-edit-btn { height: 68rpx; font-size: 27rpx; }
+.page-shell .section-title { font-size: 32rpx; }
+.page-shell .asset-item text { font-size: 29rpx; }
+.page-shell .asset-message-leading > text { font-size: 30rpx; }
+.page-shell .asset-unread { font-size: 20rpx; }
+.page-shell .tool-item-icon { font-size: 30rpx; }
+.page-shell .tool-item-title { font-size: 28rpx; }
+.page-shell .tool-item-status { font-size: 22rpx; }
+.page-shell .view-history-empty { font-size: 25rpx; }
+.page-shell .view-history-title { font-size: 29rpx; }
+.page-shell .view-history-time { font-size: 24rpx; }
+.page-shell .view-history-more { font-size: 25rpx; }
+.page-shell .customer-signal-title { font-size: 36rpx; }
+.page-shell .customer-signal-sub { font-size: 28rpx; }
+.page-shell .referral-entry-title { font-size: 30rpx; }
+.page-shell .referral-entry-sub { font-size: 23rpx; }
+.page-shell .referral-entry-value { font-size: 34rpx; }
+.page-shell .settings-title { font-size: 29rpx; }
+.page-shell .settings-desc { font-size: 24rpx; }

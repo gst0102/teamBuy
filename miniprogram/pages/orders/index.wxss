@@ -16,6 +16,32 @@
   box-shadow: 0 8rpx 24rpx rgba(15, 23, 42, 0.06);
 }
 
+.page .inline-load-error,
+.page .load-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 72rpx;
+  margin: 14rpx 0;
+  color: #8a96a8;
+  font-size: 24rpx;
+  text-align: center;
+}
+
+.page .inline-load-error {
+  padding: 12rpx 20rpx;
+  border-radius: 14rpx;
+  color: #b42318;
+  background: #fff1f0;
+}
+
+.page .inline-loading {
+  padding: 12rpx 20rpx;
+  color: #667085;
+  font-size: 24rpx;
+  text-align: center;
+}
+
 .order-summary {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -612,3 +638,31 @@
   color: #334155;
   background: #ffffff;
 }
+/* Typography scale v2: make order triage and buyer contact actions readable. */
+.page .order-summary > view > text:first-child { font-size: 36rpx; }
+.page .order-summary > view > text:last-child { font-size: 23rpx; }
+.page .drill-title { font-size: 29rpx; }
+.page .drill-sub { font-size: 23rpx; }
+.page .drill-more { font-size: 24rpx; }
+.page .stage-value { font-size: 34rpx; }
+.page .stage-label { font-size: 23rpx; }
+.page .source-group-title { font-size: 27rpx; }
+.page .source-group-sub { font-size: 23rpx; }
+.page .source-group-count { font-size: 23rpx; }
+.page .status-filter { font-size: 23rpx; }
+.page .active-view-title { font-size: 27rpx; }
+.page .active-view-sub { font-size: 23rpx; }
+.page .active-view-reset { display: flex; align-items: center; justify-content: center; min-height: 64rpx; font-size: 24rpx; }
+.page .order-card .title { font-size: 28rpx; }
+.page .order-card .summary { font-size: 25rpx; }
+.page .order-card .info { font-size: 23rpx; }
+.page .order-actions button { display: flex; align-items: center; justify-content: center; min-height: 64rpx; font-size: 24rpx; }
+.page .order-card .meta { font-size: 22rpx; }
+.page .detail-name { font-size: 29rpx; }
+.page .detail-sub { font-size: 23rpx; }
+.page .detail-section-title { font-size: 27rpx; }
+.page .detail-tag { font-size: 21rpx; }
+.page .detail-note,
+.page .detail-contact-row { font-size: 24rpx; }
+.page .detail-contact-row button,
+.page .detail-actions button { display: flex; align-items: center; justify-content: center; min-height: 64rpx; font-size: 24rpx; }

@@ -83,3 +83,29 @@ page { background: #f3f7fd; }
 .delete-button, .save-button { display: flex; align-items: center; justify-content: center; height: 76rpx; margin: 0; padding: 0; border-radius: 13rpx; font-size: 25rpx; font-weight: 800; line-height: 1; box-sizing: border-box; }
 .delete-button { background: #eef3f9; color: #334155; }.save-button { background: linear-gradient(135deg,#1284ff,#0864ea); color: #fff; }
 .delete-button::after, .save-button::after { border: 0; }
+/* Typography scale v2: make product fields and purchase-facing preview comfortable to read. */
+.product-page .product-loading { font-size: 25rpx; }
+.product-page .section-heading { font-size: 32rpx; }
+.product-page .section-link { font-size: 24rpx; }
+.product-page .customer-title { font-size: 32rpx; }
+.product-page .customer-price { font-size: 32rpx; }
+.product-page .section-note { font-size: 23rpx; }
+.product-page .field-label { font-size: 26rpx; }
+.product-page .product-input,
+.product-page .full-input,
+.product-page .product-textarea { font-size: 28rpx; }
+.product-page .text-count { font-size: 22rpx; }
+.product-page .variant-head { font-size: 27rpx; }
+.product-page .variant-row { font-size: 24rpx; }
+.product-page .price-input { font-size: 27rpx; }
+.product-page .stock-tag { font-size: 21rpx; }
+.product-page .progressive-row { font-size: 25rpx; }
+.product-page .row-title { font-size: 27rpx; }
+.product-page .row-summary { font-size: 23rpx; }
+.product-page .method-chip { font-size: 22rpx; }
+.product-page .small-button { display: flex; align-items: center; justify-content: center; min-height: 60rpx; font-size: 23rpx; }
+.product-page .supplement-head { font-size: 27rpx; }
+.product-page .small-note { font-size: 22rpx; }
+.product-page .supplement-item { font-size: 24rpx; }
+.product-page .link-confirm { font-size: 25rpx; }
+.product-page .product-bottom-bar button { display: flex; align-items: center; justify-content: center; min-height: 72rpx; font-size: 26rpx; }

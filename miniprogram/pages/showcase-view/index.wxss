@@ -1481,3 +1481,31 @@ page {
   word-break: break-all;
   overflow: hidden;
 }
+/* Typography scale v2: keep a shared collection's story and card actions comfortable to read. */
+.page-shell .share-title { font-size: 30rpx; }
+.page-shell .share-sub { font-size: 24rpx; }
+.page-shell .share-btn { display: flex; align-items: center; justify-content: center; min-height: 72rpx; font-size: 26rpx; }
+.page-shell .hero-title { font-size: 40rpx; }
+.page-shell .hero-desc { font-size: 26rpx; }
+.page-shell .agency-name { font-size: 28rpx; }
+.page-shell .agency-sub { font-size: 23rpx; }
+.page-shell .agency-pill { font-size: 22rpx; }
+.page-shell .stat-row { font-size: 24rpx; }
+.page-shell .property-filter-label { font-size: 24rpx; }
+.page-shell .property-filter-chip { font-size: 23rpx; }
+.page-shell .section-headline { font-size: 32rpx; }
+.page-shell .filter-empty { font-size: 24rpx; }
+.page-shell .card-title { font-size: 29rpx; }
+.page-shell .card-summary { font-size: 25rpx; }
+.page-shell .product-meta-row { font-size: 23rpx; }
+.page-shell .tag-grid text { font-size: 20rpx; }
+.page-shell .price { font-size: 28rpx; }
+.page-shell .product-action-text { font-size: 24rpx; }
+.page-shell .story-title { font-size: 40rpx; }
+.page-shell .story-desc { font-size: 26rpx; }
+.page-shell .story-block-title { font-size: 30rpx; }
+.page-shell .story-feature-title { font-size: 27rpx; }
+.page-shell .story-feature-sub { font-size: 24rpx; }
+.page-shell .story-row-title { font-size: 27rpx; }
+.page-shell .story-row-sub { font-size: 23rpx; }
+.page-shell .story-price { font-size: 28rpx; }

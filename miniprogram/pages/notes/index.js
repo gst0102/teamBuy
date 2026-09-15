@@ -7,7 +7,6 @@ const { buildBusinessCardShareTitle, buildBusinessCardShareSource, buildServiceO
 const { buildNoteShareTitle, getNoteShareSnapshotState, getShareImageUrlFromState, prepareNoteShareSnapshot, setShareMenuEnabled } = require("../../plugins/share-snapshot/index");
 const subscription = require("../../services/subscription");
 
-const SALES_CARD_SHARE_CANVAS_ID = "salesCardListShareCanvas";
 const SYSTEM_PLACEHOLDER_TEXTS = new Set([
   "未命名笔记",
   "未命名资料",
@@ -138,7 +137,11 @@ Page({
     tagFilters: [],
     topics: [],
     migrationSummary: null,
-    loading: false
+    loading: false,
+    loadError: false,
+    notesOffset: 0,
+    notesHasMore: false,
+    notesLoadingMore: false
   },
   onLoad(options) {
     const sourceType = options.sourceType || "";
@@ -171,22 +174,30 @@ Page({
   handleKeywordChange(event) {
     this.setData({ keyword: event.detail.value, activeMigrationPending: false });
   },
-  async loadNotes() {
+  async loadNotes(append = false) {
     const { user, keyword, activeSourceType, activeTag, activeTopicId, sort } = this.data;
     if (!user) return;
+    if (append && (this.data.notesLoadingMore || !this.data.notesHasMore)) return;
+    if (append && this.notesLoadInFlight) return;
+    const requestSeq = (this._notesRequestSeq || 0) + 1;
+    this._notesRequestSeq = requestSeq;
+    if (append) this.notesLoadInFlight = true;
     const params = {
       ownerUserId: user.id,
       keyword: keyword.trim(),
       sourceType: activeSourceType,
       tag: activeTag,
       topicId: activeTopicId,
-      sort
+      sort,
+      limit: 50,
+      offset: append ? (this.data.notesOffset || 0) : 0
     };
     // Paint an acceptable metadata snapshot first, including a stale snapshot,
     // then let the network response revalidate it.  The cache is user-scoped
     // by api.js and contains no customer identity/contact fields.
-    const cachedNotes = api.getCachedNotes(params, { allowStale: true });
-    if (api.hasCachedNotes(params, { allowStale: true })) {
+    const hasCached = !append && api.hasCachedNotes(params, { allowStale: true });
+    const cachedNotes = hasCached ? api.getCachedNotes(params, { allowStale: true }) : [];
+    if (hasCached) {
       const cachedAll = cachedNotes.map(decorateNoteForList);
       const cachedVisible = this.applyLocalFilters(cachedAll).map(withInitialShareState);
       this.setData({
@@ -197,18 +208,45 @@ Page({
       });
       this.loadScrmSummaries(cachedVisible);
     }
-    this.setData({ loading: !api.hasCachedNotes(params, { allowStale: true }) });
+    this.setData({
+      loading: !append && !hasCached,
+      notesLoadingMore: append,
+      loadError: false,
+      ...(append ? {} : { notesOffset: 0, notesHasMore: false })
+    });
     try {
-      const res = await api.fetchNotes(params, { metadataOnly: true });
-      const allNotes = (res.data || []).map(decorateNoteForList);
+      const res = await api.fetchNotes(params, { metadataOnly: true, force: true });
+      if (requestSeq !== this._notesRequestSeq) return;
+      const payload = res.data || {};
+      const incoming = (Array.isArray(payload) ? payload : (payload.items || [])).map(decorateNoteForList);
+      const existing = append ? (this.data.allNotes || []) : [];
+      const seen = new Set();
+      const allNotes = [...existing, ...incoming].filter((note) => {
+        if (!note || !note.id || seen.has(note.id)) return false;
+        seen.add(note.id);
+        return true;
+      });
       const notes = this.applyLocalFilters(allNotes).map(withInitialShareState);
-      this.setData({ allNotes, notes, tagFilters: this.buildTagFilters(notes), migrationSummary: this.buildMigrationSummary(allNotes) });
+      const receivedCount = incoming.length;
+      this.setData({
+        allNotes,
+        notes,
+        tagFilters: this.buildTagFilters(notes),
+        migrationSummary: this.buildMigrationSummary(allNotes),
+        loadError: false,
+        notesOffset: (append ? (this.data.notesOffset || 0) : 0) + receivedCount,
+        notesHasMore: Boolean(!Array.isArray(payload) && payload.hasMore),
+        notesLoadingMore: false
+      });
       this.loadScrmSummaries(notes);
-      this.prepareNoteShareImages(notes);
+      if (!append) this.prepareNoteShareImages(notes);
     } catch (error) {
-      wx.showToast({ title: error.detail || "笔记加载失败", icon: "none" });
+      if (requestSeq !== this._notesRequestSeq) return;
+      this.setData({ loadError: true, notesLoadingMore: false });
+      if (!append) wx.showToast({ title: error.detail || "笔记加载失败", icon: "none" });
     } finally {
-      this.setData({ loading: false });
+      if (append) this.notesLoadInFlight = false;
+      if (requestSeq === this._notesRequestSeq) this.setData({ loading: false, notesLoadingMore: false });
     }
   },
   applyLocalFilters(notes) {
@@ -248,8 +286,6 @@ Page({
       try {
         const ownerUserId = (this.data.user || getCurrentUser() || {}).id;
         const result = await prepareNoteShareSnapshot({
-          page: this,
-          canvasId: SALES_CARD_SHARE_CANVAS_ID,
           note,
           ownerUserId,
           user: this.data.user || getCurrentUser() || {}
@@ -297,6 +333,15 @@ Page({
   },
   handleSearch() {
     this.loadNotes();
+  },
+  handleRetry() {
+    this.loadNotes();
+  },
+  loadMoreNotes() {
+    this.loadNotes(true);
+  },
+  onReachBottom() {
+    this.loadMoreNotes();
   },
   toggleCategories() {
     this.setData({ showAllCategories: !this.data.showAllCategories });

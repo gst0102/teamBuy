@@ -502,3 +502,27 @@
 .light-action::after {
   border: 0;
 }
+/* Typography scale v2: make opportunity matching and reasons readable at decision speed. */
+.opportunity-page .opportunity-tab { font-size: 25rpx; }
+.opportunity-page .hero-kicker { font-size: 24rpx; }
+.opportunity-page .hero-title { font-size: 40rpx; }
+.opportunity-page .hero-sub { font-size: 26rpx; }
+.opportunity-page .match-score-box { font-size: 24rpx; }
+.opportunity-page .push-panel .section-title,
+.opportunity-page .section-title { font-size: 32rpx; }
+.opportunity-page .section-sub { font-size: 24rpx; }
+.opportunity-page .push-empty { font-size: 24rpx; }
+.opportunity-page .push-title { font-size: 29rpx; }
+.opportunity-page .push-summary { font-size: 25rpx; }
+.opportunity-page .radar-card { font-size: 24rpx; }
+.opportunity-page .dimension-row { font-size: 23rpx; }
+.opportunity-page .section-badge { font-size: 22rpx; }
+.opportunity-page .level-pill,
+.opportunity-page .score-pill { font-size: 21rpx; }
+.opportunity-page .opportunity-title { font-size: 29rpx; }
+.opportunity-page .opportunity-summary { font-size: 25rpx; }
+.opportunity-page .meta-row { font-size: 22rpx; }
+.opportunity-page .reason-label { font-size: 23rpx; }
+.opportunity-page .reason-tags text { font-size: 21rpx; }
+.opportunity-page .suggestion-row { font-size: 24rpx; }
+.opportunity-page .action-grid button { display: flex; align-items: center; justify-content: center; min-height: 68rpx; font-size: 25rpx; }

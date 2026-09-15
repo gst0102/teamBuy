@@ -1,0 +1,40 @@
+@import "../shared.wxss";
+
+.report-content { padding-bottom: 28rpx; }
+.report-intro { padding: 22rpx 4rpx 18rpx; }
+.report-eyebrow { color: #e46c32; font-size: 21rpx; font-weight: 900; letter-spacing: 1rpx; }
+.report-title { margin-top: 8rpx; color: #242a31; font-size: 43rpx; font-weight: 900; line-height: 1.2; }
+.report-caption { margin-top: 8rpx; color: #808993; font-size: 22rpx; }
+.report-summary-card { margin-top: 14rpx; padding: 26rpx; border: 2rpx solid #f0d5bd; border-radius: 26rpx; background: linear-gradient(135deg,#fff4e7,#fffdf9 75%); box-sizing: border-box; }
+.report-summary-head, .report-list-heading { display: flex; align-items: center; justify-content: space-between; }
+.report-summary-head { color: #333940; font-size: 28rpx; font-weight: 900; }
+.report-summary-mark { padding: 7rpx 14rpx; border-radius: 999rpx; background: #fff0dc; color: #bd7042; font-size: 19rpx; font-weight: 700; }
+.report-summary-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); margin-top: 18rpx; }
+.report-metric { display: flex; min-height: 110rpx; flex-direction: column; justify-content: center; padding: 14rpx 18rpx; border-top: 1rpx solid #f0e5da; box-sizing: border-box; }
+.report-metric:nth-child(odd) { border-right: 1rpx solid #f0e5da; }
+.report-metric text { color: #858b92; font-size: 21rpx; }
+.report-metric strong { margin-top: 4rpx; color: #27303a; font-size: 38rpx; font-weight: 900; line-height: 1.1; }
+.report-metric.done strong { color: #27845c; }
+.report-metric.waiting strong { color: #d88936; }
+.report-metric.points strong { color: #287cb1; }
+.report-pending-note { margin-top: 10rpx; color: #ae7640; font-size: 20rpx; text-align: right; }
+.report-list-heading { margin: 34rpx 4rpx 14rpx; }
+.report-list-heading text { color: #969ca3; font-size: 20rpx; }
+.report-empty, .report-error { margin-top: 18rpx; padding: 36rpx 24rpx; border: 2rpx solid #e9e5df; border-radius: 23rpx; background: rgba(255,255,255,.86); color: #828991; font-size: 22rpx; line-height: 1.5; text-align: center; }
+.report-empty-title { margin-bottom: 8rpx; color: #38414a; font-size: 27rpx; font-weight: 900; }
+.report-error { color: #c15e45; }
+.report-item { position: relative; margin-top: 14rpx; padding: 23rpx 24rpx 19rpx; border: 2rpx solid #e8e4df; border-radius: 23rpx; background: #fff; box-sizing: border-box; }
+.report-item-top, .report-item-bottom { display: flex; align-items: center; justify-content: space-between; gap: 16rpx; }
+.report-kind { color: #b8744c; font-size: 19rpx; font-weight: 800; }
+.report-status { padding: 6rpx 13rpx; border-radius: 999rpx; background: #e7f5ed; color: #27845c; font-size: 19rpx; font-weight: 800; }
+.report-status.submitted, .report-status.reviewing, .report-status.in_progress { background: #fff2df; color: #bd7a30; }
+.report-status.rejected { background: #fff0ed; color: #bd5748; }
+.report-item-title { margin-top: 14rpx; padding-right: 4rpx; color: #252c34; font-size: 29rpx; font-weight: 900; line-height: 1.35; }
+.report-item-bottom { margin-top: 12rpx; color: #91979d; font-size: 20rpx; }
+.report-reward { color: #b9813c; }
+.report-reward.settled { color: #248654; font-weight: 800; }
+.report-rejection { margin-top: 12rpx; padding: 12rpx 14rpx; border-radius: 12rpx; background: #fff5f1; color: #a76555; font-size: 20rpx; line-height: 1.4; }
+.report-chevron { margin-top: 12rpx; color: #d2753e; font-size: 20rpx; text-align: right; }
+.theme-dark .report-title, .theme-dark .report-item-title { color: #f3ede5; }
+.theme-dark .report-summary-card, .theme-dark .report-item, .theme-dark .report-empty, .theme-dark .report-error { border-color: #49424a; background: #28242a; }
+.theme-dark .report-summary-head { color: #f3ede5; }

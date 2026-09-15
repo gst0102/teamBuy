@@ -1,1 +1,255 @@
 @import "../shared.wxss";
+
+/* Publish-page form copy is intentionally darker than tertiary metadata so
+ * hints and placeholders remain readable on real devices. */
+.mutual-page .form-hint {
+  color: #68737e;
+}
+
+.mutual-page .block-hint {
+  color: #707b86;
+}
+
+.mutual-page .form-input::placeholder,
+.mutual-page .form-textarea::placeholder {
+  color: #627181;
+}
+
+.repeat-policy-options {
+  display: flex;
+  gap: 16rpx;
+  margin-top: 12rpx;
+}
+
+.point-type-options {
+  display: flex;
+  gap: 16rpx;
+  margin-top: 12rpx;
+}
+
+.point-type-option {
+  flex: 1;
+  min-width: 0;
+  padding: 20rpx;
+  border: 2rpx solid #c7d4e0;
+  border-radius: 18rpx;
+  background: #f5f8fb;
+  box-sizing: border-box;
+}
+
+.point-type-option.active {
+  border-color: #e7672e;
+  background: #fff1e7;
+}
+
+.point-type-option-title {
+  color: #263746;
+  font-size: 29rpx;
+  font-weight: 900;
+}
+
+.point-type-option-copy {
+  margin-top: 8rpx;
+  color: #65727f;
+  font-size: 23rpx;
+  line-height: 1.45;
+}
+
+.point-type-option.active .point-type-option-title {
+  color: #d85d2b;
+}
+
+.repeat-policy-option {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  min-width: 0;
+  height: 72rpx;
+  border: 2rpx solid #c7d4e0;
+  border-radius: 15rpx;
+  background: #f5f8fb;
+  color: #53616e;
+  font-size: 28rpx;
+  font-weight: 900;
+  line-height: 1;
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+
+.repeat-policy-option.active {
+  border-color: #e7672e;
+  background: #fff1e7;
+  color: #d85d2b;
+  box-shadow: 0 5rpx 14rpx rgba(216, 93, 43, 0.1);
+}
+
+.repeat-policy-hint {
+  color: #65727f;
+}
+
+.publish-page .type-explanation {
+  margin-top: 10rpx;
+  padding: 11rpx 16rpx;
+  border-left-width: 4rpx;
+  background: #fff8f0;
+}
+
+.publish-page .type-explanation-label {
+  font-size: 22rpx;
+}
+
+.publish-page .type-explanation-copy {
+  margin-top: 2rpx;
+  color: #65727f;
+  font-size: 23rpx;
+}
+
+.publish-page .form-card {
+  margin-top: 16rpx;
+  padding: 22rpx;
+  border-color: #dfe5e9;
+  border-radius: 22rpx;
+  background: #ffffff;
+  box-shadow: none;
+}
+
+.publish-page .form-field + .form-field {
+  margin-top: 18rpx;
+  padding-top: 18rpx;
+  border-color: #e6ebef;
+}
+
+.publish-page .point-type-option {
+  padding: 18rpx;
+  border-color: #d5e0e8;
+  border-radius: 18rpx;
+}
+
+.publish-page .point-type-option-title {
+  font-size: 29rpx;
+}
+
+.publish-page .point-type-option-copy {
+  color: #65727f;
+  font-size: 22rpx;
+}
+
+.single-point-type {
+  display: flex;
+  align-items: center;
+  margin-top: 12rpx;
+  padding: 18rpx;
+  border: 2rpx solid #efb98d;
+  border-radius: 18rpx;
+  background: #fff5ed;
+  color: #d85d2b;
+  font-size: 29rpx;
+  font-weight: 900;
+  box-sizing: border-box;
+}
+
+.single-point-type text {
+  margin-left: 12rpx;
+  color: #65727f;
+  font-size: 22rpx;
+  font-weight: 400;
+}
+
+.publish-page .block-hint {
+  color: #65727f;
+}
+
+.optional-section-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  margin-top: 18rpx;
+  padding: 18rpx 4rpx 2rpx;
+  border-top: 2rpx solid #e6ebef;
+}
+
+.optional-section-title {
+  color: #343b43;
+  font-size: 28rpx;
+  font-weight: 900;
+}
+
+.optional-section-copy,
+.optional-section-toggle > text {
+  color: #65727f;
+  font-size: 22rpx;
+}
+
+.optional-section-toggle > text {
+  color: #d85d2b;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.mutual-page.theme-dark.publish-page .form-card {
+  border-color: #354352;
+  background: #1d2731;
+  box-shadow: none;
+}
+
+.mutual-page.theme-dark.publish-page .type-explanation {
+  background: #2b2522;
+}
+
+.mutual-page.theme-dark.publish-page .type-explanation-copy,
+.mutual-page.theme-dark.publish-page .point-type-option-copy,
+.mutual-page.theme-dark.publish-page .single-point-type text,
+.mutual-page.theme-dark.publish-page .optional-section-copy {
+  color: #a9b6c2;
+}
+
+.mutual-page.theme-dark.publish-page .single-point-type {
+  border-color: #80533e;
+  background: #3a2923;
+}
+
+.mutual-page.theme-dark.publish-page .optional-section-toggle {
+  border-color: #354352;
+}
+
+.mutual-page.theme-dark.publish-page .optional-section-title {
+  color: #f1f5f9;
+}
+
+.mutual-page.theme-dark .form-hint,
+.mutual-page.theme-dark .block-hint,
+.mutual-page.theme-dark .repeat-policy-hint {
+  color: #adbac7;
+}
+
+.mutual-page.theme-dark .form-input::placeholder,
+.mutual-page.theme-dark .form-textarea::placeholder {
+  color: #a0afbe;
+}
+
+.mutual-page.theme-dark .repeat-policy-option {
+  border-color: #526477;
+  background: #202b36;
+  color: #c2ced9;
+}
+
+.mutual-page.theme-dark .repeat-policy-option.active {
+  border-color: #ff9565;
+  background: #3a2923;
+  color: #ffb08a;
+}
+
+.mutual-page.theme-dark .point-type-option {
+  border-color: #526477;
+  background: #202b36;
+}
+
+.mutual-page.theme-dark .point-type-option.active {
+  border-color: #ff9565;
+  background: #3a2923;
+}
+
+.mutual-page.theme-dark .point-type-option-title { color: #d9e3ec; }
+.mutual-page.theme-dark .point-type-option-copy { color: #adbac7; }

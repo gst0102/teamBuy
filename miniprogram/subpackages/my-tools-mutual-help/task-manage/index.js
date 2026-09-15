@@ -1,4 +1,5 @@
 const shared = require("../shared");
+const api = require("../../../services/api");
 const {
   buildTaskShareMessage,
   buildTaskShareSource,
@@ -15,6 +16,18 @@ function sortTasks(tasks) {
   });
 }
 
+function maskRewardLabels(task, showRewardPoints) {
+  const rewardText = task._rewardText || task.rewardText || "";
+  const rewardPointTypeLabel = task._rewardPointTypeLabel || task.rewardPointTypeLabel || "";
+  return {
+    ...task,
+    _rewardText: rewardText,
+    _rewardPointTypeLabel: rewardPointTypeLabel,
+    rewardText: showRewardPoints ? rewardText : String(rewardText).replace(/充值积分/g, "积分"),
+    rewardPointTypeLabel: showRewardPoints ? rewardPointTypeLabel : String(rewardPointTypeLabel).replace(/充值积分/g, "积分")
+  };
+}
+
 Page({
   data: {
     activeTab: "task",
@@ -22,6 +35,10 @@ Page({
     taskStateFilter: "all",
     theme: shared.getTheme(),
     points: 100,
+    basePoints: 100,
+    rewardPoints: 0,
+    rewardPointsVisible: false,
+    syncError: false,
     tasks: [],
     publishedCount: 0,
     shareCardReady: false,
@@ -39,12 +56,30 @@ Page({
     if (shared.getUser()) this.refresh();
   },
 
-  refresh() {
-    shared.syncAutoApprovedSubmissions();
+  async refresh() {
     const user = shared.getUser();
     if (!user) return;
     const userId = shared.getUserId(user);
-    const allTasks = shared.getTasks()
+    this.setData({ rewardPointsVisible: false, syncError: false });
+    let syncError = false;
+    try {
+      await shared.syncServerTasks(userId);
+    } catch (error) {
+      // This page is the server-authoritative "my published" view. Do not
+      // show an old local snapshot as if it were the current result.
+      syncError = true;
+    }
+    let balances = shared.getPointBalances(userId);
+    let showRewardPoints = false;
+    try {
+      const response = await api.fetchMutualHelpStatus(userId);
+      const data = response.data || {};
+      balances = shared.saveServerPointData(data, userId);
+      showRewardPoints = data.config && data.config.rechargeVisible === true;
+    } catch (error) {
+      // Keep the last known balance visible during a transient outage.
+    }
+    const allTasks = (syncError ? [] : shared.getTasks())
       .filter((task) => task.ownerUserId === userId)
       .filter((task) => task.status !== "deleted")
       .map((task) => shared.decorateTask(task, userId));
@@ -55,14 +90,18 @@ Page({
       return true;
     });
     this.setData({
-      points: shared.getPoints(userId),
+      points: balances.total,
+      basePoints: balances.base,
+      rewardPoints: balances.reward,
+      rewardPointsVisible: showRewardPoints,
+      syncError,
       publishedCount: allTasks.length,
       tasks: sortTasks(tasks).map((task) => ({
         ...task,
         previewImage: ((getReadyTaskSnapshot(task, buildTaskShareSource(task)) || {}).url || ""),
         shareReady: Boolean(getReadyTaskSnapshot(task, buildTaskShareSource(task))),
         shareStatusText: isTaskShareable(task) ? "分享准备中" : "暂不可分享"
-      }))
+      })).map((task) => maskRewardLabels(task, showRewardPoints))
     });
     this.prepareTaskShares(tasks, userId);
   },
@@ -114,7 +153,9 @@ Page({
   },
 
   handleStateFilterChange(event) {
-    this.setData({ taskStateFilter: event.currentTarget.dataset.filter }, () => this.refresh());
+    const filter = String(event.currentTarget.dataset.filter || "");
+    if (!["all", "active", "paused", "closed"].includes(filter)) return;
+    this.setData({ taskStateFilter: filter }, () => this.refresh());
   },
 
   handleOpenTask(event) {
@@ -137,7 +178,7 @@ Page({
     return message;
   },
 
-  handleDeleteTask(event) {
+  async handleDeleteTask(event) {
     const user = shared.getUser();
     const taskId = String(event.currentTarget.dataset.id || "");
     if (!user || !taskId) return;
@@ -152,14 +193,15 @@ Page({
       content: "删除后会从任务大厅和你的任务列表隐藏，已有记录不会被改写。",
       confirmText: "删除",
       confirmColor: "#d85d2b",
-      success: (result = {}) => {
+      success: async (result = {}) => {
         if (!result.confirm) return;
-        const tasks = shared.getTasks().map((item) => item.id === taskId
-          ? { ...item, status: "deleted", deletedAt: new Date().toISOString() }
-          : item);
-        shared.saveTasks(tasks);
-        this.refresh();
-        wx.showToast({ title: "任务已删除", icon: "success" });
+        try {
+          await api.updateMutualHelpTask(taskId, { ownerUserId: userId, status: "deleted" });
+          await this.refresh();
+          wx.showToast({ title: "任务已删除", icon: "success" });
+        } catch (error) {
+          wx.showToast({ title: String((error && (error.detail || error.message)) || "删除失败，请稍后重试"), icon: "none" });
+        }
       }
     });
   },

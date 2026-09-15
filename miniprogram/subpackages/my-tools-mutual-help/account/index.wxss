@@ -1,0 +1,65 @@
+.account-page {
+  min-height: 100vh;
+  color: #172033;
+  background: #f5f7fb;
+}
+
+.account-content { padding: 38rpx 32rpx 72rpx; }
+.account-eyebrow { color: #168b83; font-size: 24rpx; font-weight: 900; }
+.account-title { margin-top: 12rpx; font-size: 46rpx; font-weight: 900; line-height: 1.2; }
+
+.balance-card,
+.rule-card,
+.ledger-card {
+  margin-top: 28rpx;
+  padding: 30rpx;
+  border: 2rpx solid #dfe7f0;
+  border-radius: 28rpx;
+  background: #ffffff;
+  box-sizing: border-box;
+}
+
+.balance-card { border-color: #dbe8f7; background: linear-gradient(135deg, #f8fbff, #ffffff 70%, #f0f8ff); }
+.balance-heading, .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 16rpx; }
+.balance-heading { color: #172033; font-size: 32rpx; font-weight: 900; }
+.balance-caption, .section-caption { color: #748195; font-size: 23rpx; font-weight: 500; }
+.balance-total { margin-top: 14rpx; color: #172033; font-size: 82rpx; font-weight: 900; line-height: 1; }
+.balance-total text { margin-left: 10rpx; font-size: 30rpx; font-weight: 700; }
+.balance-divider { height: 2rpx; margin: 28rpx 0 24rpx; background: #e4ebf3; }
+.balance-breakdown { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24rpx; }
+.balance-item + .balance-item { padding-left: 24rpx; border-left: 2rpx solid #e4ebf3; }
+.balance-item-label { display: flex; align-items: center; gap: 10rpx; color: #172033; font-size: 28rpx; font-weight: 900; }
+.balance-dot { width: 14rpx; height: 14rpx; border-radius: 50%; background: #748195; }
+.balance-item.reward .balance-dot { background: #7351d8; }
+.balance-item-value { margin-top: 12rpx; color: #172033; font-size: 34rpx; font-weight: 900; }
+.balance-item.reward .balance-item-value { color: #7351d8; }
+.balance-item-tip { margin-top: 8rpx; color: #748195; font-size: 23rpx; line-height: 1.45; }
+
+.account-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18rpx; margin-top: 24rpx; }
+.account-action { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 112rpx; margin: 0; padding: 12rpx; border: 0; border-radius: 22rpx; color: #ffffff; box-sizing: border-box; }
+.account-action::after { border: 0; }
+.account-action text:first-child { font-size: 31rpx; font-weight: 900; }
+.account-action .action-sub { margin-top: 6rpx; font-size: 23rpx; line-height: 1.2; }
+.account-action.recharge { background: #ef6d35; }
+.account-action.withdrawal { background: #168b83; }
+.account-action[disabled] { background: #c9ced7; }
+
+.section-heading { font-size: 34rpx; font-weight: 900; }
+.rule-card { margin-top: 28rpx; }
+.rule-row { display: flex; gap: 18rpx; padding: 22rpx 0; border-bottom: 2rpx solid #edf1f5; }
+.rule-row.last { border-bottom: 0; padding-bottom: 0; }
+.rule-mark { display: flex; align-items: center; justify-content: center; flex: 0 0 48rpx; width: 48rpx; height: 48rpx; border-radius: 16rpx; background: #eaf8f5; color: #168b83; font-size: 24rpx; font-weight: 900; }
+.rule-title { color: #172033; font-size: 28rpx; font-weight: 900; }
+.rule-copy { margin-top: 7rpx; color: #5f6d7b; font-size: 25rpx; line-height: 1.6; }
+.status-text { margin-top: 18rpx; color: #c26d1a; font-size: 25rpx; line-height: 1.6; }
+
+.ledger-card { margin-top: 28rpx; }
+.ledger-row { display: flex; align-items: center; justify-content: space-between; gap: 18rpx; padding: 22rpx 0; border-bottom: 2rpx solid #edf1f5; }
+.ledger-row:last-child { border-bottom: 0; }
+.ledger-main { flex: 1; min-width: 0; }
+.ledger-reason { overflow: hidden; color: #172033; font-size: 28rpx; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+.ledger-meta { margin-top: 7rpx; color: #748195; font-size: 23rpx; }
+.ledger-amount { flex: 0 0 auto; font-size: 30rpx; font-weight: 900; }
+.ledger-amount.positive { color: #168b83; }
+.ledger-amount.negative { color: #d85d2b; }
+.ledger-empty { padding: 28rpx 0 8rpx; color: #748195; font-size: 25rpx; text-align: center; }

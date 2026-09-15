@@ -103,3 +103,12 @@
   color: #667085;
   font-size: 22rpx;
 }
+/* Typography scale v2: make response-package feedback readable as a timeline. */
+.radar-page .hero-kicker { font-size: 24rpx; }
+.radar-page .hero-title { font-size: 38rpx; }
+.radar-page .hero-sub { font-size: 26rpx; }
+.radar-page .metric-card { font-size: 23rpx; }
+.radar-page .metric-card strong { font-size: 30rpx; }
+.radar-page .panel-title { font-size: 30rpx; }
+.radar-page .event-type { font-size: 25rpx; }
+.radar-page .event-time { font-size: 22rpx; }

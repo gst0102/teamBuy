@@ -112,3 +112,11 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12rpx;
 }
+/* Typography scale v2: make order status and contact actions clear. */
+.page .hero .title { font-size: 32rpx; }
+.page .hero .status { font-size: 23rpx; }
+.page .row { font-size: 25rpx; }
+.page .section-title { font-size: 30rpx; }
+.page .status-grid button,
+.page .action-bar button { display: flex; align-items: center; justify-content: center; min-height: 68rpx; font-size: 25rpx; }
+.page .action-bar { font-size: 24rpx; }

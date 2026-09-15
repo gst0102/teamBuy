@@ -24,6 +24,26 @@ function buildApiUrl(url = "") {
 
 const REQUEST_TIMEOUT_MS = 15000;
 
+function formatApiErrorDetail(detail) {
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    return detail.map((item) => {
+      if (typeof item === "string") return item;
+      if (!item || typeof item !== "object") return String(item || "");
+      const location = Array.isArray(item.loc)
+        ? item.loc.filter((part) => part !== undefined && part !== null && part !== "").join(".")
+        : "";
+      const message = String(item.msg || item.message || item.detail || "").trim();
+      if (location && message) return `${location}: ${message}`;
+      return message || JSON.stringify(item);
+    }).filter(Boolean).join("；");
+  }
+  if (detail && typeof detail === "object") {
+    return String(detail.message || detail.msg || detail.detail || JSON.stringify(detail));
+  }
+  return detail === undefined || detail === null ? "" : String(detail);
+}
+
 function request({ url, method = "GET", data = null }) {
   return new Promise((resolve, reject) => {
     const app = getAppInstance();
@@ -44,52 +64,69 @@ function request({ url, method = "GET", data = null }) {
       });
       return;
     }
+    let settled = false;
+    const resolveResponse = (res) => {
+      if (settled) return;
+      settled = true;
+      if (res && res.statusCode >= 200 && res.statusCode < 300) {
+        resolve(res.data);
+        return;
+      }
+      const payload = res && res.data && typeof res.data === "object"
+        ? { ...res.data, statusCode: res.statusCode }
+        : { detail: `请求失败（${res && res.statusCode ? res.statusCode : "无状态码"}）`, statusCode: res && res.statusCode };
+      const normalizedDetail = formatApiErrorDetail(payload.detail || payload.message);
+      if (normalizedDetail) payload.detail = normalizedDetail;
+      if (res && res.statusCode === 401) {
+        if (app && typeof app.clearExpiredSession === "function") {
+          app.clearExpiredSession({ redirect: Boolean(authToken) });
+        }
+        if (authToken) {
+          payload.authExpired = true;
+          payload.detail = "登录已失效，请重新登录";
+          payload.errorType = "auth";
+        } else {
+          payload.authExpired = false;
+          payload.errorType = "auth_required";
+          payload.detail = "该操作需要登录";
+        }
+      } else if (res && res.statusCode >= 500) {
+        payload.errorType = "server";
+        payload.detail = payload.message || payload.detail || "服务暂时异常，请稍后重试";
+      } else if (res && res.statusCode === 403) {
+        payload.errorType = "forbidden";
+        payload.detail = payload.message || payload.detail || "当前账号没有权限执行此操作";
+      }
+      reject(payload);
+    };
+    const rejectRequest = (err) => {
+      if (settled) return;
+      settled = true;
+      const rawMessage = String((err && err.errMsg) || "");
+      reject({
+        ...(err && typeof err === "object" ? err : {}),
+        errorType: "network",
+        retryable: true,
+        detail: /timeout|timed out/i.test(rawMessage)
+          ? "网络请求超时，请重试"
+          : "网络连接失败，请检查网络后重试"
+      });
+    };
     wx.request({
       url: requestUrl,
       method,
       data,
       header,
       timeout: REQUEST_TIMEOUT_MS,
-      success(res) {
-        if (res.statusCode >= 200 && res.statusCode < 300) {
-          resolve(res.data);
-          return;
-        }
-        const payload = res.data && typeof res.data === "object"
-          ? { ...res.data, statusCode: res.statusCode }
-          : { detail: `请求失败（${res.statusCode}）`, statusCode: res.statusCode };
-        if (res.statusCode === 401) {
-          if (app && typeof app.clearExpiredSession === "function") {
-            app.clearExpiredSession({ redirect: Boolean(authToken) });
-          }
-          if (authToken) {
-            payload.authExpired = true;
-            payload.detail = "登录已失效，请重新登录";
-            payload.errorType = "auth";
-          } else {
-            payload.authExpired = false;
-            payload.errorType = "auth_required";
-            payload.detail = "该操作需要登录";
-          }
-        } else if (res.statusCode >= 500) {
-          payload.errorType = "server";
-          payload.detail = payload.message || payload.detail || "服务暂时异常，请稍后重试";
-        } else if (res.statusCode === 403) {
-          payload.errorType = "forbidden";
-          payload.detail = payload.message || payload.detail || "当前账号没有权限执行此操作";
-        }
-        reject(payload);
-      },
-      fail(err) {
-        const rawMessage = String((err && err.errMsg) || "");
-        reject({
-          ...(err && typeof err === "object" ? err : {}),
-          errorType: "network",
-          retryable: true,
-          detail: /timeout|timed out/i.test(rawMessage)
-            ? "网络请求超时，请重试"
-            : "网络连接失败，请检查网络后重试"
-        });
+      success: resolveResponse,
+      fail: rejectRequest,
+      // Some OpenHarmony WeChat builds have returned from the native request
+      // layer through `complete` without invoking `success`. If a complete
+      // callback carries an HTTP response, treat it exactly like success.
+      complete(res) {
+        if (settled) return;
+        if (res && typeof res.statusCode === "number") resolveResponse(res);
+        else rejectRequest(res || { errMsg: "request completed without a response" });
       }
     });
   });
@@ -97,5 +134,6 @@ function request({ url, method = "GET", data = null }) {
 
 module.exports = {
   buildApiUrl,
+  formatApiErrorDetail,
   request
 };

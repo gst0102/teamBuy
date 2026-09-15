@@ -25,6 +25,11 @@ class MutualHelpRechargeRequest(BaseModel):
     points: int = Field(default=100, ge=100, le=100000)
 
 
+class MutualPointWithdrawalCreateRequest(BaseModel):
+    userId: str
+    points: int = Field(ge=100, le=1000000)
+
+
 class MutualHelpPaymentRequest(BaseModel):
     userId: str
 
@@ -35,6 +40,88 @@ class MutualHelpActivityRequest(BaseModel):
     taskId: str
     taskKind: str = "ordinary"
     idempotencyKey: str = Field(default="", max_length=160)
+    linkId: str = Field(default="", max_length=160)
+    sessionId: str = Field(default="", max_length=160)
+    metadata: dict = Field(default_factory=dict)
+
+
+class MutualHelpTaskCreateRequest(BaseModel):
+    id: str | None = Field(default=None, max_length=160)
+    ownerUserId: str = Field(min_length=1, max_length=160)
+    taskKind: str = Field(default="ordinary", max_length=20)
+    title: str = Field(min_length=1, max_length=120)
+    category: str = Field(default="其他", max_length=60)
+    description: str = Field(default="", max_length=500)
+    contentBlocks: list[dict] = Field(default_factory=list, max_length=20)
+    acceptanceCriteriaBlocks: list[dict] = Field(default_factory=list, max_length=20)
+    taskLinks: list[dict] = Field(default_factory=list, max_length=10)
+    shortLink: str = Field(default="", max_length=1000)
+    rewardPointType: str = Field(default="base", max_length=20)
+    repeatPolicy: str = Field(default="once", max_length=20)
+    woolPolicy: dict = Field(default_factory=dict)
+    rewardPoints: int = Field(default=0, ge=0, le=10000)
+    executorReward: int = Field(default=0, ge=0, le=10000)
+    remaining: int | None = Field(default=None, ge=0, le=100000)
+    deadlineText: str = Field(default="长期开放", max_length=60)
+
+
+class MutualHelpTaskUpdateRequest(BaseModel):
+    ownerUserId: str = Field(min_length=1, max_length=160)
+    status: str = Field(min_length=1, max_length=20)
+
+
+class MutualHelpSubmissionCreateRequest(BaseModel):
+    userId: str = Field(min_length=1, max_length=160)
+    text: str = Field(default="", max_length=5000)
+    images: list[str] = Field(default_factory=list, max_length=6)
+
+
+class MutualHelpSubmissionApproveRequest(BaseModel):
+    userId: str = Field(min_length=1, max_length=160)
+
+
+class MutualHelpSubmissionRejectRequest(BaseModel):
+    userId: str = Field(min_length=1, max_length=160)
+    reason: str = Field(min_length=1, max_length=300)
+
+
+class MutualHelpChatConversationRequest(BaseModel):
+    userId: str = Field(min_length=1, max_length=160)
+    executorUserId: str = Field(default="", max_length=160)
+
+
+class MutualHelpChatMessageRequest(BaseModel):
+    userId: str = Field(min_length=1, max_length=160)
+    messageType: str = Field(default="text", max_length=20)
+    text: str = Field(default="", max_length=2000)
+    imageUrl: str = Field(default="", max_length=2000)
+    miniProgram: dict = Field(default_factory=dict)
+    idempotencyKey: str = Field(default="", max_length=160)
+
+
+class MutualHelpWoolUnlockRequest(BaseModel):
+    userId: str = Field(min_length=1, max_length=160)
+
+
+class MutualHelpCommentRequest(BaseModel):
+    userId: str = Field(min_length=1, max_length=160)
+    text: str = Field(default="", max_length=300)
+    recommendChoice: str = Field(default="", max_length=20)
+
+
+class MutualHelpCommentReportRequest(BaseModel):
+    userId: str = Field(min_length=1, max_length=160)
+    reason: str = Field(default="内容不实或违规", max_length=60)
+
+
+class MutualHelpTipRequest(BaseModel):
+    userId: str = Field(min_length=1, max_length=160)
+    amount: int = Field(ge=1, le=10000)
+
+
+class MutualHelpWoolRefundRequest(BaseModel):
+    userId: str = Field(min_length=1, max_length=160)
+    reason: str = Field(default="任务内容或链接失效", max_length=120)
 
 
 class CustomerFollowupEnsureRequest(BaseModel):

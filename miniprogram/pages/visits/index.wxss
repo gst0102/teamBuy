@@ -324,3 +324,37 @@
   .radar-workbench-card-name { font-size: 26rpx; }
   .radar-workbench-button { font-size: 21rpx; }
 }
+
+/* 2026-09 bottom-tab typography: prioritize signal, status and next action. */
+.radar-workbench .radar-workbench-kicker { font-size: 24rpx; }
+.radar-workbench .radar-workbench-title { font-size: 42rpx; }
+.radar-workbench .radar-workbench-subtitle { font-size: 26rpx; }
+.radar-workbench .radar-workbench-private { font-size: 22rpx; }
+.radar-workbench .radar-workbench-metric { min-height: 136rpx; }
+.radar-workbench .radar-workbench-metric-value { font-size: 42rpx; }
+.radar-workbench .radar-workbench-metric-label { font-size: 24rpx; }
+.radar-workbench .radar-workbench-metric-arrow { font-size: 32rpx; }
+.radar-workbench .radar-workbench-tab { min-height: 76rpx; font-size: 25rpx; }
+.radar-workbench .radar-workbench-tab-count { font-size: 19rpx; }
+.radar-workbench .radar-workbench-refresh { font-size: 22rpx; }
+.radar-workbench .radar-workbench-state-title,
+.radar-workbench .radar-workbench-empty-title { font-size: 31rpx; }
+.radar-workbench .radar-workbench-state-desc,
+.radar-workbench .radar-workbench-empty-desc { font-size: 24rpx; }
+.radar-workbench .radar-workbench-empty-hint { font-size: 22rpx; }
+.radar-workbench .radar-workbench-button { font-size: 25rpx; }
+.radar-workbench .radar-workbench-filter-label { font-size: 22rpx; }
+.radar-workbench .radar-workbench-filter-title { font-size: 25rpx; }
+.radar-workbench .radar-workbench-filter-clear { font-size: 22rpx; }
+.radar-workbench .radar-workbench-section-title { font-size: 32rpx; }
+.radar-workbench .radar-workbench-section-desc { font-size: 23rpx; }
+.radar-workbench .radar-workbench-section-count { font-size: 24rpx; }
+.radar-workbench .radar-workbench-card-name { font-size: 30rpx; }
+.radar-workbench .radar-workbench-card-state { font-size: 22rpx; }
+.radar-workbench .radar-workbench-status { font-size: 20rpx; }
+.radar-workbench .radar-workbench-evidence-label,
+.radar-workbench .radar-workbench-seen-label { font-size: 21rpx; }
+.radar-workbench .radar-workbench-evidence-text { font-size: 24rpx; }
+.radar-workbench .radar-workbench-seen-text { font-size: 23rpx; }
+.radar-workbench .radar-workbench-source-link { font-size: 22rpx; }
+.radar-workbench .radar-workbench-tags text { font-size: 20rpx; }

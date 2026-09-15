@@ -1,5 +1,5 @@
-<view class="mutual-page form-page theme-{{theme}}">
-  <custom-nav title="发布任务" showBack="{{true}}" theme="{{theme}}" />
+<view class="mutual-page form-page theme-{{theme}} publish-page">
+  <custom-nav title="发布任务" showBack="{{true}}" fallbackUrl="/subpackages/my-tools-mutual-help/mine/index" theme="{{theme}}" />
 
   <view class="mutual-content">
     <view class="theme-switch-row">
@@ -30,12 +30,41 @@
     </view>
 
     <view class="form-card">
+      <view class="form-field point-type-field">
+        <view class="form-label-row">
+          <view class="form-label">执行者奖励类型</view>
+          <text class="form-hint">发布前选定，发布后不变</text>
+        </view>
+        <view wx:if="{{taskKind !== 'wool' && rechargeVisible}}" class="point-type-options">
+          <view class="point-type-option {{draft.rewardPointType === 'base' ? 'active' : ''}}" data-point-type="base" bindtap="handleRewardPointTypeChange">
+            <view class="point-type-option-title">基础积分</view>
+            <view class="point-type-option-copy">平台赠送和任务奖励，不可提现</view>
+          </view>
+          <view class="point-type-option {{draft.rewardPointType === 'reward' ? 'active' : ''}}" data-point-type="reward" bindtap="handleRewardPointTypeChange">
+            <view class="point-type-option-title">充值积分</view>
+            <view class="point-type-option-copy">验收到账，可申请提现</view>
+          </view>
+        </view>
+        <view wx:if="{{taskKind !== 'wool' && !rechargeVisible}}" class="single-point-type">基础积分 <text>平台赠送和任务奖励，不可提现</text></view>
+        <view wx:if="{{taskKind === 'wool'}}" class="block-hint">羊毛福利是查看/解锁内容，没有固定完成奖励；查看费用和自愿打赏仍按基础积分结算。</view>
+        <view wx:if="{{taskKind !== 'wool' && rechargeVisible}}" class="block-hint">基础积分不足时，系统会按统一账户规则使用充值积分。</view>
+      </view>
+
       <view class="form-field">
         <view class="form-label-row"><view class="form-label">任务标题 <text class="form-required">*</text></view><text class="form-hint">让人一眼知道要做什么</text></view>
         <input class="form-input" value="{{draft.title}}" data-field="title" maxlength="50" placeholder="{{kindCopy.titlePlaceholder}}" bindinput="handleInput" />
       </view>
 
-      <view class="form-field task-links-field">
+      <view wx:if="{{taskKind !== 'wool'}}" class="form-field repeat-policy-field">
+        <view class="form-label-row"><view class="form-label">每位用户可参与</view><text class="form-hint">选择参与频次</text></view>
+        <view class="repeat-policy-options">
+          <view class="repeat-policy-option {{draft.repeatPolicy === 'once' ? 'active' : ''}}" data-policy="once" bindtap="handleRepeatPolicyChange">仅限一次</view>
+          <view class="repeat-policy-option {{draft.repeatPolicy === 'daily' ? 'active' : ''}}" data-policy="daily" bindtap="handleRepeatPolicyChange">每天一次</view>
+        </view>
+        <view wx:if="{{draft.repeatPolicy === 'daily'}}" class="block-hint repeat-policy-hint">每天 00:00（北京时间）可再次参与。</view>
+      </view>
+
+      <view wx:if="{{taskKind === 'miniapp' || advancedOpen}}" class="form-field task-links-field">
         <view class="form-label-row"><view class="form-label">{{kindCopy.linkLabel}} <text wx:if="{{taskKind === 'miniapp'}}" class="form-required">*</text></view><text class="form-hint">{{kindCopy.linkHint}}</text></view>
         <view wx:if="{{draft.taskLinks.length}}" class="task-link-list">
           <view wx:for="{{draft.taskLinks}}" wx:key="id" class="task-link-chip">
@@ -52,12 +81,26 @@
         <view class="block-hint">{{kindCopy.linkHelp}}</view>
       </view>
 
+      <view wx:if="{{taskKind !== 'miniapp'}}" class="optional-section-toggle" bindtap="handleToggleAdvanced">
+        <view><view class="optional-section-title">任务入口（选填）</view><view class="optional-section-copy">支持小程序、公众号、网页等链接，方便执行者进入</view></view>
+        <text>{{advancedOpen ? '收起' : '展开'}}</text>
+      </view>
+
       <block wx:if="{{taskKind === 'miniapp'}}">
         <view class="form-field">
           <view class="form-label-row"><view class="form-label">体验说明</view><text class="form-hint">选填</text></view>
           <textarea class="form-textarea" value="{{draft.miniDescription}}" data-field="miniDescription" maxlength="500" placeholder="{{kindCopy.contentPlaceholder}}" bindinput="handleInput"></textarea>
         </view>
-        <view class="publish-summary"><text>每次完成</text><strong>发布者 -5 分 · 执行者 +4 分</strong></view>
+        <view class="form-field">
+          <view class="form-label-row"><view class="form-label">完成标准 <text class="form-required">*</text></view><text class="form-hint">用户和你都按这条判断</text></view>
+          <textarea class="form-textarea" value="{{draft.completionCriteria}}" data-field="completionCriteria" maxlength="500" placeholder="例如：打开首页和搜索，返回后提交一句体验反馈" bindinput="handleInput"></textarea>
+          <view class="block-hint">请写清楚要完成什么；打开入口不等于完成任务。</view>
+        </view>
+        <view class="form-field">
+          <view class="form-label-row"><view class="form-label">任务次数</view><text class="form-hint">充值积分奖励必填；基础积分可不限</text></view>
+          <input class="form-input" type="number" value="{{draft.quota}}" data-field="quota" maxlength="6" placeholder="例如：20" bindinput="handleInput" />
+        </view>
+        <view class="publish-summary"><text>每次完成 · {{draft.rewardPointType === 'reward' ? '充值积分（可提现）' : '基础积分'}}</text><strong>发布者 -5 分 · 执行者 +4 分</strong></view>
       </block>
 
       <block wx:else>
@@ -88,7 +131,7 @@
         </view>
 
         <view wx:if="{{taskKind === 'ordinary'}}" class="form-field">
-          <view class="form-label-row"><view class="form-label">验收标准 <text class="form-required">*</text></view><text class="form-hint">支持文字 / 图片 / 混合</text></view>
+          <view class="form-label-row"><view class="form-label">完成标准 <text class="form-required">*</text></view><text class="form-hint">支持文字 / 图片 / 混合</text></view>
           <view class="ordered-blocks">
             <view wx:for="{{draft.acceptanceBlocks}}" wx:key="id" class="ordered-block {{item.type}}">
               <view class="ordered-block-header"><text>{{item.type === 'text' ? '文字段' : '图片段'}}</text><text class="ordered-block-index">按顺序展示</text></view>
@@ -103,7 +146,7 @@
             <button wx:if="{{draft.acceptanceBlocks.length < 12}}" class="add-text-button" data-block-field="acceptanceBlocks" bindtap="handleAddTextBlock">＋ 文字段</button>
             <button wx:if="{{draft.acceptanceBlocks.length < 12}}" class="add-image-button" data-block-field="acceptanceBlocks" bindtap="handleChooseImages">＋ 图片段</button>
           </view>
-          <view class="block-hint">验收标准也支持文字和图片混排，执行者会按这里的顺序准备提交材料。</view>
+          <view class="block-hint">完成标准也支持文字和图片混排，执行者会按这里的顺序准备提交材料。</view>
         </view>
 
         <view class="form-field">
@@ -112,7 +155,7 @@
         </view>
 
         <view wx:if="{{taskKind === 'ordinary'}}" class="form-field">
-          <view class="form-label-row"><view class="form-label">奖励积分 <text class="form-required">*</text></view><text class="form-hint">最低 5 分，执行者得 0.8 倍</text></view>
+          <view class="form-label-row"><view class="form-label">任务积分 <text class="form-required">*</text></view><text class="form-hint">最低 5 分，执行者得 0.8 倍基础积分</text></view>
           <input class="form-input" type="number" value="{{draft.rewardPoints}}" data-field="rewardPoints" maxlength="6" bindinput="handleInput" />
         </view>
         <view wx:if="{{taskKind === 'wool'}}" class="wool-policy-form">
@@ -130,7 +173,7 @@
             <view class="wool-toggle {{draft.woolAllowTip ? 'active' : ''}}" bindtap="handleWoolTipToggle"><view></view></view>
           </view>
         </view>
-        <view wx:if="{{taskKind === 'ordinary' || taskKind === 'wool'}}" class="publish-summary"><text>当前可用积分 {{currentPoints}} 分</text><strong>{{kindCopy.settlementHint}}</strong></view>
+        <view wx:if="{{taskKind === 'ordinary' || taskKind === 'wool'}}" class="publish-summary"><text>当前可用{{currentPointTypeLabel}} {{currentPointTypePoints}} 分 · 总积分 {{currentPoints}} 分</text><strong>{{kindCopy.settlementHint}}</strong></view>
       </block>
 
       <button class="submit-button" loading="{{publishing}}" disabled="{{publishing}}" bindtap="handlePublish">确认发布</button>

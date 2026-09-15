@@ -475,3 +475,21 @@ page {
   white-space: nowrap;
   box-sizing: border-box;
 }
+/* Typography scale v2: keep preview, consent and login actions readable. */
+.login-page .hero-kicker { font-size: 24rpx; }
+.login-page .hero-title { font-size: 40rpx; }
+.login-page .hero-subtitle { font-size: 26rpx; }
+.login-page .preview-title { font-size: 30rpx; }
+.login-page .preview-sub { font-size: 24rpx; }
+.login-page .preview-badge { font-size: 22rpx; }
+.login-page .mini-name { font-size: 29rpx; }
+.login-page .mini-meta { font-size: 23rpx; }
+.login-page .mini-contact { font-size: 24rpx; }
+.login-page .feature-item { font-size: 24rpx; }
+.login-page .login-profile-title { font-size: 30rpx; }
+.login-page .login-profile-desc { font-size: 24rpx; }
+.login-page .login-nickname-input { font-size: 28rpx; }
+.login-page .legal-agree-row { font-size: 23rpx; }
+.login-page .skip-login-btn,
+.login-page .wechat-btn,
+.login-page .mock-btn { display: flex; align-items: center; justify-content: center; min-height: 72rpx; font-size: 27rpx; }

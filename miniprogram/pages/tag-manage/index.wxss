@@ -126,3 +126,15 @@
 .mini-danger::after {
   border: 0;
 }
+/* Typography scale v2: make tag management readable while keeping chips compact. */
+.page-shell .hero-title { font-size: 40rpx; }
+.page-shell .hero-subtitle { font-size: 26rpx; }
+.page-shell .guide-title { font-size: 30rpx; }
+.page-shell .section-title { font-size: 32rpx; }
+.page-shell .tag-input { font-size: 28rpx; }
+.page-shell .add-btn,
+.page-shell .primary-btn { display: flex; align-items: center; justify-content: center; min-height: 68rpx; font-size: 26rpx; }
+.page-shell .section-link { font-size: 24rpx; }
+.page-shell .tag-row-item { font-size: 26rpx; }
+.page-shell .mini-danger { font-size: 23rpx; }
+.page-shell .empty-state { font-size: 25rpx; }

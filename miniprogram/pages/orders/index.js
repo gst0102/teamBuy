@@ -105,6 +105,9 @@ Page({
     role: "buyer",
     title: "我的订单",
     loading: true,
+    loadingMore: false,
+    hasMore: false,
+    nextCursor: "",
     errorText: "",
     orders: [],
     filteredOrders: [],
@@ -155,12 +158,20 @@ Page({
     }
     this.loadOrders(user.id);
   },
-  async loadOrders(userId) {
-    this.setData({ loading: true, errorText: "" });
+  async loadOrders(userId, append = false) {
+    if (append && (this.data.loadingMore || !this.data.hasMore)) return;
+    const requestSeq = (this._ordersRequestSeq || 0) + 1;
+    this._ordersRequestSeq = requestSeq;
+    const cursor = append ? (this.data.nextCursor || "") : "";
+    this.setData(append
+      ? { loadingMore: true, errorText: "" }
+      : { loading: true, loadingMore: false, errorText: "", hasMore: false, nextCursor: "" });
     try {
-      const res = await api.fetchOrders({ userId, role: this.data.role, noteId: this.data.activeNoteId });
-      const summaryData = (res.data && res.data.summary) || {};
-      const orders = ((res.data && res.data.orders) || []).map((item) => ({
+      const res = await api.fetchOrders({ userId, role: this.data.role, noteId: this.data.activeNoteId, cursor, limit: 30 });
+      if (requestSeq !== this._ordersRequestSeq) return;
+      const payload = res.data || {};
+      const summaryData = payload.summary || {};
+      const incoming = (payload.orders || []).map((item) => ({
         ...item,
         buyerAvatarUrl: safeAvatarUrl(item.buyerAvatarUrl),
         buyerAvatarText: avatarText(item.receiverName || item.buyerName),
@@ -169,6 +180,13 @@ Page({
         summary: [item.actionKindText, item.skuName, item.quantity ? `x ${item.quantity}` : ""].filter(Boolean).join(" · "),
         contactText: [item.phone, item.wechat ? `微信 ${item.wechat}` : ""].filter(Boolean).join(" / ")
       }));
+      const existing = append ? (this.data.orders || []) : [];
+      const seen = new Set();
+      const orders = [...existing, ...incoming].filter((item) => {
+        if (!item || !item.id || seen.has(item.id)) return false;
+        seen.add(item.id);
+        return true;
+      });
       const activeSourceTitle = this.currentSourceTitle(this.data.activeSourceFilter, orders);
       this.setData({
         orders,
@@ -179,16 +197,24 @@ Page({
         summary: {
           ...this.data.summary,
           ...summaryData
-        }
+        },
+        loading: false,
+        loadingMore: false,
+        errorText: "",
+        nextCursor: payload.nextCursor || "",
+        hasMore: Boolean(payload.hasMore)
       });
     } catch (error) {
+      if (requestSeq !== this._ordersRequestSeq) return;
       const detail = error.detail || error.message || error.errMsg || "";
       const errorText = /not found/i.test(detail)
         ? "订单服务正在更新，请稍后再查看。"
         : detail || "订单加载失败，请稍后重试。";
-      this.setData({ errorText, orders: [], filteredOrders: [] });
+      this.setData(append
+        ? { errorText, loadingMore: false }
+        : { errorText, loading: false, loadingMore: false, hasMore: false, nextCursor: "" });
     } finally {
-      this.setData({ loading: false });
+      if (requestSeq === this._ordersRequestSeq) this.setData({ loading: false, loadingMore: false });
     }
   },
   handleRetry() {
@@ -197,7 +223,14 @@ Page({
       wx.reLaunch({ url: "/pages/login/index" });
       return;
     }
-    this.loadOrders(user.id);
+    this.loadOrders(user.id, false);
+  },
+  loadMoreOrders() {
+    const user = getCurrentUser();
+    if (user) this.loadOrders(user.id, true);
+  },
+  onReachBottom() {
+    this.loadMoreOrders();
   },
   handleOpenOrder(event) {
     const id = event.currentTarget.dataset.id;

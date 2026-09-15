@@ -102,6 +102,7 @@ function appendPointLedger(entry = {}) {
     taskId: String(entry.taskId || ""),
     fromUserId: String(entry.fromUserId || ""),
     toUserId: String(entry.toUserId || ""),
+    pointType: entry.pointType === "reward" ? "reward" : "base",
     amount,
     reason: String(entry.reason || ""),
     createdAt: entry.createdAt || new Date().toISOString()
@@ -121,7 +122,7 @@ function getPointLedger(filters = {}) {
   ));
 }
 
-function unlockTask(task = {}, userId, getPoints, savePoints) {
+function unlockTask(task = {}, userId, getPoints, savePoints, pointType = "base") {
   const currentUserId = String(userId || "");
   const policy = normalizeWoolPolicy(task.woolPolicy, task);
   if (task.taskKind !== "wool") return { ok: false, reason: "not_wool_task" };
@@ -149,6 +150,7 @@ function unlockTask(task = {}, userId, getPoints, savePoints) {
     taskId: String(task.id || ""),
     userId: currentUserId,
     ownerUserId,
+    pointType: pointType === "reward" ? "reward" : "base",
     feePoints: policy.unlockFeePoints,
     status: "completed",
     createdAt: new Date().toISOString()
@@ -162,6 +164,7 @@ function unlockTask(task = {}, userId, getPoints, savePoints) {
       taskId: task.id,
       fromUserId: currentUserId,
       toUserId: ownerUserId,
+      pointType,
       amount: policy.unlockFeePoints,
       reason: "解锁羊毛任务完整内容"
     });
@@ -208,18 +211,38 @@ function getTaskComments(taskId, task = {}) {
     .sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt)));
 }
 
-function getCommentSummary(comments = []) {
-  const list = Array.isArray(comments) ? comments : [];
-  const worthIt = list.filter((item) => item.recommendChoice === "worth_it").length;
-  const notWorthIt = list.filter((item) => item.recommendChoice === "not_worth_it").length;
-  const neutral = list.filter((item) => item.recommendChoice === "neutral").length;
+function normalizeCommentSummary(summary = {}) {
+  const source = summary && typeof summary === "object" ? summary : {};
+  const count = toNonNegativeInteger(source.count, 0);
+  const worthIt = toNonNegativeInteger(source.worthIt, 0);
+  const notWorthIt = toNonNegativeInteger(source.notWorthIt, 0);
+  const neutral = toNonNegativeInteger(source.neutral, 0);
+  const recommendCount = worthIt + notWorthIt;
+  const worthItRate = recommendCount ? Math.round((worthIt / recommendCount) * 100) : 0;
   return {
-    count: list.length,
+    count,
     worthIt,
     notWorthIt,
     neutral,
-    text: list.length ? `评论 ${list.length} 条 · ${worthIt} 人觉得值得` : "暂时还没有评论"
+    recommendCount,
+    worthItRate,
+    worthItRateText: recommendCount ? `${worthItRate}%觉得值得` : "暂无比例",
+    text: count
+      ? `评论 ${count} 条 · ${recommendCount ? `${worthItRate}%觉得值得` : "暂无比例"}`
+      : "暂时还没有评论"
   };
+}
+
+function getCommentSummary(comments = []) {
+  const list = (Array.isArray(comments) ? comments : []).filter((item) => (
+    item && item.status !== "hidden"
+  ));
+  return normalizeCommentSummary({
+    count: list.length,
+    worthIt: list.filter((item) => item.recommendChoice === "worth_it").length,
+    notWorthIt: list.filter((item) => item.recommendChoice === "not_worth_it").length,
+    neutral: list.filter((item) => item.recommendChoice === "neutral").length
+  });
 }
 
 function addTaskComment(taskId, userId, values = {}) {
@@ -283,7 +306,7 @@ function getTaskTips(taskId, userId = "") {
   ));
 }
 
-function tipTaskPublisher(task = {}, userId, amount, getPoints, savePoints) {
+function tipTaskPublisher(task = {}, userId, amount, getPoints, savePoints, pointType = "base") {
   const currentUserId = String(userId || "");
   const ownerUserId = String(task.ownerUserId || "");
   const tipPoints = toNonNegativeInteger(amount, 0);
@@ -301,6 +324,7 @@ function tipTaskPublisher(task = {}, userId, amount, getPoints, savePoints) {
     taskId: task.id,
     fromUserId: currentUserId,
     toUserId: ownerUserId,
+    pointType,
     amount: tipPoints,
     reason: "打赏羊毛任务发布者"
   });
@@ -382,6 +406,7 @@ module.exports = {
   getTaskUnlock,
   getTaskUnlockCount,
   normalizeWoolPolicy,
+  normalizeCommentSummary,
   reportTaskComment,
   requestWoolRefund,
   resolveWoolRefund,

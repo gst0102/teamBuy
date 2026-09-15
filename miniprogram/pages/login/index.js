@@ -2,6 +2,7 @@ const api = require("../../services/api");
 const subscription = require("../../services/subscription");
 
 const LOCAL_TEST_NICKNAME = "测试用户";
+const LOGIN_FLOW_TIMEOUT_MS = 20000;
 
 function getAppInstance() {
   try {
@@ -27,6 +28,24 @@ function decodeReturnUrl(value) {
 function isLocalAvatarPath(value) {
   const text = String(value || "").trim();
   return /^(wxfile|file):/i.test(text) || /^\/tmp\//i.test(text) || /^http:\/\/tmp\//i.test(text);
+}
+
+function createTimeoutError(detail) {
+  const error = new Error(detail);
+  error.detail = detail;
+  error.errorType = "timeout";
+  error.retryable = true;
+  return error;
+}
+
+function withTimeout(promise, timeoutMs, detail) {
+  let timer = null;
+  const timeout = new Promise((resolve, reject) => {
+    timer = setTimeout(() => reject(createTimeoutError(detail)), timeoutMs);
+  });
+  return Promise.race([Promise.resolve(promise), timeout]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
 }
 
 Page({
@@ -136,43 +155,65 @@ Page({
     subscription.preloadViewNotificationSubscriptionConfig(userWithBase.id);
     return userWithBase;
   },
-  async saveLogin(user) {
+  saveLogin(user) {
     const app = getAppInstance();
     if (app && app.globalData) app.globalData.authRecoveryInFlight = false;
+    if (!user || !user.id || !user.authToken) {
+      throw { detail: "登录响应无效，请重试" };
+    }
     let finalUser = this.persistLoginUser(user);
     const draft = this.data.loginProfileDraft || {};
     const nickname = String(draft.nickname || "").trim();
-    let avatarUrl = String(draft.avatarUrl || "").trim();
-    if (nickname || isLocalAvatarPath(avatarUrl)) {
-      try {
-        if (isLocalAvatarPath(avatarUrl)) {
-          const uploaded = await api.uploadAsset({
-            filePath: avatarUrl,
-            mediaType: "image",
-            ownerUserId: finalUser.id
-          });
-          avatarUrl = uploaded.url || "";
-        }
-        const updated = await api.updateUserProfile(finalUser.id, {
-          nickname: nickname || finalUser.nickname,
-          avatarUrl: avatarUrl || finalUser.avatarUrl || ""
-        });
-        finalUser = this.persistLoginUser(updated.data || finalUser);
-      } catch (error) {
-        wx.showToast({ title: "已登录，头像或昵称稍后可在个人资料补充", icon: "none", duration: 2200 });
-      }
-    }
+    const avatarUrl = String(draft.avatarUrl || "").trim();
     this.setData({ "loginProfileDraft.avatarUrl": "" });
     this.redirectAfterLogin(this.data.returnUrl);
+    if (nickname || isLocalAvatarPath(avatarUrl)) {
+      this.updateLoginProfileInBackground(finalUser, nickname, avatarUrl);
+    }
+    return finalUser;
+  },
+  async updateLoginProfileInBackground(finalUser, nickname, avatarUrl) {
+    try {
+      let nextAvatarUrl = avatarUrl;
+      if (isLocalAvatarPath(nextAvatarUrl)) {
+        const uploaded = await withTimeout(
+          api.uploadAsset({
+            filePath: nextAvatarUrl,
+            mediaType: "image",
+            ownerUserId: finalUser.id
+          }),
+          LOGIN_FLOW_TIMEOUT_MS,
+          "头像上传超时，请稍后在个人资料中补充"
+        );
+        nextAvatarUrl = uploaded.url || "";
+      }
+      const updated = await withTimeout(
+        api.updateUserProfile(finalUser.id, {
+          nickname: nickname || finalUser.nickname,
+          avatarUrl: nextAvatarUrl || finalUser.avatarUrl || ""
+        }),
+        LOGIN_FLOW_TIMEOUT_MS,
+        "资料保存超时，请稍后在个人资料中补充"
+      );
+      this.persistLoginUser(updated.data || finalUser);
+    } catch (error) {
+      wx.showToast({ title: "已登录，头像或昵称稍后可在个人资料补充", icon: "none", duration: 2200 });
+    }
   },
   redirectAfterLogin(returnUrl = "") {
     const target = String(returnUrl || "").trim();
     const isMiniProgramPath = target.startsWith("/pages/") || target.startsWith("/subpackages/");
     if (target && isMiniProgramPath && !target.startsWith("/pages/home/")) {
-      wx.redirectTo({ url: target });
+      wx.redirectTo({
+        url: target,
+        fail: () => wx.reLaunch({ url: target })
+      });
       return;
     }
-    wx.switchTab({ url: "/pages/home/index" });
+    wx.switchTab({
+      url: "/pages/home/index",
+      fail: () => wx.reLaunch({ url: "/pages/home/index" })
+    });
   },
   handleSkipLogin() {
     // 登录是受保护业务动作的门槛，拒绝授权后只回到公开首页，不能再次回到原门槛页面。
@@ -209,9 +250,12 @@ Page({
     this.setData({ loggingIn: true });
     wx.showLoading({ title: "登录中" });
     try {
-      const code = await this.requestWxCode();
-      const res = await api.wechatLogin({ code });
-      await this.saveLogin(res.data);
+      const res = await withTimeout(
+        this.requestWxCode().then((code) => api.wechatLogin({ code })),
+        LOGIN_FLOW_TIMEOUT_MS,
+        "登录等待超时，请检查网络后重试"
+      );
+      this.saveLogin(res.data);
     } catch (error) {
       wx.hideLoading();
       if ((error.detail || "").includes("微信登录未配置")) {

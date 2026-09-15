@@ -24,8 +24,20 @@ class WechatMiniappClient:
         return bool(
             self.settings.wechat_miniapp_appid
             and self.settings.wechat_miniapp_secret
-            and self.settings.wechat_miniapp_subscribe_template_id
-            and self.settings.wechat_miniapp_subscribe_field_keys()
+            and (
+                (
+                    self.settings.wechat_miniapp_subscribe_template_id
+                    and self.settings.wechat_miniapp_subscribe_field_keys()
+                )
+                or (
+                    self.settings.wechat_miniapp_mutual_help_subscribe_template_id
+                    and self.settings.wechat_miniapp_mutual_help_subscribe_field_keys()
+                )
+                or (
+                    self.settings.wechat_miniapp_live_qr_subscribe_template_id
+                    and self.settings.wechat_miniapp_live_qr_subscribe_field_keys()
+                )
+            )
         )
 
     async def get_access_token(self) -> str:
@@ -54,10 +66,17 @@ class WechatMiniappClient:
         self._expires_at = datetime.now(timezone.utc) + timedelta(seconds=max(expires_in - 300, 60))
         return token
 
-    async def send_subscribe_message(self, *, openid: str, page: str, data: dict) -> dict:
-        template_id = self.settings.wechat_miniapp_subscribe_template_id
+    async def send_subscribe_message(
+        self,
+        *,
+        openid: str,
+        page: str,
+        data: dict,
+        template_id: str | None = None,
+    ) -> dict:
+        template_id = str(template_id or self.settings.wechat_miniapp_subscribe_template_id).strip()
         if not template_id:
-            raise WechatMiniappClientError("缺少 WECHAT_MINIAPP_SUBSCRIBE_TEMPLATE_ID", retryable=False)
+            raise WechatMiniappClientError("缺少小程序订阅消息模板 ID", retryable=False)
         access_token = await self.get_access_token()
         payload = {
             "touser": openid,

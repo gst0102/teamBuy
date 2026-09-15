@@ -1,6 +1,17 @@
 <view class="page-shell package-page">
   <custom-nav title="回应包" show-back="{{true}}" />
 
+  <view wx:if="{{loading}}" class="empty-state loading-state">
+    <view>正在准备回应包</view>
+    <view class="empty-sub">正在读取真实线索和可发送资料。</view>
+  </view>
+  <view wx:elif="{{loadError}}" class="empty-state retry-state" bindtap="loadPackage">
+    <view>回应包暂时不可用</view>
+    <view class="empty-sub">请确认线索仍有效，或点击重试。</view>
+    <button>重新加载</button>
+  </view>
+
+  <block wx:else>
   <view class="package-hero">
     <view>
       <view class="hero-kicker">回应包</view>
@@ -55,5 +66,6 @@
     <button wx:if="{{responsePackage.generated}}" class="light-action" bindtap="handleOpenRadar">看反馈</button>
     <button class="light-action" bindtap="handleOpenLead">返回线索</button>
   </view>
+  </block>
 <canvas canvas-id="shareCardCanvas" class="share-card-canvas"></canvas>
 </view>

@@ -138,3 +138,16 @@
 .save-btn::after {
   border: 0;
 }
+/* Typography scale v2: make subscription preferences understandable before saving. */
+.subscription-page .hero-kicker { font-size: 24rpx; }
+.subscription-page .hero-title { font-size: 40rpx; }
+.subscription-page .hero-sub { font-size: 26rpx; }
+.subscription-page .group-title { font-size: 28rpx; }
+.subscription-page .option-chip { font-size: 23rpx; }
+.subscription-page .keyword-input,
+.subscription-page .tag-input { font-size: 28rpx; }
+.subscription-page .group-hint { font-size: 23rpx; }
+.subscription-page .watching-title { font-size: 28rpx; }
+.subscription-page .watching-line { font-size: 25rpx; }
+.subscription-page .watching-sub { font-size: 23rpx; }
+.subscription-page .save-btn { display: flex; align-items: center; justify-content: center; min-height: 72rpx; font-size: 27rpx; }

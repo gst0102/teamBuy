@@ -26,3 +26,6 @@
   font-size: 26rpx;
   line-height: 1.6;
 }
+/* Typography scale v2: make the loading/error state immediately legible. */
+.page-shell .landing-title { font-size: 32rpx; }
+.page-shell .landing-sub { font-size: 25rpx; }

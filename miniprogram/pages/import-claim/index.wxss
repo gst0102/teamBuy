@@ -56,3 +56,7 @@
   font-weight: 900;
   line-height: 1.2;
 }
+/* Typography scale v2: make the import handoff state immediately understandable. */
+.claim-page .claim-title { font-size: 34rpx; }
+.claim-page .claim-desc { font-size: 26rpx; line-height: 1.6; }
+.claim-page .claim-btn { display: flex; align-items: center; justify-content: center; min-height: 72rpx; font-size: 26rpx; }

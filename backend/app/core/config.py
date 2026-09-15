@@ -107,6 +107,24 @@ class Settings:
     robot_gateway_token: str = env_value("ROBOT_GATEWAY_TOKEN", "")
     automation_operator_token: str = env_value("AUTOMATION_OPERATOR_TOKEN", "")
     automation_device_token: str = env_value("AUTOMATION_DEVICE_TOKEN", "")
+    # Completion mail is disabled by default and can only be enabled from the
+    # server environment. Never put the SMTP password in source, device code,
+    # logs, or project documents.
+    automation_completion_email_enabled: bool = env_value(
+        "AUTOMATION_COMPLETION_EMAIL_ENABLED", "false"
+    ).lower() in {"1", "true", "yes"}
+    automation_completion_email_to: str = env_value(
+        "AUTOMATION_COMPLETION_EMAIL_TO", "250667571@qq.com"
+    )
+    automation_smtp_host: str = env_value("AUTOMATION_SMTP_HOST", "")
+    automation_smtp_port: int = env_int("AUTOMATION_SMTP_PORT", 465)
+    automation_smtp_username: str = env_value("AUTOMATION_SMTP_USERNAME", "")
+    automation_smtp_password: str = env_value("AUTOMATION_SMTP_PASSWORD", "")
+    automation_smtp_from: str = env_value("AUTOMATION_SMTP_FROM", "")
+    automation_smtp_use_ssl: bool = env_value(
+        "AUTOMATION_SMTP_USE_SSL", "true"
+    ).lower() in {"1", "true", "yes"}
+    automation_smtp_timeout_seconds: int = env_int("AUTOMATION_SMTP_TIMEOUT_SECONDS", 10)
     # Group member counts remain unknown until a real AScript device is
     # connected and explicitly enabled. Do not create detection tasks by
     # default or turn missing device data into a false zero count.
@@ -125,6 +143,7 @@ class Settings:
     media_max_video_bytes: int = env_int("MEDIA_MAX_VIDEO_BYTES", 50 * 1024 * 1024)
     media_max_pdf_bytes: int = env_int("MEDIA_MAX_PDF_BYTES", 20 * 1024 * 1024)
     media_max_share_snapshot_bytes: int = env_int("MEDIA_MAX_SHARE_SNAPSHOT_BYTES", 5 * 1024 * 1024)
+    share_card_font_path: str = env_value("SHARE_CARD_FONT_PATH", "")
     ffmpeg_bin: str = env_value("FFMPEG_BIN", "ffmpeg")
     ocr_provider: str = env_value("OCR_PROVIDER", "auto")
     ocr_language: str = env_value("OCR_LANGUAGE", "chi_sim+eng")
@@ -156,6 +175,16 @@ class Settings:
     wechat_miniapp_mutual_help_subscribe_field_keys_json: str = env_value(
         "WECHAT_MINIAPP_MUTUAL_HELP_SUBSCRIBE_FIELD_KEYS",
         '{"taskName":"thing1","taskProgress":"phrase2","updateTime":"time3","executor":"thing4","initiator":"thing5"}',
+    )
+    wechat_miniapp_live_qr_subscribe_template_id: str = env_value(
+        "WECHAT_MINIAPP_LIVE_QR_SUBSCRIBE_TEMPLATE_ID", ""
+    )
+    wechat_miniapp_live_qr_subscribe_page: str = env_value(
+        "WECHAT_MINIAPP_LIVE_QR_SUBSCRIBE_PAGE", "/pages/group-resource-library/index?tab=live-qr"
+    )
+    wechat_miniapp_live_qr_subscribe_field_keys_json: str = env_value(
+        "WECHAT_MINIAPP_LIVE_QR_SUBSCRIBE_FIELD_KEYS",
+        '{"serviceName":"thing1","expiresAt":"time2","warmTip":"thing3","cloudId":"thing4"}',
     )
     wechat_pay_enabled: bool = env_value("WECHAT_PAY_ENABLED", "false").lower() in {"1", "true", "yes"}
     wechat_pay_mch_id: str = env_value("WECHAT_PAY_MCH_ID", "")
@@ -263,6 +292,9 @@ class Settings:
 
     def wechat_miniapp_mutual_help_subscribe_field_keys(self) -> dict[str, str]:
         return self._parse_subscribe_field_keys(self.wechat_miniapp_mutual_help_subscribe_field_keys_json)
+
+    def wechat_miniapp_live_qr_subscribe_field_keys(self) -> dict[str, str]:
+        return self._parse_subscribe_field_keys(self.wechat_miniapp_live_qr_subscribe_field_keys_json)
 
 
 settings = Settings()

@@ -8,9 +8,14 @@ from app.services.time_utils import now_iso
 
 
 DEFAULT_POINTS_ACCOUNT_TYPE = "mutual_help"
+DEFAULT_POINT_TYPE = "base"
+BASE_POINT_TYPE = "base"
+REWARD_POINT_TYPE = "reward"
+POINT_TYPES = {BASE_POINT_TYPE, REWARD_POINT_TYPE}
 MAX_ACCOUNT_TYPE_LENGTH = 64
 MAX_LEDGER_TYPE_LENGTH = 64
 MAX_SOURCE_TYPE_LENGTH = 64
+MAX_POINT_TYPE_LENGTH = 32
 
 
 class PointsCoreService:
@@ -37,17 +42,25 @@ class PointsCoreService:
         return cls._clean(account_type, "积分账户类型", MAX_ACCOUNT_TYPE_LENGTH)
 
     @classmethod
+    def normalize_point_type(cls, point_type: str = DEFAULT_POINT_TYPE) -> str:
+        normalized = cls._clean(point_type, "积分类型", MAX_POINT_TYPE_LENGTH).lower()
+        if normalized not in POINT_TYPES:
+            raise HTTPException(status_code=400, detail="积分类型无效")
+        return normalized
+
+    @classmethod
     def _find_account(
         cls,
         state: AppState,
         user_id: str,
         account_type: str,
+        point_type: str,
     ) -> MutualPointAccount | None:
         return next(
             (
                 item
                 for item in state.mutual_point_accounts
-                if item.userId == user_id and item.accountType == account_type
+                if item.userId == user_id and item.accountType == account_type and item.pointType == point_type
             ),
             None,
         )
@@ -58,6 +71,7 @@ class PointsCoreService:
         state: AppState,
         user_id: str,
         account_type: str,
+        point_type: str,
         idempotency_key: str,
     ) -> MutualPointLedger | None:
         return next(
@@ -66,6 +80,7 @@ class PointsCoreService:
                 for item in state.mutual_point_ledgers
                 if item.userId == user_id
                 and item.accountType == account_type
+                and item.pointType == point_type
                 and item.idempotencyKey == idempotency_key
             ),
             None,
@@ -78,23 +93,27 @@ class PointsCoreService:
         user_id: str,
         *,
         account_type: str = DEFAULT_POINTS_ACCOUNT_TYPE,
+        point_type: str = DEFAULT_POINT_TYPE,
         initial_points: int = 0,
         initial_reason: str = "首次建立积分账户",
     ) -> MutualPointAccount:
         user_id = cls._clean(user_id, "用户 ID", 160)
         account_type = cls.normalize_account_type(account_type)
+        point_type = cls.normalize_point_type(point_type)
         if initial_points < 0:
             raise HTTPException(status_code=400, detail="初始积分不能为负数")
 
-        account = cls._find_account(state, user_id, account_type)
+        account = cls._find_account(state, user_id, account_type, point_type)
         if account:
             return account
 
         now = now_iso()
+        account_id = f"{account_type}_points_{user_id}" if point_type == BASE_POINT_TYPE else f"{account_type}_{point_type}_points_{user_id}"
         account = MutualPointAccount(
-            id=f"{account_type}_points_{user_id}",
+            id=account_id,
             userId=user_id,
             accountType=account_type,
+            pointType=point_type,
             balance=initial_points,
             totalGranted=initial_points,
             totalConsumed=0,
@@ -105,14 +124,17 @@ class PointsCoreService:
         if initial_points:
             state.mutual_point_ledgers.append(
                 MutualPointLedger(
-                    id=new_id("points_ledger"),
+                    # The initial grant is deterministic so a concurrent
+                    # first read can safely upsert the same ledger row.
+                    id=f"{account.id}_initial",
                     userId=user_id,
                     accountType=account_type,
+                    pointType=point_type,
                     ledgerType="initial_grant",
                     pointsDelta=initial_points,
                     balanceAfter=initial_points,
                     reason=initial_reason,
-                    idempotencyKey=f"initial:{account_type}:{user_id}",
+                    idempotencyKey=f"initial:{account_type}:{point_type}:{user_id}",
                     sourceType="system",
                     sourceId=account.id,
                     createdAt=now,
@@ -131,6 +153,7 @@ class PointsCoreService:
         reason: str,
         idempotency_key: str | None = None,
         account_type: str = DEFAULT_POINTS_ACCOUNT_TYPE,
+        point_type: str = DEFAULT_POINT_TYPE,
         source_type: str | None = None,
         source_id: str | None = None,
         related_order_id: str | None = None,
@@ -138,6 +161,7 @@ class PointsCoreService:
     ) -> dict:
         user_id = cls._clean(user_id, "用户 ID", 160)
         account_type = cls.normalize_account_type(account_type)
+        point_type = cls.normalize_point_type(point_type)
         ledger_type = cls._clean(ledger_type, "积分流水类型", MAX_LEDGER_TYPE_LENGTH)
         reason = cls._clean(reason, "积分流水原因", 240)
         if points_delta == 0:
@@ -149,9 +173,9 @@ class PointsCoreService:
         if source_id is not None:
             source_id = cls._clean(source_id, "积分来源 ID", 200)
 
-        account = cls.ensure_account(state, user_id, account_type=account_type)
+        account = cls.ensure_account(state, user_id, account_type=account_type, point_type=point_type)
         existing = (
-            cls._find_ledger_by_idempotency_key(state, user_id, account_type, idempotency_key)
+            cls._find_ledger_by_idempotency_key(state, user_id, account_type, point_type, idempotency_key)
             if idempotency_key
             else None
         )
@@ -173,6 +197,7 @@ class PointsCoreService:
             id=new_id("points_ledger"),
             userId=user_id,
             accountType=account_type,
+            pointType=point_type,
             ledgerType=ledger_type,
             pointsDelta=points_delta,
             balanceAfter=new_balance,
@@ -198,6 +223,7 @@ class PointsCoreService:
         reason: str,
         idempotency_key: str,
         account_type: str = DEFAULT_POINTS_ACCOUNT_TYPE,
+        point_type: str = DEFAULT_POINT_TYPE,
         source_type: str | None = None,
         source_id: str | None = None,
         related_order_id: str | None = None,
@@ -213,6 +239,7 @@ class PointsCoreService:
             reason=reason,
             idempotency_key=idempotency_key,
             account_type=account_type,
+            point_type=point_type,
             source_type=source_type,
             source_id=source_id,
             related_order_id=related_order_id,
@@ -230,6 +257,7 @@ class PointsCoreService:
         reason: str,
         idempotency_key: str,
         account_type: str = DEFAULT_POINTS_ACCOUNT_TYPE,
+        point_type: str = DEFAULT_POINT_TYPE,
         source_type: str | None = None,
         source_id: str | None = None,
         related_order_id: str | None = None,
@@ -245,6 +273,7 @@ class PointsCoreService:
             reason=reason,
             idempotency_key=idempotency_key,
             account_type=account_type,
+            point_type=point_type,
             source_type=source_type,
             source_id=source_id,
             related_order_id=related_order_id,
@@ -267,6 +296,7 @@ class PointsCoreService:
         credit_ledger_type: str = "transfer_credit",
         source_type: str | None = None,
         source_id: str | None = None,
+        point_type: str = DEFAULT_POINT_TYPE,
         metadata: dict | None = None,
     ) -> dict:
         from_user_id = cls._clean(from_user_id, "扣款用户 ID", 160)
@@ -279,6 +309,7 @@ class PointsCoreService:
         # two immutable rows independently idempotent.
         operation_key = cls._clean(operation_key, "积分转账幂等键", 180)
         account_type = cls.normalize_account_type(account_type)
+        point_type = cls.normalize_point_type(point_type)
         debit_ledger_type = cls._clean(debit_ledger_type, "扣款流水类型", MAX_LEDGER_TYPE_LENGTH)
         credit_ledger_type = cls._clean(credit_ledger_type, "收款流水类型", MAX_LEDGER_TYPE_LENGTH)
         debit_reason = cls._clean(debit_reason, "扣款流水原因", 240)
@@ -289,12 +320,12 @@ class PointsCoreService:
             source_id = cls._clean(source_id, "积分来源 ID", 200)
         debit_key = f"{operation_key}:debit"
         credit_key = f"{operation_key}:credit"
-        existing_debit = cls._find_ledger_by_idempotency_key(state, from_user_id, account_type, debit_key)
-        existing_credit = cls._find_ledger_by_idempotency_key(state, to_user_id, account_type, credit_key)
+        existing_debit = cls._find_ledger_by_idempotency_key(state, from_user_id, account_type, point_type, debit_key)
+        existing_credit = cls._find_ledger_by_idempotency_key(state, to_user_id, account_type, point_type, credit_key)
         if existing_debit and existing_credit:
             return {
-                "fromAccount": cls.ensure_account(state, from_user_id, account_type=account_type),
-                "toAccount": cls.ensure_account(state, to_user_id, account_type=account_type),
+                "fromAccount": cls.ensure_account(state, from_user_id, account_type=account_type, point_type=point_type),
+                "toAccount": cls.ensure_account(state, to_user_id, account_type=account_type, point_type=point_type),
                 "debitLedger": existing_debit,
                 "creditLedger": existing_credit,
                 "duplicate": True,
@@ -302,8 +333,8 @@ class PointsCoreService:
         if existing_debit or existing_credit:
             raise HTTPException(status_code=409, detail="积分转账流水不完整，请人工核对")
 
-        from_account = cls.ensure_account(state, from_user_id, account_type=account_type)
-        to_account = cls.ensure_account(state, to_user_id, account_type=account_type)
+        from_account = cls.ensure_account(state, from_user_id, account_type=account_type, point_type=point_type)
+        to_account = cls.ensure_account(state, to_user_id, account_type=account_type, point_type=point_type)
         if from_account.balance < points:
             raise HTTPException(status_code=402, detail="积分余额不足")
 
@@ -315,6 +346,7 @@ class PointsCoreService:
             reason=debit_reason,
             idempotency_key=debit_key,
             account_type=account_type,
+            point_type=point_type,
             source_type=source_type,
             source_id=source_id,
             metadata=metadata,
@@ -327,6 +359,7 @@ class PointsCoreService:
             reason=credit_reason,
             idempotency_key=credit_key,
             account_type=account_type,
+            point_type=point_type,
             source_type=source_type,
             source_id=source_id,
             metadata=metadata,
@@ -346,16 +379,20 @@ class PointsCoreService:
         user_id: str,
         *,
         account_type: str = DEFAULT_POINTS_ACCOUNT_TYPE,
+        point_type: str | None = None,
         limit: int = 100,
     ) -> list[MutualPointLedger]:
         user_id = cls._clean(user_id, "用户 ID", 160)
         account_type = cls.normalize_account_type(account_type)
+        normalized_point_type = cls.normalize_point_type(point_type) if point_type is not None else None
         safe_limit = min(max(int(limit or 100), 1), 200)
         return sorted(
             [
                 item
                 for item in state.mutual_point_ledgers
-                if item.userId == user_id and item.accountType == account_type
+                if item.userId == user_id
+                and item.accountType == account_type
+                and (normalized_point_type is None or item.pointType == normalized_point_type)
             ],
             key=lambda item: (item.createdAt, item.id),
             reverse=True,

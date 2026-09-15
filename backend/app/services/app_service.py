@@ -18,12 +18,12 @@ import httpx
 from fastapi import HTTPException, status
 
 from app.core.config import settings
-from app.models.domain import AppState, Card, CardMedia, Category, CustomerAction, CustomerRadarSummary, ImportBatch, LeadFollowUpLog, LeadReminder, MediaAsset, MediaAssetRef, MembershipEntitlement, MembershipOrder, MessageRecord, MessageThread, MediaRetryJob, MutualActivityEvent, MutualPointAccount, MutualPointLedger, MutualRechargeOrder, NotificationPreference, OpportunityLead, OpportunityLeadContact, OpportunityLeadFollowup, OpportunityLeadSave, OpportunityLeadSource, OpportunityPushDigest, OpportunitySubscription, RawMessage, ReferralRelation, ReferralReward, ReferralWithdrawal, RelayConfig, RelayEntry, ResourceFreeQuota, ResourcePointLedger, ResourceUnlockRecord, ResourceWallet, ResponsePackage, ResponsePackageEvent, ResponsePackageItem, SameStyleGeneration, ShowcaseEvent, ShowcaseItem, ShowcasePage, SkillRun, SupplyDemandApplication, SupplyDemandCard, SyncCursor, Topic, User, UserNote, ViewEvent, WechatSubscriptionDelivery, WechatSubscriptionGrant, WecomArchiveCursor, WecomArchiveMessage, WecomBindCardToken, WecomIdentityBinding
+from app.models.domain import AppState, Card, CardMedia, Category, CustomerAction, CustomerRadarSummary, GroupResource, ImportBatch, LeadFollowUpLog, LeadReminder, MediaAsset, MediaAssetRef, MembershipEntitlement, MembershipOrder, MessageRecord, MessageThread, MediaRetryJob, MutualActivityEvent, MutualHelpSubmission, MutualHelpTask, MutualHelpConversation, MutualHelpChatMessage, MutualPointAccount, MutualPointLedger, MutualPointWithdrawal, MutualRechargeOrder, NotificationPreference, OpportunityLead, OpportunityLeadContact, OpportunityLeadFollowup, OpportunityLeadSave, OpportunityLeadSource, OpportunityPushDigest, OpportunitySubscription, RawMessage, ReferralRelation, ReferralReward, ReferralWithdrawal, RelayConfig, RelayEntry, ResourceFreeQuota, ResourcePointLedger, ResourceUnlockRecord, ResourceWallet, ResponsePackage, ResponsePackageEvent, ResponsePackageItem, SameStyleGeneration, ShowcaseEvent, ShowcaseItem, ShowcasePage, SkillRun, SupplyDemandApplication, SupplyDemandCard, SyncCursor, Topic, User, UserNote, ViewEvent, WechatSubscriptionDelivery, WechatSubscriptionGrant, WecomArchiveCursor, WecomArchiveMessage, WecomBindCardToken, WecomIdentityBinding
 from app.schemas.auth import MockLoginRequest, UserProfileUpdateRequest, WechatLoginRequest
 from app.schemas.categories import CategoryCreateRequest
 from app.schemas.cards import CardCreateRequest, CardUpdateRequest, CreateRelayRequest, LeadReminderUpdateRequest, LeadReminderUpsertRequest, RecordViewRequest
 from app.schemas.notes import CustomerActionSubmitRequest, LinkCaptureRequest, ManualNoteDraftRequest, NoteInteractionEventRequest, NoteTypeConfirmRequest, PropertyBatchCreateRequest, PropertyBatchParseRequest, PropertySameCloneRequest, QuickNoteCaptureRequest, TopicCreateRequest, UserNoteUpdateRequest
-from app.schemas.share_snapshots import ShareSnapshotRequest
+from app.schemas.share_snapshots import ShareSnapshotPrepareRequest, ShareSnapshotRequest
 from app.schemas.showcases import ShowcaseEventRequest, ShowcasePageRequest
 from app.schemas.scrm import SameStyleGenerateRequest
 from app.schemas.skills import (
@@ -37,17 +37,32 @@ from app.schemas.skills import (
 )
 from app.services.card_parser_service import CardParserService
 from app.services.content_object_adapter import ContentObjectAdapter
+from app.services.content_safety_service import ContentSafetyResult, ContentSafetyService
 from app.services.helpers import mask_nickname, new_id
 from app.services.import_notification_service import ImportNotificationService
 from app.services.link_preview_service import fetch_link_preview
 from app.services.media_storage_service import MediaStorageService
 from app.services.session_token import issue_user_session
 from app.services.media_processing_service import MediaProcessingService
+from app.services.share_card_renderer import (
+    MUTUAL_TASK_SHARE_CARD_STYLE_ID,
+    NOTE_SHARE_CARD_STYLE_ID,
+    NOTE_SHARE_CARD_RENDER_REVISION,
+    SHARE_CARD_HEIGHT,
+    SHARE_CARD_WIDTH,
+    ShareCardRenderError,
+    ShareCardRenderer,
+)
 from app.services.message_aggregator import MessageAggregator, WINDOW_SECONDS
 from app.services.ops_console_store import OpsConsoleStore
 from app.services.ocr_service import OcrService
 from app.services.property_table_ocr_service import PropertyTableOcrService
-from app.services.points_core import DEFAULT_POINTS_ACCOUNT_TYPE, PointsCoreService
+from app.services.points_core import (
+    BASE_POINT_TYPE,
+    DEFAULT_POINTS_ACCOUNT_TYPE,
+    REWARD_POINT_TYPE,
+    PointsCoreService,
+)
 from app.services.repository import AppRepository
 from app.services.skill_router_service import SkillRouterService
 from app.services.showcase_templates import allowed_template_ids, default_template_id, normalize_scene_type, normalize_template_id, note_scene_type, scene_accepts_note
@@ -88,6 +103,66 @@ PUBLIC_ATTACHMENT_TYPES = {"image", "pdf", "link"}
 NOTE_INTERACTION_TYPES = {"image_open", "pdf_open", "link_open", "source_open", "contact_click", "phone_click", "wechat_qr_open", "featured_note_open", "map_open"}
 CUSTOMER_INTELLIGENCE_SHOWCASE_EVENTS = {"view", "note_click", "phone_click", "wechat_copy", "share"}
 CUSTOMER_INTELLIGENCE_NOTE_EVENTS = set(NOTE_INTERACTION_TYPES)
+GROUP_RESOURCE_VIEW_COST = 15
+GROUP_RESOURCE_PUBLISH_REWARD = 10
+GROUP_RESOURCE_PUBLISH_REWARD_CAP = 100
+GROUP_RESOURCE_PUBLISH_DAILY_LIMIT = 1
+GROUP_RESOURCE_ADMIN_ROLE = "group_resource_admin"
+PLATFORM_OPERATOR_USER_ID = "platform_admin"
+MOBILE_TOOL_ADMIN_ROLES = {
+    "mutual_help": "mutual_help_admin",
+    "group_resource": GROUP_RESOURCE_ADMIN_ROLE,
+    "business_opportunity": "business_opportunity_admin",
+}
+BUSINESS_CARD_CONTACT_UNLOCK_COST_POINTS = 1
+CONTENT_PIN_TARGET_TYPES = {"mutual_help", "business_opportunity", "group_resource"}
+
+
+def _page_rows(rows, cursor=None, limit=None, max_limit=50):
+    """Return a bounded API page while preserving legacy list callers."""
+    if cursor is None and limit is None:
+        return None
+    try:
+        offset = max(0, int(cursor or 0))
+    except (TypeError, ValueError):
+        offset = 0
+    try:
+        page_size = min(max(int(limit or 20), 1), max_limit)
+    except (TypeError, ValueError):
+        page_size = 20
+    page = rows[offset:offset + page_size]
+    end = offset + len(page)
+    return {
+        "items": page,
+        "nextCursor": str(end) if end < len(rows) else None,
+        "hasMore": end < len(rows),
+        "limit": page_size,
+        "total": len(rows),
+    }
+
+
+def _offset_page_rows(rows, offset=0, limit=None, max_limit=100):
+    """Return an offset page while preserving legacy list callers."""
+    if limit is None:
+        return None
+    try:
+        safe_offset = max(0, int(offset or 0))
+    except (TypeError, ValueError):
+        safe_offset = 0
+    try:
+        page_size = min(max(int(limit or 50), 1), max_limit)
+    except (TypeError, ValueError):
+        page_size = 50
+    page = rows[safe_offset:safe_offset + page_size]
+    end = safe_offset + len(page)
+    return {
+        "items": page,
+        "offset": safe_offset,
+        "nextOffset": end if end < len(rows) else None,
+        "hasMore": end < len(rows),
+        "limit": page_size,
+        "total": len(rows),
+    }
 PROPERTY_CONVERSION_DEFAULTS = {
     "showContactPhone": True,
     "enableLightScrm": True,
@@ -190,6 +265,8 @@ MEMBERSHIP_PENDING_ORDER_TTL_SECONDS = 30 * 60
 MEMBERSHIP_PAYMENT_LOCK = RLock()
 SHARE_SNAPSHOT_RETENTION_DAYS = 30
 SHARE_SNAPSHOT_STYLE_ID = "share_card_v10"
+SHARE_SNAPSHOT_STYLE_IDS = {SHARE_SNAPSHOT_STYLE_ID, NOTE_SHARE_CARD_STYLE_ID}
+SHARE_SNAPSHOT_LOCK = RLock()
 SUBSCRIBE_ACCEPT_STATUSES = {"accept", "acceptWithAudio"}
 SUBSCRIBE_DEDUPE_WINDOW_SECONDS = 30 * 60
 SUBSCRIBE_DELIVERY_MAX_ATTEMPTS = 3
@@ -199,6 +276,11 @@ MUTUAL_INITIAL_POINTS = 100
 MUTUAL_RESERVE_POINTS = 300
 MUTUAL_POINTS_PER_YUAN = 10
 MUTUAL_RECHARGE_PACKAGES = (100, 500, 1000, 2000)
+MUTUAL_WITHDRAWAL_MIN_POINTS = 100
+MUTUAL_WITHDRAWAL_FEE_BASIS_POINTS = 2000
+MUTUAL_WITHDRAWAL_DAILY_LIMIT = 1
+POINTS_MIGRATION_PLATFORM_REWARD = "points-migration:platform-reward-to-base:v1"
+POINTS_MIGRATION_RESOURCE_WALLET = "points-migration:resource-wallet-to-base:v1"
 
 
 class AppService:
@@ -219,11 +301,13 @@ class AppService:
         wechat_miniapp_client: WechatMiniappClient | None = None,
         ops_console_store: OpsConsoleStore | None = None,
         points_core: PointsCoreService | None = None,
+        content_safety_service: ContentSafetyService | None = None,
     ):
         self.repo = repo
         self.wecom_mock_service = wecom_mock_service
         self.media_storage_service = media_storage_service
         self.media_processing_service = media_processing_service or MediaProcessingService()
+        self.share_card_renderer = ShareCardRenderer(settings.share_card_font_path)
         self.parser_service = parser_service
         self.aggregator = aggregator
         self.notification_service = notification_service
@@ -231,6 +315,7 @@ class AppService:
         self.wechat_miniapp_client = wechat_miniapp_client
         self.ops_console_store = ops_console_store
         self.points_core = points_core or PointsCoreService()
+        self.content_safety = content_safety_service or ContentSafetyService(repo)
         self.skill_router_service = skill_router_service or SkillRouterService()
         self.content_object_adapter = content_object_adapter or ContentObjectAdapter()
         self._card_list_cache: dict[tuple[str, str, str], tuple[float, list[dict]]] = {}
@@ -279,13 +364,155 @@ class AppService:
             return True
         return bool(self.ops_console_store.get_customer_info_chain_config().get("paymentRequired", True))
 
+    def list_content_safety_rules(self, enabled_only: bool = False) -> list[dict]:
+        return [item.model_dump(mode="json") for item in self.repo.list_content_safety_rules(enabled_only=enabled_only)]
+
+    def create_content_safety_rule(self, payload: dict, operator_name: str = "ops") -> dict:
+        return self.content_safety.create_rule(payload, operator_name=operator_name).model_dump(mode="json")
+
+    def update_content_safety_rule(self, rule_id: str, payload: dict, operator_name: str = "ops") -> dict:
+        return self.content_safety.update_rule(rule_id, payload, operator_name=operator_name).model_dump(mode="json")
+
+    def test_content_safety(self, content_type: str, fields: dict, content_revision: str = "") -> dict:
+        return self.content_safety.scan(content_type, fields, content_revision).public_payload()
+
+    def list_content_moderation_queue(
+        self,
+        status: str | None = "reviewing",
+        target_type: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> dict:
+        rows = self.repo.list_content_moderation_assessments(
+            status=status,
+            target_type=target_type,
+            limit=limit,
+            offset=offset,
+        )
+        return {
+            "items": [item.model_dump(mode="json") for item in rows],
+            "status": status,
+            "targetType": target_type,
+            "limit": max(1, min(int(limit or 100), 500)),
+            "offset": max(int(offset or 0), 0),
+        }
+
+    def review_content_moderation(self, assessment_id: str, action: str, operator_name: str, note: str = "") -> dict:
+        assessment = self.repo.get_content_moderation_assessment(assessment_id)
+        if not assessment:
+            raise HTTPException(status_code=404, detail="审核记录不存在")
+        with MEMBERSHIP_PAYMENT_LOCK:
+            reviewed = self.content_safety.review_assessment(assessment_id, action, operator_name, note)
+            target_status = "visible" if action == "approve" else "rejected"
+            if assessment.targetType == "mutual_help_comment":
+                for task in self.repo.list_mutual_help_tasks():
+                    changed = False
+                    comments = []
+                    for comment in task.woolComments or []:
+                        if isinstance(comment, dict) and str(comment.get("id") or "") == assessment.targetId:
+                            comment = {**comment, "status": target_status}
+                            changed = True
+                        comments.append(comment)
+                    if changed:
+                        self.repo.save_mutual_help_task(task.model_copy(update={"woolComments": comments}))
+                        break
+            elif assessment.targetType == "mutual_help_submission":
+                submission = self.repo.get_mutual_help_submission(assessment.targetId)
+                if submission and submission.status == "reviewing":
+                    if action == "approve":
+                        self.repo.save_mutual_help_submission(submission.model_copy(update={"status": "submitted", "updatedAt": now_iso()}))
+                    else:
+                        state = self._load()
+                        current = next((item for item in state.mutual_help_submissions if item.id == submission.id), submission)
+                        released = self._release_mutual_help_submission_reservation_locked(state, current)
+                        rejected = released.model_copy(update={
+                            "status": "rejected",
+                            "rejectionReason": note or "内容未通过审核",
+                            "rejectedAt": now_iso(),
+                            "updatedAt": now_iso(),
+                        })
+                        state.mutual_help_submissions = [item if item.id != rejected.id else rejected for item in state.mutual_help_submissions]
+                        self._save(state)
+        return reviewed.model_dump(mode="json")
+
+    def list_content_safety_stats(self) -> dict:
+        rules = self.repo.list_content_safety_rules(enabled_only=False)
+        assessments = self.repo.list_content_moderation_assessments(limit=500)
+        counts = {key: 0 for key in ("allowed", "reviewing", "blocked", "overridden", "stale")}
+        for item in assessments:
+            counts[item.status] = counts.get(item.status, 0) + 1
+        return {
+            "ruleVersion": self.content_safety.scan("stats", {}).ruleVersion,
+            "rules": {
+                "total": len(rules),
+                "enabled": sum(1 for item in rules if item.enabled),
+            },
+            "assessments": counts,
+        }
+
+    def _enforce_content_safety(
+        self,
+        content_type: str,
+        target_id: str,
+        fields: dict,
+        *,
+        owner_user_id: str | None = None,
+        content_revision: str = "",
+        for_publish: bool = False,
+        persist: bool = True,
+    ) -> ContentSafetyResult:
+        result = self.content_safety.assess(
+            content_type,
+            target_id,
+            fields,
+            owner_user_id=owner_user_id,
+            content_revision=content_revision,
+            persist=persist,
+        )
+        if result.decision in {"block", "review"} and not result.assessmentId and target_id:
+            result = self.content_safety.assess(
+                content_type,
+                target_id,
+                fields,
+                owner_user_id=owner_user_id,
+                content_revision=content_revision,
+                persist=True,
+            )
+        if for_publish:
+            self.content_safety.assert_can_publish(result)
+        elif result.decision == "block":
+            raise HTTPException(status_code=422, detail={
+                **result.public_payload(),
+                "message": "内容包含暂不能保存的内容，请修改后重试",
+            })
+        return result
+
     def require_customer_info_chain_enabled(self) -> None:
         if not self.customer_info_chain_enabled():
             raise HTTPException(status_code=403, detail="客户信息链功能当前未开放")
 
     def get_resource_wallet(self, owner_user_id: str) -> dict:
-        wallet = self._ensure_resource_wallet(owner_user_id)
-        ledgers = self.repo.list_resource_point_ledgers(owner_user_id, limit=20)
+        with MEMBERSHIP_PAYMENT_LOCK:
+            return self._get_resource_wallet_locked(owner_user_id)
+
+    def _get_resource_wallet_locked(self, owner_user_id: str) -> dict:
+        # ``ResourceWallet`` is retained as a compatibility projection for
+        # the older resource-library API.  The actual balance now comes from
+        # the shared mutual-help points accounts, so all three tools read the
+        # same base + recharge total.
+        self._ensure_resource_wallet(owner_user_id)
+        state = self._load()
+        accounts = self._ensure_mutual_point_accounts(state, owner_user_id)
+        legacy_wallet = next(item for item in state.resource_wallets if item.ownerUserId == owner_user_id)
+        wallet = self._project_resource_wallet(legacy_wallet, accounts)
+        if wallet.model_dump() != legacy_wallet.model_dump():
+            state.resource_wallets = [item if item.id != wallet.id else wallet for item in state.resource_wallets]
+            self._save(state)
+        ledgers = sorted(
+            [item for item in state.resource_point_ledgers if item.ownerUserId == owner_user_id],
+            key=lambda item: item.createdAt,
+            reverse=True,
+        )[:20]
         return {
             "wallet": wallet.model_dump(),
             "recentLedgers": [item.model_dump() for item in ledgers],
@@ -296,7 +523,12 @@ class AppService:
         safe_limit = min(max(int(limit or 100), 1), 200)
         return [item.model_dump() for item in self.repo.list_resource_point_ledgers(owner_user_id, limit=safe_limit)]
 
-    def consume_resource_points(
+    def consume_resource_points(self, *args, **kwargs) -> dict:
+        """Consume shared points through the legacy resource-wallet API."""
+        with MEMBERSHIP_PAYMENT_LOCK:
+            return self._consume_resource_points_locked(*args, **kwargs)
+
+    def _consume_resource_points_locked(
         self,
         owner_user_id: str,
         action_type: str,
@@ -313,9 +545,23 @@ class AppService:
             raise HTTPException(status_code=400, detail="积分消耗不能为负数")
         if not action_type or not target_type or not target_id:
             raise HTTPException(status_code=400, detail="缺少积分消费对象")
-        wallet = self._ensure_resource_wallet(owner_user_id)
-        now = now_iso()
-        existing = self.repo.find_resource_unlock_record(owner_user_id, action_type, target_type, target_id)
+        self._ensure_resource_wallet(owner_user_id)
+        with MEMBERSHIP_PAYMENT_LOCK:
+            state = self._load()
+            accounts = self._ensure_mutual_point_accounts(state, owner_user_id)
+            legacy_wallet = next(item for item in state.resource_wallets if item.ownerUserId == owner_user_id)
+            wallet = self._project_resource_wallet(legacy_wallet, accounts)
+            now = now_iso()
+            existing = next(
+                (
+                    item for item in state.resource_unlock_records
+                    if item.ownerUserId == owner_user_id
+                    and item.actionType == action_type
+                    and item.targetType == target_type
+                    and item.targetId == target_id
+                ),
+                None,
+            )
         if existing and self._is_resource_unlock_active(existing, now):
             return {
                 "wallet": wallet.model_dump(),
@@ -331,7 +577,15 @@ class AppService:
         used_free_quota = False
         if quota_type and free_quota_limit > 0:
             quota_period = period_key or date_key(now)
-            free_quota = self.repo.get_resource_free_quota(owner_user_id, quota_type, quota_period)
+            free_quota = next(
+                (
+                    item for item in state.resource_free_quotas
+                    if item.ownerUserId == owner_user_id
+                    and item.quotaType == quota_type
+                    and item.periodKey == quota_period
+                ),
+                None,
+            )
             if not free_quota:
                 free_quota = ResourceFreeQuota(
                     id=f"quota_{owner_user_id}_{quota_type}_{quota_period}",
@@ -347,19 +601,32 @@ class AppService:
                 free_quota.usedCount += 1
                 free_quota.updatedAt = now
                 used_free_quota = True
-                self.repo.save_resource_free_quota(free_quota)
+                state.resource_free_quotas = [
+                    item for item in state.resource_free_quotas
+                    if item.id != free_quota.id
+                ] + [free_quota]
 
         if used_free_quota:
             ledger_delta = 0
             ledger_type = "free_quota"
-        else:
-            if wallet.balance < points_cost:
-                raise HTTPException(status_code=402, detail="积分余额不足")
-            wallet.balance -= points_cost
-            wallet.totalConsumed += points_cost
-            wallet.updatedAt = now
-            self.repo.save_resource_wallet(wallet)
+        elif points_cost > 0:
+            self._consume_shared_points_in_state(
+                state,
+                owner_user_id,
+                points_cost,
+                reason=reason or "资源工具积分消费",
+                idempotency_key=f"resource:{owner_user_id}:{action_type}:{target_type}:{target_id}",
+                ledger_type="resource_consume",
+                source_type=action_type,
+                source_id=target_id,
+                metadata=metadata,
+            )
+            accounts = self._ensure_mutual_point_accounts(state, owner_user_id)
+            wallet = self._project_resource_wallet(legacy_wallet, accounts)
             ledger_delta = -points_cost
+            ledger_type = "consume"
+        else:
+            ledger_delta = 0
             ledger_type = "consume"
 
         unlock_record = ResourceUnlockRecord(
@@ -393,8 +660,14 @@ class AppService:
             createdAt=now,
         )
         unlock_record.ledgerId = ledger.id
-        self.repo.save_resource_point_ledger(ledger)
-        self.repo.save_resource_unlock_record(unlock_record)
+        state.resource_point_ledgers.append(ledger)
+        state.resource_unlock_records.append(unlock_record)
+        # Keep the old wallet row as a read-compatible projection.  It is not
+        # a second balance and must never be used to authorize a debit.
+        wallet = self._project_resource_wallet(legacy_wallet, self._ensure_mutual_point_accounts(state, owner_user_id))
+        state.resource_wallets = [item if item.id != wallet.id else wallet for item in state.resource_wallets]
+        ledger.balanceAfter = wallet.balance
+        self._save(state)
         return {
             "wallet": wallet.model_dump(),
             "ledger": ledger.model_dump(),
@@ -414,31 +687,53 @@ class AppService:
     ) -> dict:
         if points_delta == 0:
             raise HTTPException(status_code=400, detail="调整积分不能为 0")
-        wallet = self._ensure_resource_wallet(owner_user_id)
-        now = now_iso()
-        new_balance = wallet.balance + points_delta
-        if new_balance < 0:
-            raise HTTPException(status_code=400, detail="调整后积分不能小于 0")
-        wallet.balance = new_balance
-        if points_delta > 0:
-            wallet.totalGranted += points_delta
-        else:
-            wallet.totalConsumed += abs(points_delta)
-        wallet.updatedAt = now
-        self.repo.save_resource_wallet(wallet)
-        ledger = ResourcePointLedger(
-            id=new_id("ledger"),
-            ownerUserId=owner_user_id,
-            walletId=wallet.id,
-            ledgerType="adjust",
-            actionType="ops_adjust",
-            pointsDelta=points_delta,
-            balanceAfter=wallet.balance,
-            reason=reason,
-            operatorId=operator_id,
-            createdAt=now,
-        )
-        self.repo.save_resource_point_ledger(ledger)
+        self._ensure_resource_wallet(owner_user_id)
+        with MEMBERSHIP_PAYMENT_LOCK:
+            state = self._load()
+            accounts = self._ensure_mutual_point_accounts(state, owner_user_id)
+            legacy_wallet = next(item for item in state.resource_wallets if item.ownerUserId == owner_user_id)
+            now = now_iso()
+            if points_delta > 0:
+                self.points_core.grant(
+                    state,
+                    owner_user_id,
+                    points_delta,
+                    ledger_type="resource_adjust_grant",
+                    reason=reason or "管理员调整积分",
+                    idempotency_key=f"resource-adjust:{owner_user_id}:{now}:{points_delta}",
+                    source_type="resource_wallet_adjust",
+                    source_id=owner_user_id,
+                    metadata={"operatorId": operator_id},
+                )
+            else:
+                self._consume_shared_points_in_state(
+                    state,
+                    owner_user_id,
+                    abs(points_delta),
+                    reason=reason or "管理员调整积分",
+                    idempotency_key=f"resource-adjust:{owner_user_id}:{now}:{abs(points_delta)}",
+                    ledger_type="resource_adjust_consume",
+                    source_type="resource_wallet_adjust",
+                    source_id=owner_user_id,
+                    metadata={"operatorId": operator_id},
+                )
+            accounts = self._ensure_mutual_point_accounts(state, owner_user_id)
+            wallet = self._project_resource_wallet(legacy_wallet, accounts)
+            state.resource_wallets = [item if item.id != wallet.id else wallet for item in state.resource_wallets]
+            ledger = ResourcePointLedger(
+                id=new_id("ledger"),
+                ownerUserId=owner_user_id,
+                walletId=wallet.id,
+                ledgerType="adjust",
+                actionType="ops_adjust",
+                pointsDelta=points_delta,
+                balanceAfter=wallet.balance,
+                reason=reason,
+                operatorId=operator_id,
+                createdAt=now,
+            )
+            state.resource_point_ledgers.append(ledger)
+            self._save(state)
         return {"wallet": wallet.model_dump(), "ledger": ledger.model_dump()}
 
     def _ensure_resource_wallet(self, owner_user_id: str) -> ResourceWallet:
@@ -509,6 +804,27 @@ class AppService:
             createdAt=existing.createdAt if existing else now,
             updatedAt=now,
         )
+        safety = self._enforce_content_safety(
+            "opportunity_lead",
+            lead.id,
+            {
+                "title": lead.title,
+                "summary": lead.summary,
+                "city": lead.city,
+                "district": lead.district,
+                "industry": lead.industry,
+                "demandType": lead.demandType,
+                "content": lead.content,
+                "tags": lead.tags,
+                "sourceRawText": payload.source.rawText if payload.source else "",
+            },
+            owner_user_id=None,
+            content_revision=lead.updatedAt,
+            for_publish=False,
+        )
+        if safety.decision == "review":
+            lead.status = "draft"
+            lead.publishedAt = None
         self.repo.save_opportunity_lead(lead)
         if payload.source:
             existing_sources = self.repo.list_opportunity_lead_sources(lead.id)
@@ -554,14 +870,37 @@ class AppService:
         industry: str | None = None,
         demand_type: str | None = None,
         contact_status: str | None = None,
-    ) -> list[dict]:
+        cursor: str | None = None,
+        limit: int | None = None,
+    ) -> list[dict] | dict:
         leads = self.repo.list_opportunity_leads(statuses={"published"}, keyword=keyword)
-        return [
-            self._opportunity_lead_public_payload(item)
-            for item in leads
-            if not self._opportunity_lead_expired(item)
-            and self._opportunity_lead_matches_filters(item, city, industry, demand_type, contact_status)
-        ]
+        rows = []
+        for item in leads:
+            if self._opportunity_lead_expired(item) or not self._opportunity_lead_matches_filters(item, city, industry, demand_type, contact_status):
+                continue
+            try:
+                self._enforce_content_safety(
+                    "opportunity_lead",
+                    item.id,
+                    {
+                        "title": item.title,
+                        "summary": item.summary,
+                        "city": item.city,
+                        "district": item.district,
+                        "industry": item.industry,
+                        "demandType": item.demandType,
+                        "content": item.content,
+                        "tags": item.tags,
+                    },
+                    content_revision=item.updatedAt,
+                    for_publish=True,
+                    persist=False,
+                )
+            except HTTPException:
+                continue
+            rows.append(self._opportunity_lead_public_payload(item))
+        page = _page_rows(rows, cursor, limit)
+        return page if page is not None else rows
 
     def list_opportunity_leads_for_user(
         self,
@@ -571,6 +910,8 @@ class AppService:
         industry: str | None = None,
         demand_type: str | None = None,
         contact_status: str | None = None,
+        cursor: str | None = None,
+        limit: int | None = None,
     ) -> dict:
         if not self.repo.get_user(user_id):
             raise HTTPException(status_code=404, detail="用户不存在")
@@ -583,6 +924,26 @@ class AppService:
                 continue
             if not self._opportunity_lead_matches_filters(lead, city, industry, demand_type, contact_status):
                 continue
+            try:
+                self._enforce_content_safety(
+                    "opportunity_lead",
+                    lead.id,
+                    {
+                        "title": lead.title,
+                        "summary": lead.summary,
+                        "city": lead.city,
+                        "district": lead.district,
+                        "industry": lead.industry,
+                        "demandType": lead.demandType,
+                        "content": lead.content,
+                        "tags": lead.tags,
+                    },
+                    content_revision=lead.updatedAt,
+                    for_publish=True,
+                    persist=False,
+                )
+            except HTTPException:
+                continue
             payload = self._opportunity_lead_public_payload(lead)
             score, reasons = self._score_lead_for_subscription(lead, subscription)
             payload["matchScore"] = score
@@ -592,18 +953,21 @@ class AppService:
             rows.append(payload)
         rows.sort(key=lambda item: (item.get("matchScore", 0), -item["_sortIndex"]), reverse=True)
         if subscription:
-            rows = [item for item in rows if item.get("matchScore", 0) >= 62][:12]
-        else:
-            rows = rows[:12]
+            rows = [item for item in rows if item.get("matchScore", 0) >= 62]
+        page = _page_rows(rows, cursor, limit)
+        rows = page["items"] if page is not None else rows[:12]
         for item in rows:
             item.pop("_sortIndex", None)
-        return {
+        result = {
             "items": rows,
             "subscription": subscription.model_dump() if subscription else None,
             "recommendationTitle": "今日推荐机会",
             "generatedAt": now_iso(),
             "rule": "按订阅条件、联系方式、可信状态和时效排序生成",
         }
+        if page is not None:
+            result.update({key: value for key, value in page.items() if key != "items"})
+        return result
 
     def list_opportunity_leads_ops(self, keyword: str | None = None, status: str | None = None) -> list[dict]:
         statuses = {status} if status else None
@@ -616,6 +980,24 @@ class AppService:
             raise HTTPException(status_code=404, detail="商机线索不存在")
         if not include_ops and lead.status != "published":
             raise HTTPException(status_code=404, detail="商机线索不存在")
+        if not include_ops:
+            self._enforce_content_safety(
+                "opportunity_lead",
+                lead.id,
+                {
+                    "title": lead.title,
+                    "summary": lead.summary,
+                    "city": lead.city,
+                    "district": lead.district,
+                    "industry": lead.industry,
+                    "demandType": lead.demandType,
+                    "content": lead.content,
+                    "tags": lead.tags,
+                },
+                content_revision=lead.updatedAt,
+                for_publish=True,
+                persist=False,
+            )
         return self._opportunity_lead_ops_payload(lead) if include_ops else self._opportunity_lead_public_payload(lead, detail=True)
 
     def save_opportunity_lead_for_user(
@@ -652,7 +1034,9 @@ class AppService:
         status: str | None = None,
         keyword: str | None = None,
         package_status: str | None = None,
-    ) -> list[dict]:
+        cursor: str | None = None,
+        limit: int | None = None,
+    ) -> list[dict] | dict:
         if not self.repo.get_user(user_id):
             raise HTTPException(status_code=404, detail="用户不存在")
         rows = []
@@ -684,7 +1068,14 @@ class AppService:
                     "followupCount": len(followups),
                 }
             )
-        return rows
+        page = _page_rows(rows, cursor, limit)
+        if page is None:
+            return rows
+        status_counts = defaultdict(int)
+        for saved in self.repo.list_opportunity_lead_saves_for_user(user_id):
+            status_counts[saved.status] += 1
+        page["statusCounts"] = dict(status_counts)
+        return page
 
     def list_opportunity_subscriptions(self, owner_user_id: str) -> list[dict]:
         if not self.repo.get_user(owner_user_id):
@@ -955,12 +1346,38 @@ class AppService:
         demand_type: str | None = None,
         card_type: str | None = None,
         contact_status: str | None = None,
-    ) -> list[dict]:
-        return [
-            self._supply_demand_card_payload(item)
-            for item in self.repo.list_supply_demand_cards(statuses={"published"}, keyword=keyword)
-            if self._supply_demand_card_matches_filters(item, city, industry, demand_type, card_type, contact_status)
-        ]
+        cursor: str | None = None,
+        limit: int | None = None,
+    ) -> list[dict] | dict:
+        rows = []
+        for item in self.repo.list_supply_demand_cards(statuses={"published"}, keyword=keyword):
+            if self._supply_demand_card_expired(item):
+                continue
+            if not self._supply_demand_card_matches_filters(item, city, industry, demand_type, card_type, contact_status):
+                continue
+            try:
+                self._enforce_content_safety(
+                    "supply_demand_card",
+                    item.id,
+                    {
+                        "title": item.title,
+                        "summary": item.summary,
+                        "city": item.city,
+                        "industry": item.industry,
+                        "demandType": item.demandType,
+                        "contactRequirement": item.contactRequirement,
+                        "tags": item.tags,
+                    },
+                    owner_user_id=item.ownerUserId,
+                    content_revision=item.updatedAt,
+                    for_publish=True,
+                    persist=False,
+                )
+            except HTTPException:
+                continue
+            rows.append(self._supply_demand_card_payload(item))
+        page = _page_rows(rows, cursor, limit)
+        return page if page is not None else rows
 
     def list_my_supply_demand_cards(self, owner_user_id: str) -> list[dict]:
         if not self.repo.get_user(owner_user_id):
@@ -971,9 +1388,61 @@ class AppService:
         card = self.repo.get_supply_demand_card(card_id)
         if not card:
             raise HTTPException(status_code=404, detail="供需卡不存在")
-        if card.status != "published" and card.ownerUserId != viewer_user_id:
+        if (card.status != "published" or self._supply_demand_card_expired(card)) and card.ownerUserId != viewer_user_id:
             raise HTTPException(status_code=404, detail="供需卡不存在")
+        if card.ownerUserId != viewer_user_id:
+            self._enforce_content_safety(
+                "supply_demand_card",
+                card.id,
+                {
+                    "title": card.title,
+                    "summary": card.summary,
+                    "city": card.city,
+                    "industry": card.industry,
+                    "demandType": card.demandType,
+                    "contactRequirement": card.contactRequirement,
+                    "tags": card.tags,
+                },
+                owner_user_id=card.ownerUserId,
+                content_revision=card.updatedAt,
+                for_publish=True,
+                persist=False,
+            )
         return self._supply_demand_card_payload(card, viewer_user_id=viewer_user_id, include_detail=True)
+
+    def unlock_supply_demand_card_contact(self, card_id: str, user_id: str) -> dict:
+        user_id = str(user_id or "").strip()
+        if not self.repo.get_user(user_id):
+            raise HTTPException(status_code=404, detail="用户不存在")
+        card = self.repo.get_supply_demand_card(card_id)
+        if not card or card.status != "published" or self._supply_demand_card_expired(card):
+            raise HTTPException(status_code=404, detail="供需卡不存在")
+        contacts = self._supply_demand_card_contacts(card)
+        if not contacts:
+            raise HTTPException(status_code=404, detail="该合作机会暂无联系方式")
+        if card.ownerUserId == user_id:
+            return {
+                "card": self._supply_demand_card_payload(card, viewer_user_id=user_id, include_detail=True),
+                "charged": False,
+                "duplicate": False,
+                "wallet": self.get_resource_wallet(user_id)["wallet"],
+            }
+        consume = self.consume_resource_points(
+            owner_user_id=user_id,
+            action_type="supply_demand_contact_unlock",
+            target_type="supply_demand_card",
+            target_id=card.id,
+            points_cost=BUSINESS_CARD_CONTACT_UNLOCK_COST_POINTS,
+            reason="查看合作机会联系方式",
+            metadata={"cardOwnerUserId": card.ownerUserId, "revision": card.updatedAt},
+        )
+        return {
+            "card": self._supply_demand_card_payload(card, viewer_user_id=user_id, include_detail=True),
+            "charged": consume["charged"],
+            "duplicate": consume["duplicate"],
+            "wallet": consume["wallet"],
+            "unlockRecord": consume["unlockRecord"],
+        }
 
     def apply_supply_demand_card(self, card_id: str, applicant_user_id: str, message: str | None = None) -> dict:
         applicant = self.repo.get_user(applicant_user_id)
@@ -1105,40 +1574,166 @@ class AppService:
         self.repo.save_opportunity_push_digest(digest)
         return self._opportunity_push_digest_payload(digest)
 
+    def _profile_contact_values(self, owner: User | None) -> list[dict]:
+        if not owner:
+            return []
+        profile = owner.salesProfile if isinstance(owner.salesProfile, dict) else {}
+        phone = str(profile.get("phone") or owner.phone or "").strip()
+        wechat = str(profile.get("wechat") or owner.wechat or "").strip()
+        values = []
+        if phone:
+            values.append({"contactType": "phone", "contactValue": phone, "label": "电话"})
+        if wechat and wechat != phone:
+            values.append({"contactType": "wechat", "contactValue": wechat, "label": "微信"})
+        return values
+
+    def _has_business_card(self, owner_user_id: str) -> bool:
+        return any(
+            (note.visibilityConfig or {}).get("cardType") == "business_card"
+            for note in self.repo.list_user_notes(owner_user_id=owner_user_id, include_deleted=False)
+        )
+
+    def _supply_demand_card_contacts(self, card: SupplyDemandCard) -> list[dict]:
+        if card.contactSource == "business_card":
+            return self._profile_contact_values(self.repo.get_user(card.ownerUserId))
+        if card.contactSource == "manual" and card.contactType and card.contactValueEncrypted:
+            return [{
+                "contactType": card.contactType,
+                "contactValue": card.contactValueEncrypted,
+                "label": "电话" if card.contactType == "phone" else "微信",
+            }]
+        return []
+
+    def _supply_demand_card_expired(self, card: SupplyDemandCard) -> bool:
+        if not card.expiresAt:
+            return False
+        try:
+            return parse_iso(card.expiresAt) <= datetime.now(tz=SHANGHAI)
+        except Exception:
+            # Invalid legacy values should not make a card disappear silently;
+            # the owner can still edit it and provide a valid expiry.
+            return False
+
     def upsert_supply_demand_card(self, payload) -> dict:
-        if not self.repo.get_user(payload.userId):
+        owner = self.repo.get_user(payload.userId)
+        if not owner:
             raise HTTPException(status_code=404, detail="用户不存在")
         title = (payload.title or "").strip()
         if not title:
             raise HTTPException(status_code=400, detail="标题不能为空")
-        now = now_iso()
+        if len(title) > 60:
+            raise HTTPException(status_code=400, detail="标题最多60个字")
+        summary = (payload.summary or "").strip()
         existing = self.repo.get_supply_demand_card(payload.id) if payload.id else None
+        requires_summary = payload.contactSource in {"business_card", "manual"} or (
+            existing and existing.contactSource in {"business_card", "manual"}
+        )
+        if requires_summary and not summary:
+            raise HTTPException(status_code=400, detail="请填写具体说明")
+        if len(summary) > 300:
+            raise HTTPException(status_code=400, detail="具体说明最多300个字")
+        now = now_iso()
         if existing and existing.ownerUserId != payload.userId:
             raise HTTPException(status_code=403, detail="无权编辑该发布")
         status_value = payload.status if payload.status in {"draft", "pending_review", "published", "rejected", "archived"} else "draft"
         if status_value == "published":
             status_value = "pending_review"
+
+        contact_source = str(payload.contactSource or (existing.contactSource if existing else "none")).strip()
+        if contact_source not in {"none", "business_card", "manual"}:
+            contact_source = "none"
+        contact_type = str(payload.contactType or (existing.contactType if existing else "")).strip() or None
+        contact_value = str(payload.contactValue or (existing.contactValueEncrypted if existing else "")).strip()
+        contact_masked = str(existing.contactMasked if existing else "").strip()
+        contact_verify_status = str(existing.contactVerifyStatus if existing else "self_declared").strip() or "self_declared"
+        if contact_source == "business_card":
+            if not self._has_business_card(owner.id) or not self._profile_contact_values(owner):
+                raise HTTPException(status_code=400, detail="合作名片还没有电话或微信，请手动填写")
+            contact_type = None
+            contact_value = ""
+            contact_masked = ""
+            contact_verify_status = "profile"
+        elif contact_source == "manual":
+            if contact_type not in {"phone", "wechat"}:
+                raise HTTPException(status_code=400, detail="请选择电话或微信")
+            if not contact_value:
+                raise HTTPException(status_code=400, detail="请填写联系方式")
+            if contact_type == "phone":
+                normalized_phone = re.sub(r"[\s-]+", "", contact_value)
+                if not re.fullmatch(r"(?:\+?86)?1[3-9]\d{9}", normalized_phone):
+                    raise HTTPException(status_code=400, detail="手机号格式不正确")
+                contact_value = normalized_phone
+            elif len(contact_value) > 80:
+                raise HTTPException(status_code=400, detail="微信号过长")
+            contact_masked = self._mask_opportunity_contact(contact_value)
+            contact_verify_status = "self_declared"
+        else:
+            contact_type = None
+            contact_value = ""
+            contact_masked = ""
+
+        if payload.expiresAt is not None:
+            expires_at = str(payload.expiresAt).strip() or None
+        else:
+            expires_at = str(existing.expiresAt if existing else "").strip() or None
+        if not expires_at and not existing:
+            expires_at = (parse_iso(now) + timedelta(days=30)).isoformat()
+        if expires_at:
+            try:
+                if parse_iso(expires_at) <= parse_iso(now) and status_value in {"pending_review", "published"}:
+                    raise HTTPException(status_code=400, detail="有效期必须晚于当前时间")
+            except HTTPException:
+                raise
+            except Exception as exc:
+                raise HTTPException(status_code=400, detail="有效期格式不正确") from exc
+        contact_requirement = (payload.contactRequirement or "").strip()
+        if not contact_requirement:
+            contact_requirement = {"phone": "电话", "wechat": "微信"}.get(contact_type or "", "名片联系方式" if contact_source == "business_card" else "申请联系")
         card = SupplyDemandCard(
             id=existing.id if existing else new_id("sd"),
             ownerUserId=payload.userId,
             cardType=payload.cardType if payload.cardType in {"demand", "supply"} else "supply",
             status=status_value,
             title=title,
-            summary=(payload.summary or "").strip(),
+            summary=summary,
             city=(payload.city or "").strip() or None,
             industry=(payload.industry or "").strip() or None,
             demandType=(payload.demandType or "合作").strip() or "合作",
-            contactRequirement=(payload.contactRequirement or "").strip() or None,
+            contactRequirement=contact_requirement,
             linkedNoteId=(payload.linkedNoteId or "").strip() or None,
             linkedResourceType=(payload.linkedResourceType or "").strip() or None,
             linkedResourceId=(payload.linkedResourceId or "").strip() or None,
             tags=[str(item).strip() for item in (payload.tags or []) if str(item).strip()][:12],
+            contactSource=contact_source,
+            contactType=contact_type,
+            contactValueEncrypted=contact_value,
+            contactMasked=contact_masked,
+            contactVerifyStatus=contact_verify_status,
+            expiresAt=expires_at,
             reviewNote=existing.reviewNote if existing else None,
             publishedAt=existing.publishedAt if existing else None,
             reviewedAt=existing.reviewedAt if existing else None,
             createdAt=existing.createdAt if existing else now,
             updatedAt=now,
         )
+        safety = self._enforce_content_safety(
+            "supply_demand_card",
+            card.id,
+            {
+                "title": card.title,
+                "summary": card.summary,
+                "city": card.city,
+                "industry": card.industry,
+                "demandType": card.demandType,
+                "contactRequirement": card.contactRequirement,
+                "tags": card.tags,
+            },
+            owner_user_id=card.ownerUserId,
+            content_revision=card.updatedAt,
+            for_publish=False,
+        )
+        if safety.decision == "review":
+            card.status = "pending_review"
         self.repo.save_supply_demand_card(card)
         return self._supply_demand_card_payload(card)
 
@@ -1148,6 +1743,8 @@ class AppService:
             raise HTTPException(status_code=404, detail="发布不存在")
         if card.ownerUserId != owner_user_id:
             raise HTTPException(status_code=403, detail="无权提交该发布")
+        if card.contactSource in {"business_card", "manual"} and not self._supply_demand_card_contacts(card):
+            raise HTTPException(status_code=400, detail="请先设置电话或微信联系方式")
         card.status = "pending_review"
         card.updatedAt = now_iso()
         self.repo.save_supply_demand_card(card)
@@ -1170,6 +1767,23 @@ class AppService:
             raise HTTPException(status_code=404, detail="发布不存在")
         if status_value not in {"published", "rejected", "archived"}:
             raise HTTPException(status_code=400, detail="审核状态不合法")
+        if status_value == "published":
+            self._enforce_content_safety(
+                "supply_demand_card",
+                card.id,
+                {
+                    "title": card.title,
+                    "summary": card.summary,
+                    "city": card.city,
+                    "industry": card.industry,
+                    "demandType": card.demandType,
+                    "contactRequirement": card.contactRequirement,
+                    "tags": card.tags,
+                },
+                owner_user_id=card.ownerUserId,
+                content_revision=card.updatedAt,
+                for_publish=True,
+            )
         now = now_iso()
         card.status = status_value
         card.reviewNote = review_note
@@ -1320,8 +1934,20 @@ class AppService:
             linked_resource_title = resource_note.title if resource_note else None
         applications = self.repo.list_supply_demand_applications(card_id=card.id)
         my_application = next((item for item in applications if item.applicantUserId == viewer_user_id), None) if viewer_user_id else None
+        contacts = self._supply_demand_card_contacts(card)
+        unlock = self.repo.find_resource_unlock_record(
+            viewer_user_id,
+            "supply_demand_contact_unlock",
+            "supply_demand_card",
+            card.id,
+        ) if viewer_user_id and card.ownerUserId != viewer_user_id else None
+        contact_unlocked = bool(viewer_user_id and viewer_user_id == card.ownerUserId) or bool(
+            unlock and self._is_resource_unlock_active(unlock, now_iso())
+        )
+        safe_card = card.model_dump()
+        safe_card.pop("contactValueEncrypted", None)
         payload = {
-            **card.model_dump(),
+            **safe_card,
             "ownerNickname": owner.nickname if owner else card.ownerUserId,
             "ownerAvatarUrl": owner.avatarUrl if owner else "",
             "linkedNoteTitle": note.title if note else None,
@@ -1332,6 +1958,20 @@ class AppService:
             "applicationCount": len(applications),
             "myApplicationStatus": my_application.status if my_application else None,
             "isMine": bool(viewer_user_id and viewer_user_id == card.ownerUserId),
+            "sourceLabel": "用户发布",
+            "contactCount": len(contacts),
+            "hasContact": bool(contacts),
+            "contactLocked": bool(contacts) and not contact_unlocked,
+            "viewCostPoints": BUSINESS_CARD_CONTACT_UNLOCK_COST_POINTS,
+            "contactList": [
+                {
+                    "contactType": item["contactType"],
+                    "contactMasked": self._mask_opportunity_contact(item["contactValue"]),
+                    "label": item["label"],
+                }
+                for item in contacts
+            ],
+            "contacts": contacts if contact_unlocked else [],
         }
         if include_detail and linked_resource_id:
             linked_resource = None
@@ -1837,6 +2477,16 @@ class AppService:
             "page": settings.wechat_miniapp_mutual_help_subscribe_page,
         }
 
+    @staticmethod
+    def _live_qr_notification_config() -> dict:
+        template_id = settings.wechat_miniapp_live_qr_subscribe_template_id
+        field_keys = settings.wechat_miniapp_live_qr_subscribe_field_keys()
+        return {
+            "enabled": bool(template_id and field_keys),
+            "templateId": template_id,
+            "page": settings.wechat_miniapp_live_qr_subscribe_page,
+        }
+
     def get_notification_config(self, user_id: str) -> dict:
         if not self.repo.get_user(user_id):
             raise HTTPException(status_code=404, detail="用户不存在")
@@ -1848,6 +2498,7 @@ class AppService:
                 "templateId": settings.wechat_miniapp_subscribe_template_id,
                 "page": settings.wechat_miniapp_subscribe_page,
                 "mutualHelp": mutual_help_config,
+                "liveQr": self._live_qr_notification_config(),
                 "member": False,
                 "preferences": {
                     "importantCustomerViewEnabled": False,
@@ -1863,6 +2514,7 @@ class AppService:
             "templateId": settings.wechat_miniapp_subscribe_template_id,
             "page": settings.wechat_miniapp_subscribe_page,
             "mutualHelp": mutual_help_config,
+            "liveQr": self._live_qr_notification_config(),
             "member": member,
             "preferences": self._notification_preference_payload(preference, member),
         }
@@ -1918,6 +2570,9 @@ class AppService:
         elif normalized_purpose == "mutual_help_task":
             expected_template_id = settings.wechat_miniapp_mutual_help_subscribe_template_id
             field_keys = settings.wechat_miniapp_mutual_help_subscribe_field_keys()
+        elif normalized_purpose == "live_qr_expiry":
+            expected_template_id = settings.wechat_miniapp_live_qr_subscribe_template_id
+            field_keys = settings.wechat_miniapp_live_qr_subscribe_field_keys()
         else:
             raise HTTPException(status_code=400, detail="订阅消息用途无效")
         if not expected_template_id or not field_keys:
@@ -1996,6 +2651,112 @@ class AppService:
         now = now_iso()
         cutoff = (parse_iso(now) - timedelta(seconds=SUBSCRIBE_RESERVATION_TIMEOUT_SECONDS)).isoformat()
         return self.repo.release_stale_wechat_subscription_grants(cutoff, now)
+
+    def _live_qr_subscription_template_data(self, item) -> tuple[dict, dict]:
+        field_keys = settings.wechat_miniapp_live_qr_subscribe_field_keys()
+        expiry_text = "有效期未知"
+        try:
+            expiry_text = parse_iso(item.targetExpiresAt).astimezone(SHANGHAI).strftime("%Y-%m-%d %H:%M")
+        except (TypeError, ValueError, AttributeError):
+            pass
+        data_values = {
+            "serviceName": "我的活码",
+            "expiresAt": expiry_text,
+            "warmTip": "二维码将在到期后失效，请及时更新",
+            "cloudId": item.code,
+        }
+        data = {
+            field_keys[name]: {"value": str(value)[:20]}
+            for name, value in data_values.items()
+            if field_keys.get(name)
+        }
+        return data_values, data
+
+    def queue_live_qr_expiry_notifications(self, queue: SyncTaskQueue) -> dict:
+        """Queue one reminder for each live QR version in its final two days."""
+        self.recover_stale_subscription_grants()
+        template_id = settings.wechat_miniapp_live_qr_subscribe_template_id
+        field_keys = settings.wechat_miniapp_live_qr_subscribe_field_keys()
+        if not template_id or not field_keys:
+            return {"queued": 0, "reason": "template_not_configured"}
+        now = now_iso()
+        now_dt = parse_iso(now)
+        queued = 0
+        no_quota = 0
+        for item in self.repo.list_live_qr_codes():
+            if item.status != "active" or not item.ownerUserId or not item.targetExpiresAt:
+                continue
+            try:
+                remaining = (parse_iso(item.targetExpiresAt) - now_dt).total_seconds()
+            except (TypeError, ValueError):
+                continue
+            if remaining <= 0 or remaining > 2 * 86400:
+                continue
+            dedupe_key = f"live_qr_expiry:{item.id}:{int(item.version or 1)}"
+            existing = self.repo.find_wechat_subscription_delivery_by_dedupe_key(dedupe_key)
+            if existing and not (existing.status == "failed" and existing.lastError == "queue_unavailable"):
+                continue
+            grant = self.repo.reserve_wechat_subscription_grant(item.ownerUserId, template_id, now)
+            if not grant:
+                no_quota += 1
+                continue
+            data_values, data = self._live_qr_subscription_template_data(item)
+            if len(data) != 4:
+                grant.status = "available"
+                grant.reservedAt = None
+                grant.updatedAt = now
+                self.repo.save_wechat_subscription_grant(grant)
+                continue
+            delivery = existing or WechatSubscriptionDelivery(
+                id=new_id("wechat_subscription_delivery"),
+                ownerUserId=item.ownerUserId,
+                grantId=grant.id,
+                templateId=template_id,
+                notificationType="live_qr_expiry",
+                resourceType="live_qr",
+                resourceId=item.id,
+                resourceTitle="我的活码",
+                viewerType="ordinary",
+                viewerLabel="活码拥有者",
+                messageContent=data_values["warmTip"],
+                eventAt=item.targetExpiresAt,
+                dedupeKey=dedupe_key,
+                page=f"{settings.wechat_miniapp_live_qr_subscribe_page}&qrId={quote(item.id, safe='')}" if "?" in settings.wechat_miniapp_live_qr_subscribe_page else f"{settings.wechat_miniapp_live_qr_subscribe_page}?tab=live-qr&qrId={quote(item.id, safe='')}",
+                data=data,
+                createdAt=now,
+                updatedAt=now,
+            )
+            if existing:
+                delivery.grantId = grant.id
+                delivery.templateId = template_id
+                delivery.notificationType = "live_qr_expiry"
+                delivery.resourceType = "live_qr"
+                delivery.data = data
+                delivery.status = "queued"
+                delivery.attempts = 0
+                delivery.lastError = None
+                delivery.updatedAt = now
+            try:
+                self.repo.save_wechat_subscription_delivery(delivery)
+                queue.enqueue(
+                    "wechat-subscription-send",
+                    {"deliveryId": delivery.id},
+                    max_attempts=SUBSCRIBE_DELIVERY_MAX_ATTEMPTS,
+                )
+                queued += 1
+            except Exception:
+                delivery.status = "failed"
+                delivery.lastError = "queue_unavailable"
+                delivery.updatedAt = now_iso()
+                try:
+                    self.repo.save_wechat_subscription_delivery(delivery)
+                except Exception:
+                    pass
+                grant.status = "available"
+                grant.reservedAt = None
+                grant.updatedAt = delivery.updatedAt
+                self.repo.save_wechat_subscription_grant(grant)
+        return {"queued": queued, "noSubscriptionQuota": no_quota}
 
     def queue_note_view_notification(self, note_id: str, event: ViewEvent, queue: SyncTaskQueue) -> dict:
         note = self.repo.get_user_note(note_id)
@@ -2364,7 +3125,7 @@ class AppService:
             return {"syncStatus": "skipped", "reason": f"delivery_{delivery.status}"}
         grant = self.repo.get_wechat_subscription_grant(delivery.grantId)
         user = self.repo.get_user(delivery.ownerUserId)
-        if not self.customer_info_chain_enabled():
+        if delivery.notificationType != "live_qr_expiry" and not self.customer_info_chain_enabled():
             if grant and grant.status in {"reserved", "available"}:
                 grant.status = "available"
                 grant.reservedAt = None
@@ -2401,6 +3162,7 @@ class AppService:
                 openid=user.openid,
                 page=delivery.page,
                 data=delivery.data,
+                template_id=delivery.templateId,
             )
         except WechatMiniappClientError as exc:
             delivery.lastError = str(exc)
@@ -2493,31 +3255,3451 @@ class AppService:
                 changed = True
         return changed
 
+    def _persist_new_points_account(self, state: AppState, account: MutualPointAccount, existing_ids: set[str]) -> None:
+        if account.id in existing_ids:
+            return
+        self.repo.save_mutual_point_account(account)
+        for ledger in state.mutual_point_ledgers:
+            if ledger.sourceId == account.id:
+                self.repo.save_mutual_point_ledger(ledger)
+
+    def _ensure_points_account_persisted(
+        self,
+        state: AppState,
+        user_id: str,
+        *,
+        account_type: str = DEFAULT_POINTS_ACCOUNT_TYPE,
+        point_type: str = BASE_POINT_TYPE,
+        initial_points: int = 0,
+        initial_reason: str = "首次建立积分账户",
+    ) -> MutualPointAccount:
+        existing_ids = {item.id for item in state.mutual_point_accounts}
+        account = self.points_core.ensure_account(
+            state,
+            user_id,
+            account_type=account_type,
+            point_type=point_type,
+            initial_points=initial_points,
+            initial_reason=initial_reason,
+        )
+        self._persist_new_points_account(state, account, existing_ids)
+        return account
+
     def _ensure_mutual_point_account(self, state: AppState, user_id: str) -> MutualPointAccount:
+        """Compatibility helper returning the base account.
+
+        New callers should use ``_ensure_mutual_point_accounts`` so both
+        ledgers are initialized together.  Keeping this method prevents old
+        group-resource code and integrations from silently changing meaning.
+        """
+        return self._ensure_mutual_point_accounts(state, user_id)[BASE_POINT_TYPE]
+
+    def _ensure_mutual_point_accounts(self, state: AppState, user_id: str) -> dict[str, MutualPointAccount]:
         user_id = str(user_id or "").strip()
         if not user_id or not self.repo.get_user(user_id):
             raise HTTPException(status_code=404, detail="用户不存在")
-        return self.points_core.ensure_account(
+        base_account = self._ensure_points_account_persisted(
             state,
             user_id,
             account_type=DEFAULT_POINTS_ACCOUNT_TYPE,
+            point_type=BASE_POINT_TYPE,
             initial_points=MUTUAL_INITIAL_POINTS,
             initial_reason="首次进入互帮互助赠送积分",
         )
+        reward_account = self._ensure_points_account_persisted(
+            state,
+            user_id,
+            account_type=DEFAULT_POINTS_ACCOUNT_TYPE,
+            point_type=REWARD_POINT_TYPE,
+            initial_points=0,
+            initial_reason="充值积分账户初始化",
+        )
+        changed = False
+        changed = self._migrate_legacy_platform_rewards(state, user_id, base_account, reward_account) or changed
+        legacy_wallet = next((item for item in state.resource_wallets if item.ownerUserId == user_id), None)
+        if legacy_wallet:
+            changed = self._migrate_legacy_resource_wallet(state, user_id, base_account, reward_account, legacy_wallet) or changed
+        if changed:
+            self._save(state)
+        return {BASE_POINT_TYPE: base_account, REWARD_POINT_TYPE: reward_account}
+
+    @staticmethod
+    def _points_migration_marker_exists(state: AppState, user_id: str, key: str) -> bool:
+        return any(
+            item.userId == user_id
+            and item.sourceType == "points_account_migration"
+            and item.idempotencyKey == key
+            for item in state.mutual_point_ledgers
+        )
+
+    @staticmethod
+    def _append_points_migration_marker(
+        state: AppState,
+        user_id: str,
+        key: str,
+        account: MutualPointAccount,
+        reason: str,
+        source_id: str,
+        metadata: dict,
+    ) -> None:
+        marker_id = f"points_migration_{hashlib.sha256(key.encode('utf-8')).hexdigest()[:32]}"
+        state.mutual_point_ledgers.append(
+            MutualPointLedger(
+                id=marker_id,
+                userId=user_id,
+                accountType=DEFAULT_POINTS_ACCOUNT_TYPE,
+                pointType=BASE_POINT_TYPE,
+                ledgerType="migration_marker",
+                pointsDelta=0,
+                balanceAfter=account.balance,
+                reason=reason,
+                idempotencyKey=key,
+                sourceType="points_account_migration",
+                sourceId=source_id,
+                metadata=metadata,
+                createdAt=now_iso(),
+            )
+        )
+
+    def _migrate_legacy_platform_rewards(
+        self,
+        state: AppState,
+        user_id: str,
+        base_account: MutualPointAccount,
+        reward_account: MutualPointAccount,
+    ) -> bool:
+        """Move old platform-earned reward rows into the base account once.
+
+        Recharge rows remain in the reward ledger because that bucket is the
+        future recharge/withdrawal account.  This migration moves only the
+        historical platform-earned net amount and never guesses how the
+        current combined balance should be split.
+        """
+        key = f"{POINTS_MIGRATION_PLATFORM_REWARD}:{user_id}"
+        if self._points_migration_marker_exists(state, user_id, key):
+            return False
+        recharge_order_ids = {item.id for item in state.mutual_recharge_orders if item.userId == user_id}
+        reward_rows = sorted(
+            [
+                item
+                for item in state.mutual_point_ledgers
+                if item.userId == user_id
+                and item.pointType == REWARD_POINT_TYPE
+                and item.idempotencyKey != key
+                and item.sourceType != "points_account_migration"
+                and item.ledgerType != "migration_marker"
+            ],
+            key=lambda item: (item.createdAt or "", item.id or ""),
+        )
+        platform_rows = [
+            item
+            for item in reward_rows
+            if not (
+                item.ledgerType == "recharge"
+                or item.sourceType == "mutual_recharge_order"
+                or item.sourceId in recharge_order_ids
+                or item.relatedOrderId in recharge_order_ids
+                # These are the explicit cashable-ledger operations added
+                # after the legacy migration. They must never be reclassified
+                # into base points when a status read initializes accounts.
+                or item.sourceType in {"mutual_help_task", "platform_task_budget", "mutual_point_withdrawal"}
+            )
+        ]
+        if not platform_rows:
+            return False
+        # Reward points are fungible at runtime, so do not move an arbitrary
+        # slice of the current reward balance.  Reconstruct only the
+        # identifiable platform-earned remainder: positive non-recharge rows
+        # build a platform pool, while historical reward debits consume that
+        # pool first.  This protects recharge points when the two sources were
+        # mixed in the old account.
+        requested = 0
+        for row in platform_rows:
+            delta = int(row.pointsDelta or 0)
+            if delta > 0:
+                requested += delta
+            elif delta < 0:
+                requested = max(0, requested - abs(delta))
+        moved = min(requested, max(0, int(reward_account.balance or 0)))
+        if moved:
+            self.points_core.consume(
+                state,
+                user_id,
+                moved,
+                ledger_type="platform_reward_reclassification",
+                reason="历史平台奖励统一迁入基础积分",
+                idempotency_key=f"{key}:reward",
+                account_type=DEFAULT_POINTS_ACCOUNT_TYPE,
+                point_type=REWARD_POINT_TYPE,
+                source_type="points_account_migration",
+                source_id=user_id,
+                metadata={"requestedPoints": requested, "movedPoints": moved, "rowCount": len(platform_rows)},
+            )
+            self.points_core.grant(
+                state,
+                user_id,
+                moved,
+                ledger_type="platform_reward_reclassification",
+                reason="历史平台奖励统一迁入基础积分",
+                idempotency_key=f"{key}:base",
+                account_type=DEFAULT_POINTS_ACCOUNT_TYPE,
+                point_type=BASE_POINT_TYPE,
+                source_type="points_account_migration",
+                source_id=user_id,
+                metadata={"requestedPoints": requested, "movedPoints": moved, "rowCount": len(platform_rows)},
+            )
+        self._append_points_migration_marker(
+            state,
+            user_id,
+            key,
+            base_account,
+            "历史平台奖励账本迁移标记",
+            user_id,
+            {"migration": "platform_reward_to_base", "requestedPoints": requested, "movedPoints": moved, "rowCount": len(platform_rows)},
+        )
+        return True
+
+    def _migrate_legacy_resource_wallet(
+        self,
+        state: AppState,
+        user_id: str,
+        base_account: MutualPointAccount,
+        reward_account: MutualPointAccount,
+        legacy_wallet: ResourceWallet,
+    ) -> bool:
+        """Fold the old resource wallet into the shared account once.
+
+        The old wallet's first 100 points were the same product-level free
+        grant.  Only its delta from that baseline is applied to the shared
+        base account, so creating both compatibility records cannot double
+        grant a user.
+        """
+        del reward_account
+        key = f"{POINTS_MIGRATION_RESOURCE_WALLET}:{user_id}"
+        if self._points_migration_marker_exists(state, user_id, key):
+            return False
+        legacy_balance = max(0, int(legacy_wallet.balance or 0))
+        requested = legacy_balance - RESOURCE_WALLET_INITIAL_POINTS
+        moved = 0
+        if requested > 0:
+            moved = requested
+            self.points_core.grant(
+                state,
+                user_id,
+                moved,
+                ledger_type="resource_wallet_migration",
+                reason="历史资源工具积分并入基础积分",
+                idempotency_key=f"{key}:base",
+                account_type=DEFAULT_POINTS_ACCOUNT_TYPE,
+                point_type=BASE_POINT_TYPE,
+                source_type="points_account_migration",
+                source_id=legacy_wallet.id,
+                metadata={"legacyBalance": legacy_balance, "baselinePoints": RESOURCE_WALLET_INITIAL_POINTS, "movedPoints": moved},
+            )
+        elif requested < 0:
+            moved = min(abs(requested), max(0, int(base_account.balance or 0)))
+            if moved:
+                self.points_core.consume(
+                    state,
+                    user_id,
+                    moved,
+                    ledger_type="resource_wallet_migration",
+                    reason="历史资源工具积分并入基础积分",
+                    idempotency_key=f"{key}:base",
+                    account_type=DEFAULT_POINTS_ACCOUNT_TYPE,
+                    point_type=BASE_POINT_TYPE,
+                    source_type="points_account_migration",
+                    source_id=legacy_wallet.id,
+                    metadata={"legacyBalance": legacy_balance, "baselinePoints": RESOURCE_WALLET_INITIAL_POINTS, "movedPoints": -moved},
+                )
+        self._append_points_migration_marker(
+            state,
+            user_id,
+            key,
+            base_account,
+            "历史资源钱包迁移标记",
+            legacy_wallet.id,
+            {"migration": "resource_wallet_to_base", "legacyBalance": legacy_balance, "baselinePoints": RESOURCE_WALLET_INITIAL_POINTS, "requestedPoints": requested, "movedPoints": moved},
+        )
+        return True
+
+    def _project_resource_wallet(
+        self,
+        legacy_wallet: ResourceWallet,
+        accounts: dict[str, MutualPointAccount],
+    ) -> ResourceWallet:
+        base = accounts[BASE_POINT_TYPE]
+        reward = accounts[REWARD_POINT_TYPE]
+        return legacy_wallet.model_copy(update={
+            "balance": int(base.balance or 0) + int(reward.balance or 0),
+            "totalGranted": int(base.totalGranted or 0) + int(reward.totalGranted or 0),
+            "totalConsumed": int(base.totalConsumed or 0) + int(reward.totalConsumed or 0),
+            "updatedAt": max(base.updatedAt, reward.updatedAt, legacy_wallet.updatedAt),
+        })
+
+    def _consume_shared_points_in_state(
+        self,
+        state: AppState,
+        user_id: str,
+        points: int,
+        *,
+        reason: str,
+        idempotency_key: str,
+        ledger_type: str,
+        source_type: str | None = None,
+        source_id: str | None = None,
+        metadata: dict | None = None,
+        point_type: str | None = None,
+    ) -> dict:
+        """Consume one shared balance, using base points before recharge points."""
+        if points <= 0:
+            raise HTTPException(status_code=400, detail="积分消耗必须大于 0")
+        accounts = self._ensure_mutual_point_accounts(state, user_id)
+        bucket_types = [point_type] if point_type in {BASE_POINT_TYPE, REWARD_POINT_TYPE} else [BASE_POINT_TYPE, REWARD_POINT_TYPE]
+        existing = [
+            item for item in state.mutual_point_ledgers
+            if item.userId == user_id
+            and item.sourceType != "points_account_migration"
+            and item.idempotencyKey in {f"{idempotency_key}:{bucket}" for bucket in bucket_types}
+        ]
+        if existing:
+            if len(existing) != len({item.idempotencyKey for item in existing}):
+                raise HTTPException(status_code=409, detail="积分消费流水不完整，请人工核对")
+            return {
+                "accounts": accounts,
+                "allocations": [],
+                "ledgers": existing,
+                "duplicate": True,
+            }
+        available_points = (
+            sum(max(0, int(account.balance or 0)) for account in accounts.values())
+            if point_type is None
+            else max(0, int(accounts[point_type].balance or 0))
+        )
+        if available_points < points:
+            raise HTTPException(status_code=402, detail="积分余额不足")
+        remaining = points
+        allocations = []
+        ledgers = []
+        for bucket in bucket_types:
+            if remaining <= 0:
+                break
+            account = accounts[bucket]
+            amount = min(remaining, max(0, int(account.balance or 0)))
+            if not amount:
+                continue
+            result = self.points_core.consume(
+                state,
+                user_id,
+                amount,
+                ledger_type=ledger_type,
+                reason=reason,
+                idempotency_key=f"{idempotency_key}:{bucket}",
+                account_type=DEFAULT_POINTS_ACCOUNT_TYPE,
+                point_type=bucket,
+                source_type=source_type,
+                source_id=source_id,
+                metadata={**(metadata or {}), "pointAllocation": amount, "spendPriority": "base_first"},
+            )
+            allocations.append({"pointType": bucket, "points": amount})
+            ledgers.append(result["ledger"])
+            remaining -= amount
+        return {"accounts": accounts, "allocations": allocations, "ledgers": ledgers, "duplicate": False}
+
+    @staticmethod
+    def _mutual_point_summary(user_id: str, accounts: dict[str, MutualPointAccount]) -> dict:
+        base_account = accounts[BASE_POINT_TYPE]
+        reward_account = accounts[REWARD_POINT_TYPE]
+        balances = [base_account.balance, reward_account.balance]
+        created_at = min(base_account.createdAt, reward_account.createdAt)
+        updated_at = max(base_account.updatedAt, reward_account.updatedAt)
+        return {
+            "id": f"{DEFAULT_POINTS_ACCOUNT_TYPE}_total_points_{user_id}",
+            "userId": user_id,
+            "accountType": DEFAULT_POINTS_ACCOUNT_TYPE,
+            "pointType": "total",
+            "balance": sum(balances),
+            "totalGranted": base_account.totalGranted + reward_account.totalGranted,
+            "totalConsumed": base_account.totalConsumed + reward_account.totalConsumed,
+            "createdAt": created_at,
+            "updatedAt": updated_at,
+        }
+
+    @staticmethod
+    def _group_resource_expired(resource: GroupResource, now: str | None = None) -> bool:
+        try:
+            return parse_iso(resource.expiresAt) <= parse_iso(now or now_iso())
+        except (TypeError, ValueError):
+            return True
+
+    @staticmethod
+    def _normalize_group_resource_tags(value: object) -> list[str]:
+        if isinstance(value, str):
+            values = re.split(r"[,，、]", value)
+        elif isinstance(value, (list, tuple, set)):
+            values = list(value)
+        else:
+            values = []
+        result = []
+        for item in values:
+            tag = str(item or "").strip()[:20]
+            if tag and tag not in result:
+                result.append(tag)
+            if len(result) >= 8:
+                break
+        return result
+
+    @staticmethod
+    def _group_resource_review_status(resource: GroupResource) -> str:
+        if resource.status == "deleted":
+            return "removed"
+        if resource.status == "rejected":
+            return "rejected"
+        configured = str(getattr(resource, "reviewStatus", "") or "").strip()
+        if configured in {"reviewing", "approved", "rejected", "paused", "removed"}:
+            # Old rows did not have reviewStatus. Once loaded through the
+            # defaulted model they look like "reviewing", so use the legacy
+            # reward state to keep already-paid rows from being mislabeled.
+            if resource.sourceType == "user" and configured == "reviewing" and resource.rewardState != "pending" and not getattr(resource, "reviewLogs", None):
+                return "approved"
+            # Older operator-created rows were written with the same default
+            # review state as user submissions. They already passed the
+            # operator entry path and should not remain visually stuck in a
+            # human-review queue.
+            if resource.sourceType != "user" and configured == "reviewing" and not getattr(resource, "reviewLogs", None):
+                return "approved"
+            return configured
+        return "reviewing" if resource.rewardState == "pending" else "approved"
+
+    @staticmethod
+    def _group_resource_payload(
+        resource: GroupResource,
+        *,
+        include_qr: bool = False,
+        include_pin: bool = False,
+        include_admin_meta: bool = False,
+    ) -> dict:
+        payload = resource.model_dump(mode="json")
+        if not include_pin:
+            for key in ("isPinned", "pinnedAt", "pinnedBy"):
+                payload.pop(key, None)
+        if not include_admin_meta:
+            for key in ("sourceType", "createdByUserId", "createdByOperator"):
+                payload.pop(key, None)
+        expired = AppService._group_resource_expired(resource)
+        review_status = AppService._group_resource_review_status(resource)
+        status_text = {
+            "reviewing": "审核中",
+            "approved": "已发布",
+            "rejected": "审核未通过",
+            "paused": "已暂停",
+            "removed": "已下架",
+        }.get(review_status, "审核中")
+        if expired and resource.status == "active":
+            status_text = "已过期"
+        payload.update({
+            "city": resource.cityLabel or ("全国" if resource.cityMode == "national" else "未设置"),
+            "type": f"{resource.industry}群" if resource.industry else "微信群",
+            "purposes": [resource.purpose] if resource.purpose else [],
+            "members": resource.memberRange or "人数未设置",
+            "expireAt": resource.expiresAt,
+            "expireAtText": resource.expiresAt[:10] if resource.expiresAt else "有效期未知",
+            "isExpired": expired,
+            "reviewStatus": review_status,
+            "statusText": status_text,
+            "rewardStatusText": "无需发放" if resource.sourceType != "user" else (
+                "已到账" if resource.rewardState == "paid" else (
+                    "上限已用完" if resource.rewardState == "capped" else (
+                        "奖励已取消" if resource.rewardState == "cancelled" else "待发放"
+                    )
+                )
+            ),
+        })
+        if not include_qr:
+            payload["qrImageUrl"] = ""
+        return payload
+
+    @staticmethod
+    def _content_pin_item_payload(target_type: str, item, *, changed: bool | None = None) -> dict:
+        if target_type == "mutual_help":
+            item_payload = AppService._mutual_task_payload(item, include_pin=True)
+            title = item.title
+            subtitle = f"{item.taskKind} · {item.category}"
+            status = item.status
+            owner_user_id = item.ownerUserId
+            updated_at = item.updatedAt
+        elif target_type == "group_resource":
+            item_payload = AppService._group_resource_payload(item, include_pin=True)
+            title = item.name
+            subtitle = " · ".join(
+                value for value in (item.cityLabel, item.industry, item.purpose) if str(value or "").strip()
+            ) or "微信群资源"
+            status = AppService._group_resource_review_status(item)
+            owner_user_id = item.ownerUserId
+            updated_at = item.updatedAt
+        else:
+            config = item.visibilityConfig if isinstance(item.visibilityConfig, dict) else {}
+            data = config.get("structuredData") if isinstance(config.get("structuredData"), dict) else {}
+            title = str(item.title or data.get("displayName") or "未命名合作名片").strip()
+            item_payload = {
+                "id": item.id,
+                "title": item.title,
+                "summary": item.summary,
+                "status": item.status,
+                "shareState": item.shareState,
+                "updatedAt": item.updatedAt,
+                "isPinned": bool(item.isPinned),
+                "pinnedAt": item.pinnedAt,
+                "pinnedBy": item.pinnedBy,
+            }
+            subtitle = str(item.summary or data.get("headline") or "合作名片").strip()
+            status = "已发布" if item.shareState == "published" else str(item.status or "未发布")
+            owner_user_id = item.ownerUserId
+            updated_at = item.updatedAt
+        result = {
+            "targetType": target_type,
+            "targetId": item.id,
+            "title": title or "未命名内容",
+            "subtitle": subtitle,
+            "status": status,
+            "ownerUserId": owner_user_id,
+            "updatedAt": updated_at,
+            "isPinned": bool(getattr(item, "isPinned", False)),
+            "pinnedAt": getattr(item, "pinnedAt", None),
+            "pinnedBy": getattr(item, "pinnedBy", None),
+            "item": item_payload,
+        }
+        if changed is not None:
+            result["changed"] = changed
+        return result
+
+    def _get_content_pin_target(self, target_type: str, target_id: str):
+        clean_type = str(target_type or "").strip()
+        clean_id = str(target_id or "").strip()
+        if clean_type not in CONTENT_PIN_TARGET_TYPES:
+            raise HTTPException(status_code=400, detail="不支持的置顶内容类型")
+        if not clean_id:
+            raise HTTPException(status_code=400, detail="内容 ID 不能为空")
+        if clean_type == "mutual_help":
+            item = self.repo.get_mutual_help_task(clean_id)
+        elif clean_type == "group_resource":
+            item = self.repo.get_group_resource(clean_id)
+        else:
+            item = self.repo.get_user_note(clean_id)
+            config = item.visibilityConfig if item and isinstance(item.visibilityConfig, dict) else {}
+            if item and config.get("cardType") != "business_card":
+                raise HTTPException(status_code=400, detail="只有合作名片可以设置置顶")
+        if not item or getattr(item, "status", "") == "deleted":
+            raise HTTPException(status_code=404, detail="置顶内容不存在")
+        return item
+
+    def set_content_pin(
+        self,
+        target_type: str,
+        target_id: str,
+        pinned: bool,
+        operator_name: str = "ops",
+    ) -> dict:
+        clean_type = str(target_type or "").strip()
+        clean_id = str(target_id or "").strip()
+        clean_operator = str(operator_name or "ops").strip()[:80] or "ops"
+        with MEMBERSHIP_PAYMENT_LOCK:
+            item = self._get_content_pin_target(clean_type, clean_id)
+            desired = bool(pinned)
+            current = bool(getattr(item, "isPinned", False))
+            if current == desired:
+                return self._content_pin_item_payload(clean_type, item, changed=False)
+            updated = item.model_copy(update={
+                "isPinned": desired,
+                "pinnedAt": now_iso() if desired else None,
+                "pinnedBy": clean_operator if desired else None,
+            })
+            if clean_type == "mutual_help":
+                self.repo.save_mutual_help_task(updated)
+            elif clean_type == "group_resource":
+                self.repo.save_group_resource(updated)
+            else:
+                self.repo.save_user_note(updated)
+        return self._content_pin_item_payload(clean_type, updated, changed=True)
+
+    def list_content_pins(
+        self,
+        *,
+        target_type: str = "all",
+        keyword: str | None = None,
+        page: int = 1,
+        page_size: int = 100,
+    ) -> dict:
+        clean_type = str(target_type or "all").strip() or "all"
+        if clean_type != "all" and clean_type not in CONTENT_PIN_TARGET_TYPES:
+            raise HTTPException(status_code=400, detail="不支持的置顶内容类型")
+        try:
+            safe_page = max(1, int(page or 1))
+        except (TypeError, ValueError):
+            safe_page = 1
+        try:
+            safe_page_size = min(max(1, int(page_size or 100)), 200)
+        except (TypeError, ValueError):
+            safe_page_size = 100
+        keyword_value = str(keyword or "").strip().lower()
+        sources = []
+        if clean_type in {"all", "mutual_help"}:
+            sources.append(("mutual_help", [
+                item for item in self.repo.list_mutual_help_tasks()
+                if item.status != "deleted"
+            ]))
+        if clean_type in {"all", "business_opportunity"}:
+            sources.append((
+                "business_opportunity",
+                [
+                    item for item in self.repo.list_all_user_notes(include_deleted=False)
+                    if isinstance(item.visibilityConfig, dict)
+                    and item.visibilityConfig.get("cardType") == "business_card"
+                ],
+            ))
+        if clean_type in {"all", "group_resource"}:
+            sources.append(("group_resource", [
+                item for item in self.repo.list_group_resources()
+                if item.status != "deleted" and self._group_resource_review_status(item) != "removed"
+            ]))
+        items = []
+        for kind, rows in sources:
+            for row in rows:
+                item = self._content_pin_item_payload(kind, row)
+                searchable = " ".join([
+                    str(item.get("title") or ""),
+                    str(item.get("subtitle") or ""),
+                    str(item.get("ownerUserId") or ""),
+                    str(item.get("targetId") or ""),
+                ]).lower()
+                if keyword_value and keyword_value not in searchable:
+                    continue
+                item.pop("item", None)
+                items.append(item)
+        items.sort(key=lambda item: (
+            bool(item.get("isPinned")),
+            str(item.get("pinnedAt") or ""),
+            str(item.get("updatedAt") or ""),
+            str(item.get("targetId") or ""),
+        ), reverse=True)
+        total = len(items)
+        start = (safe_page - 1) * safe_page_size
+        page_items = items[start:start + safe_page_size]
+        return {
+            "items": page_items,
+            "page": safe_page,
+            "pageSize": safe_page_size,
+            "total": total,
+            "totalPages": ceil(total / safe_page_size) if total else 0,
+        }
+
+    def list_group_resources(
+        self,
+        *,
+        keyword: str | None = None,
+        city_code: str | None = None,
+        city_label: str | None = None,
+        industry: str | None = None,
+        purpose: str | None = None,
+        cursor: str | None = None,
+        limit: int = 20,
+    ) -> dict:
+        keyword_value = str(keyword or "").strip().lower()
+        city_code_value = str(city_code or "").strip()
+        city_label_value = str(city_label or "").strip()
+        industry_value = str(industry or "").strip()
+        purpose_value = str(purpose or "").strip()
+        try:
+            offset = max(0, int(cursor or 0))
+        except (TypeError, ValueError):
+            offset = 0
+        page_size = min(max(int(limit or 20), 1), 50)
+        result = []
+        candidates = self.repo.list_group_resources_page(
+            keyword=keyword_value,
+            city_code=city_code_value,
+            city_label=city_label_value,
+            industry=industry_value,
+            purpose=purpose_value,
+            limit=page_size,
+            offset=offset,
+        )
+        for resource in candidates:
+            if resource.status != "active" or self._group_resource_expired(resource):
+                continue
+            if self._group_resource_review_status(resource) not in {"reviewing", "approved"}:
+                continue
+            try:
+                self._enforce_content_safety(
+                    "group_resource",
+                    resource.id,
+                    {
+                        "name": resource.name,
+                        "cityLabel": resource.cityLabel,
+                        "industry": resource.industry,
+                        "purpose": resource.purpose,
+                        "memberRange": resource.memberRange,
+                        "activeLevel": resource.activeLevel,
+                        "remark": resource.remark,
+                        "tags": resource.tags,
+                        "qrImageUrl": resource.qrImageUrl,
+                    },
+                    owner_user_id=resource.ownerUserId,
+                    content_revision=resource.qrUpdatedAt or resource.updatedAt,
+                    for_publish=True,
+                    persist=False,
+                )
+            except HTTPException:
+                # Keep one unsafe resource from turning the entire public
+                # directory into an error response.
+                continue
+            if city_code_value and resource.cityMode != "national" and resource.cityCode != city_code_value:
+                continue
+            if city_label_value and resource.cityMode != "national" and city_label_value not in resource.cityLabel:
+                continue
+            if industry_value and resource.industry != industry_value:
+                continue
+            if purpose_value and resource.purpose != purpose_value:
+                continue
+            if keyword_value:
+                searchable = " ".join([
+                    resource.name,
+                    resource.cityLabel,
+                    resource.industry,
+                    resource.purpose,
+                    resource.memberRange or "",
+                    resource.activeLevel or "",
+                    resource.remark or "",
+                    " ".join(resource.tags or []),
+                ]).lower()
+                if keyword_value not in searchable:
+                    continue
+            result.append(self._group_resource_payload(resource))
+        next_offset = offset + len(candidates)
+        has_more = len(candidates) >= page_size
+        return {
+            "items": result,
+            "nextCursor": str(next_offset) if has_more else None,
+            "hasMore": has_more,
+            "limit": page_size,
+        }
+
+    def list_my_group_resources(self, owner_user_id: str) -> list[dict]:
+        if not self.repo.get_user(owner_user_id):
+            raise HTTPException(status_code=404, detail="用户不存在")
+        result = []
+        for resource in self.repo.list_group_resources(owner_user_id):
+            if resource.status == "deleted":
+                continue
+            payload = self._group_resource_payload(resource, include_qr=True)
+            if payload["isExpired"] and resource.status == "active":
+                payload["status"] = "expired"
+                payload["statusText"] = "已过期"
+            result.append(payload)
+        return result
+
+    def get_group_resource_publish_quota(self, owner_user_id: str) -> dict:
+        """Return the authoritative daily new-resource quota.
+
+        Deleted rows remain part of the daily creation history so a user
+        cannot publish, delete, and publish again to bypass the limit.
+        """
+        owner_user_id = str(owner_user_id or "").strip()
+        if not self.repo.get_user(owner_user_id):
+            raise HTTPException(status_code=404, detail="用户不存在")
+        today = date_key(now_iso())
+        created_today = sum(
+            1
+            for item in self.repo.list_group_resources(owner_user_id)
+            if date_key(item.createdAt) == today
+        )
+        return {
+            "dailyLimit": GROUP_RESOURCE_PUBLISH_DAILY_LIMIT,
+            "usedToday": created_today,
+            "remainingToday": max(0, GROUP_RESOURCE_PUBLISH_DAILY_LIMIT - created_today),
+            "dateKey": today,
+        }
+
+    def group_resource_admin_status(self, user_id: str) -> dict:
+        user = self.repo.get_user(str(user_id or "").strip())
+        if not user:
+            raise HTTPException(status_code=404, detail="用户不存在")
+        enabled = GROUP_RESOURCE_ADMIN_ROLE in set(user.roles or [])
+        return {"enabled": enabled, "role": GROUP_RESOURCE_ADMIN_ROLE if enabled else None}
+
+    def list_group_resource_admins(self) -> list[dict]:
+        return [
+            {
+                "id": user.id,
+                "nickname": user.nickname,
+                "openid": user.openid,
+                "enabled": True,
+                "roles": list(user.roles or []),
+                "updatedAt": user.updatedAt,
+            }
+            for user in sorted(
+                (item for item in self._load().users if GROUP_RESOURCE_ADMIN_ROLE in set(item.roles or [])),
+                key=lambda item: (item.updatedAt or "", item.id),
+                reverse=True,
+            )
+        ]
+
+    def set_group_resource_admin(self, user_id: str, enabled: bool, operator_name: str = "ops") -> dict:
+        user = self.repo.get_user(str(user_id or "").strip())
+        if not user:
+            raise HTTPException(status_code=404, detail="用户不存在")
+        roles = [str(role).strip() for role in (user.roles or []) if str(role).strip()]
+        if enabled and GROUP_RESOURCE_ADMIN_ROLE not in roles:
+            roles.append(GROUP_RESOURCE_ADMIN_ROLE)
+        if not enabled:
+            roles = [role for role in roles if role != GROUP_RESOURCE_ADMIN_ROLE]
+        user.roles = roles
+        user.updatedAt = now_iso()
+        self.repo.save_user(user)
+        return {
+            "id": user.id,
+            "nickname": user.nickname,
+            "openid": user.openid,
+            "enabled": enabled,
+            "roles": roles,
+            "operatorName": str(operator_name or "ops").strip() or "ops",
+            "updatedAt": user.updatedAt,
+        }
+
+    def list_mobile_tool_admins(self) -> list[dict]:
+        """Return the single, cross-tool mobile-admin permission list.
+
+        Roles remain the server-authoritative capability store. Keeping this
+        endpoint separate from the old group-only endpoint lets the PC
+        console manage all three tools without changing existing mini-program
+        response shapes.
+        """
+        rows = []
+        for user in self._load().users:
+            permissions = {
+                tool: role in set(user.roles or [])
+                for tool, role in MOBILE_TOOL_ADMIN_ROLES.items()
+            }
+            if not any(permissions.values()):
+                continue
+            rows.append({
+                "id": user.id,
+                "nickname": user.nickname,
+                "openid": user.openid,
+                "permissions": permissions,
+                "roles": list(user.roles or []),
+                "updatedAt": user.updatedAt,
+            })
+        rows.sort(key=lambda item: (item.get("updatedAt") or "", item.get("id") or ""), reverse=True)
+        return rows
+
+    def set_mobile_tool_admin(
+        self,
+        user_id: str,
+        tool: str,
+        enabled: bool,
+        operator_name: str = "ops",
+    ) -> dict:
+        clean_user_id = str(user_id or "").strip()
+        clean_tool = str(tool or "").strip()
+        role = MOBILE_TOOL_ADMIN_ROLES.get(clean_tool)
+        if not role:
+            raise HTTPException(status_code=400, detail="手机管理员功能范围无效")
+        user = self.repo.get_user(clean_user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="用户不存在")
+        roles = [str(value).strip() for value in (user.roles or []) if str(value).strip()]
+        if enabled and role not in roles:
+            roles.append(role)
+        if not enabled:
+            roles = [value for value in roles if value != role]
+        user.roles = roles
+        user.updatedAt = now_iso()
+        self.repo.save_user(user)
+        return {
+            "id": user.id,
+            "nickname": user.nickname,
+            "openid": user.openid,
+            "tool": clean_tool,
+            "enabled": bool(enabled),
+            "role": role if enabled else None,
+            "permissions": {
+                name: mapped_role in set(roles)
+                for name, mapped_role in MOBILE_TOOL_ADMIN_ROLES.items()
+            },
+            "roles": roles,
+            "operatorName": str(operator_name or "ops").strip() or "ops",
+            "updatedAt": user.updatedAt,
+        }
+
+    def _ensure_platform_operator_user(self) -> str:
+        """Create the internal owner used by operator-published mutual tasks."""
+        existing = self.repo.get_user(PLATFORM_OPERATOR_USER_ID)
+        if existing:
+            return existing.id
+        now = now_iso()
+        self.repo.save_user(User(
+            id=PLATFORM_OPERATOR_USER_ID,
+            openid=PLATFORM_OPERATOR_USER_ID,
+            nickname="平台管理员",
+            avatarUrl="",
+            roles=["platform_operator"],
+            createdAt=now,
+            updatedAt=now,
+        ))
+        return PLATFORM_OPERATOR_USER_ID
+
+    def create_mutual_help_task_as_admin(self, payload: dict) -> dict:
+        """Publish a minimal platform task from the PC operations console."""
+        owner_user_id = str(payload.get("ownerUserId") or "").strip()
+        if not owner_user_id:
+            owner_user_id = self._ensure_platform_operator_user()
+        acceptance_text = str(payload.get("acceptanceText") or "").strip()
+        values = {
+            "ownerUserId": owner_user_id,
+            "taskKind": payload.get("taskKind") or "ordinary",
+            "title": payload.get("title") or "",
+            "description": payload.get("description") or "",
+            "acceptanceCriteriaBlocks": ([{"type": "text", "text": acceptance_text}] if acceptance_text else []),
+            "shortLink": payload.get("shortLink") or "",
+            "rewardPointType": payload.get("rewardPointType") or BASE_POINT_TYPE,
+            "rewardPoints": payload.get("rewardPoints", 5),
+            "executorReward": payload.get("executorReward", 4),
+            "remaining": payload.get("remaining"),
+            "repeatPolicy": payload.get("repeatPolicy") or "once",
+            "deadlineText": payload.get("deadlineText") or "长期开放",
+        }
+        result = self.create_mutual_help_task(values)
+        return {
+            **result,
+            "sourceType": "platform_admin" if owner_user_id == PLATFORM_OPERATOR_USER_ID else "operator_for_user",
+            "operatorName": str(payload.get("operatorName") or "ops").strip() or "ops",
+        }
+
+    @staticmethod
+    def _ops_time_in_scope(value: str | None, start: datetime | None) -> bool:
+        if start is None:
+            return True
+        try:
+            return parse_iso(value) >= start
+        except Exception:
+            return False
+
+    def get_tools_dashboard(self) -> dict:
+        """Build one consistent metric source for the three user tools.
+
+        Counts are based on persisted business records and the shared point
+        ledger. No media, contact details, or per-user detail payloads are
+        loaded beyond the already persisted state snapshot.
+        """
+        state = self._load()
+        now = datetime.now(tz=SHANGHAI)
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        seven_day_start = today_start - timedelta(days=6)
+
+        def summarize(start: datetime | None) -> dict:
+            task_rows = [item for item in state.mutual_help_tasks if self._ops_time_in_scope(item.createdAt, start)]
+            submission_rows = [item for item in state.mutual_help_submissions if self._ops_time_in_scope(item.createdAt, start)]
+            group_rows = [item for item in state.group_resources if self._ops_time_in_scope(item.createdAt, start)]
+            group_view_rows = [
+                item for item in state.mutual_point_ledgers
+                if item.sourceType == "group_resource"
+                and int(item.pointsDelta or 0) < 0
+                and self._ops_time_in_scope(item.createdAt, start)
+            ]
+            group_complaint_count = sum(
+                1
+                for resource in state.group_resources
+                for complaint in (getattr(resource, "complaints", []) or [])
+                if self._ops_time_in_scope((complaint or {}).get("createdAt"), start)
+            )
+            lead_rows = [item for item in state.opportunity_leads if self._ops_time_in_scope(item.createdAt, start)]
+            business_card_rows = [item for item in state.supply_demand_cards if self._ops_time_in_scope(item.createdAt, start)]
+            unlock_rows = [
+                item for item in state.resource_unlock_records
+                if item.actionType in {"opportunity_contact_unlock", "business_card_contact_unlock", "supply_demand_contact_unlock"}
+                and self._ops_time_in_scope(item.createdAt, start)
+            ]
+            point_rows = [item for item in state.mutual_point_ledgers if self._ops_time_in_scope(item.createdAt, start)]
+            return {
+                "points": {
+                    "baseGranted": sum(max(0, int(item.pointsDelta or 0)) for item in point_rows if item.pointType == BASE_POINT_TYPE),
+                    "rechargeGranted": sum(max(0, int(item.pointsDelta or 0)) for item in point_rows if item.pointType == REWARD_POINT_TYPE),
+                    "consumed": sum(abs(int(item.pointsDelta or 0)) for item in point_rows if int(item.pointsDelta or 0) < 0),
+                },
+                "mutualHelp": {
+                    "tasks": len(task_rows),
+                    "published": sum(1 for item in task_rows if item.status in {"published", "pending_review"}),
+                    "submissions": len(submission_rows),
+                    "completed": sum(1 for item in submission_rows if item.status in {"approved", "completed"} or item.rewardSettled),
+                },
+                "groupResource": {
+                    "resources": len(group_rows),
+                    "published": sum(1 for item in group_rows if item.status == "active" and getattr(item, "reviewStatus", "approved") in {"approved", "reviewing"}),
+                    "views": len(group_view_rows),
+                    "complaints": group_complaint_count,
+                },
+                "businessOpportunity": {
+                    "leads": len(lead_rows),
+                    "published": sum(1 for item in lead_rows if item.status == "published"),
+                    "cards": len(business_card_rows),
+                    "contactUnlocks": len(unlock_rows),
+                },
+            }
+
+        return {
+            "periods": {
+                "today": summarize(today_start),
+                "sevenDays": summarize(seven_day_start),
+                "total": summarize(None),
+            },
+            "generatedAt": now.isoformat(),
+        }
+
+    def list_tool_records(
+        self,
+        tool: str,
+        *,
+        keyword: str | None = None,
+        status: str | None = None,
+        test_only: bool = False,
+        page: int = 1,
+        page_size: int = 20,
+    ) -> dict:
+        clean_tool = str(tool or "").strip()
+        if clean_tool not in {"mutual_help", "group_resource", "business_opportunity"}:
+            raise HTTPException(status_code=400, detail="工具类型无效")
+        query = str(keyword or "").strip().lower()
+        status_value = str(status or "").strip()
+        state = self._load()
+        labels = {item.id: item.nickname for item in state.users}
+        rows: list[dict] = []
+
+        def keep(row: dict) -> bool:
+            if status_value and row.get("status") != status_value:
+                return False
+            # Deleted/archived records remain on the server for audit and
+            # ledger integrity, but should not pollute the default list after
+            # a cleanup action. An explicit status filter can still inspect them.
+            if not status_value and row.get("status") in {"deleted", "archived", "removed"}:
+                return False
+            if test_only and not row.get("isTest"):
+                return False
+            if query and query not in " ".join(str(row.get(key) or "") for key in ("id", "title", "name", "summary", "ownerNickname", "industry", "city" )).lower():
+                return False
+            return True
+
+        if clean_tool == "mutual_help":
+            for item in state.mutual_help_tasks:
+                row = {
+                    "tool": clean_tool,
+                    "recordType": "mutual_task",
+                    "id": item.id,
+                    "title": item.title,
+                    "status": item.status,
+                    "ownerUserId": item.ownerUserId,
+                    "ownerNickname": labels.get(item.ownerUserId, item.ownerUserId),
+                    "isTest": bool(getattr(item, "isTest", False)),
+                    "createdAt": item.createdAt,
+                    "updatedAt": item.updatedAt,
+                    "submissions": sum(1 for submission in state.mutual_help_submissions if submission.taskId == item.id),
+                }
+                if keep(row):
+                    rows.append(row)
+        elif clean_tool == "group_resource":
+            for item in state.group_resources:
+                review_status = "expired" if item.status == "active" and self._group_resource_expired(item) else self._group_resource_review_status(item)
+                row = {
+                    "tool": clean_tool,
+                    "recordType": "group_resource",
+                    "id": item.id,
+                    "title": item.name,
+                    "name": item.name,
+                    "status": review_status,
+                    "ownerUserId": item.ownerUserId,
+                    "ownerNickname": labels.get(item.ownerUserId, "平台管理员" if item.sourceType == "platform_admin" else item.ownerUserId),
+                    "city": item.cityLabel,
+                    "industry": item.industry,
+                    "isTest": bool(getattr(item, "isTest", False)),
+                    "createdAt": item.createdAt,
+                    "updatedAt": item.updatedAt,
+                    "views": item.views,
+                    "complaints": len(getattr(item, "complaints", []) or []),
+                }
+                if keep(row):
+                    rows.append(row)
+        else:
+            for item in state.opportunity_leads:
+                row = {
+                    "tool": clean_tool,
+                    "recordType": "opportunity_lead",
+                    "id": item.id,
+                    "title": item.title,
+                    "summary": item.summary,
+                    "status": item.status,
+                    "ownerUserId": None,
+                    "ownerNickname": "管理员录入",
+                    "city": item.city,
+                    "industry": item.industry,
+                    "isTest": bool(getattr(item, "isTest", False)),
+                    "createdAt": item.createdAt,
+                    "updatedAt": item.updatedAt,
+                }
+                if keep(row):
+                    rows.append(row)
+            for item in state.supply_demand_cards:
+                owner = labels.get(item.ownerUserId, item.ownerUserId)
+                row = {
+                    "tool": clean_tool,
+                    "recordType": "business_card",
+                    "id": item.id,
+                    "title": item.title,
+                    "summary": item.summary,
+                    "status": item.status,
+                    "ownerUserId": item.ownerUserId,
+                    "ownerNickname": owner,
+                    "city": item.city,
+                    "industry": item.industry,
+                    "isTest": bool(getattr(item, "isTest", False)),
+                    "createdAt": item.createdAt,
+                    "updatedAt": item.updatedAt,
+                }
+                if keep(row):
+                    rows.append(row)
+
+        rows.sort(key=lambda item: (item.get("updatedAt") or "", item.get("id") or ""), reverse=True)
+        safe_page = max(1, int(page or 1))
+        safe_page_size = min(max(int(page_size or 20), 1), 100)
+        start = (safe_page - 1) * safe_page_size
+        return {
+            "items": rows[start:start + safe_page_size],
+            "total": len(rows),
+            "page": safe_page,
+            "pageSize": safe_page_size,
+            "totalPages": max(1, ceil(len(rows) / safe_page_size)),
+        }
+
+    def bulk_action_tool_records(
+        self,
+        tool: str,
+        record_ids: list[str],
+        action: str,
+        *,
+        test_only: bool = False,
+        operator_name: str = "ops",
+        reason: str = "运营清理",
+    ) -> dict:
+        clean_tool = str(tool or "").strip()
+        ids = {str(item or "").strip() for item in (record_ids or []) if str(item or "").strip()}
+        if clean_tool not in {"mutual_help", "group_resource", "business_opportunity"}:
+            raise HTTPException(status_code=400, detail="工具类型无效")
+        if action not in {"archive", "mark_test", "delete"}:
+            raise HTTPException(status_code=400, detail="批量动作无效")
+        if not ids:
+            raise HTTPException(status_code=400, detail="请至少选择一条记录")
+        if len(ids) > 100:
+            raise HTTPException(status_code=400, detail="单次最多处理 100 条记录")
+        if action == "delete" and not test_only:
+            raise HTTPException(status_code=400, detail="永久删除仅允许在‘仅测试数据’模式下执行")
+        now = now_iso()
+        operator = str(operator_name or "ops").strip() or "ops"
+        clean_reason = str(reason or "运营清理").strip()[:240] or "运营清理"
+        with MEMBERSHIP_PAYMENT_LOCK:
+            state = self._load()
+            updated = 0
+            deleted = 0
+            archived = 0
+            skipped = []
+            outcomes = []
+
+            def can_hard_delete(record_id: str) -> bool:
+                if clean_tool == "mutual_help":
+                    return not any(item.taskId == record_id for item in state.mutual_help_submissions) and not any(
+                        item.sourceId == record_id for item in state.mutual_point_ledgers
+                    ) and not any(item.taskId == record_id for item in state.mutual_activity_events)
+                if clean_tool == "group_resource":
+                    return not any(item.sourceId == record_id for item in state.mutual_point_ledgers) and not any(
+                        item.id == record_id and (getattr(item, "complaints", []) or []) for item in state.group_resources
+                    )
+                return not any(item.leadId == record_id for item in state.response_packages) and not any(
+                    item.targetId == record_id for item in state.resource_unlock_records
+                ) and not any(item.leadId == record_id for item in state.opportunity_lead_saves) and not any(
+                    item.leadId == record_id for item in state.opportunity_lead_followups
+                ) and not any(item.leadId == record_id for item in state.opportunity_lead_sources) and not any(
+                    item.leadId == record_id for item in state.opportunity_lead_contacts
+                ) and not any(item.leadId == record_id for item in state.opportunity_lead_matches) and not any(
+                    record_id in (item.recommendedLeadIds or []) for item in state.opportunity_push_digests
+                ) and not any(item.cardId == record_id for item in state.supply_demand_applications)
+
+            if clean_tool == "mutual_help":
+                records = {item.id: item for item in state.mutual_help_tasks}
+            elif clean_tool == "group_resource":
+                records = {item.id: item for item in state.group_resources}
+            else:
+                records = {item.id: item for item in state.opportunity_leads}
+                records.update({item.id: item for item in state.supply_demand_cards})
+            for record_id in ids:
+                record = records.get(record_id)
+                if not record:
+                    outcome = {"id": record_id, "result": "skipped", "reason": "记录不存在"}
+                    skipped.append({"id": record_id, "reason": "记录不存在"})
+                    outcomes.append(outcome)
+                    continue
+                if action == "delete" and not bool(getattr(record, "isTest", False)):
+                    outcome = {"id": record_id, "result": "skipped", "reason": "未标记为测试数据"}
+                    skipped.append({"id": record_id, "reason": "未标记为测试数据"})
+                    outcomes.append(outcome)
+                    continue
+                if action == "mark_test":
+                    updated_record = record.model_copy(update={"isTest": True, "updatedAt": now})
+                    if clean_tool == "mutual_help":
+                        state.mutual_help_tasks = [item if item.id != record_id else updated_record for item in state.mutual_help_tasks]
+                    elif clean_tool == "group_resource":
+                        state.group_resources = [item if item.id != record_id else updated_record for item in state.group_resources]
+                    elif isinstance(record, SupplyDemandCard):
+                        state.supply_demand_cards = [item if item.id != record_id else updated_record for item in state.supply_demand_cards]
+                    else:
+                        state.opportunity_leads = [item if item.id != record_id else updated_record for item in state.opportunity_leads]
+                    updated += 1
+                    outcomes.append({"id": record_id, "result": "marked_test"})
+                    continue
+                if action == "delete":
+                    if can_hard_delete(record_id):
+                        if clean_tool == "mutual_help":
+                            state.mutual_help_tasks = [item for item in state.mutual_help_tasks if item.id != record_id]
+                        elif clean_tool == "group_resource":
+                            state.group_resources = [item for item in state.group_resources if item.id != record_id]
+                        elif any(item.id == record_id for item in state.opportunity_leads):
+                            state.opportunity_leads = [item for item in state.opportunity_leads if item.id != record_id]
+                        else:
+                            state.supply_demand_cards = [item for item in state.supply_demand_cards if item.id != record_id]
+                        deleted += 1
+                        outcomes.append({"id": record_id, "result": "deleted"})
+                        continue
+
+                    # A test record with business history must disappear from
+                    # every public/owner list without rewriting its ledgers,
+                    # submissions, complaints, or contact history. Keep the
+                    # row as an operational audit record and hide it through
+                    # the same server-authoritative status filters.
+                    if clean_tool == "mutual_help":
+                        updated_record = record.model_copy(update={"status": "deleted", "updatedAt": now})
+                        state.mutual_help_tasks = [item if item.id != record_id else updated_record for item in state.mutual_help_tasks]
+                    elif clean_tool == "group_resource":
+                        logs = [*(getattr(record, "reviewLogs", []) or []), {"action": "bulk_safe_delete", "operatorName": operator, "reason": clean_reason, "createdAt": now}]
+                        updated_record = record.model_copy(update={"status": "deleted", "reviewStatus": "removed", "reviewLogs": logs, "updatedAt": now})
+                        state.group_resources = [item if item.id != record_id else updated_record for item in state.group_resources]
+                    elif isinstance(record, SupplyDemandCard):
+                        updated_record = record.model_copy(update={"status": "archived", "updatedAt": now})
+                        state.supply_demand_cards = [item if item.id != record_id else updated_record for item in state.supply_demand_cards]
+                    else:
+                        updated_record = record.model_copy(update={"status": "archived", "updatedAt": now})
+                        state.opportunity_leads = [item if item.id != record_id else updated_record for item in state.opportunity_leads]
+                    archived += 1
+                    outcomes.append({"id": record_id, "result": "archived", "reason": "已有业务流水，保留记录并安全下架"})
+                    continue
+                if clean_tool == "mutual_help":
+                    updated_record = record.model_copy(update={"status": "paused", "updatedAt": now})
+                    state.mutual_help_tasks = [item if item.id != record_id else updated_record for item in state.mutual_help_tasks]
+                elif clean_tool == "group_resource":
+                    logs = [*(getattr(record, "reviewLogs", []) or []), {"action": "bulk_archive", "operatorName": operator, "reason": clean_reason, "createdAt": now}]
+                    # Keep the row recoverable through the existing review restore flow.
+                    # `reviewStatus=removed` hides it from public listings; status=deleted
+                    # would make an operational archive irreversible.
+                    updated_record = record.model_copy(update={"status": "active", "reviewStatus": "removed", "reviewLogs": logs, "updatedAt": now})
+                    state.group_resources = [item if item.id != record_id else updated_record for item in state.group_resources]
+                elif isinstance(record, SupplyDemandCard):
+                    updated_record = record.model_copy(update={"status": "archived", "updatedAt": now})
+                    state.supply_demand_cards = [item if item.id != record_id else updated_record for item in state.supply_demand_cards]
+                else:
+                    updated_record = record.model_copy(update={"status": "archived", "updatedAt": now})
+                    state.opportunity_leads = [item if item.id != record_id else updated_record for item in state.opportunity_leads]
+                updated += 1
+                outcomes.append({"id": record_id, "result": "archived"})
+            if updated or deleted or archived:
+                self._save(state)
+        return {
+            "tool": clean_tool,
+            "action": action,
+            "updated": updated,
+            "deleted": deleted,
+            "archived": archived,
+            "skipped": skipped,
+            "outcomes": outcomes,
+            "operatorName": operator,
+        }
+
+    @staticmethod
+    def _decode_group_resource_qr_data(value: str) -> tuple[bytes, str, str]:
+        raw = str(value or "").strip()
+        match = re.fullmatch(r"data:(image/[a-z0-9.+-]+);base64", raw.split(",", 1)[0], flags=re.IGNORECASE) if "," in raw else None
+        if not match:
+            raise HTTPException(status_code=400, detail="群二维码图片格式无效")
+        try:
+            content = base64.b64decode(raw.split(",", 1)[1], validate=True)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail="群二维码图片无法读取") from exc
+        if not content:
+            raise HTTPException(status_code=400, detail="群二维码图片不能为空")
+        return content, match.group(1).lower(), "group-resource-admin-qr"
+
+    def create_group_resource_as_admin(self, payload: dict, operator_user_id: str | None = None) -> dict:
+        operator_user_id = str(operator_user_id or "").strip() or None
+        operator = self.repo.get_user(operator_user_id) if operator_user_id else None
+        if operator_user_id and not operator:
+            raise HTTPException(status_code=404, detail="管理员用户不存在")
+        if operator_user_id and GROUP_RESOURCE_ADMIN_ROLE not in set(operator.roles or []):
+            raise HTTPException(status_code=403, detail="当前账号没有微信群管理员权限")
+
+        city_mode = str(payload.get("cityMode") or "city").strip()
+        city_label = str(payload.get("cityLabel") or "").strip()
+        if city_mode == "national":
+            city_label = "全国"
+        if city_mode not in {"national", "city"} or (city_mode == "city" and not city_label):
+            raise HTTPException(status_code=400, detail="请选择发布城市或全国")
+        industry = str(payload.get("industry") or "").strip()
+        purpose = str(payload.get("purpose") or "").strip()
+        if not industry or not purpose:
+            raise HTTPException(status_code=400, detail="行业和用途不能为空")
+
+        now = now_iso()
+        resource_id = new_id("group_resource")
+        qr_image_url = str(payload.get("qrImageUrl") or "").strip()
+        qr_image_data = str(payload.get("qrImageData") or "").strip()
+        if qr_image_data:
+            content, content_type, filename = self._decode_group_resource_qr_data(qr_image_data)
+            qr_image_url = self.process_and_store_media(
+                media_id=resource_id,
+                media_type="image",
+                content=content,
+                content_type=content_type,
+                filename=filename,
+                owner_user_id=operator_user_id or "platform_admin",
+                ref_type="group_resource_qr",
+                ref_id=resource_id,
+                usage="current",
+                preserve_source_format=True,
+            )
+        if not qr_image_url:
+            raise HTTPException(status_code=400, detail="群二维码不能为空")
+        expires_in_days = min(max(int(payload.get("expiresInDays") or 7), 1), 7)
+        resource = GroupResource(
+            id=resource_id,
+            ownerUserId=operator_user_id or "platform_admin",
+            name=str(payload.get("name") or "").strip() or f"{city_label}{industry}群",
+            cityMode=city_mode,
+            cityLabel=city_label,
+            cityCode=str(payload.get("cityCode") or "").strip() or None,
+            industry=industry,
+            purpose=purpose,
+            tags=self._normalize_group_resource_tags(payload.get("tags")),
+            memberRange=str(payload.get("memberRange") or "").strip() or None,
+            activeLevel=str(payload.get("activeLevel") or "").strip() or None,
+            remark=str(payload.get("remark") or "").strip() or None,
+            qrImageUrl=qr_image_url,
+            expiresAt=(parse_iso(now) + timedelta(days=expires_in_days)).isoformat(),
+            createdAt=now,
+            updatedAt=now,
+            qrUpdatedAt=now,
+            rewardState="capped",
+            rewardAmount=0,
+            sourceType="mobile_admin" if operator_user_id else "platform_admin",
+            createdByUserId=operator_user_id,
+            createdByOperator=str(payload.get("operatorName") or (operator.nickname if operator else "ops")).strip() or "ops",
+            # Operator-created records have already passed the content gate;
+            # they do not need a second human approval before appearing in
+            # the public catalogue. The review workbench can still pause or
+            # remove them if a later complaint is received.
+            reviewStatus="approved",
+        )
+        self._enforce_content_safety(
+            "group_resource",
+            resource.id,
+            {
+                "name": resource.name,
+                "cityLabel": resource.cityLabel,
+                "industry": resource.industry,
+                "purpose": resource.purpose,
+                "memberRange": resource.memberRange,
+                "activeLevel": resource.activeLevel,
+                "remark": resource.remark,
+                "tags": resource.tags,
+                "qrImageUrl": resource.qrImageUrl,
+            },
+            owner_user_id=resource.ownerUserId,
+            content_revision=resource.qrUpdatedAt or resource.updatedAt,
+            for_publish=False,
+        )
+        self.repo.save_group_resource(resource)
+        if not qr_image_data:
+            self._sync_group_resource_media_ref(resource.qrImageUrl, resource.ownerUserId, resource.id)
+        return self._group_resource_payload(resource, include_qr=True)
+
+    def create_group_resource(self, payload: dict) -> dict:
+        owner_user_id = str(payload.get("ownerUserId") or "").strip()
+        owner = self.repo.get_user(owner_user_id)
+        if not owner:
+            raise HTTPException(status_code=404, detail="用户不存在")
+        if owner.groupResourcePublishingPaused:
+            raise HTTPException(status_code=403, detail="你的群资源发布已被暂停，请先联系管理员处理处罚欠分")
+        existing = self.repo.list_group_resources(owner_user_id)
+        today = date_key(now_iso())
+        if any(date_key(item.createdAt) == today for item in existing):
+            raise HTTPException(status_code=409, detail=f"今天最多发布 {GROUP_RESOURCE_PUBLISH_DAILY_LIMIT} 个群资源")
+        reward_reserved = sum(
+            int(item.rewardAmount or 0)
+            for item in existing
+            if item.rewardState in {"pending", "paid"}
+        )
+        reward_amount = min(
+            GROUP_RESOURCE_PUBLISH_REWARD,
+            max(0, GROUP_RESOURCE_PUBLISH_REWARD_CAP - reward_reserved),
+        )
+        city_mode = str(payload.get("cityMode") or "city").strip()
+        city_label = str(payload.get("cityLabel") or "").strip()
+        if city_mode == "national":
+            city_label = "全国"
+        if city_mode not in {"national", "city"} or (city_mode == "city" and not city_label):
+            raise HTTPException(status_code=400, detail="请选择发布城市或全国")
+        industry = str(payload.get("industry") or "").strip()
+        purpose = str(payload.get("purpose") or "").strip()
+        qr_image_url = str(payload.get("qrImageUrl") or "").strip()
+        if not industry or not purpose or not qr_image_url:
+            raise HTTPException(status_code=400, detail="行业、用途和群二维码不能为空")
+        now = now_iso()
+        expires_in_days = min(max(int(payload.get("expiresInDays") or 7), 1), 7)
+        resource = GroupResource(
+            id=new_id("group_resource"),
+            ownerUserId=owner_user_id,
+            name=str(payload.get("name") or "").strip() or f"{city_label}{industry}群",
+            cityMode=city_mode,
+            cityLabel=city_label,
+            cityCode=str(payload.get("cityCode") or "").strip() or None,
+            industry=industry,
+            purpose=purpose,
+            tags=self._normalize_group_resource_tags(payload.get("tags")),
+            memberRange=str(payload.get("memberRange") or "").strip() or None,
+            activeLevel=str(payload.get("activeLevel") or "").strip() or None,
+            remark=str(payload.get("remark") or "").strip() or None,
+            qrImageUrl=qr_image_url,
+            expiresAt=(parse_iso(now) + timedelta(days=expires_in_days)).isoformat(),
+            createdAt=now,
+            updatedAt=now,
+            qrUpdatedAt=now,
+            rewardState="pending" if reward_amount else "capped",
+            rewardAmount=reward_amount,
+            reviewStatus="reviewing",
+        )
+        self._enforce_content_safety(
+            "group_resource",
+            resource.id,
+            {
+                "name": resource.name,
+                "cityLabel": resource.cityLabel,
+                "industry": resource.industry,
+                "purpose": resource.purpose,
+                "memberRange": resource.memberRange,
+                "activeLevel": resource.activeLevel,
+                "remark": resource.remark,
+                "tags": resource.tags,
+                "qrImageUrl": resource.qrImageUrl,
+            },
+            owner_user_id=resource.ownerUserId,
+            content_revision=resource.qrUpdatedAt or resource.updatedAt,
+            for_publish=False,
+        )
+        self.repo.save_group_resource(resource)
+        self._sync_group_resource_media_ref(resource.qrImageUrl, owner_user_id, resource.id)
+        return self._group_resource_payload(resource, include_qr=True)
+
+    def update_group_resource(self, resource_id: str, payload: dict) -> dict:
+        owner_user_id = str(payload.get("ownerUserId") or "").strip()
+        current = self.repo.get_group_resource(resource_id)
+        if not current:
+            raise HTTPException(status_code=404, detail="群资源不存在")
+        if current.ownerUserId != owner_user_id:
+            raise HTTPException(status_code=403, detail="无权修改该群资源")
+        if current.status == "deleted":
+            raise HTTPException(status_code=409, detail="群资源已删除")
+        updates = {}
+        for field in ("name", "cityMode", "cityLabel", "cityCode", "industry", "purpose", "memberRange", "activeLevel", "remark"):
+            if field in payload and payload[field] is not None:
+                updates[field] = str(payload[field]).strip()
+        if "tags" in payload and payload["tags"] is not None:
+            updates["tags"] = self._normalize_group_resource_tags(payload["tags"])
+        final_city_mode = updates.get("cityMode", current.cityMode)
+        if final_city_mode not in {"national", "city"}:
+            raise HTTPException(status_code=400, detail="城市范围参数无效")
+        if final_city_mode == "national":
+            updates["cityLabel"] = "全国"
+            updates["cityCode"] = None
+        elif not updates.get("cityLabel", current.cityLabel):
+            raise HTTPException(status_code=400, detail="请选择发布城市或全国")
+        if "industry" in updates and not updates["industry"]:
+            raise HTTPException(status_code=400, detail="行业不能为空")
+        if "purpose" in updates and not updates["purpose"]:
+            raise HTTPException(status_code=400, detail="用途不能为空")
+        now = now_iso()
+        if payload.get("qrImageUrl"):
+            updates["qrImageUrl"] = str(payload["qrImageUrl"]).strip()
+            updates["qrUpdatedAt"] = now
+            updates["qrVersion"] = int(getattr(current, "qrVersion", 1) or 1) + 1
+        if payload.get("expiresInDays") is not None:
+            updates["expiresAt"] = (parse_iso(now) + timedelta(days=min(max(int(payload["expiresInDays"]), 1), 7))).isoformat()
+        elif payload.get("qrImageUrl"):
+            updates["expiresAt"] = (parse_iso(now) + timedelta(days=7)).isoformat()
+        updates["updatedAt"] = now
+        if payload.get("qrImageUrl") and current.sourceType == "user" and self._group_resource_review_status(current) not in {"paused", "removed"}:
+            # A new QR version is a new claim. Keep it discoverable for the
+            # existing seven-day flow, but send the version back through the
+            # same review state so the workbench can re-check it.
+            updates["reviewStatus"] = "reviewing"
+        updated = current.model_copy(update=updates)
+        self._enforce_content_safety(
+            "group_resource",
+            updated.id,
+            {
+                "name": updated.name,
+                "cityLabel": updated.cityLabel,
+                "industry": updated.industry,
+                "purpose": updated.purpose,
+                "memberRange": updated.memberRange,
+                "activeLevel": updated.activeLevel,
+                "remark": updated.remark,
+                "tags": updated.tags,
+                "qrImageUrl": updated.qrImageUrl,
+            },
+            owner_user_id=updated.ownerUserId,
+            content_revision=updated.qrUpdatedAt or updated.updatedAt,
+            for_publish=False,
+        )
+        if updated.qrImageUrl != current.qrImageUrl:
+            previous_asset = self.repo.get_media_asset_by_url(current.qrImageUrl)
+            if previous_asset:
+                self.repo.delete_media_asset_refs(previous_asset.id, ref_type="group_resource_qr", ref_id=current.id, usage="current")
+        self.repo.save_group_resource(updated)
+        self._sync_group_resource_media_ref(updated.qrImageUrl, owner_user_id, updated.id)
+        return self._group_resource_payload(updated, include_qr=True)
+
+    def delete_group_resource(self, resource_id: str, owner_user_id: str) -> dict:
+        current = self.repo.get_group_resource(resource_id)
+        if not current:
+            raise HTTPException(status_code=404, detail="群资源不存在")
+        if current.ownerUserId != owner_user_id:
+            raise HTTPException(status_code=403, detail="无权删除该群资源")
+        updates = {"status": "deleted", "updatedAt": now_iso()}
+        # A deleted, not-yet-approved resource must not keep reserving the
+        # publisher's cumulative reward budget. Never rewrite paid history.
+        if current.rewardState == "pending":
+            updates.update({"rewardState": "cancelled", "rewardAmount": 0})
+        updated = current.model_copy(update=updates)
+        self.repo.save_group_resource(updated)
+        asset = self.repo.get_media_asset_by_url(current.qrImageUrl)
+        if asset:
+            self.repo.delete_media_asset_refs(asset.id, ref_type="group_resource_qr", ref_id=current.id, usage="current")
+        return {"id": updated.id, "status": updated.status}
+
+    @staticmethod
+    def _group_resource_review_log(
+        resource: GroupResource,
+        *,
+        action: str,
+        operator_name: str,
+        reason: str,
+        automatic: bool = False,
+        metadata: dict | None = None,
+    ) -> GroupResource:
+        logs = list(getattr(resource, "reviewLogs", []) or [])
+        logs.append({
+            "id": new_id("group_review_log"),
+            "action": action,
+            "operatorName": operator_name,
+            "reason": reason,
+            "automatic": automatic,
+            "createdAt": now_iso(),
+            "metadata": metadata or {},
+        })
+        return resource.model_copy(update={"reviewLogs": logs})
+
+    @staticmethod
+    def _group_resource_view_ledgers(state: AppState, resource_id: str) -> list[MutualPointLedger]:
+        return sorted(
+            [
+                item
+                for item in state.mutual_point_ledgers
+                if item.sourceType == "group_resource"
+                and item.sourceId == resource_id
+                and int(item.pointsDelta or 0) < 0
+            ],
+            key=lambda item: (item.createdAt, item.id),
+        )
+
+    @staticmethod
+    def _group_resource_ledger_qr_version(ledger: MutualPointLedger, resource: GroupResource) -> int:
+        try:
+            return max(1, int((ledger.metadata or {}).get("qrVersion") or 1))
+        except (TypeError, ValueError):
+            return max(1, int(getattr(resource, "qrVersion", 1) or 1))
+
+    def _refund_group_resource_views(
+        self,
+        state: AppState,
+        resource: GroupResource,
+        *,
+        reason: str,
+        operator_name: str,
+        qr_version: int | None = None,
+    ) -> dict:
+        refunded_ids = set(getattr(resource, "refundedViewLedgerIds", []) or [])
+        new_refunds = 0
+        refund_points = 0
+        for ledger in self._group_resource_view_ledgers(state, resource.id):
+            version = self._group_resource_ledger_qr_version(ledger, resource)
+            if qr_version is not None and version != int(qr_version):
+                continue
+            if ledger.id in refunded_ids:
+                continue
+            amount = abs(int(ledger.pointsDelta or 0))
+            self.points_core.grant(
+                state,
+                ledger.userId,
+                amount,
+                ledger_type="group_resource_view_refund",
+                reason=reason,
+                idempotency_key=f"group-resource:refund:{resource.id}:{version}:{ledger.userId}:{ledger.id}",
+                account_type=DEFAULT_POINTS_ACCOUNT_TYPE,
+                point_type=ledger.pointType,
+                source_type="group_resource_refund",
+                source_id=resource.id,
+                metadata={
+                    "resourceId": resource.id,
+                    "qrVersion": version,
+                    "viewLedgerId": ledger.id,
+                    "operatorName": operator_name,
+                },
+            )
+            refunded_ids.add(ledger.id)
+            new_refunds += 1
+            refund_points += amount
+        updated = resource.model_copy(update={"refundedViewLedgerIds": sorted(refunded_ids)})
+        return {"resource": updated, "refundCount": new_refunds, "refundPoints": refund_points}
+
+    def _apply_group_resource_penalty(
+        self,
+        state: AppState,
+        resource: GroupResource,
+        *,
+        extra_penalty: int,
+        reason: str,
+        operator_name: str,
+        pause_publisher: bool,
+    ) -> tuple[GroupResource, dict]:
+        if resource.sourceType != "user":
+            # Platform/mobile-admin catalogue entries are already outside the
+            # user reward quota. Invalidating one must not create a fake user
+            # debt or pause an operator's personal publishing ability.
+            return resource, {"penaltyDue": 0, "penaltyConsumed": 0, "penaltyDebt": 0, "publisherPaused": False}
+        owner = next((item for item in state.users if item.id == resource.ownerUserId), None)
+        if not owner:
+            raise HTTPException(status_code=404, detail="群资源发布者不存在")
+        # A publisher may submit before ever opening the mutual-help page.
+        # Initialize both shared ledgers here so the initial 100 base points
+        # are not mistaken for a zero balance during penalty recovery.
+        self._ensure_mutual_point_accounts(state, owner.id)
+        reward_due = int(resource.rewardAmount or 0) if resource.rewardState == "paid" and not resource.rewardRevokedAt else 0
+        total_due = reward_due + max(0, int(extra_penalty or 0))
+        remaining = total_due
+        consumed = 0
+        # Spend base points first, then rechargeable points. Platform
+        # penalties must follow the same order as ordinary consumption.
+        for point_type in (BASE_POINT_TYPE, REWARD_POINT_TYPE):
+            if remaining <= 0:
+                break
+            account = self.points_core.ensure_account(
+                state,
+                owner.id,
+                account_type=DEFAULT_POINTS_ACCOUNT_TYPE,
+                point_type=point_type,
+            )
+            available = min(int(account.balance or 0), remaining)
+            if available:
+                self.points_core.consume(
+                    state,
+                    owner.id,
+                    available,
+                    ledger_type="group_resource_penalty",
+                    reason=reason,
+                    idempotency_key=f"group-resource:penalty:{resource.id}:{point_type}:{len(resource.reviewLogs)}:{available}",
+                    account_type=DEFAULT_POINTS_ACCOUNT_TYPE,
+                    point_type=point_type,
+                    source_type="group_resource_penalty",
+                    source_id=resource.id,
+                    metadata={"resourceId": resource.id, "operatorName": operator_name, "pointType": point_type},
+                )
+                remaining -= available
+                consumed += available
+        now = now_iso()
+        owner.groupResourcePenaltyDebt = int(owner.groupResourcePenaltyDebt or 0) + remaining
+        if pause_publisher or remaining:
+            owner.groupResourcePublishingPaused = True
+        updated = resource.model_copy(update={
+            "rewardState": "pending" if reward_due else resource.rewardState,
+            "rewardRevokedAt": now if reward_due else resource.rewardRevokedAt,
+            "penaltyDebt": int(resource.penaltyDebt or 0) + remaining,
+        })
+        return updated, {"penaltyDue": total_due, "penaltyConsumed": consumed, "penaltyDebt": remaining, "publisherPaused": owner.groupResourcePublishingPaused}
+
+    def list_group_resource_review_workbench(
+        self,
+        *,
+        status: str | None = None,
+        keyword: str | None = None,
+        city_code: str | None = None,
+        industry: str | None = None,
+        complaints_only: bool = False,
+        page: int = 1,
+        page_size: int = 20,
+    ) -> dict:
+        allowed_statuses = {"reviewing", "approved", "rejected", "paused", "removed", "expired"}
+        status_value = str(status or "").strip()
+        if status_value and status_value not in allowed_statuses:
+            raise HTTPException(status_code=400, detail="审核状态无效")
+        keyword_value = str(keyword or "").strip().lower()
+        city_code_value = str(city_code or "").strip()
+        industry_value = str(industry or "").strip()
+        state = self._load()
+        all_resources = list(state.group_resources)
+        summary = {key: 0 for key in allowed_statuses}
+        summary.update({"total": 0, "complaints": 0, "pendingActions": 0})
+        rows = []
+        for resource in all_resources:
+            review_status = self._group_resource_review_status(resource)
+            effective_status = "expired" if resource.status == "active" and self._group_resource_expired(resource) else review_status
+            summary[effective_status] = summary.get(effective_status, 0) + 1
+            summary["total"] += 1
+            complaint_count = len(getattr(resource, "complaints", []) or [])
+            summary["complaints"] += complaint_count
+            if review_status in {"reviewing", "paused"} or complaint_count:
+                summary["pendingActions"] += 1
+            searchable = " ".join([
+                resource.name, resource.cityLabel, resource.industry,
+                resource.purpose, resource.remark or "", resource.ownerUserId,
+                " ".join(resource.tags or []),
+            ]).lower()
+            if status_value and effective_status != status_value:
+                continue
+            if complaints_only and not complaint_count:
+                continue
+            if keyword_value and keyword_value not in searchable:
+                continue
+            if city_code_value and resource.cityCode != city_code_value:
+                continue
+            if industry_value and resource.industry != industry_value:
+                continue
+            owner = self.repo.get_user(resource.ownerUserId)
+            owner_name = owner.nickname if owner else ("平台管理员" if resource.sourceType == "platform_admin" else resource.ownerUserId)
+            item = self._group_resource_payload(resource, include_qr=False, include_admin_meta=True)
+            item.update({
+                "effectiveStatus": effective_status,
+                "complaintCount": complaint_count,
+                "paidViewCount": len(self._group_resource_view_ledgers(state, resource.id)),
+                "owner": {
+                    "id": resource.ownerUserId,
+                    "nickname": owner_name,
+                    "avatarUrl": owner.avatarUrl if owner else "",
+                },
+            })
+            rows.append(item)
+        rows.sort(key=lambda item: (item.get("updatedAt") or "", item.get("id") or ""), reverse=True)
+        safe_page = max(1, int(page or 1))
+        safe_page_size = min(max(int(page_size or 20), 1), 100)
+        start = (safe_page - 1) * safe_page_size
+        return {
+            "items": rows[start:start + safe_page_size],
+            "total": len(rows),
+            "page": safe_page,
+            "pageSize": safe_page_size,
+            "totalPages": max(1, ceil(len(rows) / safe_page_size)),
+            "summary": summary,
+        }
+
+    def get_group_resource_review_detail(self, resource_id: str) -> dict:
+        resource = self.repo.get_group_resource(resource_id)
+        if not resource:
+            raise HTTPException(status_code=404, detail="群资源不存在")
+        state = self._load()
+        owner = self.repo.get_user(resource.ownerUserId)
+        owner_name = owner.nickname if owner else ("平台管理员" if resource.sourceType == "platform_admin" else resource.ownerUserId)
+        ledgers = self._group_resource_view_ledgers(state, resource.id)
+        item = self._group_resource_payload(resource, include_qr=True, include_admin_meta=True)
+        item.update({
+            "effectiveStatus": "expired" if resource.status == "active" and self._group_resource_expired(resource) else self._group_resource_review_status(resource),
+            "complaintCount": len(getattr(resource, "complaints", []) or []),
+            "owner": {
+                "id": resource.ownerUserId,
+                "nickname": owner_name,
+                "avatarUrl": owner.avatarUrl if owner else "",
+                "groupResourcePenaltyDebt": int(owner.groupResourcePenaltyDebt or 0) if owner else 0,
+                "groupResourcePublishingPaused": bool(owner.groupResourcePublishingPaused) if owner else False,
+            },
+            "complaints": list(getattr(resource, "complaints", []) or []),
+            "reviewLogs": list(getattr(resource, "reviewLogs", []) or []),
+            "viewTransactions": [
+                {
+                    **ledger.model_dump(mode="json"),
+                    "qrVersion": self._group_resource_ledger_qr_version(ledger, resource),
+                    "refunded": ledger.id in set(getattr(resource, "refundedViewLedgerIds", []) or []),
+                }
+                for ledger in reversed(ledgers)
+            ],
+            "pointTransactions": [
+                ledger.model_dump(mode="json")
+                for ledger in state.mutual_point_ledgers
+                if ledger.sourceId == resource.id and ledger.sourceType in {"group_resource", "group_resource_refund", "group_resource_penalty"}
+            ],
+        })
+        return item
+
+    def review_group_resource(self, resource_id: str, action: str, payload: dict | None = None) -> dict:
+        payload = payload or {}
+        operator_name = str(payload.get("operatorName") or "ops").strip()
+        reason = str(payload.get("reason") or "").strip()
+        extra_penalty = max(0, int(payload.get("extraPenalty") or 0))
+        refund_viewers = bool(payload.get("refundViewers", True))
+        pause_publisher = bool(payload.get("pausePublisher", False))
+        if not operator_name:
+            raise HTTPException(status_code=400, detail="操作人不能为空")
+        if action in {"reject", "invalidate", "remove", "penalty", "refund"} and not reason:
+            raise HTTPException(status_code=400, detail="该操作必须填写原因")
+        with MEMBERSHIP_PAYMENT_LOCK:
+            state = self._load()
+            resource = next((item for item in state.group_resources if item.id == resource_id), None)
+            if not resource:
+                raise HTTPException(status_code=404, detail="群资源不存在")
+            if resource.status == "deleted" and action in {"approve", "reject", "pause", "restore", "invalidate", "penalty"}:
+                raise HTTPException(status_code=409, detail="已永久下架资源不能再次执行该审核或处罚动作")
+            now = now_iso()
+            result = {"refundCount": 0, "refundPoints": 0, "penaltyDue": 0, "penaltyConsumed": 0, "penaltyDebt": 0}
+            if action in {"invalidate", "remove"} and self._group_resource_review_status(resource) == ("removed" if action == "remove" else "rejected") and any(
+                item.get("action") == action for item in (getattr(resource, "reviewLogs", []) or [])
+            ):
+                result["idempotent"] = True
+                return {"resource": self._group_resource_payload(resource, include_qr=True), "result": result, "detail": self.get_group_resource_review_detail(resource.id)}
+            if action == "approve":
+                if resource.status == "deleted":
+                    raise HTTPException(status_code=409, detail="已下架资源不能确认有效")
+                if self._group_resource_expired(resource):
+                    raise HTTPException(status_code=409, detail="已过期资源不能确认有效")
+                self._enforce_content_safety(
+                    "group_resource",
+                    resource.id,
+                    {
+                        "name": resource.name,
+                        "cityLabel": resource.cityLabel,
+                        "industry": resource.industry,
+                        "purpose": resource.purpose,
+                        "memberRange": resource.memberRange,
+                        "activeLevel": resource.activeLevel,
+                        "remark": resource.remark,
+                        "tags": resource.tags,
+                        "qrImageUrl": resource.qrImageUrl,
+                    },
+                    owner_user_id=resource.ownerUserId,
+                    content_revision=resource.qrUpdatedAt or resource.updatedAt,
+                    for_publish=True,
+                )
+                # Approval is the first point-bearing action for many
+                # publishers.  Initialize the shared account before granting
+                # the platform reward so the original 100 base points are
+                # preserved instead of creating a zero-balance account.
+                if resource.sourceType == "user":
+                    self._ensure_mutual_point_accounts(state, resource.ownerUserId)
+                was_approved = self._group_resource_review_status(resource) == "approved"
+                if resource.sourceType == "user" and resource.rewardState == "pending" and int(resource.rewardAmount or 0) > 0:
+                    reward = self.points_core.grant(
+                        state,
+                        resource.ownerUserId,
+                        int(resource.rewardAmount),
+                        ledger_type="group_resource_publish_reward",
+                        reason="发布有效群奖励",
+                        idempotency_key=f"group-resource:reward:{resource.id}",
+                        account_type=DEFAULT_POINTS_ACCOUNT_TYPE,
+                        point_type=BASE_POINT_TYPE,
+                        source_type="group_resource",
+                        source_id=resource.id,
+                        metadata={"resourceId": resource.id, "operatorName": operator_name},
+                    )
+                    if not reward.get("duplicate"):
+                        resource.rewardReleasedAt = now
+                    resource.rewardState = "paid"
+                resource.status = "active"
+                resource.reviewStatus = "approved"
+                if not was_approved:
+                    resource.confirmCount = int(resource.confirmCount or 0) + 1
+                resource = self._group_resource_review_log(resource, action="approve", operator_name=operator_name, reason=reason or "管理员确认有效")
+            elif action == "reject":
+                if resource.rewardState == "paid":
+                    raise HTTPException(status_code=409, detail="奖励已到账，请使用标记无效处理追回")
+                resource.status = "rejected"
+                resource.reviewStatus = "rejected"
+                resource = self._group_resource_review_log(resource, action="reject", operator_name=operator_name, reason=reason)
+            elif action == "pause":
+                if resource.status == "deleted":
+                    raise HTTPException(status_code=409, detail="已下架资源不能暂停")
+                resource.status = "active"
+                resource.reviewStatus = "paused"
+                resource = self._group_resource_review_log(resource, action="pause", operator_name=operator_name, reason=reason or "管理员暂停展示")
+            elif action == "restore":
+                if resource.status == "deleted":
+                    raise HTTPException(status_code=409, detail="已下架资源不能恢复")
+                resource.status = "active"
+                resource.reviewStatus = "approved" if resource.rewardState == "paid" else "reviewing"
+                resource = self._group_resource_review_log(resource, action="restore", operator_name=operator_name, reason=reason or "管理员恢复展示")
+            elif action in {"invalidate", "remove"}:
+                if action == "remove":
+                    resource.status = "deleted"
+                    resource.reviewStatus = "removed"
+                else:
+                    resource.status = "rejected"
+                    resource.reviewStatus = "rejected"
+                if refund_viewers:
+                    refund = self._refund_group_resource_views(state, resource, reason="群资源无效，退回查看积分", operator_name=operator_name)
+                    resource = refund["resource"]
+                    result.update({"refundCount": refund["refundCount"], "refundPoints": refund["refundPoints"]})
+                resource, penalty = self._apply_group_resource_penalty(
+                    state,
+                    resource,
+                    extra_penalty=extra_penalty,
+                    reason=reason,
+                    operator_name=operator_name,
+                    pause_publisher=pause_publisher,
+                )
+                result.update(penalty)
+                resource = self._group_resource_review_log(resource, action=action, operator_name=operator_name, reason=reason, metadata=result)
+            elif action == "refund":
+                refund = self._refund_group_resource_views(state, resource, reason="管理员退回群资源查看积分", operator_name=operator_name)
+                resource = refund["resource"]
+                result.update({"refundCount": refund["refundCount"], "refundPoints": refund["refundPoints"]})
+                resource = self._group_resource_review_log(resource, action="refund", operator_name=operator_name, reason=reason, metadata=result)
+            elif action == "penalty":
+                if extra_penalty <= 0 and not pause_publisher:
+                    raise HTTPException(status_code=400, detail="请输入额外扣分，或勾选暂停发布")
+                resource, penalty = self._apply_group_resource_penalty(
+                    state,
+                    resource,
+                    extra_penalty=extra_penalty,
+                    reason=reason,
+                    operator_name=operator_name,
+                    pause_publisher=pause_publisher,
+                )
+                result.update(penalty)
+                resource = self._group_resource_review_log(resource, action="penalty", operator_name=operator_name, reason=reason, metadata=result)
+            else:
+                raise HTTPException(status_code=400, detail="不支持的审核动作")
+            resource.updatedAt = now
+            state.group_resources = [item for item in state.group_resources if item.id != resource.id]
+            state.group_resources.append(resource)
+            self._save(state)
+        return {"resource": self._group_resource_payload(resource, include_qr=True), "result": result, "detail": self.get_group_resource_review_detail(resource.id)}
+
+    def file_group_resource_complaint(self, resource_id: str, user_id: str, reason: str) -> dict:
+        user_id = str(user_id or "").strip()
+        reason = str(reason or "").strip()
+        if not user_id or not reason:
+            raise HTTPException(status_code=400, detail="投诉用户和原因不能为空")
+        with MEMBERSHIP_PAYMENT_LOCK:
+            state = self._load()
+            resource = next((item for item in state.group_resources if item.id == resource_id), None)
+            if not resource:
+                raise HTTPException(status_code=404, detail="群资源不存在")
+            if resource.ownerUserId == user_id:
+                raise HTTPException(status_code=403, detail="发布者不能投诉自己的群资源")
+            paid_ledgers = [item for item in self._group_resource_view_ledgers(state, resource.id) if item.userId == user_id]
+            if not paid_ledgers:
+                raise HTTPException(status_code=403, detail="只有实际支付查看积分的用户才能投诉")
+            version = self._group_resource_ledger_qr_version(paid_ledgers[-1], resource)
+            complaints = list(getattr(resource, "complaints", []) or [])
+            duplicate = next((item for item in complaints if item.get("userId") == user_id and int(item.get("qrVersion") or 1) == version), None)
+            if duplicate:
+                return {"duplicate": True, "protected": self._group_resource_review_status(resource) == "paused", "resource": self._group_resource_payload(resource, include_qr=True)}
+            now = now_iso()
+            complaints.append({"id": new_id("group_complaint"), "userId": user_id, "qrVersion": version, "reason": reason[:120], "createdAt": now})
+            resource.complaints = complaints
+            resource.complaintCount = len(complaints)
+            resource.lastComplaintAt = now
+            valid_users = {item.get("userId") for item in complaints if int(item.get("qrVersion") or 1) == version}
+            protected = False
+            if len(valid_users) >= 2 and self._group_resource_review_status(resource) not in {"paused", "rejected", "removed"}:
+                resource.reviewStatus = "paused"
+                resource.status = "active"
+                refund = self._refund_group_resource_views(state, resource, reason="两名用户投诉触发保护，退回查看积分", operator_name="system", qr_version=version)
+                resource = refund["resource"]
+                protected = True
+                resource = self._group_resource_review_log(
+                    resource,
+                    action="auto_pause_complaints",
+                    operator_name="system",
+                    reason="同一二维码版本收到 2 个不同已付费用户投诉",
+                    automatic=True,
+                    metadata={"qrVersion": version, "complaintUsers": sorted(valid_users), "refundCount": refund["refundCount"], "refundPoints": refund["refundPoints"]},
+                )
+            resource.updatedAt = now
+            state.group_resources = [item for item in state.group_resources if item.id != resource.id]
+            state.group_resources.append(resource)
+            self._save(state)
+        return {"duplicate": False, "protected": protected, "resource": self._group_resource_payload(resource, include_qr=True)}
+
+    def view_group_resource(self, resource_id: str, viewer_user_id: str) -> dict:
+        # Keep the eligibility check and the debit in the same critical
+        # section as complaint protection/review actions. Otherwise a view
+        # that starts just before an automatic pause could still charge after
+        # the resource has been protected.
+        with MEMBERSHIP_PAYMENT_LOCK:
+            current = self.repo.get_group_resource(resource_id)
+            if not current or current.status != "active" or self._group_resource_expired(current):
+                raise HTTPException(status_code=410, detail="该群资源已失效")
+            if self._group_resource_review_status(current) not in {"reviewing", "approved"}:
+                raise HTTPException(status_code=410, detail="该群资源正在保护中，暂不可查看")
+            self._enforce_content_safety(
+                "group_resource",
+                current.id,
+                {
+                    "name": current.name,
+                    "cityLabel": current.cityLabel,
+                    "industry": current.industry,
+                    "purpose": current.purpose,
+                    "memberRange": current.memberRange,
+                    "activeLevel": current.activeLevel,
+                    "remark": current.remark,
+                    "tags": current.tags,
+                    "qrImageUrl": current.qrImageUrl,
+                },
+                owner_user_id=current.ownerUserId,
+                content_revision=current.qrUpdatedAt or current.updatedAt,
+                for_publish=True,
+                persist=False,
+            )
+            if current.ownerUserId == viewer_user_id:
+                point_status = self.get_mutual_help_status(viewer_user_id)
+                return {
+                    "resource": self._group_resource_payload(current, include_qr=True),
+                    "account": point_status["account"],
+                    "accounts": point_status["accounts"],
+                    "points": point_status["points"],
+                    "charged": False,
+                }
+            # The mutual-help account owns the initial 100-point grant. Ensure it
+            # exists before the first group-resource view reaches the shared
+            # points consumer, which otherwise creates a zero-balance account.
+            self.get_mutual_help_status(viewer_user_id)
+            points_result = self.consume_points(
+                viewer_user_id,
+                GROUP_RESOURCE_VIEW_COST,
+                reason="查看群资源二维码",
+                idempotency_key=f"group-resource:view:{viewer_user_id}:{resource_id}:{current.qrUpdatedAt}",
+                source_type="group_resource",
+                source_id=resource_id,
+                metadata={"resourceId": resource_id, "qrVersion": int(getattr(current, "qrVersion", 1) or 1)},
+            )
+            if not points_result.get("duplicate"):
+                current = current.model_copy(update={
+                    "views": int(current.views or 0) + 1,
+                    "updatedAt": now_iso(),
+                })
+                self.repo.save_group_resource(current)
+            # Group-resource viewing always consumes base points, but the public
+            # response must keep the two-bucket display consistent with the
+            # mutual-help status endpoint instead of returning only the consumed
+            # bucket as the user's total.
+            point_status = self.get_mutual_help_status(viewer_user_id)
+            return {
+                "resource": self._group_resource_payload(current, include_qr=True),
+                "account": point_status["account"],
+                "accounts": point_status["accounts"],
+                "points": point_status["points"],
+                "charged": not points_result.get("duplicate"),
+                "duplicate": points_result.get("duplicate", False),
+            }
+
+    def _sync_group_resource_media_ref(self, url: str, owner_user_id: str, resource_id: str) -> None:
+        asset = self.repo.get_media_asset_by_url(url)
+        if not asset:
+            return
+        self._save_media_asset_ref(asset, owner_user_id, "group_resource_qr", resource_id, "current")
+
+    @staticmethod
+    def _mutual_comment_summary(task: MutualHelpTask) -> dict:
+        visible_comments = [
+            item for item in (task.woolComments or [])
+            if isinstance(item, dict) and item.get("status", "visible") == "visible"
+        ]
+        count = len(visible_comments)
+        worth_it = sum(1 for item in visible_comments if item.get("recommendChoice") == "worth_it")
+        not_worth_it = sum(1 for item in visible_comments if item.get("recommendChoice") == "not_worth_it")
+        neutral = sum(1 for item in visible_comments if item.get("recommendChoice") == "neutral")
+        recommend_count = worth_it + not_worth_it
+        worth_it_rate = round(worth_it / recommend_count * 100) if recommend_count else 0
+        return {
+            "count": count,
+            "worthIt": worth_it,
+            "notWorthIt": not_worth_it,
+            "neutral": neutral,
+            "recommendCount": recommend_count,
+            "worthItRate": worth_it_rate,
+            "worthItRateText": f"{worth_it_rate}%觉得值得" if recommend_count else "暂无比例",
+            "text": (
+                f"评论 {count} 条 · {worth_it_rate}%觉得值得"
+                if count and recommend_count
+                else (f"评论 {count} 条 · 暂无比例" if count else "暂时还没有评论")
+            ),
+        }
+
+    @staticmethod
+    def _mutual_repeat_policy(task: MutualHelpTask | dict) -> str:
+        value = task.get("repeatPolicy") if isinstance(task, dict) else getattr(task, "repeatPolicy", "once")
+        return "daily" if str(value or "").strip().lower() == "daily" else "once"
+
+    @staticmethod
+    def _mutual_active_submission(submission: MutualHelpSubmission | None) -> bool:
+        return bool(submission and submission.status in {"submitted", "reviewing", "approved", "completed"})
+
+    @classmethod
+    def _mutual_submission_for_viewer(
+        cls,
+        task: MutualHelpTask,
+        submissions: list[MutualHelpSubmission],
+        viewer_user_id: str,
+        participation_day: str,
+    ) -> MutualHelpSubmission | None:
+        candidates = [
+            item for item in submissions
+            if item.taskId == task.id and item.executorUserId == viewer_user_id
+        ]
+        if cls._mutual_repeat_policy(task) == "daily":
+            candidates = [item for item in candidates if item.participationDay == participation_day]
+        active = [item for item in candidates if cls._mutual_active_submission(item)]
+        candidates = active or candidates
+        return sorted(candidates, key=lambda item: (item.submittedAt, item.id), reverse=True)[0] if candidates else None
+
+    @classmethod
+    def _mutual_task_viewer_state(
+        cls,
+        task: MutualHelpTask,
+        submissions: list[MutualHelpSubmission],
+        viewer_user_id: str,
+        participation_day: str,
+    ) -> dict:
+        repeat_policy = cls._mutual_repeat_policy(task)
+        viewer_submission = cls._mutual_submission_for_viewer(
+            task, submissions, viewer_user_id, participation_day
+        )
+        submitted = cls._mutual_active_submission(viewer_submission)
+        return {
+            "participationDay": participation_day,
+            "repeatPolicy": repeat_policy,
+            "submitted": submitted,
+            "completedToday": repeat_policy == "daily" and submitted,
+            "status": viewer_submission.status if viewer_submission else "",
+        }
+
+    @staticmethod
+    def _mutual_task_payload(
+        task: MutualHelpTask,
+        *,
+        include_pin: bool = False,
+        viewer_state: dict | None = None,
+    ) -> dict:
+        payload = task.model_dump(mode="json")
+        if not include_pin:
+            for key in ("isPinned", "pinnedAt", "pinnedBy"):
+                payload.pop(key, None)
+        payload["woolPolicy"] = dict(payload.get("woolPolicy") or {})
+        payload["rewardPointType"] = payload.get("rewardPointType") if payload.get("rewardPointType") in {BASE_POINT_TYPE, REWARD_POINT_TYPE} else BASE_POINT_TYPE
+        payload["rewardPointTypeLabel"] = "充值积分" if payload["rewardPointType"] == REWARD_POINT_TYPE else "基础积分"
+        payload["rewardCashable"] = payload["rewardPointType"] == REWARD_POINT_TYPE and task.taskKind != "wool" and int(task.executorReward or 0) > 0
+        # Task availability is a server-owned fact. Clients must not infer it
+        # from the publisher's balance cached on the executor's device.
+        payload["taskClosed"] = task.status != "published" or task.remaining == 0
+        payload["rewardBudgetRemaining"] = max(
+            0,
+            int(task.rewardBudgetReserved or 0) - int(task.rewardBudgetUsed or 0) - int(task.rewardBudgetReleased or 0),
+        )
+        payload["commentSummary"] = AppService._mutual_comment_summary(task)
+        share_snapshot = payload.get("shareSnapshot")
+        if not (
+            isinstance(share_snapshot, dict)
+            and share_snapshot.get("status") == "ready"
+            and share_snapshot.get("renderer") == "backend"
+            and share_snapshot.get("url")
+            and str(share_snapshot.get("sourceRevision") or "") == str(task.updatedAt or task.createdAt or "0")
+        ):
+            payload["shareSnapshot"] = {}
+        payload.pop("shareSnapshotHistory", None)
+        if viewer_state is not None:
+            payload["viewerState"] = dict(viewer_state)
+        for key in ("woolAccessRecords", "woolComments", "woolCommentReports", "woolTips", "woolRefunds"):
+            payload.pop(key, None)
+        return payload
+
+    def _mutual_help_submission_payload(self, submission: MutualHelpSubmission, *, include_executor: bool = False) -> dict:
+        payload = submission.model_dump(mode="json")
+        if submission.rewardSettled:
+            payload["statusLabel"] = "已结算"
+        elif submission.status == "submitted":
+            payload["statusLabel"] = "待验收"
+        elif submission.status in {"approved", "completed"}:
+            payload["statusLabel"] = "已验收"
+        elif submission.status == "rejected":
+            payload["statusLabel"] = "已退回"
+        else:
+            payload["statusLabel"] = "处理中"
+        if include_executor:
+            user = self.repo.get_user(submission.executorUserId)
+            payload["executorLabel"] = user.nickname if user and user.nickname else "互助用户"
+            payload["executorAvatarUrl"] = user.avatarUrl if user else ""
+        return payload
+
+    @staticmethod
+    def _mutual_help_activity_summary(
+        events: list[MutualActivityEvent],
+        submissions: list[MutualHelpSubmission],
+        owner_user_id: str = "",
+        task_id: str = "",
+    ) -> dict:
+        target_task_id = str(task_id or "").strip()
+        participated_users = {
+            event.userId
+            for event in events
+            if (not target_task_id or event.taskId == target_task_id)
+            and event.eventType in {"opened", "returned"}
+        }
+        participated_users.update(
+            item.executorUserId
+            for item in submissions
+        )
+        submitted_count = sum(1 for item in submissions if item.status in {"submitted", "reviewing", "approved", "completed"})
+        accepted_count = sum(1 for item in submissions if item.status in {"approved", "completed"})
+        settled_count = sum(1 for item in submissions if item.rewardSettled)
+        return {
+            "participatedCount": len(participated_users),
+            "submittedCount": submitted_count,
+            "acceptedCount": accepted_count,
+            "settledCount": settled_count,
+        }
+
+    def _get_mutual_help_task_or_404(self, task_id: str) -> MutualHelpTask:
+        task = self.repo.get_mutual_help_task(str(task_id or "").strip())
+        if not task:
+            raise HTTPException(status_code=404, detail="互助任务不存在")
+        if task.status == "deleted":
+            raise HTTPException(status_code=404, detail="任务已被发布者或管理员删除")
+        return task
+
+    def list_mutual_help_tasks(
+        self,
+        *,
+        user_id: str | None = None,
+        owner_only: bool = False,
+        task_id: str | None = None,
+        task_kind: str | None = None,
+        cursor: str | None = None,
+        limit: int = 20,
+    ) -> dict:
+        clean_user_id = str(user_id or "").strip() or None
+        if clean_user_id and not self.repo.get_user(clean_user_id):
+            raise HTTPException(status_code=404, detail="用户不存在")
+        try:
+            offset = max(0, int(cursor or 0))
+        except (TypeError, ValueError):
+            offset = 0
+        page_size = min(max(int(limit or 20), 1), 50)
+        owner_filter = clean_user_id if owner_only else None
+        statuses = {"published"} if not owner_only else {"published", "paused", "pending_review", "completed"}
+        if task_id:
+            statuses = None
+        tasks = self.repo.list_mutual_help_tasks(
+            owner_user_id=owner_filter,
+            task_id=task_id,
+            task_kind=task_kind,
+            statuses=statuses,
+        )
+        if clean_user_id and not owner_only:
+            tasks = [item for item in tasks if item.ownerUserId != clean_user_id]
+        if not owner_only:
+            safe_tasks = []
+            for task in tasks:
+                try:
+                    self._enforce_content_safety(
+                        "mutual_help_task",
+                        task.id,
+                        {
+                            "title": task.title,
+                            "category": task.category,
+                            "description": task.description,
+                            "contentBlocks": task.contentBlocks,
+                            "acceptanceCriteriaBlocks": task.acceptanceCriteriaBlocks,
+                            "taskLinks": task.taskLinks,
+                            "shortLink": task.shortLink,
+                            "woolPolicy": task.woolPolicy,
+                        },
+                        owner_user_id=task.ownerUserId,
+                        content_revision=task.updatedAt,
+                        for_publish=True,
+                        persist=False,
+                    )
+                except HTTPException:
+                    continue
+                safe_tasks.append(task)
+            tasks = safe_tasks
+        page = tasks[offset:offset + page_size]
+        end = offset + len(page)
+        viewer_day = date_key(now_iso()) if clean_user_id else ""
+        viewer_submissions = (
+            self.repo.list_mutual_help_submissions(executor_user_id=clean_user_id)
+            if clean_user_id else []
+        )
+        return {
+            "items": [
+                self._mutual_task_payload(
+                    item,
+                    viewer_state=(
+                        self._mutual_task_viewer_state(item, viewer_submissions, clean_user_id, viewer_day)
+                        if clean_user_id else None
+                    ),
+                )
+                for item in page
+            ],
+            "nextCursor": str(end) if end < len(tasks) else None,
+            "hasMore": end < len(tasks),
+            "limit": page_size,
+        }
+
+    def create_mutual_help_task(self, payload: dict) -> dict:
+        owner_user_id = str(payload.get("ownerUserId") or "").strip()
+        if not owner_user_id or not self.repo.get_user(owner_user_id):
+            raise HTTPException(status_code=404, detail="用户不存在")
+        requested_id = str(payload.get("id") or "").strip()
+        if requested_id:
+            existing = self.repo.get_mutual_help_task(requested_id)
+            if existing:
+                if existing.ownerUserId != owner_user_id:
+                    raise HTTPException(status_code=409, detail="任务标识已被占用")
+                return {"task": self._mutual_task_payload(existing), "duplicate": True}
+        task_kind = str(payload.get("taskKind") or "ordinary").strip()
+        if task_kind not in {"miniapp", "ordinary", "wool"}:
+            raise HTTPException(status_code=400, detail="任务类型无效")
+        repeat_policy = "daily" if str(payload.get("repeatPolicy") or "").strip().lower() == "daily" else "once"
+        # Wool is a view/unlock resource, not a completion task. It never uses
+        # the participation-frequency rule.
+        if task_kind == "wool":
+            repeat_policy = "once"
+        title = str(payload.get("title") or "").strip()
+        if not title:
+            raise HTTPException(status_code=400, detail="任务标题不能为空")
+        now = now_iso()
+        reward_points = max(0, int(payload.get("rewardPoints") or 0))
+        executor_reward = max(0, int(payload.get("executorReward") or 0))
+        reward_point_type = str(payload.get("rewardPointType") or BASE_POINT_TYPE).strip().lower()
+        if reward_point_type not in {BASE_POINT_TYPE, REWARD_POINT_TYPE}:
+            raise HTTPException(status_code=400, detail="任务奖励类型无效")
+        if task_kind == "miniapp":
+            reward_points, executor_reward = 5, 4
+        if task_kind == "wool":
+            reward_points, executor_reward = 0, 0
+        if task_kind != "wool" and executor_reward > reward_points:
+            raise HTTPException(status_code=400, detail="执行者奖励不能高于发布者每次成本")
+        acceptance_blocks = list(payload.get("acceptanceCriteriaBlocks") or [])[:20]
+        has_completion_criteria = any(
+            isinstance(block, dict)
+            and (
+                (str(block.get("type") or "") == "text" and bool(str(block.get("text") or "").strip()))
+                or (str(block.get("type") or "") == "image" and bool(str(block.get("url") or block.get("displayUrl") or "").strip()))
+            )
+            for block in acceptance_blocks
+        )
+        if task_kind != "wool" and not has_completion_criteria:
+            raise HTTPException(status_code=400, detail="请填写完成标准")
+        remaining = payload.get("remaining")
+        if remaining in (None, ""):
+            remaining = None
+        else:
+            remaining = max(0, int(remaining))
+        if task_kind != "wool" and reward_point_type == REWARD_POINT_TYPE and (remaining is None or remaining <= 0):
+            raise HTTPException(status_code=400, detail="充值积分奖励任务必须填写大于 0 的任务次数")
+        task = MutualHelpTask(
+            id=requested_id if requested_id.startswith("local_") or requested_id.startswith("mutual_task_") else new_id("mutual_task"),
+            ownerUserId=owner_user_id,
+            taskKind=task_kind,
+            title=title[:120],
+            category=str(payload.get("category") or "其他").strip()[:60] or "其他",
+            description=str(payload.get("description") or "").strip()[:500],
+            contentBlocks=list(payload.get("contentBlocks") or [])[:20],
+            acceptanceCriteriaBlocks=acceptance_blocks,
+            taskLinks=list(payload.get("taskLinks") or [])[:10],
+            shortLink=str(payload.get("shortLink") or "").strip()[:1000],
+            rewardPointType=reward_point_type,
+            repeatPolicy=repeat_policy,
+            woolPolicy=dict(payload.get("woolPolicy") or {}),
+            rewardPoints=reward_points,
+            executorReward=executor_reward,
+            remaining=remaining,
+            deadlineText=str(payload.get("deadlineText") or "长期开放").strip()[:60] or "长期开放",
+            status="published",
+            createdAt=now,
+            updatedAt=now,
+        )
+        safety = self._enforce_content_safety(
+            "mutual_help_task",
+            task.id,
+            {
+                "title": task.title,
+                "category": task.category,
+                "description": task.description,
+                "contentBlocks": task.contentBlocks,
+                "acceptanceCriteriaBlocks": task.acceptanceCriteriaBlocks,
+                "taskLinks": task.taskLinks,
+                "shortLink": task.shortLink,
+                "woolPolicy": task.woolPolicy,
+            },
+            owner_user_id=task.ownerUserId,
+            content_revision=task.updatedAt,
+            for_publish=False,
+        )
+        if safety.decision == "review":
+            task.status = "pending_review"
+        if task.rewardPointType == REWARD_POINT_TYPE and task.taskKind != "wool":
+            budget_points = int(task.rewardPoints or 0) * int(task.remaining or 0)
+            if budget_points <= 0:
+                raise HTTPException(status_code=400, detail="充值积分奖励任务的预算必须大于 0")
+            # Reservation and task persistence share the same process lock so
+            # two simultaneous publishes cannot both spend the same reward
+            # balance before either reservation becomes visible.
+            with MEMBERSHIP_PAYMENT_LOCK:
+                state = self._load()
+                try:
+                    self.points_core.consume(
+                        state,
+                        task.ownerUserId,
+                        budget_points,
+                        ledger_type="task_budget_reserve",
+                        reason="预留充值积分任务预算",
+                        idempotency_key=f"mutual-help:task-budget:{task.id}",
+                        point_type=REWARD_POINT_TYPE,
+                        source_type="mutual_help_task",
+                        source_id=task.id,
+                        metadata={"taskId": task.id, "remaining": task.remaining},
+                    )
+                except HTTPException as exc:
+                    if exc.status_code == 402:
+                        message = "平台充值积分任务预算不足" if task.ownerUserId == PLATFORM_OPERATOR_USER_ID else "充值积分余额不足，无法预留任务预算"
+                        raise HTTPException(status_code=402, detail=message) from exc
+                    raise
+                task.rewardBudgetReserved = budget_points
+                self._save(state)
+                self.repo.save_mutual_help_task(task)
+                return {"task": self._mutual_task_payload(task)}
+        self.repo.save_mutual_help_task(task)
+        return {"task": self._mutual_task_payload(task)}
+
+    def update_mutual_help_task(self, task_id: str, owner_user_id: str, status_value: str) -> dict:
+        task = self._get_mutual_help_task_or_404(task_id)
+        if task.ownerUserId != str(owner_user_id or "").strip():
+            raise HTTPException(status_code=403, detail="只能管理自己发布的任务")
+        if status_value not in {"published", "paused", "deleted"}:
+            raise HTTPException(status_code=400, detail="任务状态无效")
+        if status_value == "published":
+            self._enforce_content_safety(
+                "mutual_help_task",
+                task.id,
+                {
+                    "title": task.title,
+                    "category": task.category,
+                    "description": task.description,
+                    "contentBlocks": task.contentBlocks,
+                    "acceptanceCriteriaBlocks": task.acceptanceCriteriaBlocks,
+                    "taskLinks": task.taskLinks,
+                    "shortLink": task.shortLink,
+                    "woolPolicy": task.woolPolicy,
+                },
+                owner_user_id=task.ownerUserId,
+                content_revision=task.updatedAt,
+                for_publish=True,
+            )
+        if status_value == "deleted" and task.rewardPointType == REWARD_POINT_TYPE:
+            with MEMBERSHIP_PAYMENT_LOCK:
+                state = self._load()
+                current = next((item for item in state.mutual_help_tasks if item.id == task.id), task)
+                unused_budget = max(
+                    0,
+                    int(current.rewardBudgetReserved or 0)
+                    - int(current.rewardBudgetUsed or 0)
+                    - int(current.rewardBudgetReleased or 0),
+                )
+                now = now_iso()
+                if unused_budget:
+                    self.points_core.grant(
+                        state,
+                        current.ownerUserId,
+                        unused_budget,
+                        ledger_type="task_budget_release",
+                        reason="删除充值积分任务，退回未使用预算",
+                        idempotency_key=f"mutual-help:task-budget-release:{current.id}",
+                        point_type=REWARD_POINT_TYPE,
+                        source_type="mutual_help_task",
+                        source_id=current.id,
+                        metadata={"taskId": current.id},
+                    )
+                updated = current.model_copy(update={
+                    "status": status_value,
+                    "rewardBudgetReleased": int(current.rewardBudgetReleased or 0) + unused_budget,
+                    "updatedAt": now,
+                })
+                state.mutual_help_tasks = [item if item.id != updated.id else updated for item in state.mutual_help_tasks]
+                self._save(state)
+                return {"task": self._mutual_task_payload(updated)}
+        updated = task.model_copy(update={"status": status_value, "updatedAt": now_iso()})
+        self.repo.save_mutual_help_task(updated)
+        return {"task": self._mutual_task_payload(updated)}
+
+    def _settle_mutual_help_submission_locked(
+        self,
+        state: AppState,
+        task: MutualHelpTask,
+        submission: MutualHelpSubmission,
+        *,
+        auto_approved: bool = False,
+    ) -> dict:
+        if submission.rewardSettled:
+            return {"ok": True, "alreadySettled": True, "submission": submission}
+        if submission.status != "submitted":
+            return {"ok": False, "reason": "already_processed", "submission": submission}
+        point_type = task.rewardPointType if task.rewardPointType in {BASE_POINT_TYPE, REWARD_POINT_TYPE} else BASE_POINT_TYPE
+        publisher_cost = max(0, int(task.rewardPoints or 0))
+        executor_reward = max(0, int(task.executorReward or 0))
+        accounts = self._ensure_mutual_point_accounts(state, task.ownerUserId)
+        self._ensure_mutual_point_accounts(state, submission.executorUserId)
+        if not submission.publisherCostReserved and accounts[point_type].balance < publisher_cost:
+            return {"ok": False, "reason": "insufficient_publisher_points", "submission": submission}
+        operation_key = f"mutual-help:settlement:{submission.id}"
+        if publisher_cost and not submission.publisherCostReserved:
+            if point_type == REWARD_POINT_TYPE:
+                self.points_core.consume(
+                    state,
+                    task.ownerUserId,
+                    publisher_cost,
+                    reason="任务完成结算扣除充值积分",
+                    idempotency_key=f"{operation_key}:publisher",
+                    ledger_type="task_settlement_cost",
+                    point_type=REWARD_POINT_TYPE,
+                    source_type="mutual_help_task",
+                    source_id=task.id,
+                    metadata={"submissionId": submission.id},
+                )
+            else:
+                self._consume_shared_points_in_state(
+                    state,
+                    task.ownerUserId,
+                    publisher_cost,
+                    reason="任务完成结算扣除",
+                    idempotency_key=f"{operation_key}:publisher",
+                    ledger_type="task_settlement_cost",
+                    source_type="mutual_help_task",
+                    source_id=task.id,
+                    metadata={"submissionId": submission.id},
+                )
+        if executor_reward:
+            self.points_core.grant(
+                state, submission.executorUserId, executor_reward,
+                ledger_type="task_reward",
+                reason="任务完成奖励",
+                idempotency_key=f"{operation_key}:executor",
+                point_type=point_type,
+                source_type="mutual_help_task",
+                source_id=task.id,
+                metadata={"submissionId": submission.id},
+            )
+        now = now_iso()
+        settled = submission.model_copy(update={
+            "status": "completed" if task.taskKind == "miniapp" else "approved",
+            "autoApproved": bool(auto_approved),
+            "rewardSettled": True,
+            "approvedAt": now,
+            "completedAt": now,
+            "publisherCost": publisher_cost,
+            "executorReward": executor_reward,
+            "publisherCostReserved": False,
+            "publisherBudgetReserved": False,
+            "updatedAt": now,
+        })
+        state.mutual_help_submissions = [item if item.id != settled.id else settled for item in state.mutual_help_submissions]
+        if task.remaining is not None:
+            next_remaining = max(0, int(task.remaining) - 1)
+            task = task.model_copy(update={"remaining": next_remaining, "updatedAt": now})
+            state.mutual_help_tasks = [item if item.id != task.id else task for item in state.mutual_help_tasks]
+        return {"ok": True, "alreadySettled": False, "submission": settled, "task": task}
+
+    def _release_mutual_help_submission_reservation_locked(
+        self,
+        state: AppState,
+        submission: MutualHelpSubmission,
+    ) -> MutualHelpSubmission:
+        if not submission.publisherCostReserved:
+            return submission
+        if submission.publisherBudgetReserved:
+            task = next((item for item in state.mutual_help_tasks if item.id == submission.taskId), None)
+            if task:
+                released_cost = max(0, int(submission.publisherCost or 0))
+                task = task.model_copy(update={
+                    "rewardBudgetUsed": max(0, int(task.rewardBudgetUsed or 0) - released_cost),
+                    "updatedAt": now_iso(),
+                })
+                state.mutual_help_tasks = [item if item.id != task.id else task for item in state.mutual_help_tasks]
+            return submission.model_copy(update={
+                "publisherCostReserved": False,
+                "publisherBudgetReserved": False,
+                "publisherCostReservationReleased": True,
+                "updatedAt": now_iso(),
+            })
+        allocations = [item for item in (submission.publisherCostAllocations or []) if isinstance(item, dict)]
+        if submission.publisherCost and not allocations:
+            raise HTTPException(status_code=409, detail="任务预留积分流水不完整，请联系管理员核对")
+        for index, allocation in enumerate(allocations):
+            points = max(0, int(allocation.get("points") or 0))
+            point_type = str(allocation.get("pointType") or BASE_POINT_TYPE)
+            if not points or point_type not in {BASE_POINT_TYPE, REWARD_POINT_TYPE}:
+                continue
+            self.points_core.grant(
+                state,
+                submission.ownerUserId,
+                points,
+                ledger_type="task_settlement_reserve_release",
+                reason="退回任务提交，释放预留积分",
+                idempotency_key=f"mutual-help:submission-reserve-release:{submission.id}:{index}",
+                point_type=point_type,
+                source_type="mutual_help_submission",
+                source_id=submission.id,
+                metadata={"taskId": submission.taskId, "submissionId": submission.id},
+            )
+        return submission.model_copy(update={
+            "publisherCostReserved": False,
+            "publisherBudgetReserved": False,
+            "publisherCostReservationReleased": True,
+            "updatedAt": now_iso(),
+        })
+
+    def _sync_mutual_help_auto_approved_locked(self, state: AppState, task_id: str | None = None) -> list[dict]:
+        now = datetime.now().astimezone()
+        results = []
+        tasks = {item.id: item for item in state.mutual_help_tasks}
+        for submission in list(state.mutual_help_submissions):
+            if task_id and submission.taskId != task_id:
+                continue
+            if submission.status != "submitted" or not submission.reviewDeadlineAt:
+                continue
+            try:
+                due = parse_iso(submission.reviewDeadlineAt) <= now
+            except Exception:
+                due = False
+            task = tasks.get(submission.taskId)
+            if not due or not task or task.taskKind == "wool":
+                continue
+            results.append(self._settle_mutual_help_submission_locked(state, task, submission, auto_approved=True))
+        return results
+
+    def _mutual_wool_task_from_state(self, state: AppState, task_id: str) -> MutualHelpTask:
+        task = next((item for item in state.mutual_help_tasks if item.id == task_id), None)
+        if not task or task.status == "deleted":
+            raise HTTPException(status_code=404, detail="互助任务不存在")
+        if task.taskKind != "wool":
+            raise HTTPException(status_code=400, detail="只有羊毛任务支持此操作")
+        return task
+
+    def _mutual_task_from_state(self, state: AppState, task_id: str) -> MutualHelpTask:
+        task = next((item for item in state.mutual_help_tasks if item.id == task_id), None)
+        if not task or task.status == "deleted":
+            raise HTTPException(status_code=404, detail="互助任务不存在")
+        return task
+
+    @staticmethod
+    def _mutual_wool_access(task: MutualHelpTask, user_id: str) -> dict | None:
+        return next(
+            (item for item in task.woolAccessRecords if str(item.get("userId") or "") == str(user_id or "")),
+            None,
+        )
+
+    @staticmethod
+    def _safe_nonnegative_int(value, default: int = 0) -> int:
+        try:
+            return max(0, int(value or 0))
+        except (TypeError, ValueError):
+            return default
+
+    def unlock_mutual_help_wool(self, task_id: str, user_id: str) -> dict:
+        user_id = str(user_id or "").strip()
+        if not self.repo.get_user(user_id):
+            raise HTTPException(status_code=404, detail="用户不存在")
+        with MEMBERSHIP_PAYMENT_LOCK:
+            state = self._load()
+            task = self._mutual_wool_task_from_state(state, task_id)
+            if task.ownerUserId == user_id:
+                return {"task": self._mutual_task_payload(task), "access": {"userId": user_id, "feePoints": 0, "unlocked": True}, "charged": False, "duplicate": False}
+            existing = self._mutual_wool_access(task, user_id)
+            if existing:
+                return {"task": self._mutual_task_payload(task), "access": existing, "charged": False, "duplicate": True, "points": self.get_mutual_help_status(user_id)["points"]}
+            if task.status != "published":
+                raise HTTPException(status_code=409, detail="任务已结束，不能解锁")
+            policy = dict(task.woolPolicy or {})
+            fee_points = self._safe_nonnegative_int(policy.get("unlockFeePoints"))
+            point_type = BASE_POINT_TYPE
+            if fee_points:
+                self._consume_shared_points_in_state(
+                    state,
+                    user_id,
+                    fee_points,
+                    reason="解锁羊毛任务内容",
+                    idempotency_key=f"mutual-help:wool-unlock:{task.id}:{user_id}",
+                    ledger_type="wool_unlock",
+                    source_type="mutual_help_wool",
+                    source_id=task.id,
+                    metadata={"taskId": task.id},
+                )
+            now = now_iso()
+            access = {"id": new_id("wool_access"), "userId": user_id, "feePoints": fee_points, "pointType": point_type, "unlockedAt": now, "unlocked": True}
+            updated = task.model_copy(update={"woolAccessRecords": [*task.woolAccessRecords, access], "updatedAt": task.updatedAt})
+            state.mutual_help_tasks = [item if item.id != task.id else updated for item in state.mutual_help_tasks]
+            self._save(state)
+            points = self.get_mutual_help_status(user_id)["points"]
+        return {"task": self._mutual_task_payload(updated), "access": access, "charged": bool(fee_points), "duplicate": False, "points": points}
+
+    def add_mutual_help_comment(self, task_id: str, user_id: str, payload: dict) -> dict:
+        user_id = str(user_id or "").strip()
+        if not self.repo.get_user(user_id):
+            raise HTTPException(status_code=404, detail="用户不存在")
+        text = str(payload.get("text") or "").strip()[:300]
+        choice = str(payload.get("recommendChoice") or "").strip()
+        if not text and choice not in {"worth_it", "neutral", "not_worth_it"}:
+            raise HTTPException(status_code=400, detail="请先选择评价或写下评论")
+        with MEMBERSHIP_PAYMENT_LOCK:
+            state = self._load()
+            task = self._mutual_task_from_state(state, task_id)
+            if task.taskKind == "wool" and not self._mutual_wool_access(task, user_id):
+                raise HTTPException(status_code=403, detail="解锁后才能评论")
+            has_submission = any(
+                item.taskId == task.id
+                and item.executorUserId == user_id
+                and item.status in {"submitted", "reviewing", "approved", "completed"}
+                for item in state.mutual_help_submissions
+            )
+            if task.taskKind != "wool" and not has_submission:
+                raise HTTPException(status_code=403, detail="提交完成记录后才能评论")
+            comments = [item for item in task.woolComments if isinstance(item, dict)]
+            if any(str(item.get("authorId") or "") == user_id for item in comments):
+                raise HTTPException(status_code=409, detail="你已经评论过这项任务")
+            now = now_iso()
+            comment = {
+                "id": new_id("wool_comment"),
+                "taskId": task.id,
+                "authorId": user_id,
+                "authorLabel": "互助用户",
+                "text": text,
+                "recommendChoice": choice if choice in {"worth_it", "neutral", "not_worth_it"} else "",
+                "completed": any(
+                    item.taskId == task.id
+                    and item.executorUserId == user_id
+                    and item.status in {"submitted", "reviewing", "approved", "completed"}
+                    for item in state.mutual_help_submissions
+                ),
+                "status": "visible",
+                "createdAt": now,
+            }
+            safety = self._enforce_content_safety(
+                "mutual_help_comment",
+                comment["id"],
+                {"text": comment["text"]},
+                owner_user_id=user_id,
+                content_revision=now,
+                for_publish=False,
+            )
+            if safety.decision == "review":
+                comment["status"] = "reviewing"
+            updated = task.model_copy(update={"woolComments": [comment, *comments]})
+            state.mutual_help_tasks = [item if item.id != task.id else updated for item in state.mutual_help_tasks]
+            self._save(state)
+        return {"comment": comment, "comments": updated.woolComments}
+
+    def report_mutual_help_comment(self, task_id: str, comment_id: str, user_id: str, reason: str) -> dict:
+        user_id = str(user_id or "").strip()
+        if not self.repo.get_user(user_id):
+            raise HTTPException(status_code=404, detail="用户不存在")
+        with MEMBERSHIP_PAYMENT_LOCK:
+            state = self._load()
+            task = self._mutual_task_from_state(state, task_id)
+            if not any(str(item.get("id") or "") == str(comment_id or "") for item in task.woolComments):
+                raise HTTPException(status_code=404, detail="评论不存在")
+            reports = [item for item in task.woolCommentReports if isinstance(item, dict)]
+            existing = next((item for item in reports if str(item.get("commentId") or "") == str(comment_id) and str(item.get("reporterId") or "") == user_id), None)
+            if existing:
+                return {"report": existing, "duplicate": True}
+            report = {"id": new_id("wool_comment_report"), "taskId": task.id, "commentId": str(comment_id), "reporterId": user_id, "reason": str(reason or "内容不实或违规")[:60], "status": "pending", "createdAt": now_iso()}
+            updated = task.model_copy(update={"woolCommentReports": [report, *reports]})
+            state.mutual_help_tasks = [item if item.id != task.id else updated for item in state.mutual_help_tasks]
+            self._save(state)
+        return {"report": report, "duplicate": False}
+
+    def tip_mutual_help_publisher(self, task_id: str, user_id: str, amount: int) -> dict:
+        user_id = str(user_id or "").strip()
+        if not self.repo.get_user(user_id):
+            raise HTTPException(status_code=404, detail="用户不存在")
+        amount = int(amount or 0)
+        if amount < 1:
+            raise HTTPException(status_code=400, detail="打赏积分必须大于 0")
+        with MEMBERSHIP_PAYMENT_LOCK:
+            state = self._load()
+            task = self._mutual_wool_task_from_state(state, task_id)
+            policy = dict(task.woolPolicy or {})
+            if not policy.get("allowTip") or task.ownerUserId == user_id:
+                raise HTTPException(status_code=403, detail="当前任务不支持打赏")
+            if not self._mutual_wool_access(task, user_id):
+                raise HTTPException(status_code=403, detail="解锁后才可以打赏")
+            tips = [item for item in task.woolTips if isinstance(item, dict)]
+            existing = next((item for item in tips if str(item.get("fromUserId") or "") == user_id), None)
+            if existing:
+                return {"tip": existing, "duplicate": True, "points": self.get_mutual_help_status(user_id)["points"]}
+            point_type = BASE_POINT_TYPE
+            self._ensure_mutual_point_accounts(state, user_id)
+            self._ensure_mutual_point_accounts(state, task.ownerUserId)
+            key = f"mutual-help:wool-tip:{task.id}:{user_id}"
+            self._consume_shared_points_in_state(
+                state,
+                user_id,
+                amount,
+                ledger_type="wool_tip",
+                reason="打赏羊毛任务发布者",
+                idempotency_key=f"{key}:from",
+                source_type="mutual_help_wool_tip",
+                source_id=task.id,
+            )
+            self.points_core.grant(state, task.ownerUserId, amount, ledger_type="wool_tip_received", reason="收到羊毛任务打赏", idempotency_key=f"{key}:to", point_type=point_type, source_type="mutual_help_wool_tip", source_id=task.id)
+            tip = {"id": new_id("wool_tip"), "taskId": task.id, "fromUserId": user_id, "toUserId": task.ownerUserId, "amount": amount, "pointType": point_type, "createdAt": now_iso()}
+            updated = task.model_copy(update={"woolTips": [tip, *tips]})
+            state.mutual_help_tasks = [item if item.id != task.id else updated for item in state.mutual_help_tasks]
+            self._save(state)
+            points = self.get_mutual_help_status(user_id)["points"]
+        return {"tip": tip, "duplicate": False, "points": points}
+
+    def request_mutual_help_wool_refund(self, task_id: str, user_id: str, reason: str) -> dict:
+        user_id = str(user_id or "").strip()
+        if not self.repo.get_user(user_id):
+            raise HTTPException(status_code=404, detail="用户不存在")
+        with MEMBERSHIP_PAYMENT_LOCK:
+            state = self._load()
+            task = self._mutual_wool_task_from_state(state, task_id)
+            access = self._mutual_wool_access(task, user_id)
+            if not access or int(access.get("feePoints") or 0) <= 0:
+                raise HTTPException(status_code=403, detail="请先付费解锁后再申请退款")
+            refunds = [item for item in task.woolRefunds if isinstance(item, dict)]
+            existing = next((item for item in refunds if str(item.get("requesterId") or "") == user_id and item.get("status") == "pending"), None)
+            if existing:
+                return {"refund": existing, "duplicate": True}
+            refund = {"id": new_id("wool_refund"), "taskId": task.id, "requesterId": user_id, "ownerUserId": task.ownerUserId, "unlockId": access.get("id"), "feePoints": int(access.get("feePoints") or 0), "reason": str(reason or "任务内容或链接失效")[:120], "status": "pending", "createdAt": now_iso()}
+            updated = task.model_copy(update={"woolRefunds": [refund, *refunds]})
+            state.mutual_help_tasks = [item if item.id != task.id else updated for item in state.mutual_help_tasks]
+            self._save(state)
+        return {"refund": refund, "duplicate": False}
+
+    def list_mutual_help_submissions(self, task_id: str, requester_user_id: str) -> dict:
+        requester = str(requester_user_id or "").strip()
+        task = self._get_mutual_help_task_or_404(task_id)
+        if not self.repo.get_user(requester):
+            raise HTTPException(status_code=404, detail="用户不存在")
+        with MEMBERSHIP_PAYMENT_LOCK:
+            state = self._load()
+            auto_settlements = self._sync_mutual_help_auto_approved_locked(state, task.id)
+            submissions = [item for item in state.mutual_help_submissions if item.taskId == task.id]
+            if requester != task.ownerUserId:
+                submissions = [item for item in submissions if item.executorUserId == requester]
+            if auto_settlements:
+                self._save(state)
+        return {
+            "items": [
+                self._mutual_help_submission_payload(item, include_executor=requester == task.ownerUserId)
+                for item in submissions
+            ]
+        }
+
+    def _mutual_help_participant_ids(self, task: MutualHelpTask) -> tuple[set[str], list[MutualActivityEvent], list[MutualHelpSubmission]]:
+        events = self.repo.list_mutual_activity_events(task_id=task.id)
+        submissions = self.repo.list_mutual_help_submissions(task_id=task.id)
+        participants = {
+            item.userId for item in events
+            if item.eventType in {"opened", "returned"} and item.userId != task.ownerUserId
+        }
+        participants.update(item.executorUserId for item in submissions if item.executorUserId != task.ownerUserId)
+        participants.update(
+            str(item.get("userId") or item.get("requesterId") or "").strip()
+            for item in task.woolAccessRecords
+            if isinstance(item, dict)
+            and str(item.get("userId") or item.get("requesterId") or "").strip()
+            and str(item.get("userId") or item.get("requesterId") or "").strip() != task.ownerUserId
+        )
+        return participants, events, submissions
+
+    @staticmethod
+    def _mutual_chat_user_payload(user: User | None, fallback_id: str) -> dict:
+        return {
+            "id": user.id if user else fallback_id,
+            "nickname": str(user.nickname or "互助用户") if user else "互助用户",
+            "avatarUrl": str(user.avatarUrl or "") if user else "",
+        }
+
+    def list_mutual_help_chat_participants(self, task_id: str, requester_user_id: str) -> dict:
+        task = self._get_mutual_help_task_or_404(task_id)
+        if requester_user_id != task.ownerUserId:
+            raise HTTPException(status_code=403, detail="只有发布者可以查看执行者沟通列表")
+        participant_ids, events, submissions = self._mutual_help_participant_ids(task)
+        conversations = {
+            item.executorUserId: item
+            for item in self.repo.list_mutual_help_conversations(task_id=task.id)
+        }
+        items = []
+        for executor_id in participant_ids:
+            user = self.repo.get_user(executor_id)
+            if not user:
+                continue
+            participant_events = [item for item in events if item.userId == executor_id and item.eventType in {"opened", "returned"}]
+            participant_submissions = [item for item in submissions if item.executorUserId == executor_id]
+            latest_submission = max(participant_submissions, key=lambda item: (item.submittedAt, item.id), default=None)
+            conversation = conversations.get(executor_id)
+            items.append({
+                "executor": self._mutual_chat_user_payload(user, executor_id),
+                "conversationId": conversation.id if conversation else "",
+                "unreadCount": int((conversation.unreadByUser or {}).get(requester_user_id) or 0) if conversation else 0,
+                "lastMessageAt": conversation.lastMessageAt if conversation else None,
+                "lastMessagePreview": conversation.lastMessagePreview if conversation else "",
+                "lastActivityAt": max((item.createdAt for item in participant_events), default=""),
+                "submissionStatus": latest_submission.status if latest_submission else "",
+                "submissionCount": len(participant_submissions),
+            })
+        items.sort(key=lambda item: (item["lastMessageAt"] or item["lastActivityAt"], item["executor"]["nickname"]), reverse=True)
+        return {"task": {"id": task.id, "title": task.title}, "items": items}
+
+    def open_mutual_help_conversation(self, task_id: str, requester_user_id: str, executor_user_id: str = "") -> dict:
+        task = self._get_mutual_help_task_or_404(task_id)
+        requester = str(requester_user_id or "").strip()
+        if not requester or not self.repo.get_user(requester):
+            raise HTTPException(status_code=404, detail="用户不存在")
+        participants, _, _ = self._mutual_help_participant_ids(task)
+        if requester == task.ownerUserId:
+            executor = str(executor_user_id or "").strip()
+            if not executor or executor not in participants:
+                raise HTTPException(status_code=403, detail="该用户尚未参与此任务")
+            peer_id = executor
+        else:
+            if requester not in participants:
+                raise HTTPException(status_code=403, detail="开始参与任务后才能联系发布者")
+            peer_id = task.ownerUserId
+        # Deterministic IDs plus a unique task/executor index make repeated taps
+        # and concurrent opens converge to the same strictly one-to-one room.
+        digest = hashlib.sha256(f"{task.id}\0{peer_id if requester == task.ownerUserId else requester}".encode("utf-8")).hexdigest()[:32]
+        conversation_id = f"mhc_{digest}"
+        conversation = self.repo.get_mutual_help_conversation(task.id, peer_id if requester == task.ownerUserId else requester)
+        if not conversation:
+            now = now_iso()
+            conversation = MutualHelpConversation(
+                id=conversation_id,
+                taskId=task.id,
+                ownerUserId=task.ownerUserId,
+                executorUserId=peer_id if requester == task.ownerUserId else requester,
+                createdAt=now,
+                updatedAt=now,
+            )
+            self.repo.save_mutual_help_conversation(conversation)
+            conversation = self.repo.get_mutual_help_conversation(task.id, conversation.executorUserId) or conversation
+        peer = self.repo.get_user(peer_id)
+        return {
+            "conversation": conversation.model_dump(mode="json"),
+            "task": {"id": task.id, "title": task.title, "taskLinks": task.taskLinks},
+            "peer": self._mutual_chat_user_payload(peer, peer_id),
+            "currentUserId": requester,
+        }
+
+    def _get_mutual_help_chat_conversation(self, conversation_id: str, requester_user_id: str) -> MutualHelpConversation:
+        conversation = next((
+            item for item in self.repo.list_mutual_help_conversations(user_id=requester_user_id)
+            if item.id == conversation_id
+        ), None)
+        if not conversation:
+            raise HTTPException(status_code=404, detail="沟通记录不存在")
+        return conversation
+
+    def list_mutual_help_chat_messages(self, conversation_id: str, requester_user_id: str, before: str | None = None, limit: int = 50) -> dict:
+        conversation = self._get_mutual_help_chat_conversation(conversation_id, requester_user_id)
+        conversation = self.repo.mark_mutual_help_chat_read(conversation.id, requester_user_id) or conversation
+        task = self._get_mutual_help_task_or_404(conversation.taskId)
+        peer_id = conversation.executorUserId if requester_user_id == conversation.ownerUserId else conversation.ownerUserId
+        peer = self.repo.get_user(peer_id)
+        return {
+            "conversation": conversation.model_dump(mode="json"),
+            "task": {"id": task.id, "title": task.title, "taskLinks": task.taskLinks},
+            "peer": self._mutual_chat_user_payload(peer, peer_id),
+            "currentUserId": requester_user_id,
+            "items": [item.model_dump(mode="json") for item in self.repo.list_mutual_help_chat_messages(conversation.id, before, limit)],
+        }
+
+    def send_mutual_help_chat_message(self, conversation_id: str, requester_user_id: str, payload: dict) -> dict:
+        conversation = self._get_mutual_help_chat_conversation(conversation_id, requester_user_id)
+        task = self._get_mutual_help_task_or_404(conversation.taskId)
+        message_type = str(payload.get("messageType") or "text").strip()
+        text = str(payload.get("text") or "").strip()
+        image_url = str(payload.get("imageUrl") or "").strip()
+        mini_program = payload.get("miniProgram") if isinstance(payload.get("miniProgram"), dict) else {}
+        if message_type not in {"text", "image", "mini_program"}:
+            raise HTTPException(status_code=400, detail="不支持的消息类型")
+        if message_type == "text" and (not text or len(text) > 2000):
+            raise HTTPException(status_code=400, detail="消息不能为空且不能超过2000字")
+        if message_type == "image":
+            asset = self.repo.get_media_asset_by_url(image_url) if image_url else None
+            refs = self.repo.list_media_asset_refs(asset_id=asset.id) if asset else []
+            if not asset or asset.mediaType != "image" or not any(ref.ownerUserId == requester_user_id and ref.usage == "attachment" for ref in refs):
+                raise HTTPException(status_code=400, detail="图片无效，请重新选择并上传")
+            image_url = asset.url
+        if message_type == "mini_program":
+            requested_link = str(mini_program.get("shortLink") or mini_program.get("raw") or "").strip()
+            allowed = next((
+                item for item in task.taskLinks
+                if isinstance(item, dict)
+                and item.get("type") == "miniapp"
+                and requested_link
+                and requested_link in {str(item.get("shortLink") or "").strip(), str(item.get("raw") or "").strip(), str(item.get("url") or "").strip()}
+            ), None)
+            if not allowed:
+                raise HTTPException(status_code=400, detail="只能发送当前任务已配置的小程序入口")
+            mini_program = {
+                "title": str(allowed.get("title") or "目标小程序")[:80],
+                "shortLink": str(allowed.get("shortLink") or allowed.get("raw") or requested_link)[:1000],
+            }
+        sender_id = requester_user_id
+        recipient_id = conversation.executorUserId if sender_id == conversation.ownerUserId else conversation.ownerUserId
+        created_at = now_iso()
+        idempotency_key = str(payload.get("idempotencyKey") or "").strip()[:160]
+        message = MutualHelpChatMessage(
+            id=new_id("mhmsg"),
+            conversationId=conversation.id,
+            taskId=task.id,
+            senderUserId=sender_id,
+            recipientUserId=recipient_id,
+            messageType=message_type,
+            text=text if message_type == "text" else "",
+            imageUrl=image_url if message_type == "image" else "",
+            miniProgram=mini_program if message_type == "mini_program" else {},
+            idempotencyKey=idempotency_key,
+            createdAt=created_at,
+        )
+        preview = text[:80] if message_type == "text" else ("[图片]" if message_type == "image" else "[小程序卡片]")
+        updated = conversation.model_copy(update={"lastMessageAt": created_at, "lastMessagePreview": preview, "updatedAt": created_at})
+        self.repo.append_mutual_help_chat_message(updated, message)
+        return {"message": message.model_dump(mode="json")}
+
+    def get_mutual_help_executor_report(self, user_id: str) -> dict:
+        user_id = str(user_id or "").strip()
+        if not self.repo.get_user(user_id):
+            raise HTTPException(status_code=404, detail="用户不存在")
+        submissions = self.repo.list_mutual_help_submissions(executor_user_id=user_id)
+        events = [item for item in self.repo.list_mutual_activity_events(user_id=user_id) if item.eventType in {"opened", "returned"}]
+        task_ids = {item.taskId for item in submissions} | {item.taskId for item in events}
+        submissions_by_task: dict[str, list[MutualHelpSubmission]] = defaultdict(list)
+        for item in submissions:
+            submissions_by_task[item.taskId].append(item)
+        rows = []
+        for task_id in task_ids:
+            task = self.repo.get_mutual_help_task(task_id)
+            if not task:
+                continue
+            task_submissions = submissions_by_task.get(task_id, [])
+            if task_submissions:
+                for submission in task_submissions:
+                    rows.append({
+                        "id": submission.id,
+                        "taskId": task.id,
+                        "title": task.title,
+                        "taskKind": task.taskKind,
+                        "status": submission.status,
+                        "statusLabel": self._mutual_help_submission_payload(submission)["statusLabel"],
+                        "submittedAt": submission.submittedAt,
+                        "updatedAt": submission.updatedAt,
+                        "rewardSettled": submission.rewardSettled,
+                        "executorReward": int(submission.executorReward or task.executorReward or 0),
+                        "rejectionReason": submission.rejectionReason,
+                    })
+            elif task.taskKind != "wool":
+                last_event = max((item for item in events if item.taskId == task_id), key=lambda item: (item.createdAt, item.id), default=None)
+                if last_event:
+                    rows.append({
+                        "id": f"started:{task.id}",
+                        "taskId": task.id,
+                        "title": task.title,
+                        "taskKind": task.taskKind,
+                        "status": "in_progress",
+                        "statusLabel": "进行中",
+                        "submittedAt": "",
+                        "updatedAt": last_event.createdAt,
+                        "rewardSettled": False,
+                        "executorReward": int(task.executorReward or 0),
+                        "rejectionReason": "",
+                    })
+        rows.sort(key=lambda item: (item.get("updatedAt") or item.get("submittedAt") or "", item["id"]), reverse=True)
+        settled = [item for item in submissions if item.rewardSettled]
+        return {
+            "summary": {
+                "participationCount": len(rows),
+                "completedCount": sum(1 for item in submissions if item.rewardSettled or item.status in {"approved", "completed"}),
+                "pendingCount": sum(1 for item in submissions if item.status in {"submitted", "reviewing"}),
+                "returnedCount": sum(1 for item in submissions if item.status == "rejected"),
+                "earnedPoints": sum(int(item.executorReward or 0) for item in settled),
+                "pendingPoints": sum(int(item.executorReward or 0) for item in submissions if item.status in {"submitted", "reviewing"} and not item.rewardSettled),
+            },
+            "items": rows,
+        }
+
+    def create_mutual_help_submission(self, task_id: str, executor_user_id: str, payload: dict) -> dict:
+        executor_user_id = str(executor_user_id or "").strip()
+        task = self._get_mutual_help_task_or_404(task_id)
+        if not self.repo.get_user(executor_user_id):
+            raise HTTPException(status_code=404, detail="用户不存在")
+        if task.taskKind == "wool":
+            raise HTTPException(status_code=400, detail="羊毛任务无需提交材料")
+        with MEMBERSHIP_PAYMENT_LOCK:
+            state = self._load()
+            persisted_rows = {
+                "mutual_help_tasks": {item.id: item.model_dump(mode="json") for item in state.mutual_help_tasks},
+                "mutual_help_submissions": {item.id: item.model_dump(mode="json") for item in state.mutual_help_submissions},
+                "mutual_point_accounts": {item.id: item.model_dump(mode="json") for item in state.mutual_point_accounts},
+                "mutual_point_ledgers": {item.id: item.model_dump(mode="json") for item in state.mutual_point_ledgers},
+            }
+
+            def changed_rows(items, previous):
+                return [item for item in items if previous.get(item.id) != item.model_dump(mode="json")]
+
+            task = next((item for item in state.mutual_help_tasks if item.id == task.id), task)
+            auto_settlements = self._sync_mutual_help_auto_approved_locked(state, task.id)
+            participation_day = date_key(now_iso())
+            matching_submissions = [
+                item for item in state.mutual_help_submissions
+                if item.taskId == task.id and item.executorUserId == executor_user_id
+                and (
+                    self._mutual_repeat_policy(task) != "daily"
+                    or item.participationDay == participation_day
+                )
+            ]
+            active_matching_submissions = [
+                item for item in matching_submissions if self._mutual_active_submission(item)
+            ]
+            existing = sorted(
+                active_matching_submissions,
+                key=lambda item: (item.submittedAt, item.id),
+                reverse=True,
+            )[0] if active_matching_submissions else None
+            if self._mutual_active_submission(existing):
+                if auto_settlements:
+                    self._save(state)
+                return {
+                    "submission": existing.model_dump(mode="json"),
+                    "duplicate": True,
+                    "reward": {
+                        "points": int(existing.executorReward or task.executorReward or 0),
+                        "pointType": task.rewardPointType if task.rewardPointType in {BASE_POINT_TYPE, REWARD_POINT_TYPE} else BASE_POINT_TYPE,
+                        "status": "credited" if existing.rewardSettled else "pending",
+                        "autoApproveAt": existing.reviewDeadlineAt,
+                    },
+                    "task": self._mutual_task_payload(task),
+                }
+            if task.status != "published" or task.remaining == 0:
+                raise HTTPException(status_code=409, detail="任务已结束，不能提交")
+            pending_count = sum(
+                1
+                for item in state.mutual_help_submissions
+                if item.taskId == task.id and item.status in {"submitted", "reviewing"}
+            )
+            if task.remaining is not None and pending_count >= int(task.remaining):
+                raise HTTPException(status_code=409, detail="当前任务名额已被占用，请稍后再试")
+            publisher_cost = max(0, int(task.rewardPoints or 0))
+            executor_reward = max(0, int(task.executorReward or 0))
+            if executor_reward > publisher_cost:
+                raise HTTPException(status_code=409, detail="任务奖励配置无效，请联系发布者调整")
+            now = now_iso()
+            review_deadline = (parse_iso(now) + timedelta(days=1)).isoformat()
+            submission_id = new_id("mutual_submission")
+            point_type = task.rewardPointType if task.rewardPointType in {BASE_POINT_TYPE, REWARD_POINT_TYPE} else BASE_POINT_TYPE
+            task_budget_remaining = max(
+                0,
+                int(task.rewardBudgetReserved or 0)
+                - int(task.rewardBudgetUsed or 0)
+                - int(task.rewardBudgetReleased or 0),
+            )
+            publisher_budget_reserved = point_type == REWARD_POINT_TYPE and int(task.rewardBudgetReserved or 0) > 0
+            if publisher_budget_reserved:
+                if task_budget_remaining < publisher_cost:
+                    raise HTTPException(status_code=402, detail="充值积分任务预算不足，请联系发布者补充预算")
+                task = task.model_copy(update={"rewardBudgetUsed": int(task.rewardBudgetUsed or 0) + publisher_cost, "updatedAt": now})
+                state.mutual_help_tasks = [item if item.id != task.id else task for item in state.mutual_help_tasks]
+                reservation = {"allocations": [{"pointType": REWARD_POINT_TYPE, "points": publisher_cost, "source": "task_budget"}]}
+            elif publisher_cost and point_type == REWARD_POINT_TYPE:
+                self.points_core.consume(
+                    state,
+                    task.ownerUserId,
+                    publisher_cost,
+                    reason="预留充值积分任务结算",
+                    idempotency_key=f"mutual-help:submission-reserve:{submission_id}",
+                    ledger_type="task_settlement_reserve",
+                    point_type=REWARD_POINT_TYPE,
+                    source_type="mutual_help_submission",
+                    source_id=submission_id,
+                    metadata={"taskId": task.id, "submissionId": submission_id},
+                )
+                reservation = {"allocations": [{"pointType": REWARD_POINT_TYPE, "points": publisher_cost}]}
+            else:
+                reservation = self._consume_shared_points_in_state(
+                    state,
+                    task.ownerUserId,
+                    publisher_cost,
+                    reason="预留任务完成结算积分",
+                    idempotency_key=f"mutual-help:submission-reserve:{submission_id}",
+                    ledger_type="task_settlement_reserve",
+                    source_type="mutual_help_submission",
+                    source_id=submission_id,
+                    metadata={"taskId": task.id, "submissionId": submission_id},
+                ) if publisher_cost else {"allocations": []}
+            submission = MutualHelpSubmission(
+                id=submission_id,
+                taskId=task.id,
+                executorUserId=executor_user_id,
+                ownerUserId=task.ownerUserId,
+                participationDay=participation_day,
+                status="submitted",
+                autoApproved=False,
+                text=str(payload.get("text") or "").strip()[:5000],
+                images=[str(item).strip() for item in (payload.get("images") or []) if str(item).strip()][:6],
+                submittedAt=now,
+                reviewDeadlineAt=review_deadline,
+                publisherCost=publisher_cost,
+                executorReward=executor_reward,
+                publisherCostReserved=bool(publisher_cost),
+                publisherBudgetReserved=publisher_budget_reserved,
+                publisherCostAllocations=list(reservation.get("allocations") or []),
+                createdAt=now,
+                updatedAt=now,
+            )
+            safety = self._enforce_content_safety(
+                "mutual_help_submission",
+                submission.id,
+                {"text": submission.text},
+                owner_user_id=executor_user_id,
+                content_revision=submission.updatedAt,
+                for_publish=False,
+            )
+            if safety.decision == "review":
+                submission.status = "reviewing"
+            state.mutual_help_submissions.append(submission)
+            result = {"ok": True, "alreadySettled": False, "submission": submission}
+            if task.taskKind == "miniapp" and safety.decision != "review":
+                result = self._settle_mutual_help_submission_locked(state, task, submission)
+            self.repo.save_mutual_help_submission_state(
+                state,
+                tasks=changed_rows(state.mutual_help_tasks, persisted_rows["mutual_help_tasks"]),
+                submissions=changed_rows(state.mutual_help_submissions, persisted_rows["mutual_help_submissions"]),
+                accounts=changed_rows(state.mutual_point_accounts, persisted_rows["mutual_point_accounts"]),
+                ledgers=changed_rows(state.mutual_point_ledgers, persisted_rows["mutual_point_ledgers"]),
+            )
+        if not result.get("ok"):
+            return {"submission": result["submission"].model_dump(mode="json"), "settled": False, "reason": result.get("reason")}
+        settled = bool(result["submission"].rewardSettled)
+        return {
+            "submission": result["submission"].model_dump(mode="json"),
+            "settled": settled,
+            "duplicate": False,
+            "reward": {
+                "points": int(result["submission"].executorReward or executor_reward),
+                "pointType": task.rewardPointType if task.rewardPointType in {BASE_POINT_TYPE, REWARD_POINT_TYPE} else BASE_POINT_TYPE,
+                "status": "credited" if settled else "pending",
+                "autoApproveAt": result["submission"].reviewDeadlineAt,
+            },
+            "task": self._mutual_task_payload(result.get("task") or task),
+        }
+
+    def approve_mutual_help_submission(self, task_id: str, submission_id: str, reviewer_user_id: str) -> dict:
+        reviewer_user_id = str(reviewer_user_id or "").strip()
+        with MEMBERSHIP_PAYMENT_LOCK:
+            state = self._load()
+            task = next((item for item in state.mutual_help_tasks if item.id == task_id), None)
+            submission = next((item for item in state.mutual_help_submissions if item.id == submission_id and item.taskId == task_id), None)
+            if not task or task.status == "deleted" or not submission:
+                raise HTTPException(status_code=404, detail="提交记录不存在")
+            if task.ownerUserId != reviewer_user_id:
+                raise HTTPException(status_code=403, detail="只能验收自己发布的任务")
+            result = self._settle_mutual_help_submission_locked(state, task, submission)
+            if not result.get("ok"):
+                if result.get("reason") == "insufficient_publisher_points":
+                    raise HTTPException(status_code=402, detail="发布者积分不足，暂时无法结算")
+                raise HTTPException(status_code=409, detail="提交状态已变化")
+            self._save(state)
+        return {
+            "submission": result["submission"].model_dump(mode="json"),
+            "task": self._mutual_task_payload(result.get("task") or task),
+            "settled": True,
+        }
+
+    def reject_mutual_help_submission(self, task_id: str, submission_id: str, reviewer_user_id: str, reason: str) -> dict:
+        reviewer_user_id = str(reviewer_user_id or "").strip()
+        rejection_reason = str(reason or "").strip()[:300]
+        if not rejection_reason:
+            raise HTTPException(status_code=400, detail="退回原因不能为空")
+        with MEMBERSHIP_PAYMENT_LOCK:
+            state = self._load()
+            task = next((item for item in state.mutual_help_tasks if item.id == task_id), None)
+            submission = next((item for item in state.mutual_help_submissions if item.id == submission_id and item.taskId == task_id), None)
+            if not task or task.status == "deleted" or not submission:
+                raise HTTPException(status_code=404, detail="提交记录不存在")
+            if task.ownerUserId != reviewer_user_id:
+                raise HTTPException(status_code=403, detail="只能处理自己发布的任务")
+            if submission.status not in {"submitted", "reviewing"} or submission.rewardSettled:
+                raise HTTPException(status_code=409, detail="这次提交已经处理，不能重复退回")
+            released = self._release_mutual_help_submission_reservation_locked(state, submission)
+            rejected = released.model_copy(update={
+                "status": "rejected",
+                "rejectionReason": rejection_reason,
+                "rejectedAt": now_iso(),
+                "updatedAt": now_iso(),
+            })
+            state.mutual_help_submissions = [item if item.id != rejected.id else rejected for item in state.mutual_help_submissions]
+            self._save(state)
+        return {
+            "submission": rejected.model_dump(mode="json"),
+            "task": self._mutual_task_payload(task),
+            "settled": False,
+            "rejected": True,
+        }
+
+    def get_mutual_help_task_detail(self, task_id: str, viewer_user_id: str | None = None) -> dict:
+        task = self._get_mutual_help_task_or_404(task_id)
+        viewer = str(viewer_user_id or "").strip()
+        if viewer and not self.repo.get_user(viewer):
+            raise HTTPException(status_code=404, detail="用户不存在")
+        if task.status == "paused" and viewer != task.ownerUserId:
+            raise HTTPException(status_code=410, detail="任务已被发布者暂停")
+        if viewer != task.ownerUserId:
+            self._enforce_content_safety(
+                "mutual_help_task",
+                task.id,
+                {
+                    "title": task.title,
+                    "category": task.category,
+                    "description": task.description,
+                    "contentBlocks": task.contentBlocks,
+                    "acceptanceCriteriaBlocks": task.acceptanceCriteriaBlocks,
+                    "taskLinks": task.taskLinks,
+                    "shortLink": task.shortLink,
+                    "woolPolicy": task.woolPolicy,
+                },
+                owner_user_id=task.ownerUserId,
+                content_revision=task.updatedAt,
+                for_publish=True,
+                persist=False,
+            )
+        with MEMBERSHIP_PAYMENT_LOCK:
+            state = self._load()
+            auto_settlements = self._sync_mutual_help_auto_approved_locked(state, task.id)
+            state_changed = bool(auto_settlements)
+            task = self._get_mutual_wool_task_from_state(state, task.id) if task.taskKind == "wool" else next(
+                (item for item in state.mutual_help_tasks if item.id == task.id), task
+            )
+            wool_access = self._mutual_wool_access(task, viewer) if task.taskKind == "wool" and viewer else None
+            if task.taskKind == "wool" and viewer and viewer != task.ownerUserId and not wool_access:
+                policy = dict(task.woolPolicy or {})
+                if self._safe_nonnegative_int(policy.get("unlockFeePoints")) == 0:
+                    now = now_iso()
+                    wool_access = {"id": new_id("wool_access"), "userId": viewer, "feePoints": 0, "pointType": BASE_POINT_TYPE, "unlockedAt": now, "unlocked": True}
+                    task = task.model_copy(update={"woolAccessRecords": [*task.woolAccessRecords, wool_access]})
+                    state.mutual_help_tasks = [item if item.id != task.id else task for item in state.mutual_help_tasks]
+                    state_changed = True
+            submissions = [item for item in state.mutual_help_submissions if item.taskId == task.id]
+            own_submission = (
+                self._mutual_submission_for_viewer(task, submissions, viewer, date_key(now_iso()))
+                if viewer else None
+            )
+            owner_view = bool(viewer and viewer == task.ownerUserId)
+            activity_summary = self._mutual_help_activity_summary(
+                state.mutual_activity_events,
+                submissions,
+                task.ownerUserId,
+                task.id,
+            ) if owner_view else {}
+            if state_changed:
+                self._save(state)
+        comments = [
+            {key: value for key, value in item.items() if key != "authorId"}
+            for item in task.woolComments
+            if isinstance(item, dict) and item.get("status", "visible") == "visible"
+        ]
+        own_refund = next((item for item in task.woolRefunds if str(item.get("requesterId") or "") == viewer), None) if task.taskKind == "wool" and viewer else None
+        own_tip = next((item for item in task.woolTips if str(item.get("fromUserId") or "") == viewer), None) if task.taskKind == "wool" and viewer else None
+        return {
+            "task": self._mutual_task_payload(task),
+            "submission": own_submission.model_dump(mode="json") if own_submission else None,
+            "submissions": [self._mutual_help_submission_payload(item, include_executor=True) for item in submissions] if owner_view else [],
+            "isOwner": owner_view,
+            "activitySummary": activity_summary,
+            "woolAccess": wool_access if task.taskKind == "wool" else None,
+            "comments": comments,
+            "woolTip": own_tip,
+            "woolRefund": own_refund,
+            "pendingRefunds": [item for item in task.woolRefunds if item.get("status") == "pending"] if owner_view and task.taskKind == "wool" else [],
+            "pendingCommentReports": len([item for item in task.woolCommentReports if item.get("status") == "pending"]) if owner_view else 0,
+            "woolAccessCount": len(task.woolAccessRecords) if task.taskKind == "wool" else 0,
+        }
 
     def get_mutual_help_status(self, user_id: str) -> dict:
+        with MEMBERSHIP_PAYMENT_LOCK:
+            return self._get_mutual_help_status_locked(user_id)
+
+    def _get_mutual_help_status_locked(self, user_id: str) -> dict:
         state = self._load()
-        account = self._ensure_mutual_point_account(state, user_id)
-        self._save(state)
+        accounts = self._ensure_mutual_point_accounts(state, user_id)
         config = self._mutual_help_config()
+        config = {
+            **config,
+            # Neutral aliases are the public vocabulary.  The historical
+            # recharge keys remain in the response for old clients/admin code.
+            "rewardPointsEnabled": bool(config.get("rechargeEnabled", False)),
+            "rewardPointsVisible": bool(config.get("rechargeVisible", False)),
+            "pointLabels": {BASE_POINT_TYPE: "基础积分", REWARD_POINT_TYPE: "充值积分"},
+        }
+        point_summary = self._mutual_point_summary(user_id, accounts)
         orders = sorted(
             [item.model_dump() for item in state.mutual_recharge_orders if item.userId == user_id],
             key=lambda item: (item.get("createdAt") or "", item.get("id") or ""),
             reverse=True,
         )[:10]
+        withdrawals = sorted(
+            [self._mutual_withdrawal_payload(item) for item in state.mutual_point_withdrawals if item.userId == user_id],
+            key=lambda item: (item.get("createdAt") or "", item.get("id") or ""),
+            reverse=True,
+        )[:10]
+        frozen_withdrawal_points = sum(
+            int(item.points or 0)
+            for item in state.mutual_point_withdrawals
+            if item.userId == user_id and self._mutual_withdrawal_is_active(item)
+        )
         return {
             "config": config,
-            "account": account.model_dump(),
+            # ``account`` keeps the old single-balance response compatible;
+            # new clients should render ``points`` and ``accounts``.
+            "account": point_summary,
+            "accounts": {key: value.model_dump() for key, value in accounts.items()},
+            "points": {
+                "total": point_summary["balance"],
+                BASE_POINT_TYPE: accounts[BASE_POINT_TYPE].balance,
+                REWARD_POINT_TYPE: accounts[REWARD_POINT_TYPE].balance,
+            },
             "recentLedgers": [
                 item.model_dump()
                 for item in self.points_core.list_ledgers(
@@ -2526,8 +6708,15 @@ class AppService:
                     account_type=DEFAULT_POINTS_ACCOUNT_TYPE,
                     limit=20,
                 )
+                if item.sourceType != "points_account_migration" and item.ledgerType != "migration_marker"
             ],
             "orders": orders,
+            "withdrawals": withdrawals,
+            "withdrawalRules": self.mutual_point_withdrawal_rules(),
+            "withdrawalSummary": {
+                "availablePoints": accounts[REWARD_POINT_TYPE].balance,
+                "frozenPoints": frozen_withdrawal_points,
+            },
             "rechargePackages": [
                 {
                     "points": points,
@@ -2543,9 +6732,9 @@ class AppService:
         if config.get("available") is False:
             raise HTTPException(status_code=503, detail="互助积分配置暂时不可用")
         if not config.get("rechargeEnabled", False):
-            raise HTTPException(status_code=403, detail="充值功能当前未开放")
+            raise HTTPException(status_code=403, detail="充值积分功能当前未开放")
         if points not in MUTUAL_RECHARGE_PACKAGES:
-            raise HTTPException(status_code=400, detail="请选择有效的充值档位")
+            raise HTTPException(status_code=400, detail="请选择有效的积分档位")
         user = self.repo.get_user(user_id)
         if not user:
             raise HTTPException(status_code=404, detail="用户不存在")
@@ -2571,6 +6760,7 @@ class AppService:
                 id=new_id("mutual_recharge"),
                 userId=user_id,
                 points=points,
+                pointType=REWARD_POINT_TYPE,
                 amountFen=points * 100 // MUTUAL_POINTS_PER_YUAN,
                 paymentChannel=payment_mode,
                 createdAt=now,
@@ -2579,7 +6769,10 @@ class AppService:
             if not reused:
                 state.mutual_recharge_orders.append(order)
                 changed = True
-            self._ensure_mutual_point_account(state, user_id)
+            if order.pointType != REWARD_POINT_TYPE:
+                order.pointType = REWARD_POINT_TYPE
+                changed = True
+            self._ensure_mutual_point_accounts(state, user_id)
             if changed:
                 self._save(state)
         return {
@@ -2598,7 +6791,7 @@ class AppService:
         if config.get("available") is False:
             raise HTTPException(status_code=503, detail="互助积分配置暂时不可用")
         if not config.get("rechargeEnabled", False):
-            raise HTTPException(status_code=403, detail="充值功能当前未开放")
+            raise HTTPException(status_code=403, detail="充值积分功能当前未开放")
         user = self.repo.get_user(user_id)
         if not user:
             raise HTTPException(status_code=404, detail="用户不存在")
@@ -2606,16 +6799,22 @@ class AppService:
             state = self._load()
             order = next((item for item in state.mutual_recharge_orders if item.id == order_id), None)
             if not order:
-                raise HTTPException(status_code=404, detail="积分充值订单不存在")
+                raise HTTPException(status_code=404, detail="积分订单不存在")
             if order.userId != user_id:
                 raise HTTPException(status_code=403, detail="无权支付该订单")
             if order.status == "paid":
-                return {"order": order.model_dump(), "paymentRequired": False, "account": self._ensure_mutual_point_account(state, user_id).model_dump()}
+                accounts = self._ensure_mutual_point_accounts(state, user_id)
+                return {
+                    "order": order.model_dump(),
+                    "paymentRequired": False,
+                    "account": self._mutual_point_summary(user_id, accounts),
+                    "accounts": {key: value.model_dump() for key, value in accounts.items()},
+                }
             if self._mutual_recharge_pending_expires_at(order) <= parse_iso(now_iso()):
                 order.status = "closed"
                 order.updatedAt = now_iso()
                 self._save(state)
-                raise HTTPException(status_code=409, detail="订单已超时关闭，请重新发起充值")
+                raise HTTPException(status_code=409, detail="订单已超时关闭，请重新发起")
             if order.status != "pending" or order.paymentChannel != "wechat_pay":
                 raise HTTPException(status_code=409, detail="当前订单不能发起微信支付")
         try:
@@ -2624,7 +6823,7 @@ class AppService:
                 openid=user.openid,
                 out_trade_no=order.id,
                 total_fen=order.amountFen,
-                description="互助积分充值",
+                description="互助充值积分",
             )
             payment = client.build_jsapi_payment(prepay_id)
         except WechatPayError as exc:
@@ -2649,7 +6848,7 @@ class AppService:
             state = self._load()
             order = next((item for item in state.mutual_recharge_orders if item.id == order_id), None)
             if not order:
-                raise HTTPException(status_code=404, detail="积分充值订单不存在")
+                raise HTTPException(status_code=404, detail="积分订单不存在")
             return self._complete_mutual_recharge_order(state, order, transaction_id)
 
     def _complete_mutual_recharge_order(self, state: AppState, order: MutualRechargeOrder, transaction_id: str) -> dict:
@@ -2662,12 +6861,18 @@ class AppService:
         if order.status == "paid":
             if order.paymentTransactionId != transaction_id:
                 raise HTTPException(status_code=409, detail="订单已由其他支付流水确认")
-            account = self._ensure_mutual_point_account(state, order.userId)
-            return {"order": order.model_dump(), "account": account.model_dump(), "duplicate": True}
+            accounts = self._ensure_mutual_point_accounts(state, order.userId)
+            return {
+                "order": order.model_dump(),
+                "account": self._mutual_point_summary(order.userId, accounts),
+                "accounts": {key: value.model_dump() for key, value in accounts.items()},
+                "duplicate": True,
+            }
         if order.status not in {"pending", "closed"}:
             raise HTTPException(status_code=409, detail="订单状态不能确认付款")
         now = now_iso()
-        account = self._ensure_mutual_point_account(state, order.userId)
+        accounts = self._ensure_mutual_point_accounts(state, order.userId)
+        order.pointType = REWARD_POINT_TYPE
         order.status = "paid"
         order.paymentTransactionId = transaction_id
         order.paidAt = now
@@ -2677,44 +6882,334 @@ class AppService:
             order.userId,
             order.points,
             ledger_type="recharge",
-            reason="充值互助积分",
+            reason="充值积分入账",
             idempotency_key=f"recharge:{order.id}",
             account_type=DEFAULT_POINTS_ACCOUNT_TYPE,
+            point_type=REWARD_POINT_TYPE,
             source_type="mutual_recharge_order",
             source_id=order.id,
             related_order_id=order.id,
             metadata={"paymentTransactionId": transaction_id},
         )
-        account = points_result["account"]
+        reward_account = points_result["account"]
         ledger = points_result["ledger"]
         self._save(state)
         return {
             "order": order.model_dump(),
-            "account": account.model_dump(),
+            "account": self._mutual_point_summary(order.userId, {
+                BASE_POINT_TYPE: accounts[BASE_POINT_TYPE],
+                REWARD_POINT_TYPE: reward_account,
+            }),
+            "accounts": {
+                BASE_POINT_TYPE: accounts[BASE_POINT_TYPE].model_dump(),
+                REWARD_POINT_TYPE: reward_account.model_dump(),
+            },
+            "points": {
+                "total": accounts[BASE_POINT_TYPE].balance + reward_account.balance,
+                BASE_POINT_TYPE: accounts[BASE_POINT_TYPE].balance,
+                REWARD_POINT_TYPE: reward_account.balance,
+            },
             "ledger": ledger.model_dump(),
             "duplicate": points_result["duplicate"],
         }
+
+    @staticmethod
+    def mutual_point_withdrawal_rules() -> dict:
+        return {
+            "minimumPoints": MUTUAL_WITHDRAWAL_MIN_POINTS,
+            "pointsPerYuan": MUTUAL_POINTS_PER_YUAN,
+            "feeRateBasisPoints": MUTUAL_WITHDRAWAL_FEE_BASIS_POINTS,
+            "feePercent": MUTUAL_WITHDRAWAL_FEE_BASIS_POINTS / 100,
+            "dailyLimit": MUTUAL_WITHDRAWAL_DAILY_LIMIT,
+            "withdrawalWindowText": "每日 00:00–24:00 均可提交提现申请，按北京时间自然日计算。",
+            "accountScopeText": "仅充值积分和充值积分任务奖励可提现；基础积分不可提现。",
+            "conversionText": "10 充值积分 = 1 元，提现金额按整数积分计算。",
+            "minimumText": "单笔最低提现 100 充值积分，最低折合 10 元。",
+            "dailyLimitText": "每日最多提交 1 笔提现申请；失败或撤销的申请不占用下一次额度。",
+            "feeText": "提现手续费为提现金额的 20%，例如提现 100 充值积分，预计到账 8 元。",
+            "reviewTimeText": "提交后充值积分立即冻结，进入 PC 管理员审核；审核通过后才发起微信商户转账。",
+            "arrivalTimeText": "到账时间以微信商户转账处理结果为准；如微信要求用户确认收款，需按微信页面完成确认。",
+            "failureText": "审核拒绝、人工撤销、转账失败时，冻结的充值积分原路退回；已到账记录不支持重复提现。",
+            "settlementText": "提交后进入 PC 人工审核，审核通过后发起微信转账；转账失败或撤销时积分原路退回。",
+        }
+
+    @staticmethod
+    def _mutual_withdrawal_is_active(withdrawal: MutualPointWithdrawal) -> bool:
+        return withdrawal.status in {"pending", "approved", "waiting_user_confirm", "processing"}
+
+    @staticmethod
+    def _mutual_withdrawal_out_bill_no(withdrawal_id: str) -> str:
+        return f"mutualwd_{str(withdrawal_id or '').replace('-', '')}"[:32]
+
+    @staticmethod
+    def _mutual_withdrawal_today_count(state: AppState, user_id: str) -> int:
+        today = date_key(now_iso())
+        return sum(
+            1
+            for item in state.mutual_point_withdrawals
+            if item.userId == user_id
+            and date_key(item.createdAt) == today
+            and item.status not in {"failed", "cancelled", "rejected"}
+        )
+
+    @staticmethod
+    def _mutual_withdrawal_amount(points: int) -> tuple[int, int, int]:
+        gross_fen = points * 100 // MUTUAL_POINTS_PER_YUAN
+        fee_fen = gross_fen * MUTUAL_WITHDRAWAL_FEE_BASIS_POINTS // 10000
+        return gross_fen, fee_fen, max(0, gross_fen - fee_fen)
+
+    def _mutual_withdrawal_payload(self, withdrawal: MutualPointWithdrawal) -> dict:
+        payload = withdrawal.model_dump(mode="json")
+        user = self.repo.get_user(withdrawal.userId)
+        payload["userNickname"] = user.nickname if user and user.nickname else "微信用户"
+        payload["displayStatus"] = {
+            "pending": "待审核",
+            "approved": "已审核",
+            "waiting_user_confirm": "待用户确认",
+            "processing": "转账处理中",
+            "paid": "已到账",
+            "failed": "转账失败",
+            "cancelled": "已撤销",
+            "rejected": "已拒绝",
+        }.get(withdrawal.status, withdrawal.status)
+        return payload
+
+    def list_mutual_point_withdrawals(self, user_id: str | None = None, status: str | None = None) -> list[dict]:
+        with MEMBERSHIP_PAYMENT_LOCK:
+            state = self._load()
+            rows = list(state.mutual_point_withdrawals)
+        if user_id:
+            rows = [item for item in rows if item.userId == str(user_id).strip()]
+        if status and status != "all":
+            rows = [item for item in rows if item.status == status]
+        rows.sort(key=lambda item: (item.createdAt, item.id), reverse=True)
+        return [self._mutual_withdrawal_payload(item) for item in rows]
+
+    def create_mutual_point_withdrawal(self, user_id: str, points: int) -> dict:
+        user_id = str(user_id or "").strip()
+        config = self._mutual_help_config()
+        if config.get("available") is False:
+            raise HTTPException(status_code=503, detail="互助积分配置暂时不可用")
+        if not config.get("withdrawalEnabled", False):
+            raise HTTPException(status_code=403, detail="充值积分提现当前未开放")
+        if not self.repo.get_user(user_id):
+            raise HTTPException(status_code=404, detail="用户不存在")
+        try:
+            points = int(points)
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail="提现积分数量无效") from exc
+        if points < MUTUAL_WITHDRAWAL_MIN_POINTS:
+            raise HTTPException(status_code=400, detail=f"最低提现 {MUTUAL_WITHDRAWAL_MIN_POINTS} 充值积分")
+        gross_fen, fee_fen, amount_fen = self._mutual_withdrawal_amount(points)
+        if amount_fen <= 0:
+            raise HTTPException(status_code=400, detail="提现金额必须大于 0")
+        with MEMBERSHIP_PAYMENT_LOCK:
+            state = self._load()
+            if self._mutual_withdrawal_today_count(state, user_id) >= MUTUAL_WITHDRAWAL_DAILY_LIMIT:
+                raise HTTPException(status_code=429, detail="每天最多提交 1 笔充值积分提现")
+            accounts = self._ensure_mutual_point_accounts(state, user_id)
+            if accounts[REWARD_POINT_TYPE].balance < points:
+                raise HTTPException(status_code=402, detail="充值积分余额不足")
+            now = now_iso()
+            withdrawal = MutualPointWithdrawal(
+                id=new_id("mutual_withdrawal"),
+                userId=user_id,
+                pointType=REWARD_POINT_TYPE,
+                points=points,
+                grossAmountFen=gross_fen,
+                feeRateBasisPoints=MUTUAL_WITHDRAWAL_FEE_BASIS_POINTS,
+                feeFen=fee_fen,
+                amountFen=amount_fen,
+                status="pending",
+                createdAt=now,
+                updatedAt=now,
+            )
+            self.points_core.consume(
+                state,
+                user_id,
+                points,
+                ledger_type="withdrawal_reserve",
+                reason="充值积分提现预占",
+                idempotency_key=f"mutual-help:withdrawal-reserve:{withdrawal.id}",
+                point_type=REWARD_POINT_TYPE,
+                source_type="mutual_point_withdrawal",
+                source_id=withdrawal.id,
+                metadata={"points": points, "grossAmountFen": gross_fen, "feeFen": fee_fen},
+            )
+            state.mutual_point_withdrawals.append(withdrawal)
+            self._save(state)
+        return {"withdrawal": self._mutual_withdrawal_payload(withdrawal), "rules": self.mutual_point_withdrawal_rules()}
+
+    def _release_mutual_point_withdrawal_points(
+        self,
+        state: AppState,
+        withdrawal: MutualPointWithdrawal,
+        now: str,
+    ) -> None:
+        self.points_core.grant(
+            state,
+            withdrawal.userId,
+            withdrawal.points,
+            ledger_type="withdrawal_reserve_release",
+            reason="充值积分提现失败，退回预占积分",
+            idempotency_key=f"mutual-help:withdrawal-release:{withdrawal.id}",
+            point_type=REWARD_POINT_TYPE,
+            source_type="mutual_point_withdrawal",
+            source_id=withdrawal.id,
+            metadata={"withdrawalId": withdrawal.id},
+        )
+        withdrawal.updatedAt = now
+
+    def _mark_mutual_point_withdrawal_paid(
+        self,
+        state: AppState,
+        withdrawal: MutualPointWithdrawal,
+        transfer: dict,
+        now: str,
+    ) -> None:
+        withdrawal.status = "paid"
+        withdrawal.paidAt = now
+        withdrawal.transferState = "SUCCESS"
+        withdrawal.transferBillNo = str(transfer.get("transfer_bill_no") or "").strip() or withdrawal.transferBillNo
+        withdrawal.failureReason = None
+        withdrawal.updatedAt = now
+
+    def approve_mutual_point_withdrawal(self, withdrawal_id: str) -> dict:
+        with MEMBERSHIP_PAYMENT_LOCK:
+            state = self._load()
+            withdrawal = next((item for item in state.mutual_point_withdrawals if item.id == withdrawal_id), None)
+            if not withdrawal:
+                raise HTTPException(status_code=404, detail="充值积分提现记录不存在")
+            if withdrawal.status in {"paid", "waiting_user_confirm", "processing", "approved"}:
+                return self._mutual_withdrawal_payload(withdrawal)
+            if withdrawal.status != "pending":
+                raise HTTPException(status_code=409, detail="当前提现记录不能审核发起")
+            user = self.repo.get_user(withdrawal.userId)
+            if not user:
+                raise HTTPException(status_code=404, detail="提现用户不存在")
+            out_bill_no = withdrawal.outBillNo or self._mutual_withdrawal_out_bill_no(withdrawal.id)
+            try:
+                transfer = WechatPayClient().create_merchant_transfer(
+                    openid=user.openid,
+                    out_bill_no=out_bill_no,
+                    amount_fen=withdrawal.amountFen,
+                    transfer_remark="充值积分提现",
+                    job_type="互助任务奖励",
+                    reward_description="充值积分提现",
+                )
+            except WechatPayError:
+                raise
+            transfer_state = str(transfer.get("state") or "").strip().upper()
+            if not transfer_state:
+                raise WechatPayError("微信商家转账未返回单据状态")
+            now = now_iso()
+            withdrawal.reviewedAt = now
+            withdrawal.outBillNo = out_bill_no
+            withdrawal.transferBillNo = str(transfer.get("transfer_bill_no") or "").strip() or None
+            withdrawal.transferState = transfer_state
+            withdrawal.packageInfo = str(transfer.get("package_info") or "").strip() or None
+            withdrawal.updatedAt = now
+            if transfer_state == "SUCCESS":
+                self._mark_mutual_point_withdrawal_paid(state, withdrawal, transfer, now)
+            elif transfer_state in {"FAIL", "CANCELLED"}:
+                withdrawal.status = "cancelled" if transfer_state == "CANCELLED" else "failed"
+                withdrawal.failureReason = str(transfer.get("fail_reason") or "微信转账未成功")
+                self._release_mutual_point_withdrawal_points(state, withdrawal, now)
+            elif transfer_state == "WAIT_USER_CONFIRM":
+                withdrawal.status = "waiting_user_confirm"
+            else:
+                withdrawal.status = "processing"
+            self._save(state)
+            return self._mutual_withdrawal_payload(withdrawal)
+
+    def query_mutual_point_withdrawal(self, withdrawal_id: str) -> dict:
+        with MEMBERSHIP_PAYMENT_LOCK:
+            state = self._load()
+            withdrawal = next((item for item in state.mutual_point_withdrawals if item.id == withdrawal_id), None)
+            if not withdrawal:
+                raise HTTPException(status_code=404, detail="充值积分提现记录不存在")
+            if not withdrawal.outBillNo:
+                raise HTTPException(status_code=409, detail="提现尚未发起微信转账，无需查单")
+            transfer = WechatPayClient().query_merchant_transfer(out_bill_no=withdrawal.outBillNo)
+        result = self.handle_wechat_transfer_notification(transfer)
+        result["source"] = "wechat_query"
+        return result
+
+    def settle_mutual_point_withdrawal_manually(self, withdrawal_id: str, note: str = "已核实微信到账") -> dict:
+        with MEMBERSHIP_PAYMENT_LOCK:
+            state = self._load()
+            withdrawal = next((item for item in state.mutual_point_withdrawals if item.id == withdrawal_id), None)
+            if not withdrawal:
+                raise HTTPException(status_code=404, detail="充值积分提现记录不存在")
+            if withdrawal.status == "paid":
+                return {"withdrawal": self._mutual_withdrawal_payload(withdrawal), "duplicate": True, "source": "manual"}
+            if withdrawal.status in {"failed", "cancelled", "rejected"}:
+                raise HTTPException(status_code=409, detail="失败、撤销或拒绝的提现不能人工标记到账")
+            now = now_iso()
+            withdrawal.reviewedAt = withdrawal.reviewedAt or now
+            withdrawal.settlementSource = "manual"
+            withdrawal.settlementNote = str(note or "已核实微信到账")[:200]
+            self._mark_mutual_point_withdrawal_paid(state, withdrawal, {"transfer_bill_no": withdrawal.transferBillNo}, now)
+            self._save(state)
+            return {"withdrawal": self._mutual_withdrawal_payload(withdrawal), "duplicate": False, "source": "manual"}
+
+    def cancel_mutual_point_withdrawal(self, withdrawal_id: str, reason: str = "运营人工撤销") -> dict:
+        with MEMBERSHIP_PAYMENT_LOCK:
+            state = self._load()
+            withdrawal = next((item for item in state.mutual_point_withdrawals if item.id == withdrawal_id), None)
+            if not withdrawal:
+                raise HTTPException(status_code=404, detail="充值积分提现记录不存在")
+            if withdrawal.status in {"paid", "failed", "cancelled", "rejected"}:
+                return {"withdrawal": self._mutual_withdrawal_payload(withdrawal), "duplicate": True}
+            now = now_iso()
+            if withdrawal.status == "pending":
+                withdrawal.status = "cancelled"
+                withdrawal.transferState = "CANCELLED"
+                withdrawal.failureReason = str(reason or "运营人工撤销")[:200]
+                self._release_mutual_point_withdrawal_points(state, withdrawal, now)
+                self._save(state)
+                return {"withdrawal": self._mutual_withdrawal_payload(withdrawal), "duplicate": False, "source": "local_cancel"}
+            if not withdrawal.outBillNo:
+                raise HTTPException(status_code=409, detail="提现缺少微信商户单号，不能撤销")
+            if withdrawal.transferState in {"SUCCESS", "FAIL", "CANCELLED"}:
+                return {"withdrawal": self._mutual_withdrawal_payload(withdrawal), "duplicate": True}
+            if withdrawal.transferState == "CANCELING":
+                return {"withdrawal": self._mutual_withdrawal_payload(withdrawal), "duplicate": True}
+            if withdrawal.transferState == "TRANSFERING":
+                raise HTTPException(status_code=409, detail="用户已确认收款，当前不能撤销")
+            transfer = WechatPayClient().cancel_merchant_transfer(out_bill_no=withdrawal.outBillNo)
+        if reason:
+            transfer = {**transfer, "fail_reason": str(reason)[:200]}
+        result = self.handle_wechat_transfer_notification(transfer)
+        result["source"] = "wechat_cancel"
+        return result
 
     def list_points_ledgers(
         self,
         user_id: str,
         *,
         account_type: str = DEFAULT_POINTS_ACCOUNT_TYPE,
+        point_type: str | None = None,
         limit: int = 100,
     ) -> list[dict]:
-        state = self._load()
-        self._ensure_points_user(user_id)
-        self.points_core.ensure_account(state, user_id, account_type=account_type)
-        self._save(state)
-        return [
-            item.model_dump()
-            for item in self.points_core.list_ledgers(
-                state,
-                user_id,
-                account_type=account_type,
-                limit=limit,
-            )
-        ]
+        with MEMBERSHIP_PAYMENT_LOCK:
+            state = self._load()
+            self._ensure_points_user(user_id)
+            if account_type == DEFAULT_POINTS_ACCOUNT_TYPE:
+                self._ensure_mutual_point_accounts(state, user_id)
+            else:
+                self._ensure_points_account_persisted(state, user_id, account_type=account_type)
+            return [
+                item.model_dump()
+                for item in self.points_core.list_ledgers(
+                    state,
+                    user_id,
+                    account_type=account_type,
+                    point_type=point_type,
+                    limit=limit,
+                )
+                if item.sourceType != "points_account_migration" and item.ledgerType != "migration_marker"
+            ]
 
     def grant_points(
         self,
@@ -2725,6 +7220,7 @@ class AppService:
         idempotency_key: str,
         ledger_type: str = "grant",
         account_type: str = DEFAULT_POINTS_ACCOUNT_TYPE,
+        point_type: str = BASE_POINT_TYPE,
         source_type: str | None = None,
         source_id: str | None = None,
         metadata: dict | None = None,
@@ -2740,6 +7236,7 @@ class AppService:
                 reason=reason,
                 idempotency_key=idempotency_key,
                 account_type=account_type,
+                point_type=point_type,
                 source_type=source_type,
                 source_id=source_id,
                 metadata=metadata,
@@ -2756,6 +7253,7 @@ class AppService:
         idempotency_key: str,
         ledger_type: str = "consume",
         account_type: str = DEFAULT_POINTS_ACCOUNT_TYPE,
+        point_type: str = BASE_POINT_TYPE,
         source_type: str | None = None,
         source_id: str | None = None,
         metadata: dict | None = None,
@@ -2763,20 +7261,29 @@ class AppService:
         self._ensure_points_user(user_id)
         with MEMBERSHIP_PAYMENT_LOCK:
             state = self._load()
-            result = self.points_core.consume(
+            result = self._consume_shared_points_in_state(
                 state,
                 user_id,
                 points,
-                ledger_type=ledger_type,
                 reason=reason,
                 idempotency_key=idempotency_key,
-                account_type=account_type,
+                ledger_type=ledger_type,
                 source_type=source_type,
                 source_id=source_id,
                 metadata=metadata,
+                point_type=point_type if point_type != BASE_POINT_TYPE else None,
             )
             self._save(state)
-        return self._points_result_to_dict(result)
+        accounts = result["accounts"]
+        primary_ledger = result["ledgers"][0] if result["ledgers"] else None
+        return {
+            "account": self._mutual_point_summary(user_id, accounts),
+            "accounts": {key: value.model_dump() for key, value in accounts.items()},
+            "ledger": primary_ledger.model_dump() if primary_ledger else None,
+            "ledgers": [item.model_dump() for item in result["ledgers"]],
+            "allocations": result["allocations"],
+            "duplicate": result["duplicate"],
+        }
 
     def transfer_points(
         self,
@@ -2792,6 +7299,7 @@ class AppService:
         credit_ledger_type: str = "transfer_credit",
         source_type: str | None = None,
         source_id: str | None = None,
+        point_type: str = BASE_POINT_TYPE,
         metadata: dict | None = None,
     ) -> dict:
         self._ensure_points_user(from_user_id)
@@ -2811,6 +7319,7 @@ class AppService:
                 credit_ledger_type=credit_ledger_type,
                 source_type=source_type,
                 source_id=source_id,
+                point_type=point_type,
                 metadata=metadata,
             )
             self._save(state)
@@ -2841,15 +7350,27 @@ class AppService:
         task_id: str,
         task_kind: str = "ordinary",
         idempotency_key: str = "",
+        link_id: str = "",
+        session_id: str = "",
+        metadata: dict | None = None,
     ) -> dict:
-        if event_type not in {"published", "completed"}:
+        if event_type not in {"published", "completed", "opened", "returned", "open_cancelled", "open_failed"}:
             raise HTTPException(status_code=400, detail="互助活动类型无效")
         if not self.repo.get_user(user_id):
             raise HTTPException(status_code=404, detail="用户不存在")
         task_id = str(task_id or "").strip()
         if not task_id:
             raise HTTPException(status_code=400, detail="任务 ID 不能为空")
+        if event_type in {"opened", "returned", "open_cancelled", "open_failed"}:
+            task = self.repo.get_mutual_help_task(task_id)
+            if not task:
+                raise HTTPException(status_code=404, detail="任务不存在，无法记录行为")
         key = (str(idempotency_key or "").strip() or f"{event_type}:{user_id}:{task_id}")[:160]
+        safe_metadata = {
+            str(name)[:40]: str(value)[:200]
+            for name, value in (metadata or {}).items()
+            if str(name).strip() and value is not None
+        }
         state = self._load()
         existing = next((item for item in state.mutual_activity_events if item.idempotencyKey == key), None)
         if existing:
@@ -2860,6 +7381,9 @@ class AppService:
             userId=user_id,
             taskId=task_id,
             taskKind=str(task_kind or "ordinary"),
+            linkId=str(link_id or "").strip()[:160],
+            sessionId=str(session_id or "").strip()[:160],
+            metadata=safe_metadata,
             idempotencyKey=key,
             createdAt=now_iso(),
         )
@@ -2897,6 +7421,7 @@ class AppService:
 
         return {
             "config": self._mutual_help_config(),
+            "platformRewardBudget": self.get_mutual_platform_budget(state=state),
             "periods": {
                 "today": summarize(today_start),
                 "sevenDays": summarize(seven_day_start),
@@ -2904,6 +7429,74 @@ class AppService:
             },
             "generatedAt": now.isoformat(),
         }
+
+    def get_mutual_platform_budget(self, *, state: AppState | None = None) -> dict:
+        current = state or self._load()
+        if not self.repo.get_user(PLATFORM_OPERATOR_USER_ID):
+            return {
+                "availablePoints": 0,
+                "reservedPoints": 0,
+                "totalGranted": 0,
+                "totalConsumed": 0,
+            }
+        accounts = self._ensure_mutual_point_accounts(current, PLATFORM_OPERATOR_USER_ID)
+        reserved = sum(
+            max(
+                0,
+                int(task.rewardBudgetReserved or 0)
+                - int(task.rewardBudgetUsed or 0)
+                - int(task.rewardBudgetReleased or 0),
+            )
+            for task in current.mutual_help_tasks
+            if task.ownerUserId == PLATFORM_OPERATOR_USER_ID
+            and task.rewardPointType == REWARD_POINT_TYPE
+            and task.status != "deleted"
+        )
+        account = accounts[REWARD_POINT_TYPE]
+        return {
+            "availablePoints": account.balance,
+            "reservedPoints": reserved,
+            "totalGranted": account.totalGranted,
+            "totalConsumed": account.totalConsumed,
+            "totalPoints": account.balance + reserved,
+            "pointType": REWARD_POINT_TYPE,
+            "feeRateBasisPoints": MUTUAL_WITHDRAWAL_FEE_BASIS_POINTS,
+        }
+
+    def adjust_mutual_platform_budget(self, delta: int, reason: str = "平台充值积分任务预算调整", operator_name: str = "ops") -> dict:
+        try:
+            points_delta = int(delta)
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail="预算调整分值无效") from exc
+        if points_delta == 0:
+            raise HTTPException(status_code=400, detail="预算调整分值不能为 0")
+        with MEMBERSHIP_PAYMENT_LOCK:
+            owner_user_id = self._ensure_platform_operator_user()
+            state = self._load()
+            self._ensure_mutual_point_accounts(state, owner_user_id)
+            try:
+                result = self.points_core.apply_delta(
+                    state,
+                    owner_user_id,
+                    points_delta,
+                    ledger_type="platform_task_budget_adjust",
+                    reason=str(reason or "平台充值积分任务预算调整")[:240],
+                    idempotency_key=f"mutual-help:platform-budget:{uuid4().hex}",
+                    point_type=REWARD_POINT_TYPE,
+                    source_type="platform_task_budget",
+                    source_id=owner_user_id,
+                    metadata={"operatorName": str(operator_name or "ops")[:80]},
+                )
+            except HTTPException as exc:
+                if exc.status_code == 402:
+                    raise HTTPException(status_code=402, detail="平台可用充值积分预算不足") from exc
+                raise
+            self._save(state)
+            return {
+                "account": result["account"].model_dump(),
+                "ledger": result["ledger"].model_dump(),
+                "budget": self.get_mutual_platform_budget(state=state),
+            }
 
     def create_membership_order(self, user_id: str, plan_code: str = SALES_SCRM_PLAN_CODE) -> dict:
         self.require_customer_info_chain_enabled()
@@ -4498,6 +9091,299 @@ class AppService:
             for item in rows
         ]
 
+    @staticmethod
+    def _referral_analytics_period(period: str | None) -> tuple[str, str, datetime | None, datetime]:
+        key = str(period or "today").strip().lower()
+        now = datetime.now(tz=SHANGHAI)
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        if key == "today":
+            return key, "今日", today_start, now
+        if key in {"7d", "sevendays", "seven_days"}:
+            return "7d", "近 7 日", today_start - timedelta(days=6), now
+        if key in {"total", "all"}:
+            return "total", "总计", None, now
+        raise HTTPException(status_code=400, detail="统计范围只支持 today、7d 或 total")
+
+    @staticmethod
+    def _referral_analytics_in_period(
+        value: str | None,
+        start: datetime | None,
+        end: datetime | None = None,
+    ) -> bool:
+        if start is None:
+            return True
+        if not value:
+            return False
+        try:
+            parsed = parse_iso(value)
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=SHANGHAI)
+            normalized = parsed.astimezone(SHANGHAI)
+            return normalized >= start and (end is None or normalized <= end)
+        except (TypeError, ValueError, OverflowError):
+            return False
+
+    def get_referral_analytics(
+        self,
+        *,
+        period: str = "today",
+        page: int = 1,
+        page_size: int = 50,
+        keyword: str | None = None,
+    ) -> dict:
+        period_key, period_label, period_start, period_end = self._referral_analytics_period(period)
+        state = self._load()
+        users_by_id = {item.id: item for item in state.users}
+        relations = list(state.referral_relations)
+        rewards = list(state.referral_rewards)
+        withdrawals = list(state.referral_withdrawals)
+
+        relation_period = [
+            item for item in relations
+            if self._referral_analytics_in_period(item.createdAt, period_start, period_end)
+        ]
+        reward_created_period = [
+            item for item in rewards
+            if self._referral_analytics_in_period(item.createdAt, period_start, period_end)
+        ]
+        reward_revoked_period = [
+            item for item in rewards
+            if (
+                period_start is None and item.status == "revoked"
+            ) or (
+                item.revokedAt and self._referral_analytics_in_period(item.revokedAt, period_start, period_end)
+            )
+        ]
+        withdrawal_requested_period = [
+            item for item in withdrawals
+            if self._referral_analytics_in_period(item.createdAt, period_start, period_end)
+        ]
+        withdrawal_paid_period = [
+            item for item in withdrawals
+            if item.status == "paid" and (
+                period_start is None
+                or (item.paidAt and self._referral_analytics_in_period(item.paidAt, period_start, period_end))
+            )
+        ]
+
+        amount = lambda item: max(0, int(getattr(item, "amountFen", 0) or 0))
+        reward_generated_fen = sum(amount(item) for item in reward_created_period)
+        reward_revoked_fen = sum(amount(item) for item in reward_revoked_period)
+        transfer_requested_fen = sum(amount(item) for item in withdrawal_requested_period)
+        transfer_paid_fen = sum(amount(item) for item in withdrawal_paid_period)
+
+        current_available_fen = 0
+        current_reserved_fen = 0
+        current_withdrawn_fen = 0
+        for item in rewards:
+            breakdown = self._referral_reward_breakdown(item)
+            current_available_fen += breakdown["available"]
+            current_reserved_fen += breakdown["reserved"]
+            current_withdrawn_fen += breakdown["withdrawn"]
+
+        period_metadata = {
+            "key": period_key,
+            "label": period_label,
+            "startAt": period_start.isoformat() if period_start else None,
+            "endAt": period_end.isoformat(),
+            "rangeLabel": (
+                f"{period_start:%Y-%m-%d} 00:00—{period_end:%H:%M}"
+                if period_key == "today" and period_start
+                else (
+                    f"{period_start:%Y-%m-%d}—{period_end:%Y-%m-%d}"
+                    if period_start else "全部历史记录"
+                )
+            ),
+        }
+
+        def user_name(user_id: str) -> str:
+            user = users_by_id.get(user_id)
+            return (user.nickname or "微信用户") if user else "用户已不存在"
+
+        query = str(keyword or "").strip().lower()
+
+        def matches(*user_ids: str) -> bool:
+            if not query:
+                return True
+            searchable = []
+            for user_id in user_ids:
+                user = users_by_id.get(user_id)
+                searchable.extend([str(user_id or ""), str(user.nickname or "") if user else ""])
+            return query in " ".join(searchable).lower()
+
+        rewards_by_inviter: dict[str, list[ReferralReward]] = defaultdict(list)
+        for item in rewards:
+            rewards_by_inviter[item.inviterUserId].append(item)
+        relations_by_inviter: dict[str, list[ReferralRelation]] = defaultdict(list)
+        for item in relation_period:
+            relations_by_inviter[item.inviterUserId].append(item)
+        generated_by_inviter: dict[str, list[ReferralReward]] = defaultdict(list)
+        for item in reward_created_period:
+            generated_by_inviter[item.inviterUserId].append(item)
+        revoked_by_inviter: dict[str, list[ReferralReward]] = defaultdict(list)
+        for item in reward_revoked_period:
+            revoked_by_inviter[item.inviterUserId].append(item)
+        requested_by_inviter: dict[str, list[ReferralWithdrawal]] = defaultdict(list)
+        for item in withdrawal_requested_period:
+            requested_by_inviter[item.userId].append(item)
+        paid_by_inviter: dict[str, list[ReferralWithdrawal]] = defaultdict(list)
+        for item in withdrawal_paid_period:
+            paid_by_inviter[item.userId].append(item)
+
+        inviter_ids = set(relations_by_inviter) | set(generated_by_inviter) | set(revoked_by_inviter) | set(requested_by_inviter) | set(paid_by_inviter)
+        inviter_rows = []
+        for inviter_id in inviter_ids:
+            inviter_relations = relations_by_inviter.get(inviter_id, [])
+            generated = generated_by_inviter.get(inviter_id, [])
+            revoked = revoked_by_inviter.get(inviter_id, [])
+            requested = requested_by_inviter.get(inviter_id, [])
+            paid = paid_by_inviter.get(inviter_id, [])
+            period_generated = sum(amount(item) for item in generated)
+            period_revoked = sum(amount(item) for item in revoked)
+            current_inviter = rewards_by_inviter.get(inviter_id, [])
+            current_balances = {"available": 0, "reserved": 0, "withdrawn": 0}
+            for reward in current_inviter:
+                breakdown = self._referral_reward_breakdown(reward)
+                for key in current_balances:
+                    current_balances[key] += breakdown[key]
+            row = {
+                "inviterUserId": inviter_id,
+                "inviterNickname": user_name(inviter_id),
+                "referralCount": len(inviter_relations),
+                "referredUserCount": len({item.inviteeUserId for item in inviter_relations}),
+                "rewardCount": len(generated),
+                "rewardGeneratedFen": period_generated,
+                "rewardRevokedFen": period_revoked,
+                "rewardNetFen": period_generated - period_revoked,
+                "currentAvailableFen": current_balances["available"],
+                "currentReservedFen": current_balances["reserved"],
+                "currentWithdrawnFen": current_balances["withdrawn"],
+                "transferRequestCount": len(requested),
+                "transferRequestedFen": sum(amount(item) for item in requested),
+                "transferPaidCount": len(paid),
+                "transferPaidFen": sum(amount(item) for item in paid),
+            }
+            if matches(inviter_id):
+                inviter_rows.append(row)
+        inviter_rows.sort(
+            key=lambda item: (
+                item["rewardNetFen"],
+                item["rewardGeneratedFen"],
+                item["referralCount"],
+                item["inviterUserId"],
+            ),
+            reverse=True,
+        )
+
+        relation_rows = []
+        for relation in sorted(relation_period, key=lambda item: (item.createdAt, item.id), reverse=True):
+            if not matches(relation.inviterUserId, relation.inviteeUserId):
+                continue
+            pair_rewards = [
+                item for item in rewards
+                if item.inviterUserId == relation.inviterUserId and item.inviteeUserId == relation.inviteeUserId
+            ]
+            gross = sum(amount(item) for item in pair_rewards)
+            revoked = sum(amount(item) for item in pair_rewards if item.status == "revoked")
+            statuses = {item.status for item in pair_rewards}
+            if "withdrawn" in statuses:
+                reward_status = "已转账"
+            elif "reserved" in statuses:
+                reward_status = "提现处理中"
+            elif "available" in statuses:
+                reward_status = "可提现"
+            elif "pending" in statuses:
+                reward_status = "待生效"
+            elif "revoked" in statuses:
+                reward_status = "已撤销"
+            else:
+                reward_status = "未产生"
+            relation_rows.append({
+                "relationId": relation.id,
+                "createdAt": relation.createdAt,
+                "source": relation.source,
+                "inviterUserId": relation.inviterUserId,
+                "inviterNickname": user_name(relation.inviterUserId),
+                "inviteeUserId": relation.inviteeUserId,
+                "inviteeNickname": user_name(relation.inviteeUserId),
+                "rewardTotalFen": gross,
+                "rewardRevokedFen": revoked,
+                "rewardNetFen": gross - revoked,
+                "rewardStatus": reward_status,
+            })
+
+        safe_page = min(max(int(page or 1), 1), 100000)
+        safe_page_size = min(max(int(page_size or 50), 1), 100)
+        relation_total = len(relation_rows)
+        relation_total_pages = max(1, ceil(relation_total / safe_page_size))
+        safe_page = min(safe_page, relation_total_pages)
+        relation_start = (safe_page - 1) * safe_page_size
+
+        reward_rows = [
+            {
+                "rewardId": item.id,
+                "createdAt": item.createdAt,
+                "inviterUserId": item.inviterUserId,
+                "inviterNickname": user_name(item.inviterUserId),
+                "inviteeUserId": item.inviteeUserId,
+                "inviteeNickname": user_name(item.inviteeUserId),
+                "amountFen": amount(item),
+                "status": item.status,
+                "sourceOrderId": item.sourceOrderId,
+            }
+            for item in sorted(reward_created_period, key=lambda item: (item.createdAt, item.id), reverse=True)
+            if matches(item.inviterUserId, item.inviteeUserId)
+        ][:100]
+        withdrawal_rows = [
+            {
+                **item.model_dump(mode="json"),
+                "userNickname": user_name(item.userId),
+                "isPaidInPeriod": item in withdrawal_paid_period,
+            }
+            for item in sorted(
+                [item for item in withdrawals if item in withdrawal_requested_period or item in withdrawal_paid_period],
+                key=lambda item: (item.paidAt or item.createdAt or "", item.id),
+                reverse=True,
+            )
+            if matches(item.userId)
+        ][:100]
+
+        return {
+            "period": period_metadata,
+            "summary": {
+                "referralCount": len(relation_period),
+                "referrerCount": len({item.inviterUserId for item in relation_period}),
+                "referredUserCount": len({item.inviteeUserId for item in relation_period}),
+                "rewardCount": len(reward_created_period),
+                "rewardGeneratedFen": reward_generated_fen,
+                "rewardRevokedFen": reward_revoked_fen,
+                "rewardNetFen": reward_generated_fen - reward_revoked_fen,
+                "transferRequestCount": len(withdrawal_requested_period),
+                "transferRequestedFen": transfer_requested_fen,
+                "transferPaidCount": len(withdrawal_paid_period),
+                "transferPaidFen": transfer_paid_fen,
+                "currentAvailableFen": current_available_fen,
+                "currentReservedFen": current_reserved_fen,
+                "currentWithdrawnFen": current_withdrawn_fen,
+            },
+            "definitions": {
+                "referralCount": "推荐关系按绑定时间统计，一条关系代表一位用户被一位推荐人直接绑定。",
+                "rewardGeneratedFen": "分润按奖励记录 createdAt 统计，金额为产生的毛分润；已撤销金额单列。",
+                "rewardNetFen": "本期产生分润减去本期发生的撤销金额，可能因历史奖励本期撤销而为负数。",
+                "transferRequestedFen": "按提现申请 createdAt 统计申请金额，包含待审核、处理中、成功和失败记录。",
+                "transferPaidFen": "仅按 paidAt 落在统计范围内且状态为 paid 的微信商户转账统计，代表实际到账。",
+                "currentBalance": "可提现、转账中和已转账为当前奖励余额状态，不受所选时间范围截断。",
+            },
+            "inviterRows": inviter_rows[:100],
+            "relationRows": relation_rows[relation_start:relation_start + safe_page_size],
+            "relationPage": safe_page,
+            "relationPageSize": safe_page_size,
+            "relationTotal": relation_total,
+            "relationTotalPages": relation_total_pages,
+            "rewardRows": reward_rows,
+            "withdrawalRows": withdrawal_rows,
+        }
+
     def _mark_referral_withdrawal_paid(
         self,
         state: AppState,
@@ -4657,6 +9543,39 @@ class AppService:
         if not out_bill_no:
             raise HTTPException(status_code=400, detail="微信转账回调缺少商户单号")
         state = self._load()
+        mutual_withdrawal = next(
+            (item for item in state.mutual_point_withdrawals if item.outBillNo == out_bill_no),
+            None,
+        )
+        if mutual_withdrawal:
+            transfer_amount = transfer.get("transfer_amount")
+            if transfer_amount is not None and int(transfer_amount) != mutual_withdrawal.amountFen:
+                raise HTTPException(status_code=409, detail="微信转账回调金额不一致")
+            user = self.repo.get_user(mutual_withdrawal.userId)
+            callback_openid = str(transfer.get("openid") or "").strip()
+            if user and callback_openid and callback_openid != user.openid:
+                raise HTTPException(status_code=409, detail="微信转账回调用户不一致")
+            transfer_state = str(transfer.get("state") or "").strip().upper()
+            now = now_iso()
+            mutual_withdrawal.transferState = transfer_state or mutual_withdrawal.transferState
+            mutual_withdrawal.transferBillNo = str(transfer.get("transfer_bill_no") or "").strip() or mutual_withdrawal.transferBillNo
+            if mutual_withdrawal.status in {"paid", "failed", "cancelled", "rejected"}:
+                return {"withdrawal": self._mutual_withdrawal_payload(mutual_withdrawal), "duplicate": True}
+            if transfer_state == "SUCCESS":
+                self._mark_mutual_point_withdrawal_paid(state, mutual_withdrawal, transfer, now)
+            elif transfer_state in {"FAIL", "CANCELLED"}:
+                mutual_withdrawal.status = "cancelled" if transfer_state == "CANCELLED" else "failed"
+                mutual_withdrawal.failureReason = str(transfer.get("fail_reason") or "微信转账未成功")
+                mutual_withdrawal.updatedAt = now
+                self._release_mutual_point_withdrawal_points(state, mutual_withdrawal, now)
+            elif transfer_state == "WAIT_USER_CONFIRM":
+                mutual_withdrawal.status = "waiting_user_confirm"
+                mutual_withdrawal.updatedAt = now
+            else:
+                mutual_withdrawal.status = "processing"
+                mutual_withdrawal.updatedAt = now
+            self._save(state)
+            return {"withdrawal": self._mutual_withdrawal_payload(mutual_withdrawal), "duplicate": False}
         withdrawal = next(
             (item for item in state.referral_withdrawals if item.outBillNo == out_bill_no),
             None,
@@ -4831,6 +9750,23 @@ class AppService:
         user = self.repo.get_user(user_id)
         if not user:
             raise HTTPException(status_code=404, detail="用户不存在")
+
+        current_sales_profile = dict(user.salesProfile or {})
+        profile_safety_fields = {
+            "nickname": payload.nickname if payload.nickname is not None else user.nickname,
+            "displayName": payload.displayName if payload.displayName is not None else current_sales_profile.get("displayName", ""),
+            "jobTitle": payload.jobTitle if payload.jobTitle is not None else current_sales_profile.get("jobTitle", ""),
+            "company": payload.company if payload.company is not None else current_sales_profile.get("company", ""),
+            "city": payload.city if payload.city is not None else current_sales_profile.get("city", ""),
+        }
+        self._enforce_content_safety(
+            "profile",
+            user.id,
+            profile_safety_fields,
+            owner_user_id=user.id,
+            content_revision=user.updatedAt,
+            for_publish=True,
+        )
 
         if payload.nickname is not None:
             nickname = strip_unicode_surrogates(payload.nickname).strip()
@@ -5500,6 +10436,14 @@ class AppService:
             return existing
         if input_mode == "paste_text" and not raw_text:
             raise HTTPException(status_code=400, detail="请先粘贴资料文案")
+        self._enforce_content_safety(
+            "user_note",
+            "",
+            {"title": title, "body": raw_text},
+            owner_user_id=owner_user_id,
+            content_revision="capture",
+            for_publish=False,
+        )
         note = (
             self._create_manual_note_from_text(owner_user_id, card_type, raw_text, title, payload.intakeId, payload.idempotencyKey)
             if input_mode == "paste_text"
@@ -5515,6 +10459,14 @@ class AppService:
         raw_text = strip_unicode_surrogates(payload.rawText or "").strip()
         if not raw_text:
             raise HTTPException(status_code=400, detail="请先粘贴房源文案")
+        self._enforce_content_safety(
+            "user_note",
+            "",
+            {"body": raw_text},
+            owner_user_id=owner_user_id,
+            content_revision="property_batch_parse",
+            for_publish=False,
+        )
         return self._parse_property_batch_text(raw_text)
 
     def create_property_batch(self, payload: PropertyBatchCreateRequest) -> dict:
@@ -5578,6 +10530,14 @@ class AppService:
         candidates = [item for item in payload.candidates if item.selected]
         if not candidates:
             raise HTTPException(status_code=400, detail="请至少选择一套房源")
+        self._enforce_content_safety(
+            "user_note",
+            "",
+            {"body": raw_text, "candidates": [item.model_dump(mode="json") for item in candidates]},
+            owner_user_id=owner_user_id,
+            content_revision="property_batch_create",
+            for_publish=False,
+        )
         notes = [
             self._create_property_note_from_batch_candidate(
                 owner_user_id,
@@ -6195,6 +11155,14 @@ class AppService:
         existing = self._find_note_by_idempotency(owner_user_id, payload.idempotencyKey)
         if existing:
             return existing
+        self._enforce_content_safety(
+            "user_note",
+            "",
+            {"title": title, "body": raw_text},
+            owner_user_id=owner_user_id,
+            content_revision="capture",
+            for_publish=False,
+        )
         content_object = ContentObjectPayload(
             sourceType="manual_text",
             title=title or None,
@@ -6256,6 +11224,14 @@ class AppService:
             }
 
         title = manual_title or preview["title"] or preview["sourceName"] or "已收藏链接"
+        self._enforce_content_safety(
+            "user_note",
+            "",
+            {"title": title, "body": preview.get("description") or "", "sourceUrl": preview.get("url") or source_url},
+            owner_user_id=owner_user_id,
+            content_revision="capture",
+            for_publish=False,
+        )
         media = [ContentMediaPayload(
             id=new_id("link"),
             type="link",
@@ -8806,7 +13782,9 @@ class AppService:
         topic_id: str | None = None,
         sort: str = "updated",
         include_deleted: bool = False,
-    ) -> list[dict]:
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[dict] | dict:
         if not self.repo.get_user(owner_user_id):
             raise HTTPException(status_code=404, detail="用户不存在")
         cache_key = (
@@ -8823,7 +13801,8 @@ class AppService:
         cached = self._note_list_cache.get(cache_key)
         now = time.monotonic()
         if cached and now - cached[0] < self._note_list_cache_ttl_seconds:
-            return cached[1]
+            page = _offset_page_rows(cached[1], offset, limit)
+            return page if page is not None else cached[1]
         notes = self.repo.list_user_notes(
             owner_user_id=owner_user_id,
             keyword=None,
@@ -8847,14 +13826,16 @@ class AppService:
             ),
             reverse=True,
         )
-        note_ids = {item.id for item in filtered}
-        stats_ids = {item.sourceCardId or item.id for item in filtered}
+        page = _offset_page_rows(filtered, offset, limit)
+        payload_items = filtered if page is None else page["items"]
+        note_ids = {item.id for item in payload_items}
+        stats_ids = {item.sourceCardId or item.id for item in payload_items}
         view_events_by_card = self.repo.list_view_events_for_cards(stats_ids)
         relays_by_card = self.repo.list_relay_entries_for_cards(stats_ids, relay_status="active")
         actions_by_note = self.repo.list_customer_actions_for_notes(note_ids)
         leads_by_owner = {
             owner_id: self.repo.list_lead_reminders(owner_id)
-            for owner_id in {item.ownerUserId for item in filtered}
+            for owner_id in {item.ownerUserId for item in payload_items}
         }
         payload = [
             self._user_note_list_payload(
@@ -8865,21 +13846,24 @@ class AppService:
                 leads_by_owner=leads_by_owner,
                 same_style_generation=same_style_by_note_id.get(item.id),
             )
-            for item in filtered
+            for item in payload_items
         ]
-        self._note_list_cache[cache_key] = (now, payload)
-        if len(self._note_list_cache) > self._note_list_cache_max_entries:
-            expired_before = now - self._note_list_cache_ttl_seconds
-            self._note_list_cache = {
-                key: value
-                for key, value in self._note_list_cache.items()
-                if value[0] >= expired_before
-            }
+        if page is None:
+            self._note_list_cache[cache_key] = (now, payload)
             if len(self._note_list_cache) > self._note_list_cache_max_entries:
-                oldest_keys = sorted(self._note_list_cache, key=lambda key: self._note_list_cache[key][0])
-                for old_key in oldest_keys[:len(self._note_list_cache) - self._note_list_cache_max_entries]:
-                    self._note_list_cache.pop(old_key, None)
-        return payload
+                expired_before = now - self._note_list_cache_ttl_seconds
+                self._note_list_cache = {
+                    key: value
+                    for key, value in self._note_list_cache.items()
+                    if value[0] >= expired_before
+                }
+                if len(self._note_list_cache) > self._note_list_cache_max_entries:
+                    oldest_keys = sorted(self._note_list_cache, key=lambda key: self._note_list_cache[key][0])
+                    for old_key in oldest_keys[:len(self._note_list_cache) - self._note_list_cache_max_entries]:
+                        self._note_list_cache.pop(old_key, None)
+            return payload
+        page["items"] = payload
+        return page
 
     def get_business_card_summary(self, owner_user_id: str) -> dict:
         if not self.repo.get_user(owner_user_id):
@@ -8903,6 +13887,8 @@ class AppService:
         if business_card:
             config = dict(business_card.visibilityConfig or {})
             config.pop("marketingRoute", None)
+            if self._note_share_snapshot_needs_regeneration(config.get("shareSnapshot")):
+                config.pop("shareSnapshot", None)
             payload = {
                 "id": business_card.id,
                 "sourceNoteId": business_card.id,
@@ -8921,6 +13907,426 @@ class AppService:
         return {
             "totalResources": total_resources,
             "businessCard": payload,
+        }
+
+    @staticmethod
+    def _business_card_opportunity_config(note: UserNote) -> dict:
+        config = note.visibilityConfig if isinstance(note.visibilityConfig, dict) else {}
+        value = config.get("businessOpportunity")
+        return value if isinstance(value, dict) else {}
+
+    @staticmethod
+    def _business_card_market_enabled(opportunity: dict, mode: str | None = None) -> bool:
+        """Keep capability and current-demand publication independently opt-in.
+
+        Cards without the scoped flags are legacy cards and retain the former
+        shared gate. New cards always write both scoped flags, so leaving one
+        surface off never accidentally publishes it through the other one.
+        """
+        scoped_keys = {
+            "resource": ("resourceEnabled", "resourceDiscoverable"),
+            "intent": ("intentEnabled", "intentDiscoverable"),
+        }
+        has_any_scoped = any(key in opportunity for keys in scoped_keys.values() for key in keys)
+        if mode in scoped_keys:
+            enabled_key, discoverable_key = scoped_keys[mode]
+            if enabled_key in opportunity or discoverable_key in opportunity:
+                return opportunity.get(enabled_key) is not False and opportunity.get(discoverable_key) is not False
+            if has_any_scoped:
+                return False
+            return opportunity.get("enabled") is not False and opportunity.get("discoverable") is not False
+        if has_any_scoped:
+            return any(
+                opportunity.get(enabled_key) is not False and opportunity.get(discoverable_key) is not False
+                for enabled_key, discoverable_key in scoped_keys.values()
+                if enabled_key in opportunity or discoverable_key in opportunity
+            )
+        has_legacy_flags = "enabled" in opportunity or "discoverable" in opportunity
+        return has_legacy_flags and opportunity.get("enabled") is not False and opportunity.get("discoverable") is not False
+
+    @staticmethod
+    def _business_card_intent(data: dict, opportunity: dict) -> dict:
+        source = opportunity.get("cooperationIntent")
+        if not isinstance(source, dict):
+            source = data.get("cooperationIntent")
+        if not isinstance(source, dict):
+            source = {}
+        direction = str(source.get("direction") or "").strip()
+        direction_labels = {
+            "looking": "我正在找合作",
+            "providing": "我近期可以合作",
+            "我正在找": "我正在找合作",
+            "我近期可以合作": "我近期可以合作",
+        }
+        text = str(source.get("text") or source.get("summary") or "").strip()
+        expires_at = str(source.get("expiresAt") or "").strip()
+        active = bool(text)
+        expired = False
+        if expires_at:
+            try:
+                active = active and parse_iso(expires_at) > parse_iso(now_iso())
+                expired = bool(text) and not active
+            except Exception:
+                # A malformed expiry must not turn a time-bounded intent into
+                # an indefinitely visible dynamic opportunity.
+                active = False
+                expired = bool(text)
+        return {
+            "direction": direction,
+            "directionText": direction_labels.get(direction, direction or ""),
+            "text": text[:120],
+            "expiresAt": expires_at or None,
+            "active": active,
+            "expired": expired,
+        }
+
+    def _business_card_public_payload(
+        self,
+        note: UserNote,
+        *,
+        include_detail: bool = False,
+        unlocked: bool = False,
+    ) -> dict:
+        config = self._public_note_visibility_config(note.visibilityConfig)
+        data = config.get("structuredData") if isinstance(config.get("structuredData"), dict) else {}
+        opportunity = self._business_card_opportunity_config(note)
+        owner = self.repo.get_user(note.ownerUserId)
+        profile = dict(owner.salesProfile or {}) if owner else {}
+        display_name = str(profile.get("displayName") or (owner.nickname if owner else data.get("name") or "合作伙伴")).strip()
+        avatar_url = str(profile.get("avatarUrl") or (owner.avatarUrl if owner else "") or data.get("avatarUrl") or "").strip()
+        role = str(profile.get("jobTitle") or data.get("title") or "").strip()
+        company = str(profile.get("company") or data.get("company") or "").strip()
+        city = str(profile.get("city") or opportunity.get("city") or data.get("city") or "").strip()
+        industry = str(opportunity.get("industry") or data.get("industry") or "").strip()
+        sub_industry = str(opportunity.get("subIndustry") or data.get("subIndustry") or "").strip()
+        industry_tags = self._unique_strings([
+            *(opportunity.get("industryTags") or [] if isinstance(opportunity.get("industryTags"), list) else []),
+            *(data.get("industryTags") or [] if isinstance(data.get("industryTags"), list) else []),
+        ])[:8]
+        keywords = self._unique_strings(
+            data.get("serviceKeywords") if isinstance(data.get("serviceKeywords"), list)
+            else re.split(r"[，,、\n]", str(data.get("serviceKeywords") or ""))
+        )[:6]
+        intent = self._business_card_intent(data, opportunity)
+        if not self._business_card_market_enabled(opportunity, "intent"):
+            intent = {**intent, "direction": "", "directionText": "", "text": "", "active": False, "expired": False}
+        try:
+            contact_invalid_count = max(0, int(opportunity.get("contactInvalidReportCount") or 0))
+        except (TypeError, ValueError):
+            contact_invalid_count = 0
+        contact_warning = str(opportunity.get("contactWarning") or "").strip()
+        conversion = config.get("conversionConfig") if isinstance(config.get("conversionConfig"), dict) else {}
+        phone = str(profile.get("phone") or (owner.phone if owner else "") or data.get("phone") or "").strip()
+        wechat = str(profile.get("wechat") or (owner.wechat if owner else "") or data.get("wechat") or "").strip()
+        email = str(profile.get("email") or data.get("email") or "").strip()
+        qr_code_url = str(profile.get("wechatQrUrl") or data.get("wechatQrUrl") or data.get("qrCodeUrl") or "").strip()
+        if conversion.get("showContactPhone") is False:
+            phone = ""
+        if conversion.get("enablePrivateConsultation") is False:
+            wechat = ""
+            qr_code_url = ""
+        contacts = []
+        if phone:
+            contacts.append({"contactType": "phone", "contactValue": phone, "label": "电话"})
+        if wechat:
+            contacts.append({"contactType": "wechat", "contactValue": wechat, "label": "微信"})
+        if email:
+            contacts.append({"contactType": "email", "contactValue": email, "label": "邮箱"})
+        if qr_code_url:
+            contacts.append({"contactType": "wechatQr", "contactValue": qr_code_url, "label": "微信二维码"})
+        private_contact_values = {
+            value
+            for value in (phone, wechat, email, qr_code_url)
+            if value
+        }
+
+        def public_text(value: object) -> str:
+            text = str(value or "").strip()
+            return text if unlocked else self._redact_public_contact_values(text, private_contact_values)
+
+        payload = {
+            "id": note.id,
+            "noteId": note.id,
+            "ownerUserId": note.ownerUserId,
+            "displayName": public_text(display_name),
+            "avatarUrl": avatar_url,
+            "avatarInitial": display_name[:1] or "合",
+            "jobTitle": public_text(role),
+            "company": public_text(company),
+            "city": public_text(city),
+            "industry": public_text(industry),
+            "subIndustry": public_text(sub_industry),
+            "industryTags": [public_text(item) for item in industry_tags],
+            "headline": public_text(data.get("headline") or note.summary or ""),
+            "keywords": [public_text(item) for item in keywords],
+            "cooperationIntent": {
+                **intent,
+                "text": public_text(intent.get("text")),
+            },
+            "coverUrl": avatar_url,
+            "updatedAt": note.updatedAt,
+            "revision": note.revision,
+            "contactCount": len(contacts),
+            "hasContact": bool(contacts),
+            "contactLocked": bool(contacts) and not unlocked,
+            "viewCostPoints": BUSINESS_CARD_CONTACT_UNLOCK_COST_POINTS,
+            "contactInvalidReportCount": contact_invalid_count,
+            "contactWarning": contact_warning if contact_invalid_count else "",
+        }
+        if include_detail:
+            payload.update({
+                "bio": public_text(data.get("bio") or note.body or ""),
+                "featuredResources": [],
+            })
+            featured_holder = {"visibilityConfig": config}
+            self._attach_business_card_featured_resources(note, featured_holder)
+            payload["featuredResources"] = featured_holder.get("featuredResources", [])
+        if unlocked:
+            payload["contacts"] = contacts
+        else:
+            payload["contacts"] = []
+        return payload
+
+    def _get_public_business_card(self, note_id: str) -> UserNote:
+        note = self.repo.get_user_note(note_id)
+        if not note or note.status == "deleted":
+            raise HTTPException(status_code=404, detail="合作名片不存在")
+        config = note.visibilityConfig if isinstance(note.visibilityConfig, dict) else {}
+        if config.get("cardType") != "business_card" or note.shareState != "published":
+            raise HTTPException(status_code=404, detail="合作名片不存在")
+        opportunity = self._business_card_opportunity_config(note)
+        if not self._business_card_market_enabled(opportunity):
+            raise HTTPException(status_code=404, detail="该名片未加入商机合作")
+        self._enforce_content_safety(
+            "user_note",
+            note.id,
+            {
+                "title": note.title,
+                "summary": note.summary,
+                "body": note.body,
+                "contentBlocks": note.contentBlocks,
+                "locationText": note.locationText,
+                "tags": self._note_tags(note),
+                "visibilityConfig": note.visibilityConfig,
+            },
+            owner_user_id=note.ownerUserId,
+            content_revision=str(note.revision or 0),
+            for_publish=True,
+            persist=False,
+        )
+        return note
+
+    def list_business_opportunity_cards(
+        self,
+        *,
+        mode: str = "capability",
+        keyword: str | None = None,
+        industry: str | None = None,
+        sub_industry: str | None = None,
+        city: str | None = None,
+        cursor: str | None = None,
+        limit: int = 10,
+        viewer_user_id: str | None = None,
+    ) -> dict:
+        mode_value = mode if mode in {"intent", "capability"} else "capability"
+        try:
+            offset = max(0, int(cursor or 0))
+        except (TypeError, ValueError):
+            offset = 0
+        page_size = min(max(int(limit or 10), 1), 20)
+        keyword_value = str(keyword or "").strip().lower()
+        industry_value = str(industry or "").strip()
+        sub_industry_value = str(sub_industry or "").strip()
+        city_value = str(city or "").strip()
+        page: list[UserNote] = []
+        scan_offset = offset
+        has_more = False
+        source_exhausted = False
+        while len(page) <= page_size:
+            candidates = self.repo.list_business_opportunity_notes_page(
+                keyword=keyword_value,
+                industry=industry_value,
+                sub_industry=sub_industry_value,
+                city=city_value,
+                mode=mode_value,
+                viewer_user_id=viewer_user_id,
+                limit=page_size,
+                offset=scan_offset,
+            )
+            if not candidates:
+                source_exhausted = True
+                break
+            batch_start = scan_offset
+            for index, note in enumerate(candidates):
+                scan_offset = batch_start + index + 1
+                try:
+                    self._enforce_content_safety(
+                        "user_note",
+                        note.id,
+                        {
+                            "title": note.title,
+                            "summary": note.summary,
+                            "body": note.body,
+                            "contentBlocks": note.contentBlocks,
+                            "locationText": note.locationText,
+                            "tags": self._note_tags(note),
+                            "visibilityConfig": note.visibilityConfig,
+                        },
+                        owner_user_id=note.ownerUserId,
+                        content_revision=str(note.revision or 0),
+                        for_publish=True,
+                        persist=False,
+                    )
+                except HTTPException:
+                    # A blocked or pending card must not poison the entire
+                    # cooperation list. The service has already recorded the
+                    # assessment for the operations queue.
+                    continue
+                config = note.visibilityConfig if isinstance(note.visibilityConfig, dict) else {}
+                opportunity = self._business_card_opportunity_config(note)
+                data = config.get("structuredData") if isinstance(config.get("structuredData"), dict) else {}
+                intent = self._business_card_intent(data, opportunity)
+                if mode_value == "intent" and not intent["active"]:
+                    continue
+                payload = self._business_card_public_payload(note)
+                if industry_value and industry_value not in {payload["industry"], *payload["industryTags"]}:
+                    continue
+                if sub_industry_value and sub_industry_value not in {payload["subIndustry"], *payload["industryTags"]}:
+                    continue
+                if city_value and city_value not in payload["city"]:
+                    continue
+                searchable = " ".join([
+                    payload["displayName"], payload["jobTitle"], payload["company"], payload["city"],
+                    payload["industry"], payload["subIndustry"], " ".join(payload["industryTags"]),
+                    payload["headline"], " ".join(payload["keywords"]), intent["text"],
+                ]).lower()
+                if keyword_value and keyword_value not in searchable:
+                    continue
+                page.append(note)
+                if len(page) > page_size:
+                    has_more = True
+                    break
+            if len(candidates) < page_size:
+                source_exhausted = True
+            if has_more or source_exhausted:
+                break
+        items = page[:page_size]
+        effective_has_more = has_more or (len(items) == page_size and not source_exhausted)
+        return {
+            "items": [self._business_card_public_payload(item) for item in items],
+            "nextCursor": str(scan_offset) if effective_has_more else None,
+            "hasMore": effective_has_more,
+            "limit": page_size,
+            "viewCostPoints": BUSINESS_CARD_CONTACT_UNLOCK_COST_POINTS,
+        }
+
+    def get_business_opportunity_card_detail(self, note_id: str, viewer_user_id: str | None = None) -> dict:
+        note = self._get_public_business_card(note_id)
+        viewer = str(viewer_user_id or "").strip()
+        is_owner = bool(viewer and viewer == note.ownerUserId)
+        unlock = self.repo.find_resource_unlock_record(
+            viewer,
+            "business_card_contact_unlock",
+            "business_card",
+            note.id,
+        ) if viewer and not is_owner else None
+        contact_unlocked = is_owner or bool(unlock and self._is_resource_unlock_active(unlock, now_iso()))
+        payload = self._business_card_public_payload(
+            note,
+            include_detail=True,
+            unlocked=contact_unlocked,
+        )
+        payload["isMine"] = is_owner
+        return payload
+
+    def unlock_business_opportunity_card(self, note_id: str, user_id: str) -> dict:
+        user_id = str(user_id or "").strip()
+        if not self.repo.get_user(user_id):
+            raise HTTPException(status_code=404, detail="用户不存在")
+        note = self._get_public_business_card(note_id)
+        if note.ownerUserId == user_id:
+            return {
+                "card": self._business_card_public_payload(note, include_detail=True, unlocked=True),
+                "charged": False,
+                "duplicate": False,
+                "wallet": self.get_resource_wallet(user_id)["wallet"],
+            }
+        preview = self._business_card_public_payload(note, include_detail=True)
+        if not preview["hasContact"]:
+            raise HTTPException(status_code=404, detail="该名片暂无可解锁的联系方式")
+        consume = self.consume_resource_points(
+            owner_user_id=user_id,
+            action_type="business_card_contact_unlock",
+            target_type="business_card",
+            target_id=note.id,
+            points_cost=BUSINESS_CARD_CONTACT_UNLOCK_COST_POINTS,
+            reason="查看商机合作名片联系方式",
+            metadata={"noteId": note.id, "cardOwnerUserId": note.ownerUserId, "revision": note.revision},
+        )
+        return {
+            "card": self._business_card_public_payload(note, include_detail=True, unlocked=True),
+            "charged": consume["charged"],
+            "duplicate": consume["duplicate"],
+            "wallet": consume["wallet"],
+            "unlockRecord": consume["unlockRecord"],
+        }
+
+    def report_business_opportunity_contact_invalid(
+        self,
+        note_id: str,
+        user_id: str,
+        reason: str = "联系方式失效",
+    ) -> dict:
+        user_id = str(user_id or "").strip()
+        if not self.repo.get_user(user_id):
+            raise HTTPException(status_code=404, detail="用户不存在")
+        note = self._get_public_business_card(note_id)
+        if note.ownerUserId == user_id:
+            raise HTTPException(status_code=403, detail="不能举报自己的名片")
+        unlock = self.repo.find_resource_unlock_record(
+            user_id,
+            "business_card_contact_unlock",
+            "business_card",
+            note.id,
+        )
+        if not unlock or not self._is_resource_unlock_active(unlock, now_iso()):
+            raise HTTPException(status_code=403, detail="请先解锁联系方式后再举报")
+        clean_reason = str(reason or "联系方式失效").strip()[:40] or "联系方式失效"
+        with MEMBERSHIP_PAYMENT_LOCK:
+            note = self._get_public_business_card(note_id)
+            config = dict(note.visibilityConfig or {})
+            opportunity = dict(config.get("businessOpportunity") or {})
+            reports = [item for item in opportunity.get("contactInvalidReports", []) if isinstance(item, dict)]
+            revision = str(note.revision or "")
+            duplicate = any(
+                str(item.get("userId") or "") == user_id
+                and str(item.get("revision") or "") == revision
+                for item in reports
+            )
+            if not duplicate:
+                reports.append({
+                    "id": new_id("contact_report"),
+                    "userId": user_id,
+                    "revision": revision,
+                    "reason": clean_reason,
+                    "createdAt": now_iso(),
+                })
+                opportunity["contactInvalidReports"] = reports
+                opportunity["contactInvalidReportCount"] = len(reports)
+                opportunity["contactWarning"] = "已有用户反馈联系方式可能失效，请谨慎联系"
+                config["businessOpportunity"] = opportunity
+                note.visibilityConfig = config
+                self.repo.save_user_note(note)
+        try:
+            report_count = max(0, int((note.visibilityConfig or {}).get("businessOpportunity", {}).get("contactInvalidReportCount") or 0))
+        except (TypeError, ValueError):
+            report_count = 0
+        return {
+            "reported": not duplicate,
+            "duplicate": duplicate,
+            "contactInvalidReportCount": report_count,
+            "contactWarning": "已有用户反馈联系方式可能失效，请谨慎联系" if report_count else "",
+            "card": self._business_card_public_payload(note, include_detail=True, unlocked=True),
         }
 
     def _user_note_list_payload(
@@ -8959,8 +14365,12 @@ class AppService:
                 leads_by_owner=leads_by_owner,
             ),
         }
+        for key in ("isPinned", "pinnedAt", "pinnedBy"):
+            payload.pop(key, None)
         visibility_config = dict(payload.get("visibilityConfig") or {})
         visibility_config.pop("marketingRoute", None)
+        if self._note_share_snapshot_needs_regeneration(visibility_config.get("shareSnapshot")):
+            visibility_config.pop("shareSnapshot", None)
         payload["visibilityConfig"] = visibility_config
         return payload
 
@@ -9053,11 +14463,296 @@ class AppService:
             raise HTTPException(status_code=403, detail="仅笔记拥有者可查看")
         return note
 
+    def get_user_note_preview(self, note_id: str, owner_user_id: str) -> dict:
+        """Return the owner's note preview with the canonical profile attached."""
+        note = self.get_user_note(note_id, owner_user_id)
+        payload = note.model_dump()
+        self._attach_owner_sales_profile_to_note(note, payload)
+        return payload
+
     def _validate_share_snapshot_url(self, url: str) -> str:
         value = self._clean_optional_text(url)
-        if not value or not self.media_storage_service.is_managed_url(value):
+        managed = bool(value and self.media_storage_service.is_managed_url(value))
+        # Development uses the mock backend for uploads, but server-rendered
+        # cards still need a real local JPG so they can be inspected and
+        # shared from the local API. The production path always uses the
+        # configured object/local storage service above.
+        if not managed and self.media_storage_service.storage_mode == "mock":
+            managed = value.startswith(f"{settings.media_public_url_prefix.rstrip('/')}/")
+        if not value or not managed:
             raise HTTPException(status_code=400, detail="分享图地址不是本系统媒体地址")
         return value
+
+    def _backend_share_card_storage(self) -> MediaStorageService:
+        """Return the storage that both renders source media and stores JPGs."""
+        if self.media_storage_service.storage_mode != "mock":
+            return self.media_storage_service
+        return MediaStorageService(
+            storage_mode="local",
+            storage_dir=settings.media_storage_dir,
+            public_url_prefix=settings.media_public_url_prefix,
+            public_base_url=settings.public_base_url,
+        )
+
+    def _delete_share_snapshot_url(self, url: str) -> bool:
+        """Delete a snapshot from the storage used by its current runtime."""
+        if self.media_storage_service.delete_url(url):
+            return True
+        backend_storage = self._backend_share_card_storage()
+        if backend_storage is self.media_storage_service:
+            return False
+        return backend_storage.delete_url(url)
+
+    @staticmethod
+    def _share_snapshot_is_current(snapshot: dict | None, *, source_revision: str, style_id: str, fingerprint: str) -> bool:
+        return bool(
+            isinstance(snapshot, dict)
+            and snapshot.get("status") == "ready"
+            and snapshot.get("renderer") == "backend"
+            and snapshot.get("url")
+            and str(snapshot.get("sourceRevision") or "") == str(source_revision or "")
+            and str(snapshot.get("styleId") or "") == str(style_id or "")
+            and str(snapshot.get("fingerprint") or "") == str(fingerprint or "")
+        )
+
+    @staticmethod
+    def _note_share_snapshot_needs_regeneration(snapshot: dict | None) -> bool:
+        return bool(
+            isinstance(snapshot, dict)
+            and snapshot.get("renderer") == "backend"
+            and str(snapshot.get("styleId") or "") == NOTE_SHARE_CARD_STYLE_ID
+            and str(snapshot.get("rendererRevision") or "") != NOTE_SHARE_CARD_RENDER_REVISION
+        )
+
+    @staticmethod
+    def _backend_share_fingerprint(entity_type: str, values: dict) -> str:
+        canonical = json.dumps(
+            {"entityType": entity_type, **values},
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        return f"backend:v1:{hashlib.sha256(canonical.encode('utf-8')).hexdigest()[:40]}"
+
+    def prepare_note_share_snapshot(self, note_id: str, payload: ShareSnapshotPrepareRequest) -> UserNote:
+        if payload.styleId != NOTE_SHARE_CARD_STYLE_ID:
+            raise HTTPException(status_code=400, detail="分享卡片模板版本无效")
+        if str(payload.sourceRevision or "") != str(payload.sourceRevision).strip():
+            raise HTTPException(status_code=400, detail="资料版本格式无效")
+        with SHARE_SNAPSHOT_LOCK:
+            note = self.get_user_note(note_id, payload.ownerUserId)
+            if note.shareState != "published":
+                raise HTTPException(status_code=409, detail="资料尚未发布，不能生成客户分享图")
+            source_revision = str(note.revision or 0)
+            if str(payload.sourceRevision or "") != source_revision:
+                raise HTTPException(status_code=409, detail="资料版本已变化，请重新生成分享图")
+            self._enforce_content_safety(
+                "user_note",
+                note.id,
+                {
+                    "title": note.title,
+                    "summary": note.summary,
+                    "body": note.body,
+                    "contentBlocks": note.contentBlocks,
+                    "locationText": note.locationText,
+                    "tags": self._note_tags(note),
+                    "visibilityConfig": note.visibilityConfig,
+                },
+                owner_user_id=note.ownerUserId,
+                content_revision=source_revision,
+                for_publish=True,
+                persist=False,
+            )
+            config = dict(note.visibilityConfig or {})
+            share_fingerprint = self._backend_share_fingerprint(
+                "note",
+                {
+                    "id": note.id,
+                    "rendererRevision": NOTE_SHARE_CARD_RENDER_REVISION,
+                    "revision": source_revision,
+                    "title": note.title,
+                    "summary": note.summary,
+                    "body": note.body,
+                    "coverUrl": note.coverUrl,
+                    "media": note.media,
+                    "contentBlocks": note.contentBlocks,
+                    "locationText": note.locationText,
+                    "visibilityConfig": {
+                        key: value
+                        for key, value in config.items()
+                        if key not in {"shareSnapshot", "shareSnapshotHistory"}
+                    },
+                },
+            )
+            current = config.get("shareSnapshot")
+            if self._share_snapshot_is_current(
+                current,
+                source_revision=source_revision,
+                style_id=payload.styleId,
+                fingerprint=share_fingerprint,
+            ):
+                return note
+            storage = self._backend_share_card_storage()
+            try:
+                content = self.share_card_renderer.render_note(
+                    note,
+                    owner=self.repo.get_user(note.ownerUserId),
+                    storage_service=storage,
+                    include_owner_contacts=True,
+                )
+            except ShareCardRenderError as exc:
+                raise HTTPException(status_code=503, detail=str(exc)) from exc
+            url = self.process_and_store_media(
+                media_id=f"share_note_{note.id}_{source_revision}",
+                media_type="image",
+                content=content,
+                content_type="image/jpeg",
+                filename=f"{note.id}.jpg",
+                owner_user_id=note.ownerUserId,
+                ref_type="share_snapshot",
+                ref_id=note.id,
+                usage="current",
+                storage_service=storage,
+                preserve_share_format=True,
+            )
+            if not storage.is_managed_url(url):
+                raise HTTPException(status_code=503, detail="分享图存储地址不可用")
+            generated_at = now_iso()
+            previous_url = str((current or {}).get("url") or "") if isinstance(current, dict) else ""
+            snapshot, history = self._build_share_snapshot(
+                current,
+                config.get("shareSnapshotHistory"),
+                entity_type="note",
+                source_revision=source_revision,
+                fingerprint=share_fingerprint,
+                url=url,
+                style_id=payload.styleId,
+                generated_at=generated_at,
+            )
+            snapshot.update({
+                "renderer": "backend",
+                "rendererRevision": NOTE_SHARE_CARD_RENDER_REVISION,
+                "width": SHARE_CARD_WIDTH,
+                "height": SHARE_CARD_HEIGHT,
+                "contentType": "image/jpeg",
+            })
+            config["shareSnapshot"] = snapshot
+            config["shareSnapshotHistory"] = history
+            note.visibilityConfig = self._normalize_note_visibility_config(config)
+            self.repo.save_user_note(note)
+            if previous_url and previous_url != url:
+                previous_asset = self.repo.get_media_asset_by_url(previous_url)
+                if previous_asset:
+                    self.repo.delete_media_asset_refs(previous_asset.id, "share_snapshot", note.id, "current")
+            self._sync_share_snapshot_media_ref(url, note.ownerUserId, note.id)
+            self._invalidate_card_list_cache(note.ownerUserId)
+            return note
+
+    def prepare_mutual_help_task_share_snapshot(
+        self,
+        task_id: str,
+        *,
+        style_id: str = MUTUAL_TASK_SHARE_CARD_STYLE_ID,
+        fingerprint: str = "",
+    ) -> dict:
+        if style_id != MUTUAL_TASK_SHARE_CARD_STYLE_ID:
+            raise HTTPException(status_code=400, detail="分享卡片模板版本无效")
+        with SHARE_SNAPSHOT_LOCK:
+            task = self._get_mutual_help_task_or_404(task_id)
+            if task.status != "published" or task.remaining == 0:
+                raise HTTPException(status_code=410, detail="任务已结束，不能生成分享图")
+            source_revision = str(task.updatedAt or task.createdAt or "0")
+            safe_fingerprint = self._backend_share_fingerprint(
+                "mutual_help_task",
+                {
+                    "id": task.id,
+                    "revision": source_revision,
+                    "taskKind": task.taskKind,
+                    "title": task.title,
+                    "description": task.description,
+                    "contentBlocks": task.contentBlocks,
+                    "acceptanceCriteriaBlocks": task.acceptanceCriteriaBlocks,
+                    "taskLinks": task.taskLinks,
+                    "shortLink": task.shortLink,
+                    "woolPolicy": task.woolPolicy,
+                    "rewardPoints": task.rewardPoints,
+                    "executorReward": task.executorReward,
+                    "deadlineText": task.deadlineText,
+                },
+            )
+            current = task.shareSnapshot if isinstance(task.shareSnapshot, dict) else {}
+            if self._share_snapshot_is_current(
+                current,
+                source_revision=source_revision,
+                style_id=style_id,
+                fingerprint=safe_fingerprint,
+            ):
+                return {"task": self._mutual_task_payload(task), "snapshot": current, "reused": True}
+            self._enforce_content_safety(
+                "mutual_help_task",
+                task.id,
+                {
+                    "title": task.title,
+                    "category": task.category,
+                    "description": task.description,
+                    "contentBlocks": task.contentBlocks,
+                    "acceptanceCriteriaBlocks": task.acceptanceCriteriaBlocks,
+                    "taskLinks": task.taskLinks,
+                    "shortLink": task.shortLink,
+                    "woolPolicy": task.woolPolicy,
+                },
+                owner_user_id=task.ownerUserId,
+                content_revision=source_revision,
+                for_publish=True,
+                persist=False,
+            )
+            storage = self._backend_share_card_storage()
+            try:
+                content = self.share_card_renderer.render_mutual_task(task, storage_service=storage)
+            except ShareCardRenderError as exc:
+                raise HTTPException(status_code=503, detail=str(exc)) from exc
+            url = self.process_and_store_media(
+                media_id=f"share_task_{task.id}_{source_revision}",
+                media_type="image",
+                content=content,
+                content_type="image/jpeg",
+                filename=f"{task.id}.jpg",
+                owner_user_id=task.ownerUserId,
+                ref_type="share_snapshot",
+                ref_id=task.id,
+                usage="current",
+                storage_service=storage,
+                preserve_share_format=True,
+            )
+            if not storage.is_managed_url(url):
+                raise HTTPException(status_code=503, detail="分享图存储地址不可用")
+            generated_at = now_iso()
+            previous_url = str(current.get("url") or "")
+            snapshot, history = self._build_share_snapshot(
+                current,
+                task.shareSnapshotHistory,
+                entity_type="mutual_help_task",
+                source_revision=source_revision,
+                fingerprint=safe_fingerprint,
+                url=url,
+                style_id=style_id,
+                generated_at=generated_at,
+            )
+            snapshot.update({
+                "renderer": "backend",
+                "width": SHARE_CARD_WIDTH,
+                "height": SHARE_CARD_HEIGHT,
+                "contentType": "image/jpeg",
+            })
+            task.shareSnapshot = snapshot
+            task.shareSnapshotHistory = history
+            self.repo.save_mutual_help_task(task)
+            if previous_url and previous_url != url:
+                previous_asset = self.repo.get_media_asset_by_url(previous_url)
+                if previous_asset:
+                    self.repo.delete_media_asset_refs(previous_asset.id, "share_snapshot", task.id, "current")
+            self._sync_share_snapshot_media_ref(url, task.ownerUserId, task.id)
+            return {"task": self._mutual_task_payload(task), "snapshot": snapshot, "reused": False}
 
     def _share_snapshot_delete_after(self, generated_at: str) -> str:
         try:
@@ -9102,9 +14797,28 @@ class AppService:
         return snapshot, next_history
 
     def save_note_share_snapshot(self, note_id: str, payload: ShareSnapshotRequest) -> UserNote:
+        if payload.styleId == NOTE_SHARE_CARD_STYLE_ID:
+            raise HTTPException(status_code=410, detail="资料分享图已切换为后端生成，请使用准备接口")
         note = self.get_user_note(note_id, payload.ownerUserId)
         if note.shareState != "published":
             raise HTTPException(status_code=409, detail="资料尚未发布，不能保存客户分享图")
+        self._enforce_content_safety(
+            "user_note",
+            note.id,
+            {
+                "title": note.title,
+                "summary": note.summary,
+                "body": note.body,
+                "contentBlocks": note.contentBlocks,
+                "locationText": note.locationText,
+                "tags": self._note_tags(note),
+                "visibilityConfig": note.visibilityConfig,
+            },
+            owner_user_id=note.ownerUserId,
+            content_revision=str(note.revision or 0),
+            for_publish=True,
+            persist=False,
+        )
         if str(payload.sourceRevision or "") != str(note.revision or 0):
             raise HTTPException(status_code=409, detail="资料版本已变化，请重新生成分享图")
         generated_at = self._clean_optional_text(payload.generatedAt) or now_iso()
@@ -9137,6 +14851,22 @@ class AppService:
         showcase = self.get_showcase_for_owner(showcase_id, payload.ownerUserId)
         if showcase.status != "published":
             raise HTTPException(status_code=409, detail="合集尚未发布，不能保存客户分享图")
+        self._enforce_content_safety(
+            "showcase",
+            showcase.id,
+            {
+                "name": showcase.name,
+                "description": showcase.description,
+                "shareTitle": showcase.shareTitle,
+                "displayConfig": showcase.displayConfig,
+                "contactConfig": showcase.contactConfig,
+                "items": [item.model_dump(mode="json") for item in self._valid_showcase_items(showcase)],
+            },
+            owner_user_id=showcase.ownerUserId,
+            content_revision=str(showcase.snapshotVersion or 0),
+            for_publish=True,
+            persist=False,
+        )
         source_revision = f"{showcase.snapshotVersion or 0}:{showcase.updatedAt}"
         if str(payload.sourceRevision or "") != source_revision:
             raise HTTPException(status_code=409, detail="合集版本已变化，请重新生成分享图")
@@ -9187,8 +14917,12 @@ class AppService:
             snapshot = showcase.shareSnapshot if isinstance(showcase.shareSnapshot, dict) else {}
             if snapshot.get("url"):
                 current_urls.add(str(snapshot["url"]))
+        for task in getattr(state, "mutual_help_tasks", []) or []:
+            snapshot = task.shareSnapshot if isinstance(task.shareSnapshot, dict) else {}
+            if snapshot.get("url"):
+                current_urls.add(str(snapshot["url"]))
 
-        result = {"notes": 0, "showcases": 0, "deletedFiles": 0, "failedFiles": 0}
+        result = {"notes": 0, "showcases": 0, "tasks": 0, "deletedFiles": 0, "failedFiles": 0}
 
         def clean_history(history: list[dict] | None) -> tuple[list[dict], bool, int, int]:
             kept: list[dict] = []
@@ -9213,7 +14947,7 @@ class AppService:
                     # content. Remove only the expired history pointer.
                     changed = True
                     continue
-                if self.media_storage_service.delete_url(url):
+                if self._delete_share_snapshot_url(url):
                     if asset:
                         asset.status = "deleted"
                         asset.updatedAt = now_iso()
@@ -9250,9 +14984,19 @@ class AppService:
             result["showcases"] += 1
             result["deletedFiles"] += deleted
             result["failedFiles"] += failed
+        for task in getattr(state, "mutual_help_tasks", []) or []:
+            history, changed, deleted, failed = clean_history(task.shareSnapshotHistory)
+            if not changed:
+                result["failedFiles"] += failed
+                continue
+            task.shareSnapshotHistory = history
+            self.repo.save_mutual_help_task(task)
+            result["tasks"] += 1
+            result["deletedFiles"] += deleted
+            result["failedFiles"] += failed
         return result
 
-    def get_public_note(self, note_id: str) -> dict:
+    def get_public_note(self, note_id: str, viewer_user_id: str | None = None) -> dict:
         note = self.repo.get_user_note(note_id)
         if not note:
             # Public links historically used card IDs. The old card page is
@@ -9265,7 +15009,26 @@ class AppService:
             raise HTTPException(status_code=404, detail="笔记不存在")
         if note.shareState != "published":
             raise HTTPException(status_code=404, detail="资料尚未发布")
+        self._enforce_content_safety(
+            "user_note",
+            note.id,
+            {
+                "title": note.title,
+                "summary": note.summary,
+                "body": note.body,
+                "contentBlocks": note.contentBlocks,
+                "locationText": note.locationText,
+                "tags": self._note_tags(note),
+                "visibilityConfig": note.visibilityConfig,
+            },
+            owner_user_id=note.ownerUserId,
+            content_revision=str(note.revision or 0),
+            for_publish=True,
+            persist=False,
+        )
         payload = note.model_dump()
+        for key in ("isPinned", "pinnedAt", "pinnedBy"):
+            payload.pop(key, None)
         # Public pages must use the same normalized communication defaults as
         # newly saved notes. This also keeps older notes with a sparse config
         # from silently losing their customer-page actions.
@@ -9277,16 +15040,72 @@ class AppService:
         payload["sourceRefs"] = []
         payload["importBatchId"] = None
         payload["sourceCardId"] = None
+        original_structured = note.visibilityConfig.get("structuredData") if isinstance(note.visibilityConfig, dict) and isinstance(note.visibilityConfig.get("structuredData"), dict) else {}
         public_snapshot = payload["visibilityConfig"].get("shareSnapshot")
         if not (
             isinstance(public_snapshot, dict)
             and public_snapshot.get("status") == "ready"
             and public_snapshot.get("url")
             and str(public_snapshot.get("sourceRevision") or "") == str(note.revision or "")
-            and str(public_snapshot.get("styleId") or "") == SHARE_SNAPSHOT_STYLE_ID
+            and str(public_snapshot.get("styleId") or "") in SHARE_SNAPSHOT_STYLE_IDS
+            and (
+                str(public_snapshot.get("styleId") or "") != NOTE_SHARE_CARD_STYLE_ID
+                or public_snapshot.get("renderer") == "backend"
+            )
         ):
             payload["visibilityConfig"].pop("shareSnapshot", None)
         self._attach_owner_sales_profile_to_public_note(note, payload)
+        private_business_contacts = {
+            str(value).strip()
+            for value in [
+                (payload.get("ownerProfile") or {}).get("phone"),
+                (payload.get("ownerProfile") or {}).get("wechat"),
+                (payload.get("ownerProfile") or {}).get("email"),
+                (payload.get("ownerProfile") or {}).get("website"),
+                original_structured.get("phone"),
+                original_structured.get("contactPhone"),
+                original_structured.get("wechat"),
+                original_structured.get("contactWechat"),
+                original_structured.get("wechatQrUrl"),
+                original_structured.get("wechatQrCodeUrl"),
+                original_structured.get("qrCodeUrl"),
+                original_structured.get("email"),
+                original_structured.get("website"),
+            ]
+            if str(value or "").strip()
+        }
+        business_config = payload["visibilityConfig"] if isinstance(payload.get("visibilityConfig"), dict) else {}
+        business_market = business_config.get("cardType") == "business_card" and isinstance(business_config.get("businessOpportunity"), dict)
+        business_opportunity = business_config.get("businessOpportunity") or {}
+        market_enabled = business_market and self._business_card_market_enabled(business_opportunity)
+        viewer = str(viewer_user_id or "").strip()
+        is_owner = bool(viewer and viewer == note.ownerUserId)
+        unlock = self.repo.find_resource_unlock_record(viewer, "business_card_contact_unlock", "business_card", note.id) if viewer and not is_owner else None
+        contact_unlocked = is_owner or bool(unlock and self._is_resource_unlock_active(unlock, now_iso()))
+        if market_enabled and not is_owner:
+            # A legacy/static share image may contain contacts from before the
+            # market gate existed. Never expose that image to another viewer;
+            # the detail API is the only contact-unlock boundary.
+            payload["visibilityConfig"].pop("shareSnapshot", None)
+        if market_enabled and not contact_unlocked:
+            profile = dict(payload.get("ownerProfile") or {})
+            for key in ("phone", "wechat", "wechatQrUrl", "email", "website"):
+                profile[key] = ""
+            payload["ownerProfile"] = profile
+            structured = dict(business_config.get("structuredData") or {})
+            for key in ("phone", "contactPhone", "contact", "wechat", "contactWechat", "wechatQrUrl", "wechatQrCodeUrl", "qrCodeUrl", "email", "mail", "website", "companyWebsite", "websiteUrl"):
+                structured.pop(key, None)
+            business_config["structuredData"] = structured
+            payload["body"] = self._redact_public_contact_values(payload.get("body"), private_business_contacts)
+            for key in ("title", "summary", "locationText"):
+                payload[key] = self._redact_public_contact_values(payload.get(key), private_business_contacts)
+            payload["visibilityConfig"] = self._redact_public_contact_values(
+                payload["visibilityConfig"],
+                private_business_contacts,
+            )
+            payload["businessCardContactLocked"] = True
+        else:
+            payload["businessCardContactLocked"] = False
         self._attach_business_card_featured_resources(note, payload)
         self._sanitize_public_property_note_text(payload)
         public_blocks = self._public_note_content_blocks(note, payload["media"], body=payload.get("body"))
@@ -9303,6 +15122,8 @@ class AppService:
                     "sortOrder": 0,
                 })
         for index, block in enumerate(public_blocks):
+            if market_enabled and not contact_unlocked:
+                block = self._redact_public_contact_values(block, private_business_contacts)
             block["sortOrder"] = index
         payload["contentBlocks"] = public_blocks
         return payload
@@ -9324,6 +15145,23 @@ class AppService:
         # Incomplete notes still fail with the same explicit safety error.
         if note.status not in {"draft", "active"}:
             raise HTTPException(status_code=400, detail="资料尚未完成，不能发布")
+        next_revision = str(max(int(note.revision or 0), 0) + 1)
+        self._enforce_content_safety(
+            "user_note",
+            note.id,
+            {
+                "title": note.title,
+                "summary": note.summary,
+                "body": note.body,
+                "contentBlocks": note.contentBlocks,
+                "locationText": note.locationText,
+                "tags": self._note_tags(note),
+                "visibilityConfig": note.visibilityConfig,
+            },
+            owner_user_id=note.ownerUserId,
+            content_revision=next_revision,
+            for_publish=True,
+        )
         if note.shareState == "published":
             return note
         self._assert_note_public_safe(note)
@@ -9372,6 +15210,23 @@ class AppService:
         config = note.visibilityConfig if isinstance(note.visibilityConfig, dict) else {}
         sensitive = re.compile(r"上游|二房东|供应商|成本|佣金|进货|密码锁|门锁密码")
         structured = config.get("structuredData") if isinstance(config.get("structuredData"), dict) else {}
+        if config.get("cardType") == "business_card" and isinstance(config.get("businessOpportunity"), dict):
+            opportunity = config.get("businessOpportunity") or {}
+            opportunity_enabled = self._business_card_market_enabled(opportunity)
+            keywords = structured.get("serviceKeywords")
+            if not isinstance(keywords, list):
+                keywords = [item.strip() for item in re.split(r"[，,、\n]", str(keywords or "")) if item.strip()]
+            industry = str(
+                opportunity.get("industry")
+                or structured.get("industry")
+                or ""
+            ).strip()
+            if not keywords:
+                raise HTTPException(status_code=400, detail="请至少填写1项“我能提供”内容")
+            if len(keywords) > 6:
+                raise HTTPException(status_code=400, detail="我能提供最多填写6项")
+            if opportunity_enabled and not industry:
+                raise HTTPException(status_code=400, detail="请选择所属行业")
         if config.get("cardType") == "property_listing":
             text = "\n".join(
                 str(value or "")
@@ -9421,12 +15276,25 @@ class AppService:
             item_type = str(item_config.get("cardType") or "text_note")
             public_media = self._normalize_note_media(item.media, public_only=True)
             cover_url = item.coverUrl or self._first_media_url(public_media)
+            preview_media = [
+                {
+                    "id": media.get("id"),
+                    "type": media.get("type"),
+                    "url": media.get("url"),
+                    "name": media.get("name") or media.get("title") or "",
+                    "title": media.get("title") or media.get("name") or "",
+                    "mimeType": media.get("mimeType") or media.get("contentType") or "",
+                }
+                for media in public_media[:6]
+                if media.get("url")
+            ]
             featured.append({
                 "id": item.id,
                 "title": item.title,
                 "summary": item.summary or item.body[:120],
                 "coverUrl": cover_url,
                 "cardType": item_type,
+                "media": preview_media,
             })
         payload["featuredResources"] = featured
 
@@ -9439,12 +15307,25 @@ class AppService:
             "opportunityAlerts",
             "radarProfiles",
             "internalNotes",
+            "contactInvalidReports",
             "shareSnapshotHistory",
             "marketingRoute",
         ):
             source.pop(key, None)
+        if self._note_share_snapshot_needs_regeneration(source.get("shareSnapshot")):
+            source.pop("shareSnapshot", None)
         structured = source.get("structuredData") if isinstance(source.get("structuredData"), dict) else {}
         source["structuredData"] = self._public_clone_structured_data(structured)
+        business_opportunity = source.get("businessOpportunity")
+        if isinstance(business_opportunity, dict):
+            business_opportunity = dict(business_opportunity)
+            business_opportunity.pop("contactInvalidReports", None)
+            if not self._business_card_market_enabled(business_opportunity, "intent"):
+                structured = dict(source.get("structuredData") or {})
+                structured.pop("cooperationIntent", None)
+                source["structuredData"] = structured
+                business_opportunity.pop("cooperationIntent", None)
+            source["businessOpportunity"] = business_opportunity
         return self._sanitize_public_config_value(source)
 
     def _sanitize_public_config_value(self, value):
@@ -9462,10 +15343,23 @@ class AppService:
             lines.append(re.sub(r"(?<!\d)1[3-9]\d{9}(?!\d)", "[联系方式已移除]", line))
         return "\n".join(lines)
 
-    def _attach_owner_sales_profile_to_public_note(self, note: UserNote, payload: dict) -> None:
+    @staticmethod
+    def _redact_public_contact_values(value, contacts: set[str]):
+        if isinstance(value, dict):
+            return {key: AppService._redact_public_contact_values(child, contacts) for key, child in value.items()}
+        if isinstance(value, list):
+            return [AppService._redact_public_contact_values(child, contacts) for child in value]
+        if not isinstance(value, str):
+            return value
+        result = value
+        for contact in sorted((item for item in contacts if len(item) >= 3), key=len, reverse=True):
+            result = result.replace(contact, "[联系方式已隐藏]")
+        return result
+
+    def _owner_sales_profile_for_note(self, note: UserNote) -> dict:
         owner = self.repo.get_user(note.ownerUserId)
         if not owner:
-            return
+            return {}
         profile = dict(owner.salesProfile or {})
         profile.update({
             "displayName": profile.get("displayName") or owner.nickname,
@@ -9473,6 +15367,12 @@ class AppService:
             "phone": profile.get("phone") or owner.phone or "",
             "wechat": profile.get("wechat") or owner.wechat or "",
         })
+        return profile
+
+    def _attach_owner_sales_profile_to_note(self, note: UserNote, payload: dict) -> None:
+        profile = self._owner_sales_profile_for_note(note)
+        if not profile:
+            return
         config = payload.get("visibilityConfig") if isinstance(payload.get("visibilityConfig"), dict) else {}
         conversion = config.get("conversionConfig") if isinstance(config.get("conversionConfig"), dict) else {}
         if conversion.get("showContactPhone") is False:
@@ -9481,6 +15381,11 @@ class AppService:
             profile["wechat"] = ""
             profile["wechatQrUrl"] = ""
         payload["ownerProfile"] = profile
+
+    def _attach_owner_sales_profile_to_public_note(self, note: UserNote, payload: dict) -> None:
+        self._attach_owner_sales_profile_to_note(note, payload)
+        if not payload.get("ownerProfile"):
+            return
         self._attach_owner_contact_to_public_note(note, payload)
 
     def _attach_owner_contact_to_public_note(self, note: UserNote, payload: dict) -> None:
@@ -9592,6 +15497,21 @@ class AppService:
             createdAt=now,
             updatedAt=now,
         )
+        self._enforce_content_safety(
+            "showcase",
+            showcase.id,
+            {
+                "name": showcase.name,
+                "description": showcase.description,
+                "shareTitle": showcase.shareTitle,
+                "displayConfig": showcase.displayConfig,
+                "contactConfig": showcase.contactConfig,
+                "items": [item.model_dump(mode="json") for item in showcase.items],
+            },
+            owner_user_id=showcase.ownerUserId,
+            content_revision=showcase.updatedAt,
+            for_publish=False,
+        )
         self.repo.save_showcase_page(showcase)
         self._invalidate_showcase_list_cache(payload.ownerUserId)
         self._invalidate_customer_intelligence_cache(payload.ownerUserId)
@@ -9618,6 +15538,21 @@ class AppService:
         showcase.displayConfig = {**self._normalize_showcase_display_config(payload.displayConfig), "sceneType": scene_type}
         showcase.items = self._normalize_showcase_items(payload.ownerUserId, payload.items, scene_type)
         showcase.updatedAt = now_iso()
+        self._enforce_content_safety(
+            "showcase",
+            showcase.id,
+            {
+                "name": showcase.name,
+                "description": showcase.description,
+                "shareTitle": showcase.shareTitle,
+                "displayConfig": showcase.displayConfig,
+                "contactConfig": showcase.contactConfig,
+                "items": [item.model_dump(mode="json") for item in showcase.items],
+            },
+            owner_user_id=showcase.ownerUserId,
+            content_revision=showcase.updatedAt,
+            for_publish=showcase.status == "published",
+        )
         self.repo.save_showcase_page(showcase)
         self._invalidate_showcase_list_cache(payload.ownerUserId)
         self._invalidate_customer_intelligence_cache(payload.ownerUserId)
@@ -9631,10 +15566,42 @@ class AppService:
         if not valid_items:
             raise HTTPException(status_code=400, detail="请至少选择一条有效资料后再发布")
         now = now_iso()
+        next_version = (showcase.snapshotVersion or 0) + 1
+        self._enforce_content_safety(
+            "showcase",
+            showcase.id,
+            {
+                "name": showcase.name,
+                "description": showcase.description,
+                "shareTitle": showcase.shareTitle,
+                "displayConfig": showcase.displayConfig,
+                "contactConfig": showcase.contactConfig,
+                "items": [item.model_dump(mode="json") for item in valid_items],
+            },
+            owner_user_id=showcase.ownerUserId,
+            content_revision=str(next_version),
+            for_publish=True,
+        )
         for item in valid_items:
             note = self.repo.get_user_note(item.noteId)
             if not note or note.status == "deleted":
                 continue
+            self._enforce_content_safety(
+                "user_note",
+                note.id,
+                {
+                    "title": note.title,
+                    "summary": note.summary,
+                    "body": note.body,
+                    "contentBlocks": note.contentBlocks,
+                    "locationText": note.locationText,
+                    "tags": self._note_tags(note),
+                    "visibilityConfig": note.visibilityConfig,
+                },
+                owner_user_id=note.ownerUserId,
+                content_revision=str(max(int(note.revision or 0), 0) + 1),
+                for_publish=True,
+            )
             if note.shareState != "published":
                 self._assert_note_public_safe(note)
                 note.shareState = "published"
@@ -9653,7 +15620,6 @@ class AppService:
         showcase.items = valid_items
         showcase.publishedAt = showcase.publishedAt or now
         showcase.updatedAt = now
-        next_version = (showcase.snapshotVersion or 0) + 1
         showcase.publicSnapshot = self._build_showcase_public_snapshot(showcase, now, next_version)
         showcase.snapshotVersion = next_version
         showcase.snapshotCreatedAt = now
@@ -9735,6 +15701,43 @@ class AppService:
         showcase = self.repo.get_showcase_page(showcase_id)
         if not showcase or showcase.status != "published":
             raise HTTPException(status_code=404, detail="展示页不存在或未发布")
+        self._enforce_content_safety(
+            "showcase",
+            showcase.id,
+            {
+                "name": showcase.name,
+                "description": showcase.description,
+                "shareTitle": showcase.shareTitle,
+                "displayConfig": showcase.displayConfig,
+                "contactConfig": showcase.contactConfig,
+                "items": [item.model_dump(mode="json") for item in self._valid_showcase_items(showcase)],
+            },
+            owner_user_id=showcase.ownerUserId,
+            content_revision=str(showcase.snapshotVersion or 0),
+            for_publish=True,
+            persist=False,
+        )
+        for item in self._valid_showcase_items(showcase):
+            note = self.repo.get_user_note(item.noteId)
+            if not note or note.status == "deleted":
+                continue
+            self._enforce_content_safety(
+                "user_note",
+                note.id,
+                {
+                    "title": note.title,
+                    "summary": note.summary,
+                    "body": note.body,
+                    "contentBlocks": note.contentBlocks,
+                    "locationText": note.locationText,
+                    "tags": self._note_tags(note),
+                    "visibilityConfig": note.visibilityConfig,
+                },
+                owner_user_id=note.ownerUserId,
+                content_revision=str(note.revision or 0),
+                for_publish=True,
+                persist=False,
+            )
         snapshot = showcase.publicSnapshot if isinstance(showcase.publicSnapshot, dict) else {}
         scene_type = normalize_scene_type(showcase.sceneType, (showcase.displayConfig or {}).get("activeCategory"))
         if snapshot and isinstance(snapshot.get("items"), list) and snapshot.get("templateId") == normalize_template_id(scene_type, showcase.templateId):
@@ -11936,6 +17939,21 @@ class AppService:
             raise HTTPException(status_code=409, detail="资料已被其他页面更新，请刷新后再保存")
         if not payload.title.strip():
             raise HTTPException(status_code=400, detail="标题不能为空")
+        self._enforce_content_safety(
+            "user_note",
+            note.id,
+            {
+                "title": payload.title,
+                "summary": payload.summary,
+                "body": payload.body,
+                "contentBlocks": [item.model_dump(mode="json") if hasattr(item, "model_dump") else item for item in (payload.contentBlocks or [])],
+                "locationText": payload.locationText,
+                "visibilityConfig": payload.visibilityConfig,
+            },
+            owner_user_id=note.ownerUserId,
+            content_revision=str(max(int(note.revision or 0), 0) + 1),
+            for_publish=False,
+        )
         if note.status == "draft":
             # Saving from any of the five editors confirms that the owner has
             # taken over the imported draft.  Keep it private until the
@@ -13914,7 +19932,15 @@ class AppService:
         ]
         return [{"label": label, "value": str(value)} for label, value in rows if value]
 
-    def list_orders(self, user_id: str, role: str, note_id: str | None = None) -> dict:
+    def list_orders(
+        self,
+        user_id: str,
+        role: str,
+        note_id: str | None = None,
+        cursor: str | None = None,
+        limit: int | None = None,
+        summary_only: bool = False,
+    ) -> dict:
         if role not in {"buyer", "seller"}:
             raise HTTPException(status_code=400, detail="订单角色不正确")
         rows = [
@@ -13925,7 +19951,8 @@ class AppService:
         ]
         if note_id:
             rows = [item for item in rows if item["noteId"] == note_id]
-        return {
+        today = now_iso()[:10]
+        result = {
             "role": role,
             "summary": {
                 "total": len(rows),
@@ -13935,9 +19962,16 @@ class AppService:
                 "cancelled": sum(1 for item in rows if item["status"] == "cancelled"),
                 "relay": sum(1 for item in rows if item["actionKey"] == "relay-intent"),
                 "order": sum(1 for item in rows if item["actionKey"] == "order-intent"),
+                "todayRelay": sum(1 for item in rows if item["actionKey"] == "relay-intent" and item["createdAt"][:10] == today),
+                "todayOrder": sum(1 for item in rows if item["actionKey"] == "order-intent" and item["createdAt"][:10] == today),
             },
-            "orders": rows,
+            "orders": [] if summary_only else rows,
         }
+        page = None if summary_only else _page_rows(rows, cursor, limit)
+        if page is not None:
+            result["orders"] = page["items"]
+            result.update({key: value for key, value in page.items() if key != "items"})
+        return result
 
     def get_order(self, order_id: str, user_id: str) -> dict:
         note, action, role = self._get_order_for_user(order_id, user_id)
@@ -14801,6 +20835,21 @@ class AppService:
             createdAt=now,
             updatedAt=now,
         )
+        self._enforce_content_safety(
+            "card",
+            card.id,
+            {
+                "title": card.title,
+                "detailText": card.detailText,
+                "projectName": card.projectName,
+                "locationText": card.locationText,
+                "relayNotice": card.relayNotice,
+                "sourceUrl": card.sourceUrl,
+            },
+            owner_user_id=card.ownerUserId,
+            content_revision=card.updatedAt,
+            for_publish=False,
+        )
         self.repo.save_card(card)
         self._invalidate_card_list_cache(payload.ownerUserId)
         return card
@@ -14823,6 +20872,21 @@ class AppService:
             else:
                 setattr(card, key, value)
         card.updatedAt = now
+        self._enforce_content_safety(
+            "card",
+            card.id,
+            {
+                "title": card.title,
+                "detailText": card.detailText,
+                "projectName": card.projectName,
+                "locationText": card.locationText,
+                "relayNotice": card.relayNotice,
+                "sourceUrl": card.sourceUrl,
+            },
+            owner_user_id=card.ownerUserId,
+            content_revision=card.updatedAt,
+            for_publish=card.status == "published",
+        )
         self.repo.save_card(card)
         self._invalidate_card_list_cache(payload.ownerUserId)
         return card
@@ -14834,6 +20898,21 @@ class AppService:
         if card.ownerUserId != user_id:
             raise HTTPException(status_code=403, detail="仅卡片拥有者可发布")
         now = now_iso()
+        self._enforce_content_safety(
+            "card",
+            card.id,
+            {
+                "title": card.title,
+                "detailText": card.detailText,
+                "projectName": card.projectName,
+                "locationText": card.locationText,
+                "relayNotice": card.relayNotice,
+                "sourceUrl": card.sourceUrl,
+            },
+            owner_user_id=card.ownerUserId,
+            content_revision=card.updatedAt,
+            for_publish=True,
+        )
         card.status = "published"
         card.publishedAt = now
         card.updatedAt = now

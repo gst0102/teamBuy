@@ -14,13 +14,19 @@ from psycopg.rows import dict_row, tuple_row
 from app.core.database import normalize_database_url
 from app.models.domain import (
     AppState,
+    AutomationCardAsset,
     AutomationDevice,
     AutomationGroupCandidate,
+    AutomationGroupContentPlan,
     AutomationTask,
     Card,
     Category,
+    ContentModerationAssessment,
+    ContentModerationAuditLog,
+    ContentSafetyRule,
     CustomerRadarSummary,
     CustomerAction,
+    GroupResource,
     ImportBatch,
     ImportNotification,
     LeadReminder,
@@ -53,6 +59,11 @@ from app.models.domain import (
     MutualPointLedger,
     MutualRechargeOrder,
     MutualActivityEvent,
+    MutualHelpTask,
+    MutualHelpSubmission,
+    MutualHelpConversation,
+    MutualHelpChatMessage,
+    MutualPointWithdrawal,
     ReferralRelation,
     ReferralReward,
     ReferralWithdrawal,
@@ -79,7 +90,41 @@ from app.models.domain import (
     WechatSubscriptionDelivery,
 )
 from app.services.text_safety import strip_unicode_surrogates
-from app.services.time_utils import parse_iso
+from app.services.time_utils import now_iso, parse_iso
+
+
+def _business_opportunity_market_enabled(opportunity: dict, mode: str) -> bool:
+    """Return whether one independently published business-card surface is public.
+
+    The scoped flags are optional for backwards compatibility with cards saved
+    before the two-surface opt-in existed. Once either scoped flag is present,
+    a missing mode is treated as private instead of falling back to the shared
+    legacy gate.
+    """
+    scoped_keys = {
+        "resource": ("resourceEnabled", "resourceDiscoverable"),
+        "intent": ("intentEnabled", "intentDiscoverable"),
+    }
+    enabled_key, discoverable_key = scoped_keys.get(mode, scoped_keys["resource"])
+    has_any_scoped = any(key in opportunity for keys in scoped_keys.values() for key in keys)
+    has_mode_scoped = enabled_key in opportunity or discoverable_key in opportunity
+    if has_mode_scoped:
+        return opportunity.get(enabled_key) is not False and opportunity.get(discoverable_key) is not False
+    if has_any_scoped:
+        return False
+    has_legacy_flags = "enabled" in opportunity or "discoverable" in opportunity
+    return has_legacy_flags and opportunity.get("enabled") is not False and opportunity.get("discoverable") is not False
+
+
+def _pin_sort_key(item) -> tuple[bool, str, str, str, str]:
+    """Keep promoted rows ahead of normal rows with deterministic tie breaks."""
+    return (
+        bool(getattr(item, "isPinned", False)),
+        str(getattr(item, "pinnedAt", None) or ""),
+        str(getattr(item, "updatedAt", None) or ""),
+        str(getattr(item, "createdAt", None) or ""),
+        str(getattr(item, "id", "") or ""),
+    )
 
 
 class AppRepository(Protocol):
@@ -169,6 +214,20 @@ class AppRepository(Protocol):
     def list_all_user_notes(self, include_deleted: bool = False) -> list[UserNote]:
         ...
 
+    def list_business_opportunity_notes_page(
+        self,
+        *,
+        keyword: str | None = None,
+        industry: str | None = None,
+        sub_industry: str | None = None,
+        city: str | None = None,
+        mode: str = "capability",
+        viewer_user_id: str | None = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> list[UserNote]:
+        ...
+
     def get_user_note(self, note_id: str) -> UserNote | None:
         ...
 
@@ -191,6 +250,28 @@ class AppRepository(Protocol):
         ...
 
     def list_live_qr_codes(self) -> list[LiveQrCode]:
+        ...
+
+    def get_group_resource(self, resource_id: str) -> GroupResource | None:
+        ...
+
+    def list_group_resources(self, owner_user_id: str | None = None) -> list[GroupResource]:
+        ...
+
+    def list_group_resources_page(
+        self,
+        *,
+        keyword: str | None = None,
+        city_code: str | None = None,
+        city_label: str | None = None,
+        industry: str | None = None,
+        purpose: str | None = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> list[GroupResource]:
+        ...
+
+    def save_group_resource(self, resource: GroupResource) -> None:
         ...
 
     def save_live_qr_code(self, qr_code: LiveQrCode) -> None:
@@ -327,6 +408,75 @@ class AppRepository(Protocol):
         ...
 
     def save_notification_preference(self, preference: NotificationPreference) -> None:
+        ...
+
+    def save_mutual_point_account(self, account: MutualPointAccount) -> None:
+        ...
+
+    def save_mutual_point_ledger(self, ledger: MutualPointLedger) -> None:
+        ...
+
+    def list_mutual_help_tasks(
+        self,
+        owner_user_id: str | None = None,
+        task_id: str | None = None,
+        task_kind: str | None = None,
+        statuses: set[str] | None = None,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[MutualHelpTask]:
+        ...
+
+    def get_mutual_help_task(self, task_id: str) -> MutualHelpTask | None:
+        ...
+
+    def save_mutual_help_task(self, task: MutualHelpTask) -> None:
+        ...
+
+    def list_mutual_help_submissions(
+        self,
+        task_id: str | None = None,
+        executor_user_id: str | None = None,
+        owner_user_id: str | None = None,
+    ) -> list[MutualHelpSubmission]:
+        ...
+
+    def get_mutual_help_submission(self, submission_id: str) -> MutualHelpSubmission | None:
+        ...
+
+    def save_mutual_help_submission(self, submission: MutualHelpSubmission) -> None:
+        ...
+
+    def save_mutual_help_submission_state(
+        self,
+        state: AppState,
+        *,
+        tasks: list[MutualHelpTask] | None = None,
+        submissions: list[MutualHelpSubmission] | None = None,
+        accounts: list[MutualPointAccount] | None = None,
+        ledgers: list[MutualPointLedger] | None = None,
+    ) -> None:
+        ...
+
+    def get_mutual_help_conversation(self, task_id: str, executor_user_id: str) -> MutualHelpConversation | None:
+        ...
+
+    def list_mutual_help_conversations(self, task_id: str | None = None, user_id: str | None = None) -> list[MutualHelpConversation]:
+        ...
+
+    def save_mutual_help_conversation(self, conversation: MutualHelpConversation) -> None:
+        ...
+
+    def list_mutual_help_chat_messages(self, conversation_id: str, before: str | None = None, limit: int = 50) -> list[MutualHelpChatMessage]:
+        ...
+
+    def append_mutual_help_chat_message(self, conversation: MutualHelpConversation, message: MutualHelpChatMessage) -> None:
+        ...
+
+    def mark_mutual_help_chat_read(self, conversation_id: str, user_id: str) -> MutualHelpConversation | None:
+        ...
+
+    def list_mutual_activity_events(self, task_id: str | None = None, user_id: str | None = None) -> list[MutualActivityEvent]:
         ...
 
     def list_wechat_subscription_grants(self, user_id: str, template_id: str | None = None) -> list[WechatSubscriptionGrant]:
@@ -518,6 +668,12 @@ class AppRepository(Protocol):
     def save_sync_task(self, task: SyncTask) -> None:
         ...
 
+    def get_sync_task(self, task_id: str) -> SyncTask | None:
+        ...
+
+    def create_sync_task_if_absent(self, task: SyncTask) -> bool:
+        ...
+
     def list_sync_tasks(self, statuses: set[str] | None = None, limit: int = 50) -> list[SyncTask]:
         ...
 
@@ -577,6 +733,7 @@ class AppRepository(Protocol):
         now: str,
         lease_expires_at: str,
         lease_token: str,
+        run_id: str | None = None,
         function_ids: set[str] | None = None,
     ) -> AutomationTask | None:
         ...
@@ -590,11 +747,32 @@ class AppRepository(Protocol):
     def save_automation_group_candidate(self, candidate: AutomationGroupCandidate) -> None:
         ...
 
+    def delete_automation_group_candidates(self, candidate_ids: list[str]) -> None:
+        ...
+
     def list_automation_group_candidates(
         self,
         wechat_account_id: str | None = None,
         limit: int = 100,
     ) -> list[AutomationGroupCandidate]:
+        ...
+
+    def get_automation_card_asset(self, card_id: str) -> AutomationCardAsset | None:
+        ...
+
+    def save_automation_card_asset(self, asset: AutomationCardAsset) -> None:
+        ...
+
+    def list_automation_card_assets(self, limit: int = 200) -> list[AutomationCardAsset]:
+        ...
+
+    def get_automation_group_content_plan(self, group_code: str) -> AutomationGroupContentPlan | None:
+        ...
+
+    def save_automation_group_content_plan(self, plan: AutomationGroupContentPlan) -> None:
+        ...
+
+    def list_automation_group_content_plans(self, limit: int = 200) -> list[AutomationGroupContentPlan]:
         ...
 
     def get_wecom_archive_cursor(self, corp_id: str) -> WecomArchiveCursor | None:
@@ -748,6 +926,49 @@ class AppRepository(Protocol):
     def save_opportunity_push_digest(self, digest: OpportunityPushDigest) -> None:
         ...
 
+    def list_content_safety_rules(self, enabled_only: bool = False) -> list[ContentSafetyRule]:
+        ...
+
+    def get_content_safety_rule(self, rule_id: str) -> ContentSafetyRule | None:
+        ...
+
+    def save_content_safety_rule(self, rule: ContentSafetyRule) -> None:
+        ...
+
+    def list_content_moderation_assessments(
+        self,
+        status: str | None = None,
+        target_type: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[ContentModerationAssessment]:
+        ...
+
+    def get_content_moderation_assessment(self, assessment_id: str) -> ContentModerationAssessment | None:
+        ...
+
+    def get_latest_content_moderation_assessment(
+        self,
+        target_type: str,
+        target_id: str,
+        content_revision: str,
+    ) -> ContentModerationAssessment | None:
+        ...
+
+    def save_content_moderation_assessment(self, assessment: ContentModerationAssessment) -> None:
+        ...
+
+    def list_content_moderation_audit_logs(
+        self,
+        target_type: str | None = None,
+        target_id: str | None = None,
+        limit: int = 100,
+    ) -> list[ContentModerationAuditLog]:
+        ...
+
+    def save_content_moderation_audit_log(self, log: ContentModerationAuditLog) -> None:
+        ...
+
     def get_membership_records(
         self,
         user_id: str,
@@ -765,7 +986,77 @@ class JsonRepository:
 
     def load(self) -> AppState:
         payload = json.loads(self.data_file.read_text(encoding="utf-8"))
+        self._normalize_legacy_mutual_points(payload)
         return AppState.model_validate(payload)
+
+    @staticmethod
+    def _normalize_legacy_mutual_points(payload: dict) -> None:
+        """Split the old single mutual-help balance in memory on read.
+
+        Before the two-point model, recharge ledgers and the initial grant were
+        stored in the same account.  Keeping this migration at the repository
+        boundary lets an existing JSON fallback database continue to load
+        without changing any unrelated snapshot data.  The next normal save
+        persists the split accounts and ledger discriminators.
+        """
+        accounts = payload.get("mutual_point_accounts")
+        ledgers = payload.get("mutual_point_ledgers")
+        if not isinstance(accounts, list) or not isinstance(ledgers, list):
+            return
+
+        for ledger in ledgers:
+            if isinstance(ledger, dict):
+                ledger.setdefault("pointType", "reward" if ledger.get("ledgerType") == "recharge" else "base")
+        for account in accounts:
+            if isinstance(account, dict):
+                account.setdefault("pointType", "base")
+
+        grouped: dict[tuple[str, str], list[dict]] = {}
+        for ledger in ledgers:
+            if not isinstance(ledger, dict):
+                continue
+            key = (str(ledger.get("userId") or ""), str(ledger.get("accountType") or "mutual_help"))
+            grouped.setdefault(key, []).append(ledger)
+
+        for (user_id, account_type), rows in grouped.items():
+            reward_rows = [row for row in rows if row.get("pointType") == "reward"]
+            if not reward_rows:
+                continue
+            reward_account_id = f"{account_type}_reward_points_{user_id}"
+            if not any(
+                isinstance(account, dict)
+                and account.get("id") == reward_account_id
+                for account in accounts
+            ):
+                reward_balance = sum(int(row.get("pointsDelta") or 0) for row in reward_rows)
+                accounts.append({
+                    "id": reward_account_id,
+                    "userId": user_id,
+                    "accountType": account_type,
+                    "pointType": "reward",
+                    "balance": max(0, reward_balance),
+                    "totalGranted": sum(max(0, int(row.get("pointsDelta") or 0)) for row in reward_rows),
+                    "totalConsumed": sum(max(0, -int(row.get("pointsDelta") or 0)) for row in reward_rows),
+                    "createdAt": min((str(row.get("createdAt") or "") for row in reward_rows), default=""),
+                    "updatedAt": max((str(row.get("createdAt") or "") for row in reward_rows), default=""),
+                })
+
+            base_account = next(
+                (
+                    account for account in accounts
+                    if isinstance(account, dict)
+                    and account.get("userId") == user_id
+                    and account.get("accountType", "mutual_help") == account_type
+                    and account.get("pointType", "base") == "base"
+                ),
+                None,
+            )
+            base_rows = [row for row in rows if row.get("pointType") == "base"]
+            if base_account is not None and base_rows:
+                base_balance = sum(int(row.get("pointsDelta") or 0) for row in base_rows)
+                base_account["balance"] = max(0, base_balance)
+                base_account["totalGranted"] = sum(max(0, int(row.get("pointsDelta") or 0)) for row in base_rows)
+                base_account["totalConsumed"] = sum(max(0, -int(row.get("pointsDelta") or 0)) for row in base_rows)
 
     def save(self, state: AppState) -> None:
         payload = strip_unicode_surrogates(state.model_dump(mode="json"))
@@ -950,6 +1241,57 @@ class JsonRepository:
             notes = [item for item in notes if item.status != "deleted"]
         return sorted(notes, key=lambda item: item.updatedAt, reverse=True)
 
+    def list_business_opportunity_notes_page(
+        self,
+        *,
+        keyword: str | None = None,
+        industry: str | None = None,
+        sub_industry: str | None = None,
+        city: str | None = None,
+        mode: str = "capability",
+        viewer_user_id: str | None = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> list[UserNote]:
+        keyword_value = str(keyword or "").strip().lower()
+        industry_value = str(industry or "").strip()
+        sub_industry_value = str(sub_industry or "").strip()
+        city_value = str(city or "").strip()
+        rows = []
+        for item in self.list_all_user_notes(include_deleted=False):
+            if viewer_user_id and item.ownerUserId == viewer_user_id:
+                continue
+            config = item.visibilityConfig if isinstance(item.visibilityConfig, dict) else {}
+            if config.get("cardType") != "business_card" or item.shareState != "published":
+                continue
+            opportunity = config.get("businessOpportunity") if isinstance(config.get("businessOpportunity"), dict) else {}
+            if not _business_opportunity_market_enabled(opportunity, mode):
+                continue
+            data = config.get("structuredData") if isinstance(config.get("structuredData"), dict) else {}
+            intent = opportunity.get("cooperationIntent") if isinstance(opportunity.get("cooperationIntent"), dict) else data.get("cooperationIntent")
+            if mode == "intent" and not isinstance(intent, dict):
+                continue
+            if mode == "intent" and not str(intent.get("text") or intent.get("summary") or "").strip():
+                continue
+            tags = opportunity.get("industryTags") if isinstance(opportunity.get("industryTags"), list) else []
+            tags = [str(value or "").strip() for value in [*tags, *((data.get("industryTags") or []) if isinstance(data.get("industryTags"), list) else [])]]
+            row_industry = str(opportunity.get("industry") or data.get("industry") or "").strip()
+            row_sub_industry = str(opportunity.get("subIndustry") or data.get("subIndustry") or "").strip()
+            row_city = str(opportunity.get("city") or data.get("city") or "").strip()
+            if industry_value and industry_value not in {row_industry, *tags}:
+                continue
+            if sub_industry_value and sub_industry_value not in {row_sub_industry, *tags}:
+                continue
+            if city_value and city_value not in row_city:
+                continue
+            if keyword_value:
+                if keyword_value not in item.model_dump_json().lower():
+                    continue
+            rows.append(item)
+        rows = sorted(rows, key=_pin_sort_key, reverse=True)
+        start = max(int(offset or 0), 0)
+        return rows[start:start + max(1, min(int(limit or 20), 100))]
+
     def get_user_note(self, note_id: str) -> UserNote | None:
         return next((item for item in self.load().user_notes if item.id == note_id), None)
 
@@ -980,6 +1322,228 @@ class JsonRepository:
 
     def list_live_qr_codes(self) -> list[LiveQrCode]:
         return sorted(self.load().live_qr_codes, key=lambda item: (item.updatedAt, item.id), reverse=True)
+
+    def get_group_resource(self, resource_id: str) -> GroupResource | None:
+        return next((item for item in self.load().group_resources if item.id == resource_id), None)
+
+    def list_group_resources(self, owner_user_id: str | None = None) -> list[GroupResource]:
+        rows = self.load().group_resources
+        if owner_user_id:
+            rows = [item for item in rows if item.ownerUserId == owner_user_id]
+        return sorted(rows, key=_pin_sort_key, reverse=True)
+
+    def list_group_resources_page(
+        self,
+        *,
+        keyword: str | None = None,
+        city_code: str | None = None,
+        city_label: str | None = None,
+        industry: str | None = None,
+        purpose: str | None = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> list[GroupResource]:
+        keyword_value = str(keyword or "").strip().lower()
+        city_code_value = str(city_code or "").strip()
+        city_label_value = str(city_label or "").strip()
+        industry_value = str(industry or "").strip()
+        purpose_value = str(purpose or "").strip()
+        rows = []
+        for item in self.list_group_resources():
+            if item.status != "active":
+                continue
+            if city_code_value and item.cityMode != "national" and item.cityCode != city_code_value:
+                continue
+            if city_label_value and item.cityMode != "national" and city_label_value not in item.cityLabel:
+                continue
+            if industry_value and item.industry != industry_value:
+                continue
+            if purpose_value and item.purpose != purpose_value:
+                continue
+            if keyword_value:
+                searchable = " ".join([
+                    item.name, item.cityLabel, item.industry, item.purpose,
+                    item.memberRange or "", item.activeLevel or "", item.remark or "",
+                    " ".join(item.tags or []),
+                ]).lower()
+                if keyword_value not in searchable:
+                    continue
+            rows.append(item)
+        start = max(int(offset or 0), 0)
+        return rows[start:start + max(1, int(limit or 20))]
+
+    def save_group_resource(self, resource: GroupResource) -> None:
+        state = self.load()
+        state.group_resources = [item for item in state.group_resources if item.id != resource.id]
+        state.group_resources.append(resource)
+        self.save(state)
+
+    def save_mutual_point_account(self, account: MutualPointAccount) -> None:
+        with self._automation_lock:
+            state = self.load()
+            state.mutual_point_accounts = [item for item in state.mutual_point_accounts if item.id != account.id]
+            state.mutual_point_accounts.append(account)
+            self.save(state)
+
+    def save_mutual_point_ledger(self, ledger: MutualPointLedger) -> None:
+        with self._automation_lock:
+            state = self.load()
+            state.mutual_point_ledgers = [item for item in state.mutual_point_ledgers if item.id != ledger.id]
+            state.mutual_point_ledgers.append(ledger)
+            self.save(state)
+
+    def list_mutual_help_tasks(
+        self,
+        owner_user_id: str | None = None,
+        task_id: str | None = None,
+        task_kind: str | None = None,
+        statuses: set[str] | None = None,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[MutualHelpTask]:
+        rows = self.load().mutual_help_tasks
+        if owner_user_id:
+            rows = [item for item in rows if item.ownerUserId == owner_user_id]
+        if task_id:
+            rows = [item for item in rows if item.id == task_id]
+        if task_kind:
+            rows = [item for item in rows if item.taskKind == task_kind]
+        if statuses:
+            rows = [item for item in rows if item.status in statuses]
+        rows = sorted(rows, key=_pin_sort_key, reverse=True)
+        if limit is not None:
+            start = max(int(offset or 0), 0)
+            rows = rows[start:start + max(1, int(limit))]
+        return rows
+
+    def get_mutual_help_task(self, task_id: str) -> MutualHelpTask | None:
+        return next((item for item in self.load().mutual_help_tasks if item.id == task_id), None)
+
+    def save_mutual_help_task(self, task: MutualHelpTask) -> None:
+        with self._automation_lock:
+            state = self.load()
+            state.mutual_help_tasks = [item for item in state.mutual_help_tasks if item.id != task.id]
+            state.mutual_help_tasks.append(task)
+            self.save(state)
+
+    def list_mutual_help_submissions(
+        self,
+        task_id: str | None = None,
+        executor_user_id: str | None = None,
+        owner_user_id: str | None = None,
+    ) -> list[MutualHelpSubmission]:
+        rows = self.load().mutual_help_submissions
+        if task_id:
+            rows = [item for item in rows if item.taskId == task_id]
+        if executor_user_id:
+            rows = [item for item in rows if item.executorUserId == executor_user_id]
+        if owner_user_id:
+            rows = [item for item in rows if item.ownerUserId == owner_user_id]
+        return sorted(rows, key=lambda item: (item.submittedAt, item.id), reverse=True)
+
+    def get_mutual_help_submission(self, submission_id: str) -> MutualHelpSubmission | None:
+        return next((item for item in self.load().mutual_help_submissions if item.id == submission_id), None)
+
+    def save_mutual_help_submission(self, submission: MutualHelpSubmission) -> None:
+        with self._automation_lock:
+            state = self.load()
+            state.mutual_help_submissions = [item for item in state.mutual_help_submissions if item.id != submission.id]
+            state.mutual_help_submissions.append(submission)
+            self.save(state)
+
+    def save_mutual_help_submission_state(
+        self,
+        state: AppState,
+        *,
+        tasks: list[MutualHelpTask] | None = None,
+        submissions: list[MutualHelpSubmission] | None = None,
+        accounts: list[MutualPointAccount] | None = None,
+        ledgers: list[MutualPointLedger] | None = None,
+    ) -> None:
+        # The JSON repository has no table-level transaction primitives. Keep
+        # its existing full-snapshot semantics for local/dev environments.
+        del tasks, submissions, accounts, ledgers
+        self.save(state)
+
+    def get_mutual_help_conversation(self, task_id: str, executor_user_id: str) -> MutualHelpConversation | None:
+        return next((
+            item for item in self.load().mutual_help_conversations
+            if item.taskId == task_id and item.executorUserId == executor_user_id
+        ), None)
+
+    def list_mutual_help_conversations(self, task_id: str | None = None, user_id: str | None = None) -> list[MutualHelpConversation]:
+        rows = self.load().mutual_help_conversations
+        if task_id:
+            rows = [item for item in rows if item.taskId == task_id]
+        if user_id:
+            rows = [item for item in rows if user_id in {item.ownerUserId, item.executorUserId}]
+        return sorted(rows, key=lambda item: (item.lastMessageAt or item.updatedAt, item.id), reverse=True)
+
+    def save_mutual_help_conversation(self, conversation: MutualHelpConversation) -> None:
+        with self._automation_lock:
+            state = self.load()
+            state.mutual_help_conversations = [item for item in state.mutual_help_conversations if item.id != conversation.id]
+            state.mutual_help_conversations.append(conversation)
+            self.save(state)
+
+    def list_mutual_help_chat_messages(self, conversation_id: str, before: str | None = None, limit: int = 50) -> list[MutualHelpChatMessage]:
+        rows = [item for item in self.load().mutual_help_chat_messages if item.conversationId == conversation_id]
+        if before:
+            rows = [item for item in rows if item.createdAt < before]
+        rows.sort(key=lambda item: (item.createdAt, item.id), reverse=True)
+        return list(reversed(rows[:max(1, min(int(limit), 100))]))
+
+    def append_mutual_help_chat_message(self, conversation: MutualHelpConversation, message: MutualHelpChatMessage) -> None:
+        with self._automation_lock:
+            state = self.load()
+            if any(
+                item.id == message.id
+                or (
+                    message.idempotencyKey
+                    and item.conversationId == message.conversationId
+                    and item.senderUserId == message.senderUserId
+                    and item.idempotencyKey == message.idempotencyKey
+                )
+                for item in state.mutual_help_chat_messages
+            ):
+                return
+            current = next((item for item in state.mutual_help_conversations if item.id == conversation.id), conversation)
+            unread = dict(current.unreadByUser)
+            unread[message.recipientUserId] = int(unread.get(message.recipientUserId) or 0) + 1
+            is_latest = not current.lastMessageAt or message.createdAt >= current.lastMessageAt
+            conversation = conversation.model_copy(update={
+                "unreadByUser": unread,
+                "lastMessageAt": message.createdAt if is_latest else current.lastMessageAt,
+                "lastMessagePreview": conversation.lastMessagePreview if is_latest else current.lastMessagePreview,
+                "updatedAt": max(current.updatedAt, message.createdAt),
+            })
+            state.mutual_help_conversations = [item for item in state.mutual_help_conversations if item.id != conversation.id]
+            state.mutual_help_conversations.append(conversation)
+            state.mutual_help_chat_messages.append(message)
+            self.save(state)
+
+    def mark_mutual_help_chat_read(self, conversation_id: str, user_id: str) -> MutualHelpConversation | None:
+        with self._automation_lock:
+            state = self.load()
+            conversation = next((item for item in state.mutual_help_conversations if item.id == conversation_id), None)
+            if not conversation:
+                return None
+            if int((conversation.unreadByUser or {}).get(user_id) or 0) == 0:
+                return conversation
+            unread = dict(conversation.unreadByUser)
+            unread[user_id] = 0
+            updated = conversation.model_copy(update={"unreadByUser": unread, "updatedAt": now_iso()})
+            state.mutual_help_conversations = [item if item.id != conversation_id else updated for item in state.mutual_help_conversations]
+            self.save(state)
+            return updated
+
+    def list_mutual_activity_events(self, task_id: str | None = None, user_id: str | None = None) -> list[MutualActivityEvent]:
+        rows = self.load().mutual_activity_events
+        if task_id:
+            rows = [item for item in rows if item.taskId == task_id]
+        if user_id:
+            rows = [item for item in rows if item.userId == user_id]
+        return sorted(rows, key=lambda item: (item.createdAt, item.id), reverse=True)
 
     def save_live_qr_code(self, qr_code: LiveQrCode) -> None:
         with self._automation_lock:
@@ -1703,6 +2267,20 @@ class JsonRepository:
         state.sync_tasks.append(task)
         self.save(state)
 
+    def get_sync_task(self, task_id: str) -> SyncTask | None:
+        return next((item for item in self.load().sync_tasks if item.id == task_id), None)
+
+    def create_sync_task_if_absent(self, task: SyncTask) -> bool:
+        # The JSON fallback is single-process; protect the read/append pair so
+        # duplicate completion callbacks cannot create two mail tasks in it.
+        with self._automation_lock:
+            state = self.load()
+            if any(item.id == task.id for item in state.sync_tasks):
+                return False
+            state.sync_tasks.append(task)
+            self.save(state)
+        return True
+
     def list_sync_tasks(self, statuses: set[str] | None = None, limit: int = 50) -> list[SyncTask]:
         tasks = [item for item in self.load().sync_tasks if statuses is None or item.status in statuses]
         return sorted(tasks, key=lambda item: item.createdAt, reverse=True)[:limit]
@@ -1813,6 +2391,7 @@ class JsonRepository:
         now: str,
         lease_expires_at: str,
         lease_token: str,
+        run_id: str | None = None,
         function_ids: set[str] | None = None,
     ) -> AutomationTask | None:
         with self._automation_lock:
@@ -1835,6 +2414,8 @@ class JsonRepository:
             candidates = []
             for item in state.automation_tasks:
                 if item.deviceId != device_id:
+                    continue
+                if run_id and str((item.payload or {}).get("runId") or "") != str(run_id):
                     continue
                 if function_ids and item.functionId not in function_ids:
                     continue
@@ -1892,6 +2473,17 @@ class JsonRepository:
             state.automation_group_candidates.append(candidate)
             self.save(state)
 
+    def delete_automation_group_candidates(self, candidate_ids: list[str]) -> None:
+        ids = {str(value).strip() for value in candidate_ids if str(value).strip()}
+        if not ids:
+            return
+        with self._automation_lock:
+            state = self.load()
+            state.automation_group_candidates = [
+                item for item in state.automation_group_candidates if item.id not in ids
+            ]
+            self.save(state)
+
     def list_automation_group_candidates(
         self,
         wechat_account_id: str | None = None,
@@ -1901,6 +2493,38 @@ class JsonRepository:
         if wechat_account_id:
             candidates = [item for item in candidates if item.wechatAccountId == wechat_account_id]
         return sorted(candidates, key=lambda item: (item.savedAt, item.id), reverse=True)[:limit]
+
+    def get_automation_card_asset(self, card_id: str) -> AutomationCardAsset | None:
+        key = " ".join(str(card_id or "").split())
+        return next((item for item in self.load().automation_card_assets if item.cardId == key), None)
+
+    def save_automation_card_asset(self, asset: AutomationCardAsset) -> None:
+        state = self.load()
+        state.automation_card_assets = [item for item in state.automation_card_assets if item.id != asset.id and item.cardId != asset.cardId]
+        state.automation_card_assets.append(asset)
+        self.save(state)
+
+    def list_automation_card_assets(self, limit: int = 200) -> list[AutomationCardAsset]:
+        rows = self.load().automation_card_assets
+        return sorted(rows, key=lambda item: (item.updatedAt, item.cardId), reverse=True)[:max(1, min(int(limit or 200), 500))]
+
+    def get_automation_group_content_plan(self, group_code: str) -> AutomationGroupContentPlan | None:
+        key = " ".join(str(group_code or "").split())
+        return next((item for item in self.load().automation_group_content_plans if item.groupCode == key), None)
+
+    def save_automation_group_content_plan(self, plan: AutomationGroupContentPlan) -> None:
+        with self._automation_lock:
+            state = self.load()
+            state.automation_group_content_plans = [
+                item for item in state.automation_group_content_plans
+                if item.id != plan.id and item.groupCode != plan.groupCode
+            ]
+            state.automation_group_content_plans.append(plan)
+            self.save(state)
+
+    def list_automation_group_content_plans(self, limit: int = 200) -> list[AutomationGroupContentPlan]:
+        rows = self.load().automation_group_content_plans
+        return sorted(rows, key=lambda item: (item.updatedAt, item.groupCode), reverse=True)[:max(1, min(int(limit or 200), 500))]
 
     def get_wecom_archive_cursor(self, corp_id: str) -> WecomArchiveCursor | None:
         return next((item for item in self.load().wecom_archive_cursors if item.corpId == corp_id), None)
@@ -2188,6 +2812,78 @@ class JsonRepository:
         state.opportunity_push_digests.append(digest)
         self.save(state)
 
+    def list_content_safety_rules(self, enabled_only: bool = False) -> list[ContentSafetyRule]:
+        rules = self.load().content_safety_rules
+        if enabled_only:
+            rules = [item for item in rules if item.enabled]
+        return sorted(rules, key=lambda item: (item.updatedAt, item.id), reverse=True)
+
+    def get_content_safety_rule(self, rule_id: str) -> ContentSafetyRule | None:
+        return next((item for item in self.load().content_safety_rules if item.id == rule_id), None)
+
+    def save_content_safety_rule(self, rule: ContentSafetyRule) -> None:
+        state = self.load()
+        state.content_safety_rules = [item for item in state.content_safety_rules if item.id != rule.id]
+        state.content_safety_rules.append(rule)
+        self.save(state)
+
+    def list_content_moderation_assessments(
+        self,
+        status: str | None = None,
+        target_type: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[ContentModerationAssessment]:
+        rows = self.load().content_moderation_assessments
+        if status:
+            rows = [item for item in rows if item.status == status]
+        if target_type:
+            rows = [item for item in rows if item.targetType == target_type]
+        start = max(int(offset or 0), 0)
+        return sorted(rows, key=lambda item: (item.updatedAt, item.id), reverse=True)[start:start + max(1, min(int(limit or 100), 500))]
+
+    def get_content_moderation_assessment(self, assessment_id: str) -> ContentModerationAssessment | None:
+        return next((item for item in self.load().content_moderation_assessments if item.id == assessment_id), None)
+
+    def get_latest_content_moderation_assessment(
+        self,
+        target_type: str,
+        target_id: str,
+        content_revision: str,
+    ) -> ContentModerationAssessment | None:
+        rows = [
+            item for item in self.load().content_moderation_assessments
+            if item.targetType == target_type
+            and item.targetId == target_id
+            and item.contentRevision == content_revision
+        ]
+        return sorted(rows, key=lambda item: (item.updatedAt, item.id), reverse=True)[0] if rows else None
+
+    def save_content_moderation_assessment(self, assessment: ContentModerationAssessment) -> None:
+        state = self.load()
+        state.content_moderation_assessments = [item for item in state.content_moderation_assessments if item.id != assessment.id]
+        state.content_moderation_assessments.append(assessment)
+        self.save(state)
+
+    def list_content_moderation_audit_logs(
+        self,
+        target_type: str | None = None,
+        target_id: str | None = None,
+        limit: int = 100,
+    ) -> list[ContentModerationAuditLog]:
+        rows = self.load().content_moderation_audit_logs
+        if target_type:
+            rows = [item for item in rows if item.targetType == target_type]
+        if target_id:
+            rows = [item for item in rows if item.targetId == target_id]
+        return sorted(rows, key=lambda item: (item.createdAt, item.id), reverse=True)[:max(1, min(int(limit or 100), 500))]
+
+    def save_content_moderation_audit_log(self, log: ContentModerationAuditLog) -> None:
+        state = self.load()
+        state.content_moderation_audit_logs = [item for item in state.content_moderation_audit_logs if item.id != log.id]
+        state.content_moderation_audit_logs.append(log)
+        self.save(state)
+
 
 class PostgresRepository:
     TABLES = {
@@ -2222,6 +2918,8 @@ class PostgresRepository:
         "automation_devices": "automation_devices",
         "automation_tasks": "automation_tasks",
         "automation_group_candidates": "automation_group_candidates",
+        "automation_card_assets": "automation_card_assets",
+        "automation_group_content_plans": "automation_group_content_plans",
         "wecom_archive_cursors": "wecom_archive_cursors",
         "wecom_archive_messages": "wecom_archive_messages",
         "resource_wallets": "resource_wallets",
@@ -2247,13 +2945,22 @@ class PostgresRepository:
         "mutual_point_ledgers": "mutual_point_ledgers",
         "mutual_recharge_orders": "mutual_recharge_orders",
         "mutual_activity_events": "mutual_activity_events",
+        "mutual_help_tasks": "mutual_help_tasks",
+        "mutual_help_submissions": "mutual_help_submissions",
+        "mutual_help_conversations": "mutual_help_conversations",
+        "mutual_help_chat_messages": "mutual_help_chat_messages",
         "notification_preferences": "notification_preferences",
         "wechat_subscription_grants": "wechat_subscription_grants",
         "wechat_subscription_deliveries": "wechat_subscription_deliveries",
         "referral_relations": "referral_relations",
         "referral_rewards": "referral_rewards",
         "referral_withdrawals": "referral_withdrawals",
+        "mutual_point_withdrawals": "mutual_point_withdrawals",
         "same_style_generations": "same_style_generations",
+        "group_resources": "group_resources",
+        "content_safety_rules": "content_safety_rules",
+        "content_moderation_assessments": "content_moderation_assessments",
+        "content_moderation_audit_logs": "content_moderation_audit_logs",
     }
     FIELD_COLUMNS = {
         "users": [
@@ -2522,6 +3229,14 @@ class PostgresRepository:
             ("can_send", "boolean", "canSend"),
             ("idempotency_key", "text", "idempotencyKey"),
         ],
+        "automation_card_assets": [
+            ("card_id", "text", "cardId"),
+            ("status", "text", "status"),
+        ],
+        "automation_group_content_plans": [
+            ("group_code", "text", "groupCode"),
+            ("status", "text", "status"),
+        ],
         "wecom_archive_cursors": [
             ("corp_id", "text", "corpId"),
             ("seq", "bigint", "seq"),
@@ -2569,6 +3284,44 @@ class PostgresRepository:
             ("target_id", "text", "targetId"),
             ("unlocked_at", "timestamptz", "unlockedAt"),
             ("expires_at", "timestamptz", "expiresAt"),
+        ],
+        "group_resources": [
+            ("owner_user_id", "text", "ownerUserId"),
+            ("status", "text", "status"),
+            ("city_code", "text", "cityCode"),
+            ("industry", "text", "industry"),
+            ("purpose", "text", "purpose"),
+            ("expires_at", "timestamptz", "expiresAt"),
+            ("created_at_source", "timestamptz", "createdAt"),
+        ],
+        "content_safety_rules": [
+            ("normalized_term", "text", "normalizedTerm"),
+            ("term_hash", "text", "termHash"),
+            ("match_type", "text", "matchType"),
+            ("category", "text", "category"),
+            ("severity", "text", "severity"),
+            ("action", "text", "action"),
+            ("enabled", "boolean", "enabled"),
+            ("version", "integer", "version"),
+            ("expires_at", "timestamptz", "expiresAt"),
+        ],
+        "content_moderation_assessments": [
+            ("target_type", "text", "targetType"),
+            ("target_id", "text", "targetId"),
+            ("owner_user_id", "text", "ownerUserId"),
+            ("content_revision", "text", "contentRevision"),
+            ("content_fingerprint", "text", "contentFingerprint"),
+            ("rule_version", "text", "ruleVersion"),
+            ("status", "text", "status"),
+            ("decision", "text", "decision"),
+        ],
+        "content_moderation_audit_logs": [
+            ("event_type", "text", "eventType"),
+            ("target_type", "text", "targetType"),
+            ("target_id", "text", "targetId"),
+            ("assessment_id", "text", "assessmentId"),
+            ("rule_id", "text", "ruleId"),
+            ("operator_name", "text", "operatorName"),
         ],
         "opportunity_leads": [
             ("title", "text", "title"),
@@ -2671,12 +3424,14 @@ class PostgresRepository:
         "mutual_point_accounts": [
             ("user_id", "text", "userId"),
             ("account_type", "text", "accountType"),
+            ("point_type", "text", "pointType"),
             ("balance", "integer", "balance"),
             ("updated_at_source", "timestamptz", "updatedAt"),
         ],
         "mutual_point_ledgers": [
             ("user_id", "text", "userId"),
             ("account_type", "text", "accountType"),
+            ("point_type", "text", "pointType"),
             ("ledger_type", "text", "ledgerType"),
             ("points_delta", "integer", "pointsDelta"),
             ("related_order_id", "text", "relatedOrderId"),
@@ -2688,6 +3443,7 @@ class PostgresRepository:
         "mutual_recharge_orders": [
             ("user_id", "text", "userId"),
             ("points", "integer", "points"),
+            ("point_type", "text", "pointType"),
             ("amount_fen", "integer", "amountFen"),
             ("status", "text", "status"),
             ("payment_channel", "text", "paymentChannel"),
@@ -2699,6 +3455,35 @@ class PostgresRepository:
             ("user_id", "text", "userId"),
             ("task_id", "text", "taskId"),
             ("task_kind", "text", "taskKind"),
+            ("idempotency_key", "text", "idempotencyKey"),
+            ("created_at_source", "timestamptz", "createdAt"),
+        ],
+        "mutual_help_tasks": [
+            ("owner_user_id", "text", "ownerUserId"),
+            ("task_kind", "text", "taskKind"),
+            ("status", "text", "status"),
+            ("updated_at_source", "timestamptz", "updatedAt"),
+        ],
+        "mutual_help_submissions": [
+            ("task_id", "text", "taskId"),
+            ("executor_user_id", "text", "executorUserId"),
+            ("owner_user_id", "text", "ownerUserId"),
+            ("status", "text", "status"),
+            ("submitted_at_source", "timestamptz", "submittedAt"),
+            ("updated_at_source", "timestamptz", "updatedAt"),
+        ],
+        "mutual_help_conversations": [
+            ("task_id", "text", "taskId"),
+            ("owner_user_id", "text", "ownerUserId"),
+            ("executor_user_id", "text", "executorUserId"),
+            ("last_message_at", "timestamptz", "lastMessageAt"),
+        ],
+        "mutual_help_chat_messages": [
+            ("conversation_id", "text", "conversationId"),
+            ("task_id", "text", "taskId"),
+            ("sender_user_id", "text", "senderUserId"),
+            ("recipient_user_id", "text", "recipientUserId"),
+            ("message_type", "text", "messageType"),
             ("idempotency_key", "text", "idempotencyKey"),
             ("created_at_source", "timestamptz", "createdAt"),
         ],
@@ -2743,6 +3528,17 @@ class PostgresRepository:
         "referral_withdrawals": [
             ("user_id", "text", "userId"),
             ("status", "text", "status"),
+        ],
+        "mutual_point_withdrawals": [
+            ("user_id", "text", "userId"),
+            ("point_type", "text", "pointType"),
+            ("points", "integer", "points"),
+            ("gross_amount_fen", "integer", "grossAmountFen"),
+            ("amount_fen", "integer", "amountFen"),
+            ("status", "text", "status"),
+            ("out_bill_no", "text", "outBillNo"),
+            ("created_at_source", "timestamptz", "createdAt"),
+            ("updated_at_source", "timestamptz", "updatedAt"),
         ],
         "same_style_generations": [
             ("owner_user_id", "text", "ownerUserId"),
@@ -2885,6 +3681,14 @@ class PostgresRepository:
             ("idx_automation_group_candidates_qr", "group_qr_code"),
             ("idx_automation_group_candidates_idempotency", "idempotency_key"),
         ],
+        "automation_card_assets": [
+            ("idx_automation_card_assets_card_id", "card_id"),
+            ("idx_automation_card_assets_status_time", "status, updated_at"),
+        ],
+        "automation_group_content_plans": [
+            ("idx_automation_group_content_plans_group_code", "group_code"),
+            ("idx_automation_group_content_plans_status_time", "status, updated_at"),
+        ],
         "wecom_archive_cursors": [
             ("idx_wecom_archive_cursors_corp", "corp_id"),
             ("idx_wecom_archive_cursors_status", "status, updated_at"),
@@ -2908,6 +3712,24 @@ class PostgresRepository:
         "resource_unlock_records": [
             ("idx_resource_unlock_records_target", "owner_user_id, action_type, target_type, target_id"),
             ("idx_resource_unlock_records_expiry", "expires_at"),
+        ],
+        "group_resources": [
+            ("idx_group_resources_owner_time", "owner_user_id, created_at_source desc"),
+            ("idx_group_resources_public", "status, expires_at"),
+            ("idx_group_resources_city_industry", "city_code, industry"),
+        ],
+        "content_safety_rules": [
+            ("idx_content_safety_rules_enabled", "enabled, updated_at"),
+            ("idx_content_safety_rules_term", "normalized_term, enabled"),
+        ],
+        "content_moderation_assessments": [
+            ("idx_content_moderation_assessments_status", "status, updated_at"),
+            ("idx_content_moderation_assessments_target", "target_type, target_id, updated_at"),
+            ("idx_content_moderation_assessments_owner", "owner_user_id, updated_at"),
+        ],
+        "content_moderation_audit_logs": [
+            ("idx_content_moderation_audit_logs_target", "target_type, target_id, created_at"),
+            ("idx_content_moderation_audit_logs_time", "created_at"),
         ],
         "opportunity_leads": [
             ("idx_opportunity_leads_status_time", "status, published_at, updated_at"),
@@ -2966,13 +3788,13 @@ class PostgresRepository:
         ],
         "mutual_point_accounts": [
             ("idx_mutual_point_accounts_user", "user_id"),
-            ("idx_mutual_point_accounts_user_type", "user_id, account_type"),
+            ("idx_mutual_point_accounts_user_type_point", "user_id, account_type, point_type"),
         ],
         "mutual_point_ledgers": [
             ("idx_mutual_point_ledgers_user_time", "user_id, created_at_source"),
-            ("idx_mutual_point_ledgers_user_type_time", "user_id, account_type, created_at_source"),
+            ("idx_mutual_point_ledgers_user_type_point_time", "user_id, account_type, point_type, created_at_source"),
             ("idx_mutual_point_ledgers_order", "related_order_id"),
-            ("idx_mutual_point_ledgers_idempotency", "user_id, account_type, idempotency_key"),
+            ("idx_mutual_point_ledgers_idempotency", "user_id, account_type, point_type, idempotency_key"),
         ],
         "mutual_recharge_orders": [
             ("idx_mutual_recharge_orders_user_status", "user_id, status, created_at"),
@@ -2982,6 +3804,24 @@ class PostgresRepository:
             ("idx_mutual_activity_events_type_time", "event_type, created_at_source"),
             ("idx_mutual_activity_events_user_time", "user_id, created_at_source"),
             ("idx_mutual_activity_events_idempotency", "idempotency_key"),
+        ],
+        "mutual_help_tasks": [
+            ("idx_mutual_help_tasks_owner_status_time", "owner_user_id, status, updated_at_source desc"),
+            ("idx_mutual_help_tasks_kind_status_time", "task_kind, status, updated_at_source desc"),
+        ],
+        "mutual_help_submissions": [
+            ("idx_mutual_help_submissions_task_time", "task_id, submitted_at_source desc"),
+            ("idx_mutual_help_submissions_executor_time", "executor_user_id, submitted_at_source desc"),
+            ("idx_mutual_help_submissions_owner_status", "owner_user_id, status, submitted_at_source desc"),
+        ],
+        "mutual_help_conversations": [
+            ("idx_mutual_help_conversations_task_executor", "task_id, executor_user_id"),
+            ("idx_mutual_help_conversations_owner_time", "owner_user_id, last_message_at desc"),
+            ("idx_mutual_help_conversations_executor_time", "executor_user_id, last_message_at desc"),
+        ],
+        "mutual_help_chat_messages": [
+            ("idx_mutual_help_chat_message_idempotency", "conversation_id, sender_user_id, idempotency_key"),
+            ("idx_mutual_help_chat_messages_conversation_time", "conversation_id, created_at_source desc, id desc"),
         ],
         "notification_preferences": [
             ("idx_notification_preferences_user", "user_id"),
@@ -3003,6 +3843,11 @@ class PostgresRepository:
         ],
         "referral_withdrawals": [
             ("idx_referral_withdrawals_user_status", "user_id, status, updated_at"),
+        ],
+        "mutual_point_withdrawals": [
+            ("idx_mutual_point_withdrawals_user_status", "user_id, status, updated_at_source desc"),
+            ("idx_mutual_point_withdrawals_status_time", "status, created_at_source desc"),
+            ("idx_mutual_point_withdrawals_out_bill", "out_bill_no"),
         ],
         "same_style_generations": [
             ("idx_same_style_owner_time", "owner_user_id, created_at"),
@@ -3046,6 +3891,10 @@ class PostgresRepository:
         with self._connection() as conn:
             with conn.transaction():
                 for state_key, table_name in self.TABLES.items():
+                    # Chat rows are written through row-locked granular methods.
+                    # A full-state save must not erase messages written concurrently.
+                    if state_key in {"mutual_help_conversations", "mutual_help_chat_messages"}:
+                        continue
                     items = getattr(state, state_key)
                     conn.execute(f"delete from {table_name}")
                     for item in items:
@@ -3282,6 +4131,94 @@ class PostgresRepository:
         rows = self._list_payloads("user_notes", where, (), "updated_at desc, id desc")
         return [UserNote.model_validate(row) for row in rows]
 
+    def list_business_opportunity_notes_page(
+        self,
+        *,
+        keyword: str | None = None,
+        industry: str | None = None,
+        sub_industry: str | None = None,
+        city: str | None = None,
+        mode: str = "capability",
+        viewer_user_id: str | None = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> list[UserNote]:
+        opportunity_path = "payload->'visibilityConfig'->'businessOpportunity'"
+        scoped_flags = (
+            f"({opportunity_path} ? 'resourceEnabled' "
+            f"or {opportunity_path} ? 'resourceDiscoverable' "
+            f"or {opportunity_path} ? 'intentEnabled' "
+            f"or {opportunity_path} ? 'intentDiscoverable')"
+        )
+        mode_prefix = "intent" if mode == "intent" else "resource"
+        mode_enabled_key = f"{mode_prefix}Enabled"
+        mode_discoverable_key = f"{mode_prefix}Discoverable"
+        mode_scoped_flags = (
+            f"({opportunity_path} ? '{mode_enabled_key}' "
+            f"or {opportunity_path} ? '{mode_discoverable_key}')"
+        )
+        mode_gate = (
+            f"(({mode_scoped_flags} "
+            f"and coalesce({opportunity_path}->>'{mode_enabled_key}', 'true') <> 'false' "
+            f"and coalesce({opportunity_path}->>'{mode_discoverable_key}', 'true') <> 'false') "
+            f"or (not {scoped_flags} "
+            f"and coalesce({opportunity_path}->>'enabled', 'true') <> 'false' "
+            f"and coalesce({opportunity_path}->>'discoverable', 'true') <> 'false'))"
+        )
+        where_parts = [
+            "status <> 'deleted'",
+            "share_state = 'published'",
+            "payload->'visibilityConfig'->>'cardType' = 'business_card'",
+            mode_gate,
+        ]
+        params: list[object] = []
+        if viewer_user_id:
+            where_parts.append("owner_user_id <> %s")
+            params.append(viewer_user_id)
+        if industry:
+            where_parts.append(
+                "(payload->'visibilityConfig'->'businessOpportunity'->>'industry' = %s "
+                "or payload->'visibilityConfig'->'businessOpportunity'->'industryTags' ? %s "
+                "or payload->'visibilityConfig'->'structuredData'->>'industry' = %s "
+                "or payload->'visibilityConfig'->'structuredData'->'industryTags' ? %s)"
+            )
+            params.extend([industry, industry, industry, industry])
+        if sub_industry:
+            where_parts.append(
+                "(payload->'visibilityConfig'->'businessOpportunity'->>'subIndustry' = %s "
+                "or payload->'visibilityConfig'->'businessOpportunity'->'industryTags' ? %s "
+                "or payload->'visibilityConfig'->'structuredData'->>'subIndustry' = %s "
+                "or payload->'visibilityConfig'->'structuredData'->'industryTags' ? %s)"
+            )
+            params.extend([sub_industry, sub_industry, sub_industry, sub_industry])
+        if city:
+            where_parts.append(
+                "(coalesce(payload->'visibilityConfig'->'businessOpportunity'->>'city', '') ilike %s "
+                "or coalesce(payload->'visibilityConfig'->'structuredData'->>'city', '') ilike %s)"
+            )
+            city_like = f"%{city}%"
+            params.extend([city_like, city_like])
+        if keyword:
+            where_parts.append("payload::text ilike %s")
+            params.append(f"%{keyword}%")
+        if mode == "intent":
+            where_parts.append(
+                "coalesce(payload->'visibilityConfig'->'businessOpportunity'->'cooperationIntent'->>'text', "
+                "payload->'visibilityConfig'->'businessOpportunity'->'cooperationIntent'->>'summary', "
+                "payload->'visibilityConfig'->'structuredData'->'cooperationIntent'->>'text', "
+                "payload->'visibilityConfig'->'structuredData'->'cooperationIntent'->>'summary', '') <> ''"
+            )
+        safe_limit = max(1, min(int(limit or 20), 100))
+        safe_offset = max(int(offset or 0), 0)
+        rows = self._list_payloads(
+            "user_notes",
+            " and ".join(where_parts),
+            tuple(params),
+            "coalesce(payload->>'isPinned', 'false') = 'true' desc, coalesce(payload->>'pinnedAt', '') desc, updated_at desc, id desc",
+            limit_sql=f" limit {safe_limit} offset {safe_offset}",
+        )
+        return [UserNote.model_validate(row) for row in rows]
+
     def get_user_note(self, note_id: str) -> UserNote | None:
         payload = self.get_payload_by_id("user_notes", note_id)
         return UserNote.model_validate(payload) if payload else None
@@ -3321,6 +4258,73 @@ class PostgresRepository:
     def list_live_qr_codes(self) -> list[LiveQrCode]:
         rows = self._list_payloads("live_qr_codes", "true", (), "updated_at desc, id desc")
         return [LiveQrCode.model_validate(row) for row in rows]
+
+    def get_group_resource(self, resource_id: str) -> GroupResource | None:
+        payload = self.get_payload_by_id("group_resources", resource_id)
+        return GroupResource.model_validate(payload) if payload else None
+
+    def list_group_resources(self, owner_user_id: str | None = None) -> list[GroupResource]:
+        if owner_user_id:
+            rows = self._list_payloads(
+                "group_resources",
+                "owner_user_id = %s",
+                (owner_user_id,),
+                "coalesce(payload->>'isPinned', 'false') = 'true' desc, coalesce(payload->>'pinnedAt', '') desc, updated_at desc, id desc",
+            )
+        else:
+            rows = self._list_payloads(
+                "group_resources",
+                "true",
+                (),
+                "coalesce(payload->>'isPinned', 'false') = 'true' desc, coalesce(payload->>'pinnedAt', '') desc, updated_at desc, id desc",
+            )
+        return [GroupResource.model_validate(row) for row in rows]
+
+    def list_group_resources_page(
+        self,
+        *,
+        keyword: str | None = None,
+        city_code: str | None = None,
+        city_label: str | None = None,
+        industry: str | None = None,
+        purpose: str | None = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> list[GroupResource]:
+        where_parts = [
+            "status = 'active'",
+            "expires_at > now()",
+            "coalesce(payload->>'reviewStatus', 'reviewing') = any(%s)",
+        ]
+        params: list[object] = [["reviewing", "approved"]]
+        if city_code:
+            where_parts.append("(payload->>'cityMode' = 'national' or city_code = %s)")
+            params.append(city_code)
+        if city_label:
+            where_parts.append("(payload->>'cityMode' = 'national' or payload->>'cityLabel' ilike %s)")
+            params.append(f"%{city_label}%")
+        if industry:
+            where_parts.append("industry = %s")
+            params.append(industry)
+        if purpose:
+            where_parts.append("purpose = %s")
+            params.append(purpose)
+        if keyword:
+            where_parts.append("payload::text ilike %s")
+            params.append(f"%{keyword}%")
+        safe_limit = max(1, min(int(limit or 20), 100))
+        safe_offset = max(int(offset or 0), 0)
+        rows = self._list_payloads(
+            "group_resources",
+            " and ".join(where_parts),
+            tuple(params),
+            "coalesce(payload->>'isPinned', 'false') = 'true' desc, coalesce(payload->>'pinnedAt', '') desc, updated_at desc, id desc",
+            limit_sql=f" limit {safe_limit} offset {safe_offset}",
+        )
+        return [GroupResource.model_validate(row) for row in rows]
+
+    def save_group_resource(self, resource: GroupResource) -> None:
+        self._save_model("group_resources", resource)
 
     def save_live_qr_code(self, qr_code: LiveQrCode) -> None:
         self._save_model("live_qr_codes", qr_code)
@@ -3671,6 +4675,222 @@ class PostgresRepository:
 
     def save_notification_preference(self, preference: NotificationPreference) -> None:
         self._save_model("notification_preferences", preference)
+
+    def save_mutual_point_account(self, account: MutualPointAccount) -> None:
+        self._save_model("mutual_point_accounts", account)
+
+    def save_mutual_point_ledger(self, ledger: MutualPointLedger) -> None:
+        self._save_model("mutual_point_ledgers", ledger)
+
+    def list_mutual_help_tasks(
+        self,
+        owner_user_id: str | None = None,
+        task_id: str | None = None,
+        task_kind: str | None = None,
+        statuses: set[str] | None = None,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[MutualHelpTask]:
+        where_parts = ["true"]
+        params: list[object] = []
+        if owner_user_id:
+            where_parts.append("owner_user_id = %s")
+            params.append(owner_user_id)
+        if task_id:
+            where_parts.append("id = %s")
+            params.append(task_id)
+        if task_kind:
+            where_parts.append("task_kind = %s")
+            params.append(task_kind)
+        if statuses:
+            where_parts.append("status = any(%s)")
+            params.append(list(statuses))
+        limit_sql = ""
+        if limit is not None:
+            limit_sql = f" limit {max(1, min(int(limit), 1000))} offset {max(int(offset or 0), 0)}"
+        rows = self._list_payloads(
+            "mutual_help_tasks",
+            " and ".join(where_parts),
+            tuple(params),
+            "coalesce(payload->>'isPinned', 'false') = 'true' desc, coalesce(payload->>'pinnedAt', '') desc, updated_at_source desc nulls last, id desc",
+            limit_sql=limit_sql,
+        )
+        return [MutualHelpTask.model_validate(row) for row in rows]
+
+    def get_mutual_help_task(self, task_id: str) -> MutualHelpTask | None:
+        payload = self.get_payload_by_id("mutual_help_tasks", task_id)
+        return MutualHelpTask.model_validate(payload) if payload else None
+
+    def save_mutual_help_task(self, task: MutualHelpTask) -> None:
+        self._save_model("mutual_help_tasks", task)
+
+    def list_mutual_help_submissions(
+        self,
+        task_id: str | None = None,
+        executor_user_id: str | None = None,
+        owner_user_id: str | None = None,
+    ) -> list[MutualHelpSubmission]:
+        where_parts = ["true"]
+        params: list[object] = []
+        if task_id:
+            where_parts.append("task_id = %s")
+            params.append(task_id)
+        if executor_user_id:
+            where_parts.append("executor_user_id = %s")
+            params.append(executor_user_id)
+        if owner_user_id:
+            where_parts.append("owner_user_id = %s")
+            params.append(owner_user_id)
+        rows = self._list_payloads(
+            "mutual_help_submissions",
+            " and ".join(where_parts),
+            tuple(params),
+            "submitted_at_source desc, id desc",
+        )
+        return [MutualHelpSubmission.model_validate(row) for row in rows]
+
+    def get_mutual_help_submission(self, submission_id: str) -> MutualHelpSubmission | None:
+        payload = self.get_payload_by_id("mutual_help_submissions", submission_id)
+        return MutualHelpSubmission.model_validate(payload) if payload else None
+
+    def save_mutual_help_submission(self, submission: MutualHelpSubmission) -> None:
+        self._save_model("mutual_help_submissions", submission)
+
+    def save_mutual_help_submission_state(
+        self,
+        state: AppState,
+        *,
+        tasks: list[MutualHelpTask] | None = None,
+        submissions: list[MutualHelpSubmission] | None = None,
+        accounts: list[MutualPointAccount] | None = None,
+        ledgers: list[MutualPointLedger] | None = None,
+    ) -> None:
+        """Persist the state touched by a submission in one small transaction.
+
+        Submission creation only appends or updates rows in these four tables;
+        callers pass the rows whose payloads actually changed.
+        Avoiding the generic full-state rewrite keeps unrelated product data
+        out of the critical path while preserving the same atomic commit.
+        """
+        changed_tables = (
+            ("mutual_point_accounts", accounts if accounts is not None else state.mutual_point_accounts),
+            ("mutual_point_ledgers", ledgers if ledgers is not None else state.mutual_point_ledgers),
+            ("mutual_help_tasks", tasks if tasks is not None else state.mutual_help_tasks),
+            ("mutual_help_submissions", submissions if submissions is not None else state.mutual_help_submissions),
+        )
+        with self._connection() as conn:
+            with conn.transaction():
+                for table_name, items in changed_tables:
+                    for item in items:
+                        self._upsert_payload(conn, table_name, item.model_dump(mode="json"))
+
+    def get_mutual_help_conversation(self, task_id: str, executor_user_id: str) -> MutualHelpConversation | None:
+        rows = self._list_payloads(
+            "mutual_help_conversations",
+            "task_id = %s and executor_user_id = %s",
+            (task_id, executor_user_id),
+            "id",
+            limit_sql=" limit 1",
+        )
+        return MutualHelpConversation.model_validate(rows[0]) if rows else None
+
+    def list_mutual_help_conversations(self, task_id: str | None = None, user_id: str | None = None) -> list[MutualHelpConversation]:
+        where_parts = ["true"]
+        params: list[object] = []
+        if task_id:
+            where_parts.append("task_id = %s")
+            params.append(task_id)
+        if user_id:
+            where_parts.append("(owner_user_id = %s or executor_user_id = %s)")
+            params.extend((user_id, user_id))
+        rows = self._list_payloads(
+            "mutual_help_conversations",
+            " and ".join(where_parts),
+            tuple(params),
+            "last_message_at desc nulls last, updated_at desc, id desc",
+        )
+        return [MutualHelpConversation.model_validate(row) for row in rows]
+
+    def save_mutual_help_conversation(self, conversation: MutualHelpConversation) -> None:
+        self._save_model("mutual_help_conversations", conversation)
+
+    def list_mutual_help_chat_messages(self, conversation_id: str, before: str | None = None, limit: int = 50) -> list[MutualHelpChatMessage]:
+        where_parts = ["conversation_id = %s"]
+        params: list[object] = [conversation_id]
+        if before:
+            where_parts.append("created_at_source < %s::timestamptz")
+            params.append(before)
+        safe_limit = max(1, min(int(limit), 100))
+        rows = self._list_payloads(
+            "mutual_help_chat_messages",
+            " and ".join(where_parts),
+            tuple(params),
+            "created_at_source desc, id desc",
+            limit_sql=f" limit {safe_limit}",
+        )
+        return [MutualHelpChatMessage.model_validate(row) for row in reversed(rows)]
+
+    def append_mutual_help_chat_message(self, conversation: MutualHelpConversation, message: MutualHelpChatMessage) -> None:
+        with self._connection() as conn:
+            with conn.transaction():
+                row = conn.execute(
+                    "select payload from mutual_help_conversations where id = %s for update",
+                    (conversation.id,),
+                ).fetchone()
+                current = MutualHelpConversation.model_validate(row[0]) if row else conversation
+                if message.idempotencyKey:
+                    duplicate = conn.execute(
+                        "select 1 from mutual_help_chat_messages where conversation_id = %s and sender_user_id = %s and idempotency_key = %s limit 1",
+                        (message.conversationId, message.senderUserId, message.idempotencyKey),
+                    ).fetchone()
+                    if duplicate:
+                        return
+                unread = dict(current.unreadByUser)
+                unread[message.recipientUserId] = int(unread.get(message.recipientUserId) or 0) + 1
+                is_latest = not current.lastMessageAt or message.createdAt >= current.lastMessageAt
+                updated = conversation.model_copy(update={
+                    "unreadByUser": unread,
+                    "lastMessageAt": message.createdAt if is_latest else current.lastMessageAt,
+                    "lastMessagePreview": conversation.lastMessagePreview if is_latest else current.lastMessagePreview,
+                    "updatedAt": max(current.updatedAt, message.createdAt),
+                })
+                self._upsert_payload(conn, "mutual_help_chat_messages", message.model_dump(mode="json"))
+                self._upsert_payload(conn, "mutual_help_conversations", updated.model_dump(mode="json"))
+
+    def mark_mutual_help_chat_read(self, conversation_id: str, user_id: str) -> MutualHelpConversation | None:
+        with self._connection() as conn:
+            with conn.transaction():
+                row = conn.execute(
+                    "select payload from mutual_help_conversations where id = %s for update",
+                    (conversation_id,),
+                ).fetchone()
+                if not row:
+                    return None
+                current = MutualHelpConversation.model_validate(row[0])
+                if int((current.unreadByUser or {}).get(user_id) or 0) == 0:
+                    return current
+                unread = dict(current.unreadByUser)
+                unread[user_id] = 0
+                updated = current.model_copy(update={"unreadByUser": unread, "updatedAt": now_iso()})
+                self._upsert_payload(conn, "mutual_help_conversations", updated.model_dump(mode="json"))
+                return updated
+
+    def list_mutual_activity_events(self, task_id: str | None = None, user_id: str | None = None) -> list[MutualActivityEvent]:
+        where_parts = ["true"]
+        params: list[object] = []
+        if task_id:
+            where_parts.append("task_id = %s")
+            params.append(task_id)
+        if user_id:
+            where_parts.append("user_id = %s")
+            params.append(user_id)
+        rows = self._list_payloads(
+            "mutual_activity_events",
+            " and ".join(where_parts),
+            tuple(params),
+            "created_at_source desc nulls last, id desc",
+        )
+        return [MutualActivityEvent.model_validate(row) for row in rows]
 
     def list_wechat_subscription_grants(self, user_id: str, template_id: str | None = None) -> list[WechatSubscriptionGrant]:
         where = "user_id = %s"
@@ -4225,6 +5445,44 @@ class PostgresRepository:
     def save_sync_task(self, task: SyncTask) -> None:
         self._save_model("sync_tasks", task)
 
+    def get_sync_task(self, task_id: str) -> SyncTask | None:
+        rows = self._list_payloads("sync_tasks", "id = %s", (task_id,), "created_at desc")
+        return SyncTask.model_validate(rows[0]) if rows else None
+
+    def create_sync_task_if_absent(self, task: SyncTask) -> bool:
+        # Insert-on-conflict gives completion callbacks a durable idempotency
+        # boundary even when API replicas receive the same run concurrently.
+        self._ensure_known_table("sync_tasks")
+        payload = task.model_dump(mode="json")
+        with self._connection() as conn:
+            row = conn.execute(
+                """
+                insert into sync_tasks (
+                    id, payload, created_at, updated_at, name, status, attempts,
+                    max_attempts, next_run_at, locked_by, locked_at
+                ) values (
+                    %(id)s, %(payload)s::jsonb, %(created_at)s::timestamptz,
+                    %(updated_at)s::timestamptz, %(name)s, %(status)s, %(attempts)s,
+                    %(max_attempts)s, %(next_run_at)s::timestamptz, %(locked_by)s,
+                    %(locked_at)s::timestamptz
+                ) on conflict (id) do nothing returning id
+                """,
+                {
+                    "id": task.id,
+                    "payload": json.dumps(payload, ensure_ascii=False),
+                    "created_at": task.createdAt,
+                    "updated_at": task.updatedAt,
+                    "name": task.name,
+                    "status": task.status,
+                    "attempts": task.attempts,
+                    "max_attempts": task.maxAttempts,
+                    "next_run_at": task.nextRunAt,
+                    "locked_by": task.lockedBy,
+                    "locked_at": task.lockedAt,
+                },
+            ).fetchone()
+        return row is not None
+
     def list_sync_tasks(self, statuses: set[str] | None = None, limit: int = 50) -> list[SyncTask]:
         if statuses:
             rows = self._list_payloads(
@@ -4381,6 +5639,7 @@ class PostgresRepository:
         now: str,
         lease_expires_at: str,
         lease_token: str,
+        run_id: str | None = None,
         function_ids: set[str] | None = None,
     ) -> AutomationTask | None:
         with self._connection(row_factory=dict_row) as conn:
@@ -4404,6 +5663,10 @@ class PostgresRepository:
                 if function_ids:
                     function_filter = "and function_id = any(%s)"
                     claim_params.append(list(function_ids))
+                run_filter = ""
+                if run_id:
+                    run_filter = "and payload->'payload'->>'runId' = %s"
+                    claim_params.append(run_id)
                 claim_params.extend([now, active_wechat_account_id])
                 row = conn.execute(
                     f"""
@@ -4411,6 +5674,7 @@ class PostgresRepository:
                     from automation_tasks
                     where device_id = %s
                       {function_filter}
+                      {run_filter}
                       and (
                         status = 'pending'
                         or (status = 'running' and lease_expires_at is not null and lease_expires_at <= %s::timestamptz)
@@ -4461,6 +5725,18 @@ class PostgresRepository:
     def save_automation_group_candidate(self, candidate: AutomationGroupCandidate) -> None:
         self._save_model("automation_group_candidates", candidate)
 
+    def delete_automation_group_candidates(self, candidate_ids: list[str]) -> None:
+        ids = [str(value).strip() for value in candidate_ids if str(value).strip()]
+        if not ids:
+            return
+        placeholders = ", ".join(["%s"] * len(ids))
+        with self._connection() as conn:
+            with conn.transaction():
+                conn.execute(
+                    f"delete from automation_group_candidates where id in ({placeholders})",
+                    ids,
+                )
+
     def list_automation_group_candidates(
         self,
         wechat_account_id: str | None = None,
@@ -4481,6 +5757,53 @@ class PostgresRepository:
                 "saved_at desc, id desc limit %s" % int(limit),
             )
         return [AutomationGroupCandidate.model_validate(row) for row in rows]
+
+    def get_automation_card_asset(self, card_id: str) -> AutomationCardAsset | None:
+        rows = self._list_payloads(
+            "automation_card_assets",
+            "card_id = %s",
+            (" ".join(str(card_id or "").split()),),
+            "updated_at desc, id desc",
+            limit_sql=" limit 1",
+        )
+        return AutomationCardAsset.model_validate(rows[0]) if rows else None
+
+    def save_automation_card_asset(self, asset: AutomationCardAsset) -> None:
+        self._save_model("automation_card_assets", asset)
+
+    def list_automation_card_assets(self, limit: int = 200) -> list[AutomationCardAsset]:
+        rows = self._list_payloads(
+            "automation_card_assets",
+            "true",
+            (),
+            "updated_at desc, card_id asc",
+            limit_sql=" limit %s" % max(1, min(int(limit or 200), 500)),
+        )
+        return [AutomationCardAsset.model_validate(row) for row in rows]
+
+    def get_automation_group_content_plan(self, group_code: str) -> AutomationGroupContentPlan | None:
+        key = " ".join(str(group_code or "").split())
+        rows = self._list_payloads(
+            "automation_group_content_plans",
+            "group_code = %s",
+            (key,),
+            "updated_at desc, id desc",
+            limit_sql=" limit 1",
+        )
+        return AutomationGroupContentPlan.model_validate(rows[0]) if rows else None
+
+    def save_automation_group_content_plan(self, plan: AutomationGroupContentPlan) -> None:
+        self._save_model("automation_group_content_plans", plan)
+
+    def list_automation_group_content_plans(self, limit: int = 200) -> list[AutomationGroupContentPlan]:
+        rows = self._list_payloads(
+            "automation_group_content_plans",
+            "true",
+            (),
+            "updated_at desc, group_code asc",
+            limit_sql=" limit %s" % max(1, min(int(limit or 200), 500)),
+        )
+        return [AutomationGroupContentPlan.model_validate(row) for row in rows]
 
     def get_wecom_archive_cursor(self, corp_id: str) -> WecomArchiveCursor | None:
         rows = self._list_payloads(
@@ -4796,6 +6119,92 @@ class PostgresRepository:
     def save_opportunity_push_digest(self, digest: OpportunityPushDigest) -> None:
         self._save_model("opportunity_push_digests", digest)
 
+    def list_content_safety_rules(self, enabled_only: bool = False) -> list[ContentSafetyRule]:
+        where = "enabled = true" if enabled_only else "true"
+        rows = self._list_payloads("content_safety_rules", where, (), "updated_at desc, id desc")
+        return [ContentSafetyRule.model_validate(row) for row in rows]
+
+    def get_content_safety_rule(self, rule_id: str) -> ContentSafetyRule | None:
+        payload = self.get_payload_by_id("content_safety_rules", rule_id)
+        return ContentSafetyRule.model_validate(payload) if payload else None
+
+    def save_content_safety_rule(self, rule: ContentSafetyRule) -> None:
+        self._save_model("content_safety_rules", rule)
+
+    def list_content_moderation_assessments(
+        self,
+        status: str | None = None,
+        target_type: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[ContentModerationAssessment]:
+        where_parts = ["true"]
+        params: list[object] = []
+        if status:
+            where_parts.append("status = %s")
+            params.append(status)
+        if target_type:
+            where_parts.append("target_type = %s")
+            params.append(target_type)
+        safe_limit = max(1, min(int(limit or 100), 500))
+        safe_offset = max(int(offset or 0), 0)
+        rows = self._list_payloads(
+            "content_moderation_assessments",
+            " and ".join(where_parts),
+            tuple(params),
+            "updated_at desc, id desc",
+            limit_sql=f" limit {safe_limit} offset {safe_offset}",
+        )
+        return [ContentModerationAssessment.model_validate(row) for row in rows]
+
+    def get_content_moderation_assessment(self, assessment_id: str) -> ContentModerationAssessment | None:
+        payload = self.get_payload_by_id("content_moderation_assessments", assessment_id)
+        return ContentModerationAssessment.model_validate(payload) if payload else None
+
+    def get_latest_content_moderation_assessment(
+        self,
+        target_type: str,
+        target_id: str,
+        content_revision: str,
+    ) -> ContentModerationAssessment | None:
+        rows = self._list_payloads(
+            "content_moderation_assessments",
+            "target_type = %s and target_id = %s and content_revision = %s",
+            (target_type, target_id, content_revision),
+            "updated_at desc, id desc",
+            limit_sql=" limit 1",
+        )
+        return ContentModerationAssessment.model_validate(rows[0]) if rows else None
+
+    def save_content_moderation_assessment(self, assessment: ContentModerationAssessment) -> None:
+        self._save_model("content_moderation_assessments", assessment)
+
+    def list_content_moderation_audit_logs(
+        self,
+        target_type: str | None = None,
+        target_id: str | None = None,
+        limit: int = 100,
+    ) -> list[ContentModerationAuditLog]:
+        where_parts = ["true"]
+        params: list[object] = []
+        if target_type:
+            where_parts.append("target_type = %s")
+            params.append(target_type)
+        if target_id:
+            where_parts.append("target_id = %s")
+            params.append(target_id)
+        rows = self._list_payloads(
+            "content_moderation_audit_logs",
+            " and ".join(where_parts),
+            tuple(params),
+            "created_at desc, id desc",
+            limit_sql=f" limit {max(1, min(int(limit or 100), 500))}",
+        )
+        return [ContentModerationAuditLog.model_validate(row) for row in rows]
+
+    def save_content_moderation_audit_log(self, log: ContentModerationAuditLog) -> None:
+        self._save_model("content_moderation_audit_logs", log)
+
     def init_schema(self) -> None:
         with self._connection() as conn:
             with conn.transaction():
@@ -4818,14 +6227,219 @@ class PostgresRepository:
                         conn.execute(f"alter table {table_name} add column if not exists {column_name} {column_type}")
                     for index_name, expression in self.INDEXES.get(table_name, []):
                         conn.execute(f"create index if not exists {index_name} on {table_name} ({expression})")
-                # Backfill the new discriminator for rows written before the
-                # shared points core existed, then enforce it for all future
-                # account and ledger records.
+                # Backfill the account/ledger discriminators for rows written
+                # before the dual-ledger points model existed.  The old
+                # account contained both the initial grant and paid points;
+                # old recharge rows become the reward ledger and the old
+                # account is recomputed from base rows only.
                 conn.execute(
                     "update mutual_point_accounts set account_type = 'mutual_help' where account_type is null"
                 )
                 conn.execute(
                     "update mutual_point_ledgers set account_type = 'mutual_help' where account_type is null"
+                )
+                conn.execute(
+                    """
+                    update mutual_point_accounts
+                    set point_type = case
+                            when lower(coalesce(nullif(point_type, ''), payload->>'pointType', '')) in ('base', 'reward')
+                                then lower(coalesce(nullif(point_type, ''), payload->>'pointType'))
+                            else 'base'
+                        end,
+                        payload = jsonb_set(
+                            jsonb_set(payload, '{accountType}', to_jsonb(account_type), true),
+                            '{pointType}',
+                            to_jsonb(case
+                                when lower(coalesce(nullif(point_type, ''), payload->>'pointType', '')) in ('base', 'reward')
+                                    then lower(coalesce(nullif(point_type, ''), payload->>'pointType'))
+                                else 'base'
+                            end),
+                            true
+                        )
+                    """
+                )
+                conn.execute(
+                    """
+                    update mutual_point_ledgers
+                    set point_type = case
+                            when payload->>'ledgerType' = 'recharge' then 'reward'
+                            when lower(coalesce(nullif(payload->>'pointType', ''), nullif(point_type, ''), '')) in ('base', 'reward')
+                                then lower(coalesce(nullif(payload->>'pointType', ''), nullif(point_type, '')))
+                            else 'base'
+                        end,
+                        payload = jsonb_set(
+                            jsonb_set(payload, '{accountType}', to_jsonb(account_type), true),
+                            '{pointType}',
+                            to_jsonb(case
+                                when payload->>'ledgerType' = 'recharge' then 'reward'
+                                when lower(coalesce(nullif(payload->>'pointType', ''), nullif(point_type, ''), '')) in ('base', 'reward')
+                                    then lower(coalesce(nullif(payload->>'pointType', ''), nullif(point_type, '')))
+                                else 'base'
+                            end),
+                            true
+                        )
+                    """
+                )
+                conn.execute("drop index if exists uq_mutual_point_accounts_user_type")
+                conn.execute("drop index if exists uq_mutual_point_ledgers_user_type_idempotency")
+                conn.execute(
+                    """
+                    create unique index if not exists uq_mutual_point_accounts_user_type_point
+                    on mutual_point_accounts (user_id, account_type, point_type)
+                    """
+                )
+                conn.execute(
+                    """
+                    create unique index if not exists uq_mutual_point_ledgers_user_type_point_idempotency
+                    on mutual_point_ledgers (user_id, account_type, point_type, idempotency_key)
+                    where idempotency_key is not null
+                    """
+                )
+                conn.execute(
+                    """
+                    with reward_totals as (
+                        select
+                            user_id,
+                            account_type,
+                            sum(points_delta) as balance,
+                            sum(greatest(points_delta, 0)) as total_granted,
+                            sum(greatest(-points_delta, 0)) as total_consumed,
+                            min(coalesce(created_at_source, created_at)) as created_at,
+                            max(coalesce(created_at_source, created_at)) as updated_at
+                        from mutual_point_ledgers
+                        where point_type = 'reward'
+                        group by user_id, account_type
+                    ), rows_to_upsert as (
+                        select
+                            concat(r.account_type, '_reward_points_', r.user_id) as id,
+                            r.user_id,
+                            r.account_type,
+                            greatest(r.balance, 0)::integer as balance,
+                            r.total_granted::integer as total_granted,
+                            r.total_consumed::integer as total_consumed,
+                            r.created_at,
+                            r.updated_at
+                        from reward_totals r
+                    )
+                    insert into mutual_point_accounts (
+                        id, payload, user_id, account_type, point_type, balance,
+                        updated_at_source, created_at, updated_at
+                    )
+                    select
+                        r.id,
+                        jsonb_build_object(
+                            'id', r.id,
+                            'userId', r.user_id,
+                            'accountType', r.account_type,
+                            'pointType', 'reward',
+                            'balance', r.balance,
+                            'totalGranted', r.total_granted,
+                            'totalConsumed', r.total_consumed,
+                            'createdAt', r.created_at,
+                            'updatedAt', r.updated_at
+                        ),
+                        r.user_id,
+                        r.account_type,
+                        'reward',
+                        r.balance,
+                        r.updated_at,
+                        r.created_at,
+                        r.updated_at
+                    from rows_to_upsert r
+                    on conflict (user_id, account_type, point_type) do update set
+                        balance = excluded.balance,
+                        payload = excluded.payload,
+                        updated_at_source = excluded.updated_at_source,
+                        updated_at = now()
+                    """
+                )
+                conn.execute(
+                    """
+                    with base_totals as (
+                        select
+                            user_id,
+                            account_type,
+                            sum(points_delta) as balance,
+                            sum(greatest(points_delta, 0)) as total_granted,
+                            sum(greatest(-points_delta, 0)) as total_consumed
+                        from mutual_point_ledgers
+                        where point_type = 'base'
+                        group by user_id, account_type
+                    )
+                    update mutual_point_accounts a
+                    set balance = greatest(t.balance, 0)::integer,
+                        payload = jsonb_set(
+                            jsonb_set(
+                                jsonb_set(
+                                    jsonb_set(payload, '{balance}', to_jsonb(greatest(t.balance, 0)::integer), true),
+                                    '{totalGranted}', to_jsonb(t.total_granted::integer), true
+                                ),
+                                '{totalConsumed}', to_jsonb(t.total_consumed::integer), true
+                            ),
+                            '{pointType}', '"base"'::jsonb, true
+                        ),
+                        updated_at = now()
+                    from base_totals t
+                    where a.user_id = t.user_id
+                      and a.account_type = t.account_type
+                      and a.point_type = 'base'
+                    """
+                )
+                conn.execute(
+                    """
+                    with running_balances as (
+                        select
+                            id,
+                            sum(points_delta) over (
+                                partition by user_id, account_type, point_type
+                                order by coalesce(created_at_source, created_at), id
+                                rows between unbounded preceding and current row
+                            )::integer as balance_after
+                        from mutual_point_ledgers
+                    )
+                    update mutual_point_ledgers l
+                    set payload = jsonb_set(payload, '{balanceAfter}', to_jsonb(r.balance_after), true)
+                    from running_balances r
+                    where l.id = r.id
+                    """
+                )
+                conn.execute(
+                    """
+                    update mutual_recharge_orders
+                    set point_type = case
+                            when lower(coalesce(nullif(payload->>'pointType', ''), nullif(point_type, ''), '')) in ('base', 'reward')
+                                then lower(coalesce(nullif(payload->>'pointType', ''), nullif(point_type, '')))
+                            else 'reward'
+                        end,
+                        payload = jsonb_set(
+                            payload,
+                            '{pointType}',
+                            to_jsonb(case
+                                when lower(coalesce(nullif(payload->>'pointType', ''), nullif(point_type, ''), '')) in ('base', 'reward')
+                                    then lower(coalesce(nullif(payload->>'pointType', ''), nullif(point_type, '')))
+                                else 'reward'
+                            end),
+                            true
+                        )
+                    """
+                )
+                conn.execute(
+                    "alter table mutual_point_accounts alter column point_type set default 'base'"
+                )
+                conn.execute(
+                    "alter table mutual_point_accounts alter column point_type set not null"
+                )
+                conn.execute(
+                    "alter table mutual_point_ledgers alter column point_type set default 'base'"
+                )
+                conn.execute(
+                    "alter table mutual_point_ledgers alter column point_type set not null"
+                )
+                conn.execute(
+                    "alter table mutual_recharge_orders alter column point_type set default 'reward'"
+                )
+                conn.execute(
+                    "alter table mutual_recharge_orders alter column point_type set not null"
                 )
                 conn.execute(
                     "alter table mutual_point_accounts alter column account_type set default 'mutual_help'"
@@ -4859,14 +6473,14 @@ class PostgresRepository:
                 )
                 conn.execute(
                     """
-                    create unique index if not exists uq_mutual_point_accounts_user_type
-                    on mutual_point_accounts (user_id, account_type)
+                    create unique index if not exists uq_mutual_point_accounts_user_type_point
+                    on mutual_point_accounts (user_id, account_type, point_type)
                     """
                 )
                 conn.execute(
                     """
-                    create unique index if not exists uq_mutual_point_ledgers_user_type_idempotency
-                    on mutual_point_ledgers (user_id, account_type, idempotency_key)
+                    create unique index if not exists uq_mutual_point_ledgers_user_type_point_idempotency
+                    on mutual_point_ledgers (user_id, account_type, point_type, idempotency_key)
                     where idempotency_key is not null
                     """
                 )

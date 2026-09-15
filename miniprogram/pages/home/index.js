@@ -246,8 +246,8 @@ function summarizeGroupbuyOrders(payload = {}) {
     pending: Number(summary.pending || 0),
     relay: Number(summary.relay || 0),
     order: Number(summary.order || 0),
-    todayRelay: orders.filter((item) => item.actionKey === "relay-intent" && dateKey(item.createdAt) === today).length,
-    todayOrder: orders.filter((item) => item.actionKey === "order-intent" && dateKey(item.createdAt) === today).length
+    todayRelay: Number(summary.todayRelay || orders.filter((item) => item.actionKey === "relay-intent" && dateKey(item.createdAt) === today).length),
+    todayOrder: Number(summary.todayOrder || orders.filter((item) => item.actionKey === "order-intent" && dateKey(item.createdAt) === today).length)
   };
 }
 
@@ -776,8 +776,11 @@ Page({
             () => api.fetchCustomerIntelligence(currentUser.id, currentUser.id, "property")
           );
         }).catch(() => null),
-        api.fetchOrders({ userId: currentUser.id, role: "seller" }).catch(() => null),
-        api.fetchPendingImports().catch(() => ({ data: [] })),
+        api.fetchOrders({ userId: currentUser.id, role: "seller", summaryOnly: true }).catch(() => null),
+        // Import reminders only need metadata on the home tab.  Media is
+        // loaded when the user opens the import workflow, not during home
+        // refresh.
+        api.fetchPendingImports({ metadataOnly: true }).catch(() => ({ data: [] })),
         api.fetchShowcases(currentUser.id).catch(() => ({ data: [] }))
       ]);
       if (this.dashboardUserId !== requestUserId || (getCurrentUser() || {}).id !== requestUserId) return;

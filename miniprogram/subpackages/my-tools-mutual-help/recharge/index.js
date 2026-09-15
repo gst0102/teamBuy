@@ -11,6 +11,7 @@ const FALLBACK_PACKAGES = [100, 500, 1000, 2000].map((points) => ({
 Page({
   data: {
     account: null,
+    balances: { total: 0, base: 0, reward: 0 },
     packages: FALLBACK_PACKAGES,
     selectedPoints: 100,
     rechargeEnabled: false,
@@ -32,13 +33,16 @@ Page({
       const data = response.data || {};
       const config = data.config || {};
       const account = data.account || null;
-      if (account) shared.savePoints(account.balance, user.id);
+      const balances = shared.saveServerPointData(data, user.id);
       this.setData({
         account,
+        balances,
         packages: Array.isArray(data.rechargePackages) && data.rechargePackages.length ? data.rechargePackages : FALLBACK_PACKAGES,
         rechargeEnabled: Boolean(config.rechargeEnabled),
-        rechargeVisible: Boolean(config.rechargeVisible),
-        statusText: config.available === false ? "充值暂时不可用，请稍后重试" : ""
+        rechargeVisible: config.rechargeVisible === true,
+        statusText: config.available === false
+          ? "充值积分暂时不可用，请稍后重试"
+          : (config.rechargeEnabled ? "充值后进入充值积分账户；充值积分任务奖励也会进入这里。" : "充值积分入口暂未开放")
       });
     } catch (error) {
       this.setData({ statusText: error.detail || "积分状态加载失败，请稍后重试" });
@@ -82,22 +86,20 @@ Page({
   async handleRecharge() {
     const user = shared.requireLogin("/subpackages/my-tools-mutual-help/recharge/index");
     if (!user || this.data.loading) return;
-    if (!this.data.rechargeEnabled) {
-      wx.showToast({ title: "充值功能暂未开放", icon: "none" });
+    if (!this.data.rechargeVisible || !this.data.rechargeEnabled) {
+      wx.showToast({ title: "充值积分功能暂未开放", icon: "none" });
       return;
     }
-    this.setData({ loading: true, statusText: "正在准备充值…" });
+    this.setData({ loading: true, statusText: "正在准备充值积分…" });
     try {
       const response = await api.createMutualHelpRechargeOrder(user.id, this.data.selectedPoints);
       const result = response.data || {};
       if (result.testMode) {
         const confirmed = await api.confirmTestMutualHelpRechargeOrder(result.order.id, `mutual-test-${Date.now()}`);
-        const account = confirmed.data && confirmed.data.account;
-        if (account) {
-          shared.savePoints(account.balance, user.id);
-          this.setData({ account });
-        }
-        wx.showToast({ title: "充值成功", icon: "success" });
+        const data = confirmed.data || {};
+        const balances = shared.saveServerPointData(data, user.id);
+        this.setData({ account: data.account || null, balances });
+        wx.showToast({ title: "充值积分已到账", icon: "success" });
         return;
       }
       const paymentResponse = await api.createMutualHelpRechargePayment(result.order.id, user.id);
@@ -113,15 +115,15 @@ Page({
       const latest = await this.waitForRecharge(user.id, result.order.id);
       const account = latest && latest.account;
       if (account) {
-        shared.savePoints(account.balance, user.id);
-        this.setData({ account });
-        wx.showToast({ title: "充值成功", icon: "success" });
+        const balances = shared.saveServerPointData(latest, user.id);
+        this.setData({ account, balances });
+        wx.showToast({ title: "充值积分已到账", icon: "success" });
       } else {
         wx.showToast({ title: "支付成功，积分到账确认中", icon: "none" });
       }
     } catch (error) {
-      this.setData({ statusText: error.detail || error.message || "充值失败，请稍后重试" });
-      wx.showToast({ title: error.detail || error.message || "充值失败", icon: "none" });
+      this.setData({ statusText: error.detail || error.message || "充值积分失败，请稍后重试" });
+      wx.showToast({ title: error.detail || error.message || "充值积分失败", icon: "none" });
     } finally {
       this.setData({ loading: false });
     }

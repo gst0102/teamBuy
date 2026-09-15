@@ -1,5 +1,9 @@
 {
   "navigationBarTitleText": "任务网页",
+  "navigationStyle": "custom",
   "navigationBarBackgroundColor": "#f4f8fc",
-  "navigationBarTextStyle": "black"
+  "navigationBarTextStyle": "black",
+  "usingComponents": {
+    "custom-nav": "/components/custom-nav/index"
+  }
 }

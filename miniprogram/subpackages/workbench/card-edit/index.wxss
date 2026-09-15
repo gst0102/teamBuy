@@ -266,3 +266,20 @@
 .action-btn {
   flex: 1;
 }
+/* Typography scale v2: keep field editing readable while preserving media controls. */
+.page-shell .hero-title-input { font-size: 30rpx; }
+.page-shell .hero-meta-input { font-size: 24rpx; }
+.page-shell .section-title { font-size: 32rpx; }
+.page-shell .field-label { font-size: 26rpx; }
+.page-shell .field-input,
+.page-shell .textarea-large { font-size: 28rpx; }
+.page-shell .section-link { font-size: 24rpx; }
+.page-shell .mini-upload-btn { font-size: 24rpx; }
+.page-shell .media-edit-title { font-size: 27rpx; }
+.page-shell .media-edit-sub { font-size: 23rpx; }
+.page-shell .media-action-btn { display: flex; align-items: center; justify-content: center; min-height: 68rpx; font-size: 24rpx; }
+.page-shell .tag-pick-row text,
+.page-shell .tag { font-size: 21rpx; }
+.page-shell .empty-state { font-size: 25rpx; }
+.page-shell .switch-title { font-size: 26rpx; }
+.page-shell .submit-bar button { display: flex; align-items: center; justify-content: center; min-height: 72rpx; font-size: 26rpx; }

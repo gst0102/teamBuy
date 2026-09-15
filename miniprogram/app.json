@@ -14,6 +14,9 @@
     "pages/group-resource-library/index",
     "pages/enterprise-resource-search/index",
     "pages/resource-tools-webview/index",
+    "pages/business-opportunity/index",
+    "pages/business-opportunity-publish/index",
+    "pages/business-opportunity-detail/index",
     "pages/opportunity-radar/index",
     "pages/opportunity-detail/index",
     "pages/opportunity-saved/index",
@@ -72,12 +75,16 @@
       "pages": [
         "index/index",
         "task-detail/index",
+        "chat/index",
+        "report/index",
         "web-view/index",
         "task-manage/index",
         "task-manage/detail/index",
         "publish/index",
         "mine/index",
-        "recharge/index"
+        "account/index",
+        "recharge/index",
+        "withdrawal/index"
       ]
     }
   ],

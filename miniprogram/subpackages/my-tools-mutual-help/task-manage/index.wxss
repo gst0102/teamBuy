@@ -1,1 +1,218 @@
 @import "../shared.wxss";
+
+.task-manage-page .manage-intro {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  width: 100%;
+  gap: 18rpx;
+  box-sizing: border-box;
+}
+
+.task-manage-page .manage-intro > view:first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.task-manage-page .manage-add-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 148rpx;
+  width: 148rpx;
+  margin: 0 0 3rpx auto;
+  height: 58rpx;
+  padding: 0;
+  border: 1rpx solid #f0b98d;
+  border-radius: 999rpx;
+  background: #fff4e9;
+  color: #d85d2b;
+  font-size: 24rpx;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.manage-add-button::after {
+  border: 0;
+}
+
+.task-manage-page .manage-summary {
+  margin-top: 0;
+  border-color: #dfe5e9;
+  border-radius: 22rpx;
+  background: #ffffff;
+  box-shadow: none;
+}
+
+.task-manage-page .manage-summary-sub {
+  color: #65727f;
+  font-size: 22rpx;
+}
+
+.task-manage-page .manage-task-list {
+  gap: 24rpx;
+  margin-top: 26rpx;
+}
+
+.task-manage-page .manage-filter-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12rpx;
+  width: 100%;
+  margin-top: 20rpx;
+  overflow: visible;
+  box-sizing: border-box;
+}
+
+.task-manage-page .manage-filter-row .filter-chip {
+  width: 100%;
+  min-width: 0;
+  min-height: 58rpx;
+  padding: 0 6rpx;
+  border-radius: 18rpx;
+  font-size: 23rpx;
+  box-sizing: border-box;
+}
+
+.task-manage-page .manage-task-card {
+  padding: 22rpx 22rpx 18rpx;
+  border-color: #dfe5e9;
+  border-radius: 22rpx;
+  background: #ffffff;
+  box-shadow: none;
+}
+
+.task-manage-page .manage-task-brand-row {
+  margin-top: 0;
+  justify-content: flex-end;
+  color: #d85d2b;
+  font-size: 23rpx;
+  font-weight: 900;
+}
+
+.task-manage-page .manage-task-title {
+  margin-top: 16rpx;
+}
+
+.task-manage-page .manage-task-description {
+  color: #566473;
+  font-size: 24rpx;
+  -webkit-line-clamp: 2;
+}
+
+.task-manage-page .manage-task-meta {
+  color: #65727f;
+  font-size: 22rpx;
+}
+
+.task-manage-page .manage-task-progress {
+  margin-top: 18rpx;
+  border-color: #e6ebef;
+}
+
+.task-manage-page .manage-task-progress > view {
+  border-color: #e6ebef;
+}
+
+.task-manage-page .manage-task-progress text {
+  color: #788592;
+}
+
+.task-manage-page .manage-task-foot {
+  margin-top: 14rpx;
+  color: #65727f;
+}
+
+.task-manage-page .manage-task-actions {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin: 12rpx 0 0;
+}
+
+.task-manage-page .manage-primary-button,
+.task-manage-page .manage-share-button,
+.task-manage-page .manage-delete-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1 1 0;
+  width: 0;
+  min-width: 0;
+  height: 62rpx;
+  margin: 0;
+  padding: 0 6rpx;
+  border-radius: 999rpx;
+  font-size: 23rpx;
+  font-weight: 900;
+  line-height: 1;
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+
+.task-manage-page .manage-primary-button {
+  border: 0;
+  background: #ef6d35;
+  color: #ffffff;
+}
+
+.task-manage-page .manage-primary-button::after,
+.task-manage-page .manage-share-button::after {
+  border: 0;
+}
+
+.task-manage-page .manage-share-button {
+  border: 1rpx solid #06ad56;
+  background: #07c160;
+  color: #ffffff;
+}
+
+.task-manage-page .manage-delete-link {
+  border: 1rpx solid #e7b5a7;
+  background: #fff5f1;
+  color: #c25f48;
+}
+
+.task-manage-page .manage-delete-link:active,
+.task-manage-page .manage-primary-button:active,
+.task-manage-page .manage-share-button:active {
+  opacity: 0.78;
+}
+
+.task-manage-page .manage-share-button[disabled] {
+  border-color: #d9dee3;
+  background: #edf0f2;
+  color: #9ca5ad;
+}
+
+.mutual-page.theme-dark.task-manage-page .manage-summary,
+.mutual-page.theme-dark.task-manage-page .manage-task-card {
+  border-color: #354352;
+  background: #1d2731;
+  box-shadow: none;
+}
+
+.mutual-page.theme-dark.task-manage-page .manage-add-button {
+  border-color: #80533e;
+  background: #3a2923;
+  color: #ffad7d;
+}
+
+.mutual-page.theme-dark.task-manage-page .manage-delete-link {
+  border-color: #744c43;
+  background: #352725;
+  color: #f2a08c;
+}
+
+.mutual-page.theme-dark.task-manage-page .manage-summary-sub,
+.mutual-page.theme-dark.task-manage-page .manage-task-description,
+.mutual-page.theme-dark.task-manage-page .manage-task-meta,
+.mutual-page.theme-dark.task-manage-page .manage-task-foot,
+.mutual-page.theme-dark.task-manage-page .manage-task-progress text {
+  color: #a9b6c2;
+}
+
+.mutual-page.theme-dark.task-manage-page .manage-task-progress,
+.mutual-page.theme-dark.task-manage-page .manage-task-progress > view {
+  border-color: #354352;
+}

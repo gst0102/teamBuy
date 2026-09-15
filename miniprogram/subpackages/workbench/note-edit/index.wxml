@@ -780,5 +780,4 @@
     </view>
     </block>
   </block>
-  <canvas canvas-id="businessCardEditShareCanvas" class="business-card-share-canvas"></canvas>
 </view>

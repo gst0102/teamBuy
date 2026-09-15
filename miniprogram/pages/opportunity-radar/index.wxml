@@ -5,6 +5,21 @@
     <view wx:for="{{tabs}}" wx:key="key" class="opportunity-tab {{activeTab === item.key ? 'active' : ''}}" data-key="{{item.key}}" bindtap="handleTabTap">{{item.label}}</view>
   </view>
 
+  <view wx:if="{{loading}}" class="empty-state loading-state">
+    <view>正在计算匹配机会</view>
+    <view class="empty-sub">系统会按你的资料和订阅条件读取真实商机。</view>
+  </view>
+  <view wx:elif="{{loadError}}" class="empty-state retry-state" bindtap="loadOpportunities">
+    <view>机会暂时无法读取</view>
+    <view class="empty-sub">网络恢复后点击重试，不展示虚构的推荐。</view>
+    <button>重新加载</button>
+  </view>
+  <view wx:elif="{{loadEmpty}}" class="empty-state">
+    <view>暂时没有匹配机会</view>
+    <view class="empty-sub">先完善合作名片或调整订阅条件，系统会继续寻找。</view>
+  </view>
+
+  <block wx:else>
   <view class="radar-hero-card">
     <view class="hero-copy">
       <view class="hero-kicker">机会雷达</view>
@@ -116,5 +131,6 @@
       <view>{{item.action}}</view>
     </view>
   </view>
+  </block>
 <canvas canvas-id="shareCardCanvas" class="share-card-canvas"></canvas>
 </view>

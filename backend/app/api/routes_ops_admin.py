@@ -11,14 +11,26 @@ from app.api.dependencies import get_app_service, get_ops_console_store, get_syn
 from app.api.upload_utils import read_upload_with_limit
 from app.core.config import settings
 from app.schemas.common import ApiResponse
+from app.schemas.group_resources import GroupResourceAdminCreateRequest
 from app.schemas.ops_admin import (
     FeedbackTicketCreateRequest,
     FeedbackTicketUpdateRequest,
     CustomerInfoChainToggleRequest,
+    ContentPinUpdateRequest,
+    ContentModerationReviewRequest,
+    ContentSafetyRuleCreateRequest,
+    ContentSafetyRuleUpdateRequest,
+    ContentSafetyTestRequest,
     MutualHelpConfigUpdateRequest,
     GroupBotChannelUpsertRequest,
     GroupUploadCreateRequest,
     GroupUploadPreviewRequest,
+    GroupResourceReviewActionRequest,
+    GroupResourceAdminUpdateRequest,
+    MobileToolAdminUpdateRequest,
+    MutualHelpAdminTaskCreateRequest,
+    MutualPlatformBudgetAdjustRequest,
+    ToolRecordsBulkActionRequest,
     OpportunityLeadUpsertRequest,
     RuleLearningSampleUpdateRequest,
     SingleGroupResourceCreateRequest,
@@ -63,6 +75,24 @@ def list_ops_referral_withdrawals(
             "minimumWithdrawalFen": service.referral_withdrawal_min_amount_fen(),
         }
     )
+
+
+@router.get("/api/ops-admin/referral-analytics", response_model=ApiResponse[dict])
+def get_ops_referral_analytics(
+    period: str = Query(default="today"),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, alias="pageSize", ge=1, le=100),
+    keyword: str | None = Query(default=None),
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+):
+    _verify_admin_token(x_admin_token)
+    return ApiResponse(data=service.get_referral_analytics(
+        period=period,
+        page=page,
+        page_size=page_size,
+        keyword=keyword,
+    ))
 
 
 @router.post("/api/ops-admin/referral-withdrawals/{withdrawal_id}/approve", response_model=ApiResponse[dict])
@@ -664,6 +694,151 @@ def get_mutual_help_operations(
     return ApiResponse(data=service.get_mutual_help_operations())
 
 
+@router.post("/api/ops-admin/mutual-help/tasks", response_model=ApiResponse[dict])
+def create_ops_mutual_help_task(
+    payload: MutualHelpAdminTaskCreateRequest,
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+):
+    _verify_admin_token(x_admin_token)
+    return ApiResponse(data=service.create_mutual_help_task_as_admin(payload.model_dump()))
+
+
+@router.post("/api/ops-admin/mutual-help/platform-budget", response_model=ApiResponse[dict])
+def adjust_ops_mutual_platform_budget(
+    payload: MutualPlatformBudgetAdjustRequest,
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+):
+    _verify_admin_token(x_admin_token)
+    return ApiResponse(data=service.adjust_mutual_platform_budget(payload.delta, payload.reason, payload.operatorName))
+
+
+@router.get("/api/ops-admin/mutual-help/withdrawals", response_model=ApiResponse[dict])
+def list_ops_mutual_point_withdrawals(
+    status: str | None = Query(default="pending"),
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+):
+    _verify_admin_token(x_admin_token)
+    return ApiResponse(data={"items": service.list_mutual_point_withdrawals(status=status)})
+
+
+@router.post("/api/ops-admin/mutual-help/withdrawals/{withdrawal_id}/approve", response_model=ApiResponse[dict])
+def approve_ops_mutual_point_withdrawal(
+    withdrawal_id: str,
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+):
+    _verify_admin_token(x_admin_token)
+    return ApiResponse(data=service.approve_mutual_point_withdrawal(withdrawal_id))
+
+
+@router.post("/api/ops-admin/mutual-help/withdrawals/{withdrawal_id}/query", response_model=ApiResponse[dict])
+def query_ops_mutual_point_withdrawal(
+    withdrawal_id: str,
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+):
+    _verify_admin_token(x_admin_token)
+    return ApiResponse(data=service.query_mutual_point_withdrawal(withdrawal_id))
+
+
+@router.post("/api/ops-admin/mutual-help/withdrawals/{withdrawal_id}/settle", response_model=ApiResponse[dict])
+def settle_ops_mutual_point_withdrawal(
+    withdrawal_id: str,
+    reason: str = Query(default="已核实微信到账"),
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+):
+    _verify_admin_token(x_admin_token)
+    return ApiResponse(data=service.settle_mutual_point_withdrawal_manually(withdrawal_id, reason))
+
+
+@router.post("/api/ops-admin/mutual-help/withdrawals/{withdrawal_id}/cancel", response_model=ApiResponse[dict])
+def cancel_ops_mutual_point_withdrawal(
+    withdrawal_id: str,
+    reason: str = Query(default="运营人工撤销"),
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+):
+    _verify_admin_token(x_admin_token)
+    return ApiResponse(data=service.cancel_mutual_point_withdrawal(withdrawal_id, reason))
+
+
+@router.get("/api/ops-admin/tools-dashboard", response_model=ApiResponse[dict])
+def get_ops_tools_dashboard(
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+):
+    _verify_admin_token(x_admin_token)
+    return ApiResponse(data=service.get_tools_dashboard())
+
+
+@router.get("/api/ops-admin/tools-records", response_model=ApiResponse[dict])
+def list_ops_tool_records(
+    tool: str = Query(default="mutual_help"),
+    keyword: str | None = Query(default=None),
+    status: str | None = Query(default=None),
+    test_only: bool = Query(default=False, alias="testOnly"),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, alias="pageSize", ge=1, le=100),
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+):
+    _verify_admin_token(x_admin_token)
+    return ApiResponse(data=service.list_tool_records(
+        tool,
+        keyword=keyword,
+        status=status,
+        test_only=test_only,
+        page=page,
+        page_size=page_size,
+    ))
+
+
+@router.post("/api/ops-admin/tools-records/bulk-action", response_model=ApiResponse[dict])
+def bulk_action_ops_tool_records(
+    payload: ToolRecordsBulkActionRequest,
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+):
+    _verify_admin_token(x_admin_token)
+    return ApiResponse(data=service.bulk_action_tool_records(
+        payload.tool,
+        payload.recordIds,
+        payload.action,
+        test_only=payload.testOnly,
+        operator_name=payload.operatorName,
+        reason=payload.reason,
+    ))
+
+
+@router.get("/api/ops-admin/mobile-tool-admins", response_model=ApiResponse[list[dict]])
+def list_ops_mobile_tool_admins(
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+):
+    _verify_admin_token(x_admin_token)
+    return ApiResponse(data=service.list_mobile_tool_admins())
+
+
+@router.put("/api/ops-admin/mobile-tool-admins/{user_id}", response_model=ApiResponse[dict])
+def set_ops_mobile_tool_admin(
+    user_id: str,
+    payload: MobileToolAdminUpdateRequest,
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+):
+    _verify_admin_token(x_admin_token)
+    return ApiResponse(data=service.set_mobile_tool_admin(
+        user_id,
+        payload.tool,
+        payload.enabled,
+        payload.operatorName,
+    ))
+
+
 @router.put("/api/ops-admin/mutual-help", response_model=ApiResponse[dict])
 def update_mutual_help_config(
     payload: MutualHelpConfigUpdateRequest,
@@ -685,6 +860,120 @@ def update_mutual_help_config(
         withdrawal_visible=payload.withdrawalVisible,
         operator_name=payload.operatorName,
     ))
+
+
+@router.get("/api/ops-admin/content-pins", response_model=ApiResponse[dict])
+def list_ops_content_pins(
+    target_type: str = Query(default="all", alias="targetType"),
+    keyword: str | None = Query(default=None),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=100, ge=1, le=200, alias="pageSize"),
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+):
+    _verify_admin_token(x_admin_token)
+    return ApiResponse(data=service.list_content_pins(
+        target_type=target_type,
+        keyword=keyword,
+        page=page,
+        page_size=page_size,
+    ))
+
+
+@router.put("/api/ops-admin/content-pins/{target_type}/{target_id}", response_model=ApiResponse[dict])
+def update_ops_content_pin(
+    target_type: str,
+    target_id: str,
+    payload: ContentPinUpdateRequest,
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+):
+    _verify_admin_token(x_admin_token)
+    return ApiResponse(data=service.set_content_pin(
+        target_type=target_type,
+        target_id=target_id,
+        pinned=payload.pinned,
+        operator_name=payload.operatorName,
+    ))
+
+
+@router.get("/api/ops-admin/content-safety/rules", response_model=ApiResponse[list[dict]])
+def list_content_safety_rules(
+    enabled_only: bool = Query(default=False, alias="enabledOnly"),
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+):
+    _verify_admin_token(x_admin_token)
+    return ApiResponse(data=service.list_content_safety_rules(enabled_only=enabled_only))
+
+
+@router.post("/api/ops-admin/content-safety/rules", response_model=ApiResponse[dict])
+def create_content_safety_rule(
+    payload: ContentSafetyRuleCreateRequest,
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+):
+    _verify_admin_token(x_admin_token)
+    values = payload.model_dump()
+    return ApiResponse(data=service.create_content_safety_rule(values, operator_name=payload.operatorName), message="内容安全规则已创建")
+
+
+@router.patch("/api/ops-admin/content-safety/rules/{rule_id}", response_model=ApiResponse[dict])
+def update_content_safety_rule(
+    rule_id: str,
+    payload: ContentSafetyRuleUpdateRequest,
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+):
+    _verify_admin_token(x_admin_token)
+    values = payload.model_dump(exclude_none=True)
+    return ApiResponse(data=service.update_content_safety_rule(rule_id, values, operator_name=payload.operatorName), message="内容安全规则已更新")
+
+
+@router.post("/api/ops-admin/content-safety/test", response_model=ApiResponse[dict])
+def test_content_safety(
+    payload: ContentSafetyTestRequest,
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+):
+    _verify_admin_token(x_admin_token)
+    return ApiResponse(data=service.test_content_safety(payload.contentType, payload.fields, payload.contentRevision))
+
+
+@router.get("/api/ops-admin/content-safety/queue", response_model=ApiResponse[dict])
+def list_content_safety_queue(
+    status: str | None = Query(default="reviewing"),
+    target_type: str | None = Query(default=None, alias="targetType"),
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+):
+    _verify_admin_token(x_admin_token)
+    return ApiResponse(data=service.list_content_moderation_queue(status=status, target_type=target_type, limit=limit, offset=offset))
+
+
+@router.post("/api/ops-admin/content-safety/queue/{assessment_id}/review", response_model=ApiResponse[dict])
+def review_content_safety_queue_item(
+    assessment_id: str,
+    payload: ContentModerationReviewRequest,
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+):
+    _verify_admin_token(x_admin_token)
+    return ApiResponse(
+        data=service.review_content_moderation(assessment_id, payload.action, payload.operatorName, payload.note),
+        message="内容审核状态已更新",
+    )
+
+
+@router.get("/api/ops-admin/content-safety/stats", response_model=ApiResponse[dict])
+def get_content_safety_stats(
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+):
+    _verify_admin_token(x_admin_token)
+    return ApiResponse(data=service.list_content_safety_stats())
 
 
 @router.get("/api/ops-admin/wecom-bind-card-asset", response_model=ApiResponse[dict])
@@ -1434,6 +1723,95 @@ def create_single_group_resource(
             operator_name=payload.operatorName,
         )
     )
+
+
+@router.get("/api/ops-admin/group-resource-admins", response_model=ApiResponse[list[dict]])
+def list_group_resource_admins(
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+):
+    _verify_admin_token(x_admin_token)
+    return ApiResponse(data=service.list_group_resource_admins())
+
+
+@router.put("/api/ops-admin/group-resource-admins/{user_id}", response_model=ApiResponse[dict])
+def set_group_resource_admin(
+    user_id: str,
+    payload: GroupResourceAdminUpdateRequest,
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+):
+    _verify_admin_token(x_admin_token)
+    return ApiResponse(data=service.set_group_resource_admin(user_id, payload.enabled, payload.operatorName))
+
+
+@router.post("/api/ops-admin/group-resource-catalog", response_model=ApiResponse[dict])
+def create_catalog_group_resource(
+    payload: GroupResourceAdminCreateRequest,
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+):
+    _verify_admin_token(x_admin_token)
+    values = payload.model_dump(exclude_none=True)
+    values["operatorName"] = values.get("operatorName") or "ops"
+    return ApiResponse(data=service.create_group_resource_as_admin(values), message="正式群资源已提交审核")
+
+
+@router.get("/api/ops-admin/group-resource-review/summary", response_model=ApiResponse[dict])
+def get_group_resource_review_summary(
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+):
+    _verify_admin_token(x_admin_token)
+    return ApiResponse(data=service.list_group_resource_review_workbench(page=1, page_size=1)["summary"])
+
+
+@router.get("/api/ops-admin/group-resource-review", response_model=ApiResponse[dict])
+def list_group_resource_review(
+    status: str | None = Query(default=None),
+    keyword: str | None = Query(default=None),
+    city_code: str | None = Query(default=None, alias="cityCode"),
+    industry: str | None = Query(default=None),
+    complaints_only: bool = Query(default=False, alias="complaintsOnly"),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+):
+    _verify_admin_token(x_admin_token)
+    return ApiResponse(data=service.list_group_resource_review_workbench(
+        status=status,
+        keyword=keyword,
+        city_code=city_code,
+        industry=industry,
+        complaints_only=complaints_only,
+        page=page,
+        page_size=page_size,
+    ))
+
+
+@router.get("/api/ops-admin/group-resource-review/{resource_id}", response_model=ApiResponse[dict])
+def get_group_resource_review_detail(
+    resource_id: str,
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+):
+    _verify_admin_token(x_admin_token)
+    return ApiResponse(data=service.get_group_resource_review_detail(resource_id))
+
+
+@router.post("/api/ops-admin/group-resource-review/{resource_id}/{action}", response_model=ApiResponse[dict])
+def review_group_resource(
+    resource_id: str,
+    action: str,
+    payload: GroupResourceReviewActionRequest,
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    service: AppService = Depends(get_app_service),
+):
+    _verify_admin_token(x_admin_token)
+    if action not in {"approve", "reject", "pause", "restore", "invalidate", "remove", "refund", "penalty"}:
+        raise HTTPException(status_code=404, detail="审核动作不存在")
+    return ApiResponse(data=service.review_group_resource(resource_id, action, payload.model_dump()))
 
 
 @router.get("/api/ops-admin/wecom-group-join-ways", response_model=ApiResponse[list[dict]])

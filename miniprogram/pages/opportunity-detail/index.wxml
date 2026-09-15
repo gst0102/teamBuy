@@ -1,6 +1,17 @@
 <view class="page-shell detail-page">
   <custom-nav title="线索详情" show-back="{{true}}" />
 
+  <view wx:if="{{loading}}" class="empty-state loading-state">
+    <view>正在读取线索</view>
+    <view class="empty-sub">只展示服务端存在且仍有效的真实商机。</view>
+  </view>
+  <view wx:elif="{{loadError}}" class="empty-state retry-state" bindtap="loadLead">
+    <view>线索暂时无法读取</view>
+    <view class="empty-sub">线索可能已下架，也可能是网络暂时不可用。点击重试。</view>
+    <button>重新加载</button>
+  </view>
+
+  <block wx:else>
   <view class="detail-hero">
     <view class="hero-badge">官方收录 · 可联系</view>
     <view class="hero-title">{{lead.title}}</view>
@@ -50,5 +61,6 @@
       <button data-label="已标记无效" bindtap="handleFollowupAction">标记无效</button>
     </view>
   </view>
+  </block>
 <canvas canvas-id="shareCardCanvas" class="share-card-canvas"></canvas>
 </view>

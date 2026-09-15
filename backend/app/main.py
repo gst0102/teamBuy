@@ -19,11 +19,12 @@ from app.api.routes_enterprise_resources import router as enterprise_resources_r
 from app.api.routes_h5 import router as h5_router
 from app.api.routes_imports import router as imports_router
 from app.api.routes_live_qr import router as live_qr_router
+from app.api.routes_group_resources import router as group_resources_router
 from app.api.routes_location import router as location_router
 from app.api.routes_messages import router as messages_router
 from app.api.routes_notes import router as notes_router
 from app.api.routes_ocr import router as ocr_router
-from app.api.routes_opportunities import packages_router, push_router, router as opportunities_router, subscriptions_router, supply_demand_router
+from app.api.routes_opportunities import business_opportunity_router, packages_router, push_router, router as opportunities_router, subscriptions_router, supply_demand_router
 from app.api.routes_ops_admin import router as ops_admin_router
 from app.api.routes_orders import router as orders_router
 from app.api.routes_robot import router as robot_router
@@ -103,7 +104,32 @@ _PUBLIC_API_SUFFIXES = (
 _PROFILE_PATH = re.compile(r"^/api/auth/users/([^/]+)/profile$")
 
 
-def _is_public_api(path: str) -> bool:
+def _is_public_api(path: str, method: str = "GET") -> bool:
+    # The public group-resource catalogue is browseable before login. All
+    # mutations, views and complaints remain identity-bound even though some
+    # legacy routes share a `/view` suffix with other public resources.
+    if path == "/api/group-resources":
+        return method.upper() == "GET"
+    if path.startswith("/api/group-resources/"):
+        return False
+    if path == "/api/business-opportunities/cards":
+        return method.upper() == "GET"
+    if path.startswith("/api/business-opportunities/cards/"):
+        # The public preview is browseable before login; the `/unlock` POST
+        # must still pass the production identity middleware.
+        return method.upper() == "GET" and not path.endswith("/unlock")
+    if path == "/api/supply-demand/cards":
+        return method.upper() == "GET"
+    if path.startswith("/api/supply-demand/cards/"):
+        # Public cards can be discovered and previewed before login. Contact
+        # unlocks, applications and other mutations remain identity-bound.
+        return method.upper() == "GET"
+    if path == "/api/scrm/mutual-help/tasks":
+        return method.upper() == "GET"
+    if re.fullmatch(r"/api/scrm/mutual-help/tasks/[^/]+", path):
+        return method.upper() == "GET"
+    if re.fullmatch(r"/api/scrm/mutual-help/tasks/[^/]+/share-snapshot", path):
+        return method.upper() == "GET"
     if path in _PUBLIC_API_EXACT or path in _PUBLIC_API_CALLBACKS or path.startswith(_PUBLIC_API_PREFIXES):
         return True
     if path.startswith("/api/cards/") and (path.endswith("/view") or path.endswith("/stats")):
@@ -137,7 +163,7 @@ async def enforce_production_api_identity(request: Request, call_next):
         authenticated_user_id = str(session.get("userId") or "").strip() or None
         request.state.authenticated_user_id = authenticated_user_id
 
-    if not enabled or not path.startswith("/api/") or _is_public_api(path):
+    if not enabled or not path.startswith("/api/") or _is_public_api(path, request.method):
         return await call_next(request)
 
     try:
@@ -212,6 +238,7 @@ app.include_router(automation_router)
 app.include_router(h5_router)
 app.include_router(imports_router)
 app.include_router(live_qr_router)
+app.include_router(group_resources_router)
 app.include_router(cards_router)
 app.include_router(dashboard_router)
 app.include_router(enterprise_resources_router)
@@ -224,6 +251,7 @@ app.include_router(packages_router)
 app.include_router(subscriptions_router)
 app.include_router(supply_demand_router)
 app.include_router(push_router)
+app.include_router(business_opportunity_router)
 app.include_router(ops_admin_router)
 app.include_router(orders_router)
 app.include_router(robot_router)

@@ -5,11 +5,26 @@ const SHARE_CARD_WIDTH = 750;
 // generated information cards at the same ratio so the platform does not
 // crop the right side of long titles and service details.
 const SHARE_CARD_HEIGHT = 600;
-const SHARE_CARD_FOOTER = "资料整理助手 · 点击查看完整资料";
+const SHARE_CARD_FOOTER = "少来回解释，资料一页讲清";
 const RESOURCE_DEFAULT_SHARE_WIDTH = 750;
 const RESOURCE_DEFAULT_SHARE_HEIGHT = 600;
 const BUSINESS_CARD_SHARE_WIDTH = 600;
 const BUSINESS_CARD_SHARE_HEIGHT = 480;
+const BUSINESS_CARD_THUMB_WIDTH = 600;
+const BUSINESS_CARD_THUMB_HEIGHT = 600;
+const BUSINESS_CARD_SHARE_IMAGE_VARIANT = "avatar_thumbnail_v1";
+// Keep the native WeChat share title compact enough for a normal phone width.
+// The rendered share image carries the full information; the outer title is
+// only a quick identifier and must not become a multi-line paragraph.
+const SHARE_TITLE_MAX_LENGTH = 20;
+
+function truncateShareTitle(value, maxLength = SHARE_TITLE_MAX_LENGTH) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  const chars = Array.from(text);
+  if (chars.length <= maxLength) return text;
+  const suffix = "...";
+  return `${chars.slice(0, Math.max(0, maxLength - suffix.length)).join("")}${suffix}`;
+}
 
 function getCanvasExportSize(baseWidth = SHARE_CARD_WIDTH, baseHeight = SHARE_CARD_HEIGHT) {
   let windowWidth = 375;
@@ -200,6 +215,8 @@ function normalizeUnifiedShareCardModel(source = {}) {
   return {
     layoutId,
     templateKind,
+    taskKind: String(source.taskKind || "").trim(),
+    shareImageVariant: String(source.shareImageVariant || "").trim(),
     // v11 has one fixed 5:4 contract, but the presentation is derived from
     // the only input that changes the visual hierarchy: a usable real image.
     // Business cards remain identity-first because an avatar is not a
@@ -220,7 +237,14 @@ function normalizeUnifiedShareCardModel(source = {}) {
     serviceData: source.serviceData || {},
     linkData: source.linkData || {},
     collectionData: source.collectionData || {},
+    summary: String(source.summary || source.headline || source.body || "").trim(),
     marketingLine: String(source.marketingLine || "").trim(),
+    workflowSteps: (Array.isArray(source.workflowSteps) ? source.workflowSteps : [])
+      .map((item) => String(item || "").trim())
+      .filter(Boolean)
+      .slice(0, 3),
+    rewardText: String(source.rewardText || "").trim(),
+    trustLine: String(source.trustLine || "").trim(),
     primaryImageUrl,
     imageCount: blocks.filter((item) => item.type === "image").length,
     footer: String(source.footer || SHARE_CARD_FOOTER).trim() || SHARE_CARD_FOOTER
@@ -343,8 +367,33 @@ async function drawBusinessCardLayout(ctx, card, avatarPath, footer) {
   drawOneLine(ctx, card.contactLine || "电话 / 微信", innerX + 30, innerY + 260, innerW - 60);
 
   ctx.setFillStyle("#1677ff");
-  ctx.setFontSize(24);
-  drawOneLine(ctx, footer || SHARE_CARD_FOOTER, 62, 448, 476);
+  ctx.setFontSize(30);
+  drawOneLine(ctx, footer || SHARE_CARD_FOOTER, 56, 448, 488);
+}
+
+async function drawBusinessCardAvatarThumbnail(ctx, card, avatarPath) {
+  const width = BUSINESS_CARD_THUMB_WIDTH;
+  const height = BUSINESS_CARD_THUMB_HEIGHT;
+  const palette = businessCardPalette(card.templateId);
+  const background = ctx.createLinearGradient(0, 0, width, height);
+  background.addColorStop(0, palette.bg0);
+  background.addColorStop(1, palette.bg1);
+  ctx.setFillStyle(background);
+  ctx.fillRect(0, 0, width, height);
+
+  // Native WeChat share cards are rectangular. Keep the image itself square,
+  // but make the only meaningful content the same circular avatar used by the
+  // profile page, so a business-card share never exposes a stretched poster.
+  ctx.setFillStyle("rgba(22,119,255,0.08)");
+  ctx.beginPath();
+  ctx.arc(width - 58, 64, 120, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.setFillStyle("rgba(255,255,255,0.82)");
+  ctx.beginPath();
+  ctx.arc(76, height - 34, 108, 0, Math.PI * 2);
+  ctx.fill();
+
+  await drawBusinessCardAvatar(ctx, avatarPath, card, 150, 150, 300, palette);
 }
 
 function drawWrappedText(ctx, text, x, y, maxWidth, lineHeight, maxLines = 2) {
@@ -388,16 +437,16 @@ function drawWrappedText(ctx, text, x, y, maxWidth, lineHeight, maxLines = 2) {
 function typedInfoPalette(layoutId, templateKind = "") {
   if (templateKind === "mutual_task") {
     return {
-      accent: "#d85d2b",
-      accentText: "#b45c36",
-      soft: "#fff0df",
-      bg0: "#fff8ef",
-      bg1: "#f8f1e8",
+      accent: "#18a98f",
+      accentText: "#087e76",
+      soft: "#e8faf5",
+      bg0: "#f0fbfa",
+      bg1: "#f7fbff",
       icon: "互",
-      border: "#f0d7c0",
-      divider: "#eee0d2",
-      title: "#3b2b26",
-      subText: "#806d61"
+      border: "#d7ebe7",
+      divider: "#e2efed",
+      title: "#102a36",
+      subText: "#667985"
     };
   }
   return {
@@ -426,6 +475,120 @@ function drawInfoFactPills(ctx, facts, x, y, maxWidth, palette) {
   });
 }
 
+function drawNoImageTaskArtwork(ctx, x, y, width, height, palette, model = {}) {
+  const background = ctx.createLinearGradient(x, y, x + width, y + height);
+  background.addColorStop(0, "#e6faf5");
+  background.addColorStop(1, "#edf5ff");
+  fillRoundRect(ctx, x, y, width, height, 24, background);
+
+  ctx.setFillStyle("rgba(24,169,143,0.14)");
+  ctx.beginPath();
+  ctx.arc(x + width - 76, y + 70, 112, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.setFillStyle("rgba(22,119,255,0.09)");
+  ctx.beginPath();
+  ctx.arc(x + 54, y + height - 18, 96, 0, Math.PI * 2);
+  ctx.fill();
+
+  const panelX = x + 40;
+  const panelY = y + 70;
+  const panelWidth = width - 80;
+  const panelHeight = height - 106;
+  fillRoundRect(ctx, panelX, panelY, panelWidth, panelHeight, 22, "rgba(255,255,255,0.84)");
+
+  ctx.setFillStyle(palette.accentText);
+  ctx.setFontSize(62);
+  ctx.setTextAlign("center");
+  ctx.fillText("互助", x + width / 2, y + 142);
+  ctx.setTextAlign("left");
+
+  ctx.setFillStyle(palette.title);
+  ctx.setFontSize(32);
+  drawWrappedText(ctx, model.title || "互帮互助任务", panelX + 30, y + 202, panelWidth - 60, 40, 2);
+
+  const summary = String(model.summary || "按任务说明完成后提交").replace(/\s+/g, " ").trim();
+  if (summary) {
+    ctx.setFillStyle(palette.subText || "#667985");
+    ctx.setFontSize(20);
+    drawOneLine(ctx, summary, panelX + 30, y + height - 52, panelWidth - 60);
+  }
+}
+
+function drawMutualTaskChip(ctx, text, x, y, options = {}) {
+  const value = String(text || "").trim();
+  if (!value) return 0;
+  const background = options.background || "rgba(255,255,255,0.92)";
+  const textColor = options.textColor || "#087e76";
+  const maxWidth = Number(options.maxWidth) || 220;
+  ctx.setFontSize(22);
+  const chipWidth = Math.min(maxWidth, Math.max(112, ctx.measureText(value).width + 34));
+  fillRoundRect(ctx, x, y, chipWidth, 42, 15, background);
+  ctx.setFillStyle(textColor);
+  drawOneLine(ctx, value, x + 17, y + 29, chipWidth - 34);
+  return chipWidth;
+}
+
+async function drawMutualTaskLayout(ctx, model, primaryImagePath = "") {
+  const width = RESOURCE_DEFAULT_SHARE_WIDTH;
+  const height = RESOURCE_DEFAULT_SHARE_HEIGHT;
+  const palette = typedInfoPalette("text_info", "mutual_task");
+  const background = ctx.createLinearGradient(0, 0, width, height);
+  background.addColorStop(0, palette.bg0);
+  background.addColorStop(1, palette.bg1);
+  ctx.setFillStyle(background);
+  ctx.fillRect(0, 0, width, height);
+
+  fillRoundRect(ctx, 24, 20, 702, 560, 30, "#ffffff");
+  ctx.setStrokeStyle(palette.border);
+  ctx.setLineWidth(2);
+  drawRoundRect(ctx, 24, 20, 702, 560, 30);
+  ctx.stroke();
+
+  // The entire custom image is a stable 5:4 composition. The native WeChat
+  // shell already owns the app name, title, click affordance and bottom entry;
+  // this layer therefore only carries the task visual and one fixed message.
+  const hasImage = Boolean(primaryImagePath);
+  const visualX = 48;
+  const visualY = 44;
+  const visualWidth = 654;
+  const visualHeight = 376;
+  fillRoundRect(ctx, visualX, visualY, visualWidth, visualHeight, 24, palette.soft);
+  if (hasImage) {
+    const drawn = await drawHeroImage(ctx, primaryImagePath, model, visualX, visualY, visualWidth, visualHeight, 24);
+    if (!drawn) throw new Error("分享图主图读取失败，未生成不完整卡片");
+  } else {
+    drawNoImageTaskArtwork(ctx, visualX, visualY, visualWidth, visualHeight, palette, model);
+  }
+
+  const badge = model.badge || "普通任务";
+  drawMutualTaskChip(ctx, badge, visualX + 20, visualY + 18, {
+    background: "rgba(255,255,255,0.92)",
+    textColor: palette.accentText,
+    maxWidth: 200
+  });
+
+  const rewardText = model.rewardText || "完成后得分";
+  ctx.setFontSize(22);
+  const rewardWidth = Math.min(200, Math.max(128, ctx.measureText(rewardText).width + 34));
+  drawMutualTaskChip(ctx, rewardText, visualX + visualWidth - rewardWidth - 20, visualY + 18, {
+    background: "#fff3e8",
+    textColor: "#d96525",
+    maxWidth: rewardWidth
+  });
+
+  const footerY = 442;
+  const footerHeight = 112;
+  fillRoundRect(ctx, visualX, footerY, visualWidth, footerHeight, 24, "#e8faf5");
+  ctx.setFillStyle(palette.accent);
+  ctx.fillRect(visualX + 28, footerY + 22, 58, 5);
+  ctx.fillRect(visualX + visualWidth - 86, footerY + 22, 58, 5);
+  ctx.setFillStyle(palette.accentText);
+  ctx.setFontSize(32);
+  ctx.setTextAlign("center");
+  ctx.fillText(model.marketingLine || "更多人可参与，选任务就能轻松互动", width / 2, footerY + 72);
+  ctx.setTextAlign("left");
+}
+
 function shareDetailText(model) {
   let detail = (model.textBlocks || []).filter(Boolean).slice(0, 2).join(" ");
   if (model.layoutId === "property_info") {
@@ -447,7 +610,9 @@ function imageFirstCoverMode(model) {
   // original frame so text, a QR code, or product details are not cut off by
   // the share thumbnail crop. Property and service photos keep the full-bleed
   // treatment users expect from a cover image.
-  return ["image_info", "product_info"].includes(model.layoutId) ? "contain" : "cover";
+  return ["image_info", "product_info"].includes(model.layoutId) || model.templateKind === "mutual_task"
+    ? "contain"
+    : "cover";
 }
 
 async function drawHeroImage(ctx, imagePath, model, x, y, width, height, radius) {
@@ -544,7 +709,7 @@ async function drawImageFirstLayout(ctx, model, primaryImagePath) {
   ctx.lineTo(698, 536);
   ctx.stroke();
   ctx.setFillStyle(palette.accentText);
-  ctx.setFontSize(21);
+  ctx.setFontSize(32);
   drawOneLine(ctx, model.footer || SHARE_CARD_FOOTER, 52, 564, 646);
 }
 
@@ -623,25 +788,40 @@ async function drawTypedInfoLayout(ctx, model) {
   ctx.lineTo(686, 470);
   ctx.stroke();
   ctx.setFillStyle(palette.accentText);
-  ctx.setFontSize(22);
+  ctx.setFontSize(32);
   drawOneLine(ctx, model.footer || SHARE_CARD_FOOTER, 64, 510, 622);
 }
 
 async function generateUnifiedShareCardImage(page, canvasId, source = {}, options = {}) {
   const model = normalizeUnifiedShareCardModel(source);
   const isBusinessCard = model.layoutId === "business_card" && model.businessCard;
+  const isBusinessCardThumbnail = Boolean(
+    isBusinessCard && model.shareImageVariant === BUSINESS_CARD_SHARE_IMAGE_VARIANT
+  );
   const ctx = wx.createCanvasContext(canvasId, page);
   const coverPath = model.primaryImageUrl ? await downloadCanvasImage(model.primaryImageUrl) : "";
   if (model.primaryImageUrl && !coverPath) {
     throw new Error("分享图图片下载失败，未生成不完整卡片");
   }
-  const baseWidth = isBusinessCard ? BUSINESS_CARD_SHARE_WIDTH : RESOURCE_DEFAULT_SHARE_WIDTH;
-  const baseHeight = isBusinessCard ? BUSINESS_CARD_SHARE_HEIGHT : RESOURCE_DEFAULT_SHARE_HEIGHT;
+  const baseWidth = isBusinessCardThumbnail
+    ? BUSINESS_CARD_THUMB_WIDTH
+    : isBusinessCard
+      ? BUSINESS_CARD_SHARE_WIDTH
+      : RESOURCE_DEFAULT_SHARE_WIDTH;
+  const baseHeight = isBusinessCardThumbnail
+    ? BUSINESS_CARD_THUMB_HEIGHT
+    : isBusinessCard
+      ? BUSINESS_CARD_SHARE_HEIGHT
+      : RESOURCE_DEFAULT_SHARE_HEIGHT;
   const exportSize = getCanvasExportSize(baseWidth, baseHeight);
   ctx.save();
   ctx.scale(exportSize.scale, exportSize.scale);
 
-  if (isBusinessCard) {
+  if (isBusinessCardThumbnail) {
+    await drawBusinessCardAvatarThumbnail(ctx, model.businessCard, coverPath);
+  } else if (model.templateKind === "mutual_task") {
+    await drawMutualTaskLayout(ctx, model, coverPath);
+  } else if (isBusinessCard) {
     await drawBusinessCardLayout(ctx, model.businessCard, coverPath, model.footer);
   } else if (model.presentation === "image_first") {
     await drawImageFirstLayout(ctx, model, coverPath);
@@ -685,7 +865,16 @@ function downloadCanvasImage(url) {
 function normalizeBusinessCardShareSource(source = {}) {
   const data = source.structuredData || {};
   const preview = source.businessCardPreview || {};
-  const name = source.name || preview.name || data.name || source.title || "电子名片";
+  const name = source.name
+    || source.displayName
+    || source.nickname
+    || preview.name
+    || preview.displayName
+    || data.name
+    || data.displayName
+    || data.nickname
+    || source.title
+    || "电子名片";
   const role = source.role || preview.role || data.title || "";
   const company = source.company || preview.company || data.company || "";
   const phone = source.phone || data.phone || source.contactPhone || "";
@@ -725,6 +914,10 @@ function buildBusinessCardShareSource(card = {}, user = {}) {
   const ownerProfile = card.ownerProfile || {};
   const salesProfile = user.salesProfile || {};
   const displayConfig = config.displayConfig || {};
+  const opportunity = config.businessOpportunity;
+  const isBusinessMarketCard = opportunity && typeof opportunity === "object"
+    && opportunity.enabled !== false
+    && opportunity.discoverable !== false;
   const serviceKeywords = Array.isArray(data.serviceKeywords)
     ? data.serviceKeywords.filter(Boolean).join(" · ")
     : "";
@@ -747,12 +940,24 @@ function buildBusinessCardShareSource(card = {}, user = {}) {
     || card.coverDisplayUrl
     || card.coverUrl
     || "";
-  const phone = salesProfile.phone || ownerProfile.phone || preview.phone || data.phone || card.phone || user.phone || "";
-  const wechat = salesProfile.wechat || ownerProfile.wechat || preview.wechat || data.wechat || data.contactWechat || user.wechat || "";
-  const email = salesProfile.email || ownerProfile.email || preview.email || data.email || data.mail || "";
+  // A market card's contact gate must also cover the static share image.
+  // Otherwise forwarding the image would reveal the same fields without an
+  // unlock record, even though the detail API correctly redacts them.
+  const phone = isBusinessMarketCard ? "" : (salesProfile.phone || ownerProfile.phone || preview.phone || data.phone || card.phone || user.phone || "");
+  const wechat = isBusinessMarketCard ? "" : (salesProfile.wechat || ownerProfile.wechat || preview.wechat || data.wechat || data.contactWechat || user.wechat || "");
+  const email = isBusinessMarketCard ? "" : (salesProfile.email || ownerProfile.email || preview.email || data.email || data.mail || "");
   return {
     layoutId: "business_card",
-    name: salesProfile.displayName || ownerProfile.displayName || preview.name || data.name || user.nickname || card.title || "电子名片",
+    name: data.displayName
+      || data.name
+      || data.nickname
+      || preview.displayName
+      || preview.name
+      || salesProfile.displayName
+      || ownerProfile.displayName
+      || user.nickname
+      || card.title
+      || "电子名片",
     role: salesProfile.jobTitle || ownerProfile.jobTitle || preview.role || data.title || "",
     company: salesProfile.company || ownerProfile.company || preview.company || data.company || "",
     phone,
@@ -769,8 +974,11 @@ function buildBusinessCardShareSource(card = {}, user = {}) {
 
 function buildBusinessCardShareTitle(card) {
   const normalized = normalizeBusinessCardShareSource(card);
-  if (normalized.name && normalized.name !== "电子名片") return `${normalized.name}的电子名片`;
-  return [normalized.role, normalized.company].filter(Boolean).join(" · ") || "电子名片";
+  const name = String(normalized.name || "")
+    .replace(/的电子名片$/, "")
+    .trim();
+  if (name && name !== "电子名片") return truncateShareTitle(`电子名片｜${name}`);
+  return truncateShareTitle("电子名片");
 }
 
 function normalizeServiceOfferShareSource(source = {}) {
@@ -795,10 +1003,12 @@ function normalizeServiceOfferShareSource(source = {}) {
 
 function buildServiceOfferShareTitle(source) {
   const card = normalizeServiceOfferShareSource(source);
-  return [card.title, card.headline].filter(Boolean).join(" · ") || "服务方案";
+  return truncateShareTitle([card.title, card.headline].filter(Boolean).join(" · ") || "服务方案");
 }
 
 module.exports = {
+  BUSINESS_CARD_SHARE_IMAGE_VARIANT,
+  SHARE_TITLE_MAX_LENGTH,
   SHARE_CARD_WIDTH,
   SHARE_CARD_HEIGHT,
   RESOURCE_DEFAULT_SHARE_WIDTH,
@@ -807,6 +1017,7 @@ module.exports = {
   normalizeUnifiedShareCardModel,
   buildBusinessCardShareTitle,
   buildServiceOfferShareTitle,
+  truncateShareTitle,
   buildBusinessCardShareSource,
   normalizeBusinessCardShareSource,
 };

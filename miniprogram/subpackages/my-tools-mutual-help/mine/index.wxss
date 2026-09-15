@@ -1,1 +1,10 @@
 @import "../shared.wxss";
+
+.mine-report-entry { display: flex; align-items: center; gap: 16rpx; margin-top: 16rpx; padding: 19rpx 21rpx; border: 2rpx solid #f0dfce; border-radius: 21rpx; background: linear-gradient(110deg,#fff6eb,#ffffff); box-sizing: border-box; }
+.mine-report-icon { display: flex; flex: 0 0 58rpx; align-items: center; justify-content: center; width: 58rpx; height: 58rpx; border-radius: 17rpx; background: #fff0dd; color: #d7733d; font-size: 30rpx; font-weight: 900; }
+.mine-report-copy { flex: 1; min-width: 0; }
+.mine-report-title { color: #30363d; font-size: 25rpx; font-weight: 900; }
+.mine-report-subtitle { margin-top: 5rpx; color: #858c93; font-size: 20rpx; }
+.mine-report-arrow { color: #b8a28f; font-size: 36rpx; }
+.theme-dark .mine-report-entry { border-color: #51463b; background: #2b2725; }
+.theme-dark .mine-report-title { color: #f2ece4; }

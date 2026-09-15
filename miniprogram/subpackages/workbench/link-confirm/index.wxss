@@ -24,3 +24,16 @@ page { background: #f4f8ff; color: #172033; }
 .footer-actions button::after { border:0; }
 .footer-actions .primary { background:#1677ff; color:#fff; }
 .footer-actions .text-btn { height:68rpx; margin-top:8rpx; background:transparent; color:#1677ff; font-size:26rpx; }
+/* Typography scale v2: make recognition results and final confirmation easy to verify. */
+.page-shell .recognition-bar { font-size: 24rpx; }
+.page-shell .preview-card { font-size: 26rpx; }
+.page-shell .summary { font-size: 27rpx; }
+.page-shell .source { font-size: 23rpx; }
+.page-shell .key-title { font-size: 30rpx; }
+.page-shell .tags text { font-size: 21rpx; }
+.page-shell .source-row { font-size: 24rpx; }
+.page-shell .privacy { font-size: 23rpx; }
+.page-shell .parse-note { font-size: 24rpx; }
+.page-shell .footer-safe { font-size: 23rpx; }
+.page-shell .footer-actions button,
+.page-shell .text-btn { display: flex; align-items: center; justify-content: center; min-height: 72rpx; font-size: 26rpx; }

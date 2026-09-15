@@ -1,1 +1,9 @@
-<web-view wx:if="{{src}}" src="{{src}}" binderror="handleWebViewError"></web-view>
+<view class="web-view-page">
+  <custom-nav title="{{title}}" showBack="{{true}}" fallbackUrl="/subpackages/my-tools-mutual-help/index/index" />
+  <web-view wx:if="{{src && !loadError}}" src="{{src}}" binderror="handleWebViewError"></web-view>
+  <view wx:if="{{loadError}}" class="web-view-fallback">
+    <view class="web-view-fallback-title">网页加载失败</view>
+    <view class="web-view-fallback-copy">可以复制链接后，用手机浏览器继续访问。</view>
+    <button class="web-view-fallback-button" bindtap="handleCopyLink">复制到浏览器</button>
+  </view>
+</view>

@@ -369,6 +369,24 @@ create table if not exists automation_group_candidates (
     updated_at timestamptz not null default now()
 );
 
+create table if not exists automation_card_assets (
+    id text primary key,
+    payload jsonb not null,
+    card_id text,
+    status text,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+create table if not exists automation_group_content_plans (
+    id text primary key,
+    payload jsonb not null,
+    group_code text,
+    status text,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
 create table if not exists wecom_archive_cursors (
     id text primary key,
     payload jsonb not null,
@@ -422,14 +440,17 @@ create table if not exists membership_entitlements (
     updated_at timestamptz not null default now()
 );
 
--- Mutual-help points are a separate ledger from resource-tool points and
--- membership/referral money.  The balance is only a projection; every
--- recharge must also have a ledger row.
+-- Platform points are shared by the group-resource, business-opportunity,
+-- and mutual-help tools.  The base bucket owns the initial grant and every
+-- platform-earned point; the reward bucket is reserved for recharge points
+-- that may support future withdrawal.  Resource-wallet tables remain as a
+-- compatibility projection, not a second balance.
 create table if not exists mutual_point_accounts (
     id text primary key,
     payload jsonb not null,
     user_id text not null,
     account_type text not null default 'mutual_help',
+    point_type text not null default 'base',
     balance integer not null default 0,
     updated_at_source timestamptz,
     created_at timestamptz not null default now(),
@@ -441,6 +462,7 @@ create table if not exists mutual_point_ledgers (
     payload jsonb not null,
     user_id text not null,
     account_type text not null default 'mutual_help',
+    point_type text not null default 'base',
     ledger_type text not null,
     points_delta integer not null,
     related_order_id text,
@@ -457,6 +479,7 @@ create table if not exists mutual_recharge_orders (
     payload jsonb not null,
     user_id text not null,
     points integer not null,
+    point_type text not null default 'reward',
     amount_fen integer not null,
     status text not null,
     payment_channel text not null,
@@ -474,6 +497,60 @@ create table if not exists mutual_activity_events (
     task_id text not null,
     task_kind text not null,
     idempotency_key text not null,
+    created_at_source timestamptz,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+-- Mutual-help tasks and submissions are server-authoritative.  The JSON
+-- payload keeps the task's content blocks and wool-task moderation records,
+-- while these columns support owner/task/status pagination and lookups.
+create table if not exists mutual_help_tasks (
+    id text primary key,
+    payload jsonb not null,
+    owner_user_id text not null,
+    task_kind text not null,
+    status text not null,
+    updated_at_source timestamptz,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+create table if not exists mutual_help_submissions (
+    id text primary key,
+    payload jsonb not null,
+    task_id text not null,
+    executor_user_id text not null,
+    owner_user_id text not null,
+    status text not null,
+    submitted_at_source timestamptz,
+    updated_at_source timestamptz,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+-- Each executor gets a private conversation with the publisher; there is no
+-- shared task group, so participants cannot see one another's messages.
+create table if not exists mutual_help_conversations (
+    id text primary key,
+    payload jsonb not null,
+    task_id text not null,
+    owner_user_id text not null,
+    executor_user_id text not null,
+    last_message_at timestamptz,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+create table if not exists mutual_help_chat_messages (
+    id text primary key,
+    payload jsonb not null,
+    conversation_id text not null,
+    task_id text not null,
+    sender_user_id text not null,
+    recipient_user_id text not null,
+    message_type text not null,
+    idempotency_key text not null default '',
     created_at_source timestamptz,
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now()
@@ -551,6 +628,22 @@ create table if not exists referral_withdrawals (
     updated_at timestamptz not null default now()
 );
 
+create table if not exists mutual_point_withdrawals (
+    id text primary key,
+    payload jsonb not null,
+    user_id text,
+    point_type text,
+    points integer,
+    gross_amount_fen integer,
+    amount_fen integer,
+    status text,
+    out_bill_no text,
+    created_at_source timestamptz,
+    updated_at_source timestamptz,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
 create table if not exists same_style_generations (
     id text primary key,
     payload jsonb not null,
@@ -570,6 +663,61 @@ create table if not exists live_qr_codes (
     last_scanned_at timestamptz,
     target_expires_at timestamptz,
     target_updated_at timestamptz,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+create table if not exists group_resources (
+    id text primary key,
+    payload jsonb not null,
+    owner_user_id text,
+    status text,
+    city_code text,
+    industry text,
+    purpose text,
+    expires_at timestamptz,
+    created_at_source timestamptz,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+create table if not exists content_safety_rules (
+    id text primary key,
+    payload jsonb not null,
+    term_hash text,
+    match_type text,
+    category text,
+    severity text,
+    action text,
+    enabled boolean not null default true,
+    expires_at timestamptz,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+create table if not exists content_moderation_assessments (
+    id text primary key,
+    payload jsonb not null,
+    target_type text,
+    target_id text,
+    owner_user_id text,
+    content_revision text,
+    rule_version text,
+    status text,
+    decision text,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+create table if not exists content_moderation_audit_logs (
+    id text primary key,
+    payload jsonb not null,
+    event_type text,
+    target_type text,
+    target_id text,
+    assessment_id text,
+    rule_id text,
+    operator_name text,
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now()
 );
@@ -663,26 +811,53 @@ create index if not exists idx_membership_orders_user_status on membership_order
 create unique index if not exists uq_membership_orders_transaction on membership_orders (payment_transaction_id) where payment_transaction_id is not null;
 create index if not exists idx_membership_entitlements_user_expiry on membership_entitlements (user_id, status, expires_at);
 create index if not exists idx_mutual_point_accounts_user on mutual_point_accounts (user_id);
-create unique index if not exists uq_mutual_point_accounts_user_type on mutual_point_accounts (user_id, account_type);
+-- Remove the pre-dual-ledger uniqueness boundaries when upgrading an
+-- existing database.  They would otherwise reject the reward account or a
+-- same-key ledger row alongside the base account.
+drop index if exists uq_mutual_point_accounts_user_type;
+create unique index if not exists uq_mutual_point_accounts_user_type_point on mutual_point_accounts (user_id, account_type, point_type);
 create index if not exists idx_mutual_point_ledgers_user_time on mutual_point_ledgers (user_id, created_at_source);
 create index if not exists idx_mutual_point_ledgers_user_type_time on mutual_point_ledgers (user_id, account_type, created_at_source);
 create index if not exists idx_mutual_point_ledgers_order on mutual_point_ledgers (related_order_id);
 create index if not exists idx_mutual_point_ledgers_idempotency on mutual_point_ledgers (user_id, account_type, idempotency_key);
-create unique index if not exists uq_mutual_point_ledgers_user_type_idempotency
-    on mutual_point_ledgers (user_id, account_type, idempotency_key)
+drop index if exists uq_mutual_point_ledgers_user_type_idempotency;
+create unique index if not exists uq_mutual_point_ledgers_user_type_point_idempotency
+    on mutual_point_ledgers (user_id, account_type, point_type, idempotency_key)
     where idempotency_key is not null;
 create index if not exists idx_mutual_recharge_orders_user_status on mutual_recharge_orders (user_id, status, created_at);
 create index if not exists idx_mutual_recharge_orders_transaction on mutual_recharge_orders (payment_transaction_id);
 create index if not exists idx_mutual_activity_events_type_time on mutual_activity_events (event_type, created_at_source);
 create index if not exists idx_mutual_activity_events_user_time on mutual_activity_events (user_id, created_at_source);
 create unique index if not exists uq_mutual_activity_events_idempotency on mutual_activity_events (idempotency_key);
+create index if not exists idx_mutual_help_tasks_owner_status_time on mutual_help_tasks (owner_user_id, status, updated_at_source desc);
+create index if not exists idx_mutual_help_tasks_kind_status_time on mutual_help_tasks (task_kind, status, updated_at_source desc);
+create index if not exists idx_mutual_help_submissions_task_time on mutual_help_submissions (task_id, submitted_at_source desc);
+create index if not exists idx_mutual_help_submissions_executor_time on mutual_help_submissions (executor_user_id, submitted_at_source desc);
+create index if not exists idx_mutual_help_submissions_owner_status on mutual_help_submissions (owner_user_id, status, submitted_at_source desc);
+create unique index if not exists uq_mutual_help_conversations_task_executor on mutual_help_conversations (task_id, executor_user_id);
+create index if not exists idx_mutual_help_conversations_owner_time on mutual_help_conversations (owner_user_id, last_message_at desc);
+create index if not exists idx_mutual_help_conversations_executor_time on mutual_help_conversations (executor_user_id, last_message_at desc);
+create unique index if not exists uq_mutual_help_chat_message_idempotency on mutual_help_chat_messages (conversation_id, sender_user_id, idempotency_key) where idempotency_key <> '';
+create index if not exists idx_mutual_help_chat_messages_conversation_time on mutual_help_chat_messages (conversation_id, created_at_source desc, id desc);
 create index if not exists idx_referral_relations_inviter on referral_relations (inviter_user_id, created_at);
 create unique index if not exists uq_referral_relations_invitee on referral_relations (invitee_user_id);
 create index if not exists idx_referral_rewards_inviter_status on referral_rewards (inviter_user_id, status, updated_at);
 create unique index if not exists uq_referral_rewards_order on referral_rewards (source_order_id);
 create index if not exists idx_referral_withdrawals_user_status on referral_withdrawals (user_id, status, updated_at);
+create index if not exists idx_mutual_point_withdrawals_user_status on mutual_point_withdrawals (user_id, status, updated_at_source desc);
+create index if not exists idx_mutual_point_withdrawals_status_time on mutual_point_withdrawals (status, created_at_source desc);
+create index if not exists idx_mutual_point_withdrawals_out_bill on mutual_point_withdrawals (out_bill_no);
 create index if not exists idx_same_style_owner_time on same_style_generations (owner_user_id, created_at);
 create unique index if not exists uq_same_style_owner_key on same_style_generations (owner_user_id, idempotency_key);
 create index if not exists idx_live_qr_codes_code on live_qr_codes (code);
 create index if not exists idx_live_qr_codes_status_updated on live_qr_codes (status, updated_at);
 create unique index if not exists uq_live_qr_codes_code on live_qr_codes (code);
+create index if not exists idx_group_resources_owner_time on group_resources (owner_user_id, created_at_source desc);
+create index if not exists idx_group_resources_public on group_resources (status, expires_at);
+create index if not exists idx_group_resources_city_industry on group_resources (city_code, industry);
+create index if not exists idx_content_safety_rules_enabled on content_safety_rules (enabled, updated_at);
+create index if not exists idx_content_safety_rules_term_hash on content_safety_rules (term_hash);
+create index if not exists idx_content_moderation_assessments_status on content_moderation_assessments (status, updated_at);
+create index if not exists idx_content_moderation_assessments_target on content_moderation_assessments (target_type, target_id, updated_at);
+create index if not exists idx_content_moderation_assessments_owner on content_moderation_assessments (owner_user_id, updated_at);
+create index if not exists idx_content_moderation_audit_logs_target on content_moderation_audit_logs (target_type, target_id, created_at);

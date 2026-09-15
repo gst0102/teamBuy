@@ -651,3 +651,23 @@ page {
   font-size: 21rpx;
   font-weight: 900;
 }
+/* Typography scale v2: make resource analytics readable without inflating chart marks. */
+.resource-ops-page .resource-title { font-size: 30rpx; }
+.resource-ops-page .resource-meta { font-size: 23rpx; }
+.resource-ops-page .resource-more-button { font-size: 28rpx; }
+.resource-ops-page .summary-primary,
+.resource-ops-page .summary-secondary { font-size: 25rpx; }
+.resource-ops-page .metric-value { font-size: 34rpx; }
+.resource-ops-page .metric-label { font-size: 23rpx; }
+.resource-ops-page .metric-copy { font-size: 24rpx; }
+.resource-ops-page .panel-title { font-size: 30rpx; }
+.resource-ops-page .trend-switch { font-size: 23rpx; }
+.resource-ops-page .trend-legend { font-size: 22rpx; }
+.resource-ops-page .high-intent-name { font-size: 27rpx; }
+.resource-ops-page .high-intent-tag { font-size: 21rpx; }
+.resource-ops-page .high-intent-meta { font-size: 22rpx; }
+.resource-ops-page .customer-outline-button { display: flex; align-items: center; justify-content: center; min-height: 64rpx; font-size: 24rpx; }
+.resource-ops-page .source-action-value { font-size: 27rpx; }
+.resource-ops-page .source-action-label { font-size: 22rpx; }
+.resource-ops-page .relay-info { font-size: 23rpx; }
+.resource-ops-page .resource-error { font-size: 25rpx; }

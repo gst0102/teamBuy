@@ -912,3 +912,22 @@ page {
 .check-row { display: flex; align-items: flex-start; gap: 12rpx; padding: 14rpx 0; border-bottom: 1rpx solid #edf0f5; }.check-icon { display: flex; align-items: center; justify-content: center; flex: 0 0 34rpx; width: 34rpx; height: 34rpx; border-radius: 50%; color: #fff; background: #1aae72; font-size: 20rpx; }.check-icon.warn { background: #f0a52b; }.check-label { display: block; color: #344054; font-size: 24rpx; }.check-fix { display: block; margin-top: 4rpx; color: #98a2b3; font-size: 21rpx; }.editor-contact-input { width: 100%; height: 72rpx; margin-top: 14rpx; padding: 0 18rpx; border: 1rpx solid #e0e7ef; border-radius: 12rpx; background: #fafcff; color: #344054; font-size: 24rpx; box-sizing: border-box; }.editor-empty { padding: 28rpx 12rpx; color: #98a2b3; text-align: center; font-size: 23rpx; }
 .editor-bottom-spacer { height: 40rpx; }.editor-bottom-actions { position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; display: flex; gap: 12rpx; padding: 14rpx 20rpx calc(14rpx + env(safe-area-inset-bottom)); background: rgba(255,255,255,.97); border-top: 1rpx solid #e4eaf2; box-shadow: 0 -8rpx 24rpx rgba(15,23,42,.08); box-sizing: border-box; }.editor-bottom-actions button { display: flex; align-items: center; justify-content: center; flex: 1; min-width: 0; height: 76rpx; margin: 0; padding: 0 8rpx; border-radius: 12rpx; font-size: 23rpx; font-weight: 800; line-height: 1; white-space: nowrap; }.editor-bottom-actions button::after { border: 0; }.bottom-secondary { color: #1677ff; background: #edf5ff; }.bottom-primary { color: #fff; background: #1677ff; }
 .share-image-canvas { position: fixed; left: -9999rpx; top: -9999rpx; width: 750rpx; height: 1800rpx; pointer-events: none; }
+/* Typography scale v2: keep collection editing clear across title, template and layout choices. */
+.page-shell .editor-kicker { font-size: 24rpx; }
+.page-shell .editor-count { font-size: 24rpx; }
+.page-shell .editor-title-input { font-size: 30rpx; }
+.page-shell .editor-description-input { font-size: 28rpx; }
+.page-shell .section-kicker { font-size: 24rpx; }
+.page-shell .section-title { font-size: 32rpx; }
+.page-shell .editor-empty { font-size: 25rpx; }
+.page-shell .selected-title { font-size: 28rpx; }
+.page-shell .selected-meta { font-size: 23rpx; }
+.page-shell .selected-actions button { font-size: 24rpx; }
+.page-shell .picker-head { font-size: 28rpx; }
+.page-shell .picker-hint { font-size: 23rpx; }
+.page-shell .template-choice-title { font-size: 26rpx; }
+.page-shell .template-choice-desc { font-size: 22rpx; }
+.page-shell .layout-option { font-size: 24rpx; }
+.page-shell .check-label { font-size: 24rpx; }
+.page-shell .editor-contact-input { font-size: 28rpx; }
+.page-shell .editor-bottom-actions button { display: flex; align-items: center; justify-content: center; min-height: 72rpx; font-size: 26rpx; }

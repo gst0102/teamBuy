@@ -1,22 +1,23 @@
 # -*- coding: utf-8 -*-
-"""Read the logged-in nickname of both Android dual-WeChat instances.
+"""Read the stable identity of both Android dual-WeChat instances.
 
 This is the first device-side control-plane slice. It deliberately does not
 search Xiaohongshu, join groups, read chats, or send messages.
 
 The dual-app chooser exposes two identical "微信" labels. The script therefore
 uses the observed chooser rectangles only to distinguish the two temporary
-slots, then uses the nickname read from WeChat's own profile page as identity.
+slots, then uses the unique WeChat ID read from WeChat's own profile page as
+identity. The nickname is retained only as display metadata.
 """
 
 from __future__ import print_function
 
-import hashlib
 import json
+import re
 import time
 import urllib.request
 
-from ascript.android import action, node
+from ascript.android import node
 from ascript.android.screen import Ocr
 from ascript.android.system import Device
 from ascript.android.system import open as open_app
@@ -24,13 +25,15 @@ from ascript.android.system import open as open_app
 
 DEVICE_ID = "android-01"
 DEVICE_NAME = "安卓双开微信手机"
-INPUT_MODE = "ascript_native"
+INPUT_MODE = "official_esp32_hid"
 BACKEND_URL = ""
 DEVICE_TOKEN = ""
-UI_MODE = 2
+# HID mode uses the mode-6 accessibility tree for perception.
+UI_MODE = 6
 WECHAT_PACKAGE = "com.tencent.mm"
 DUAL_APP_PACKAGE = "com.zte.cn.doubleapp"
 INSTANCE_SLOTS = ("wechat-instance-1", "wechat-instance-2")
+HID_DEVICE = None
 
 
 def _keep_screen_awake():
@@ -44,6 +47,28 @@ def _keep_screen_awake():
 
 
 _keep_screen_awake()
+
+
+def _hid():
+    """Load and connect the official ESP32 HID device once per run."""
+    global HID_DEVICE
+    if HID_DEVICE is not None:
+        return HID_DEVICE
+    from ascript.android import plug
+
+    plug.load("esp32")
+    from esp32 import BleDevice
+
+    HID_DEVICE = BleDevice()
+    if not HID_DEVICE.is_conncted():
+        try:
+            HID_DEVICE.re_connect()
+        except Exception:
+            pass
+    if not HID_DEVICE.is_conncted():
+        raise RuntimeError("官方 ESP32 HID 未连接")
+    print("HID_READY", HID_DEVICE.get_name(), HID_DEVICE.get_mac_address())
+    return HID_DEVICE
 
 
 def _device_size():
@@ -71,6 +96,11 @@ def _walk(value, parents=None):
         return
     current = parents + [value]
     yield current
+    # Selector.dump() returns the actual roots under ``views`` on the device;
+    # keep those paths so the dual-app chooser can be resolved from live data.
+    for view in value.get("views", []) or []:
+        for found in _walk(view, parents):
+            yield found
     for child in value.get("childs", []) or []:
         for found in _walk(child, current):
             yield found
@@ -108,68 +138,86 @@ def _wait_for(predicate, timeout=10, interval=0.5):
 
 
 def _tap(x, y):
-    action.click(int(x), int(y), dur=30)
+    width, height = _device_size()
+    x, y = int(x), int(y)
+    if not (0 <= x < width and 0 <= y < height):
+        raise RuntimeError("控件树坐标超出 HID 触控范围：({}, {})".format(x, y))
+    _hid().click(x, y, dur=35)
     time.sleep(0.6)
 
 
+def _tree_rect(item):
+    rect = item.get("rect") or {}
+    if isinstance(rect, dict):
+        return (
+            int(rect.get("left", 0)),
+            int(rect.get("top", 0)),
+            int(rect.get("right", 0)),
+            int(rect.get("bottom", 0)),
+        )
+    if isinstance(rect, (list, tuple)) and len(rect) >= 4:
+        return tuple(int(value) for value in rect[:4])
+    return 0, 0, 0, 0
+
+
+def _valid_rect(rect):
+    return rect[2] > rect[0] and rect[3] > rect[1]
+
+
+def _chooser_item_rect(path):
+    """Return the single GridView item rect, never the shared GridView rect."""
+    width, _ = _device_size()
+    grid_index = None
+    for index in range(len(path) - 1, -1, -1):
+        if str(path[index].get("type") or "") == "GridView":
+            grid_index = index
+            break
+    if grid_index is None or grid_index + 1 >= len(path):
+        return None
+    item = path[grid_index + 1]
+    if str(item.get("type") or "") == "GridView":
+        return None
+    rect = _tree_rect(item)
+    if not _valid_rect(rect) or rect[2] - rect[0] >= int(width * 0.75):
+        return None
+    return rect
+
+
 def _chooser_points():
-    width, height = _device_size()
     points = []
-    # The system dual-app chooser is exposed by the accessibility engine in
-    # mode 0/1, while mode 2 filters it out. Use the live clickable parent
-    # bounds so the tap targets the option container rather than its label.
+    # Use the live mode-6 tree. OCR and fixed coordinates are not action
+    # fallbacks because the two identical labels must remain unambiguous.
     try:
-        tree = _dump(0)
+        tree = _dump(UI_MODE)
+        width, _ = _device_size()
+        chooser_marker = any(
+            str(path[-1].get("text") or "").strip()
+            in ("请选择要使用的应用", "取消")
+            for path in _walk(tree)
+        )
         for path in _walk(tree):
             item = path[-1]
             if (
                 item.get("text") == "微信"
                 and item.get("visible") is not False
-                and item.get("packageName") == DUAL_APP_PACKAGE
             ):
-                for ancestor in reversed(path[:-1]):
-                    rect = ancestor.get("rect") or {}
-                    if (
-                        ancestor.get("clickable") is True
-                        and rect.get("right", 0) > rect.get("left", 0)
-                        and rect.get("bottom", 0) > rect.get("top", 0)
-                    ):
-                        points.append(
-                            (
-                                (rect.get("left", 0) + rect.get("right", 0)) // 2,
-                                (rect.get("top", 0) + rect.get("bottom", 0)) // 2,
-                            )
+                # Android's native resolver can report a system package
+                # rather than com.zte.cn.doubleapp.  Keep the action target
+                # tree-derived and require the chooser marker for that case.
+                if item.get("packageName") != DUAL_APP_PACKAGE and not chooser_marker:
+                    continue
+                rect = _chooser_item_rect(path)
+                if _valid_rect(rect):
+                    points.append(
+                        (
+                            (rect[0] + rect[2]) // 2,
+                            (rect[1] + rect[3]) // 2,
                         )
-                        break
+                    )
     except Exception as exc:
-        print("双开选择器控件树读取失败，改用 OCR:", exc)
-    if len(points) >= 2:
-        return sorted(set(points), key=lambda point: point[0])
-
-    points = []
-    # The system chooser is visible to MCP's selector test but is omitted by
-    # some device-side selector modes. OCR remains the observed fallback; the
-    # two identical labels are still distinguished by x-order.
-    matches = Ocr.find_all("微信", rect=[0, int(height * 0.65), width, height]) or []
-    for match in matches:
-        rect = match.get("rect") or []
-        if isinstance(rect, dict):
-            left, top, right, bottom = (
-                rect.get("left", 0),
-                rect.get("top", 0),
-                rect.get("right", 0),
-                rect.get("bottom", 0),
-            )
-        else:
-            left, top, right, bottom = rect[:4]
-        if right > left and bottom > top:
-            points.append(
-                (
-                    int(match.get("center_x") or (left + right) // 2),
-                    int(match.get("center_y") or (top + bottom) // 2),
-                )
-            )
-    return sorted(points, key=lambda point: point[0])
+        print("双开选择器控件树读取失败:", exc)
+    points = sorted(set(points), key=lambda point: point[0])
+    return points if len(points) == 2 else []
 
 
 def _select_dual_instance(slot_index):
@@ -185,35 +233,20 @@ def _select_dual_instance(slot_index):
 
 
 def _home_tab_point():
-    width, height = _device_size()
-    # On this phone the bottom-tab text is visible to OCR but can disappear
-    # from the device-side Selector.dump after the dual-app switch. Restrict
-    # OCR to the lower-right tab area so a chat/profile message containing
-    # “我” cannot be mistaken for the tab.
-    match = Ocr.find("我", rect=[int(width * 0.70), int(height * 0.82), width, height])
-    if match:
-        rect = match.get("rect") or []
-        if isinstance(rect, dict):
-            left, top, right, bottom = (
-                rect.get("left", 0),
-                rect.get("top", 0),
-                rect.get("right", 0),
-                rect.get("bottom", 0),
-            )
-        else:
-            left, top, right, bottom = rect[:4]
-        if right > left and bottom > top:
-            return (
-                int(match.get("center_x") or (left + right) // 2),
-                int(match.get("center_y") or (top + bottom) // 2),
-            )
+    _, height = _device_size()
+    # Action coordinates must come from the live mode-6 tree. OCR is allowed
+    # only when reading/confirming page state, never as a HID action target.
     try:
         tree = _dump()
     except Exception:
         return None
     for path in _walk(tree):
         item = path[-1]
-        if item.get("text") != "我" or item.get("id") != WECHAT_PACKAGE + ":id/icon_tv":
+        if (
+            item.get("text") != "我"
+            or item.get("packageName") != WECHAT_PACKAGE
+            or _tree_rect(item)[1] < height - 520
+        ):
             continue
         for ancestor in reversed(path[:-1]):
             rect = ancestor.get("rect") or {}
@@ -281,33 +314,80 @@ def _read_nickname():
     )
     if ocr_anchor:
         text = str(ocr_anchor.get("text", "")).strip()
-        separator = "：" if "微信号：" in text else ":" if "微信号:" in text else None
-        if separator:
-            value = text.split("微信号" + separator, 1)[1].strip()
-            if value:
-                candidates = sorted(
-                    ocr_matches,
-                    key=lambda item: (item.get("rect") or [0, 0, 0, 0])[3],
-                    reverse=True,
-                )
-                for candidate in candidates:
-                    candidate_text = str(candidate.get("text", "")).strip()
-                    candidate_rect = candidate.get("rect") or [0, 0, 0, 0]
-                    if (
-                        candidate_text
-                        and candidate_text != text
-                        and "微信号" not in candidate_text
-                        and candidate_rect[2] <= 850
-                        and candidate_rect[3] <= ocr_anchor.get("rect", [0, 0, 0, 0])[1]
-                        and all(char.isalnum() or char in "_-" for char in candidate_text)
-                    ):
-                        return candidate_text
+        anchor_rect = ocr_anchor.get("rect") or [0, 0, 0, 0]
+        candidates = sorted(
+            ocr_matches,
+            key=lambda item: (item.get("rect") or [0, 0, 0, 0])[3],
+            reverse=True,
+        )
+        for candidate in candidates:
+            candidate_text = str(candidate.get("text", "")).strip()
+            candidate_rect = candidate.get("rect") or [0, 0, 0, 0]
+            if (
+                candidate_text
+                and candidate_text != text
+                and "微信号" not in candidate_text
+                and candidate_rect[0] >= 150
+                and candidate_rect[2] <= 900
+                and candidate_rect[1] >= 120
+                and candidate_rect[3] <= anchor_rect[1]
+                and len(candidate_text) <= 80
+            ):
+                return candidate_text
     return None
 
 
-def _account_id(nickname):
-    digest = hashlib.sha256(("wechat:" + nickname).encode("utf-8")).hexdigest()[:20]
-    return "wechat-nickname-" + digest
+def _normalize_wechat_id(value):
+    value = re.sub(r"\s+", "", str(value or "").strip())
+    value = re.sub(r"^微信号[:：]?", "", value)
+    if not re.match(r"^[A-Za-z][A-Za-z0-9_-]{2,63}$", value):
+        return None
+    return value.lower()
+
+
+def _read_wechat_id():
+    """Read one stable WeChat ID; return None for absent or ambiguous state."""
+    try:
+        texts = _profile_texts()
+    except Exception:
+        texts = []
+    candidates = set()
+    anchors = []
+    for item in texts:
+        text = str(item.get("text") or "").strip()
+        if text.startswith(("微信号：", "微信号:")):
+            anchors.append(item)
+            value = _normalize_wechat_id(text)
+            if value:
+                candidates.add(value)
+    for anchor in anchors:
+        anchor_rect = _tree_rect(anchor)
+        for item in texts:
+            rect = _tree_rect(item)
+            if rect[1] < anchor_rect[3] or rect[1] > anchor_rect[3] + 180:
+                continue
+            value = _normalize_wechat_id(item.get("text"))
+            if value:
+                candidates.add(value)
+
+    try:
+        ocr_matches = Ocr.find_all(rect=[0, 150, _device_size()[0], 650]) or []
+    except Exception:
+        ocr_matches = []
+    for item in ocr_matches:
+        text = str(item.get("text") or "").strip()
+        if "微信号" in text:
+            value = _normalize_wechat_id(text)
+            if value:
+                candidates.add(value)
+    return next(iter(candidates)) if len(candidates) == 1 else None
+
+
+def _account_id(wechat_id):
+    wechat_id = _normalize_wechat_id(wechat_id)
+    if not wechat_id:
+        raise RuntimeError("微信号格式无效，拒绝使用昵称生成账号 ID")
+    return "wechat-id-" + wechat_id
 
 
 def _read_one(slot_index, slot_name):
@@ -315,7 +395,7 @@ def _read_one(slot_index, slot_name):
     # resume that instance directly instead of showing the system chooser.
     # Return to the system launcher through AScript's native Home key, then
     # launch it so the observed dual-app picker is presented for every slot.
-    action.Key.home()
+    _hid().home()
     time.sleep(0.8)
     open_app(WECHAT_PACKAGE)
     _select_dual_instance(slot_index)
@@ -325,11 +405,15 @@ def _read_one(slot_index, slot_name):
     nickname = _wait_for(_read_nickname, timeout=10)
     if not nickname:
         raise RuntimeError("微信“我”页未读到登录昵称")
+    wechat_id = _wait_for(_read_wechat_id, timeout=10)
+    if not wechat_id:
+        raise RuntimeError("微信“我”页未读到唯一微信号")
     return {
         "slot": slot_name,
         "nickname": nickname,
-        "accountId": _account_id(nickname),
-        "identitySource": "wechat_profile_nickname",
+        "wechatId": wechat_id,
+        "accountId": _account_id(wechat_id),
+        "identitySource": "wechat_profile_id",
         "verifiedAt": int(time.time()),
         "status": "verified",
     }
@@ -346,9 +430,9 @@ def _post_heartbeat(accounts, errors):
         "hidDeviceId": None,
         "status": status,
         "activeWechatAccountId": active,
-        "capabilities": ["ascript", "native-input", "double-wechat", "profile-nickname"],
+        "capabilities": ["ascript", "official-esp32-hid", "double-wechat", "profile-id"],
         "metadata": {
-            "identitySource": "wechat_profile_nickname",
+            "identitySource": "wechat_profile_id",
             "wechatAccounts": accounts,
             "identityErrors": errors,
             "inputMode": INPUT_MODE,
@@ -378,21 +462,20 @@ for index, slot in enumerate(INSTANCE_SLOTS):
         errors.append({"slot": slot, "error": str(exc)})
         print("识别失败", slot, exc)
 
-# Nickname is the currently observed identity source. If two instances ever
-# expose the same nickname, do not let the same derived accountId silently
-# bind two slots to one PC task stream.
-nickname_slots = {}
+# A nickname may legitimately be shared by both instances. Only the stable
+# WeChat ID is an account boundary.
+account_slots = {}
 for account in accounts:
-    nickname_slots.setdefault(account["nickname"], []).append(account["slot"])
-for nickname, slots in nickname_slots.items():
+    account_slots.setdefault(account["accountId"], []).append(account["slot"])
+for account_id, slots in account_slots.items():
     if len(slots) > 1:
         for account in accounts:
-            if account["nickname"] == nickname:
+            if account["accountId"] == account_id:
                 account["status"] = "ambiguous"
         errors.append(
             {
                 "slots": slots,
-                "error": "重复微信昵称，无法安全区分账号",
+                "error": "重复微信号，无法安全区分账号",
             }
         )
 

@@ -12,21 +12,18 @@ const {
   buildBusinessCardShareTitle
 } = require("../../utils/business-card-share");
 const {
-  ensureShareSnapshot,
   getNoteShareSnapshot,
   getShareSourceRevision,
   isShareImageUrl,
-  isShareSnapshotReady,
-  renderShareCard,
+  isCurrentNoteShareSnapshot,
+  NOTE_SHARE_CARD_STYLE_VERSION,
   setShareMenuEnabled,
-  SHARE_CARD_STYLE_VERSION,
   buildNoteSharePlan
 } = require("../../plugins/share-snapshot/index");
 
 const GROUP_POINTS_KEY = "teambuy:groupResourceLibrary:points";
 const GROUPS_KEY = "teambuy:groupResourceLibrary:groups";
 const DEFAULT_RESOURCE_POINTS = 100;
-const PROFILE_BUSINESS_CARD_CANVAS_ID = "profileBusinessCardShareCanvas";
 const PROFILE_CARDS_CACHE_TTL_MS = cachePolicy.profileSummaryTtlMs;
 const PROFILE_CARDS_STALE_TTL_MS = cachePolicy.profileSummaryStaleTtlMs;
 const profileSummaryMemoryCache = {};
@@ -534,16 +531,12 @@ Page({
       visibilityConfig: businessCard.visibilityConfig || {}
     } : null;
     const sharePlan = shareReady ? buildNoteSharePlan(shareEntity, currentUser) : null;
-    const shareStyleId = sharePlan ? sharePlan.styleId : SHARE_CARD_STYLE_VERSION;
+    const shareStyleId = sharePlan ? sharePlan.styleId : NOTE_SHARE_CARD_STYLE_VERSION;
     const shareSourceForSnapshot = sharePlan ? sharePlan.source : null;
     const shareFingerprint = sharePlan ? sharePlan.fingerprint : "";
     const existingSnapshot = shareReady ? getNoteShareSnapshot(shareEntity) : null;
-    const existingSnapshotImage = isShareSnapshotReady(
-      existingSnapshot,
-      shareEntity && getShareSourceRevision("note", shareEntity),
-      shareFingerprint
-    ) && isShareImageUrl(existingSnapshot.url)
-      ? existingSnapshot.url
+    const existingSnapshotImage = isCurrentNoteShareSnapshot(shareEntity || {}, existingSnapshot || {}, currentUser)
+    ? absoluteMediaUrl(existingSnapshot.url)
       : "";
     const shareKey = shareReady
       ? [
@@ -606,23 +599,14 @@ Page({
     });
     try {
       const ownerUserId = (getCurrentUser() || {}).id;
-      const sourceForSnapshot = this._businessCardShareSnapshotSource || source;
-      const result = await ensureShareSnapshot({
-        entityType: "note",
-        entity: this._businessCardShareEntity,
+      const result = await api.prepareNoteShareSnapshot(this._businessCardShareEntity.id, {
         ownerUserId,
-        styleId: this._businessCardShareStyleId || SHARE_CARD_STYLE_VERSION,
+        sourceRevision: getShareSourceRevision("note", this._businessCardShareEntity),
         fingerprint: this._businessCardShareFingerprint,
-        generate: () => renderShareCard({
-          page: this,
-          canvasId: PROFILE_BUSINESS_CARD_CANVAS_ID,
-          source: sourceForSnapshot,
-          variant: "business_card",
-          upload: true,
-          ownerUserId
-        })
+        styleId: this._businessCardShareStyleId || NOTE_SHARE_CARD_STYLE_VERSION
       });
-      const imagePath = result.snapshot.url;
+      const snapshot = result && result.data && result.data.visibilityConfig && result.data.visibilityConfig.shareSnapshot;
+      const imagePath = absoluteMediaUrl(snapshot && snapshot.url);
       if (shareKey !== this.data.businessCardShareKey) return;
       const ready = Boolean(imagePath);
       this.setData({
@@ -657,8 +641,28 @@ Page({
   handleOpenMutualHelp() {
     wx.navigateTo({ url: "/subpackages/my-tools-mutual-help/index/index" });
   },
-  handleOpenUnavailableTool() {
-    wx.showToast({ title: "微信群工具即将上线", icon: "none" });
+  handleOpenWechatTools() {
+    wx.navigateTo({ url: "/pages/group-resource-library/index" });
+  },
+  handleOpenMyAccount() {
+    const currentUser = getCurrentUser();
+    const returnUrl = "/subpackages/my-tools-mutual-help/account/index";
+    if (!currentUser || !currentUser.id) {
+      wx.navigateTo({ url: `/pages/login/index?returnUrl=${encodeURIComponent(returnUrl)}` });
+      return;
+    }
+    wx.navigateTo({ url: returnUrl });
+  },
+  handleOpenBusinessOpportunity() {
+    const currentUser = getCurrentUser();
+    const returnUrl = "/pages/business-opportunity/index";
+    if (!currentUser || !currentUser.id) {
+      wx.navigateTo({ url: `/pages/login/index?returnUrl=${encodeURIComponent(returnUrl)}` });
+      return;
+    }
+    // 进入商机合作只需要登录，不应先等待名片摘要。名片状态由目标页
+    // 后台读取；用户只有在发布或进入“我的名片”时才需要补齐名片。
+    wx.navigateTo({ url: "/pages/business-opportunity/index" });
   },
   handleGoBusinessCardEditor() {
     const currentUser = getCurrentUser();
@@ -715,7 +719,7 @@ Page({
       referrer: "profile"
     }).catch(() => {});
     return {
-      title: `${share.title || "电子名片"}｜点开查看完整资料`,
+      title: buildBusinessCardShareTitle(this._businessCardShareSource || share),
       path: `/pages/note-preview/index?id=${encodeURIComponent(share.noteId)}&sid=${encodeURIComponent(shareId)}&from=${encodeURIComponent(shareFromUserId)}&src=profile_business_card_share`,
       imageUrl: this.data.businessCardShareImage
     };

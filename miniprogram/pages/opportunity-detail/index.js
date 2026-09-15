@@ -2,26 +2,6 @@ const { addOpportunityFollowup, fetchOpportunityLead, saveOpportunityLead, unloc
 const { getCurrentUser } = require("../../utils/dashboard");
 const { buildShareCardMessage, prepareShareCardImage } = require("../../plugins/share-snapshot/index");
 
-const mockLead = {
-  id: "opp_demo_1",
-  title: "长沙新店找本地推广渠道",
-  summary: "餐饮新店准备开业，想找能触达社区和商圈客户的合作方。",
-  content: "对方希望 7 天内启动开业推广，优先找有社区群、商圈地推、达人探店资源的合作方。预算明确，希望先看案例和执行方式。",
-  fields: [
-    { label: "城市", value: "长沙" },
-    { label: "行业", value: "本地生活" },
-    { label: "需求类型", value: "找渠道" },
-    { label: "联系方式", value: "有电话 · 已核验" },
-    { label: "有效期", value: "2 天内优先联系" },
-    { label: "可信状态", value: "可联系" }
-  ],
-  fits: ["本地商家", "推广渠道", "服务介绍页", "案例合集"],
-  followups: [
-    { status: "待联系", desc: "建议先生成回应包，再查看联系方式。" },
-    { status: "提醒", desc: "今天 18:00 前处理优先级最高。" }
-  ]
-};
-
 function contactText(lead = {}) {
   if (lead.hasContact) return "有联系方式";
   if (lead.contactStatus === "pending_verify") return "待核验";
@@ -33,10 +13,6 @@ function trustText(value) {
   if (value === "verified") return "可联系";
   if (value === "risk") return "需谨慎";
   return "待核验";
-}
-
-function isDemoLeadId(value) {
-  return /^opp_demo_/.test(String(value || ""));
 }
 
 function mapLead(lead = {}) {
@@ -64,33 +40,38 @@ function mapLead(lead = {}) {
 
 Page({
   data: {
-    lead: mockLead,
-    loading: false,
-    usingMock: true,
+    lead: {},
+    loading: true,
+    loadError: false,
     shareCardImage: ""
   },
   onLoad(options = {}) {
-    this.leadId = options.id || "opp_demo_1";
+    this.leadId = options.id || "";
     this.loadLead();
   },
   async loadLead() {
-    this.setData({ loading: true });
+    if (!this.leadId) {
+      this.setData({ loading: false, loadError: true, lead: {} });
+      return;
+    }
+    this.setData({ loading: true, loadError: false });
     try {
       const res = await fetchOpportunityLead(this.leadId);
-      this.setData({ lead: mapLead(res.data || {}), usingMock: false });
+      this.setData({ lead: mapLead(res.data || {}), loadError: false });
       this.prepareShareImage();
     } catch (error) {
-      this.setData({ lead: { ...mockLead, id: this.leadId || mockLead.id }, usingMock: true });
-      this.prepareShareImage();
+      this.setData({ lead: {}, loadError: true });
     } finally {
       this.setData({ loading: false });
     }
   },
   handleGeneratePackage() {
+    if (!this.data.lead.id) return;
     wx.navigateTo({ url: `/pages/response-package/index?leadId=${this.data.lead.id}` });
   },
   prepareShareImage() {
-    const lead = this.data.lead || mockLead;
+    const lead = this.data.lead || {};
+    if (!lead.id) return Promise.resolve(null);
     return prepareShareCardImage(this, {
       title: lead.title || "商机线索",
       summary: lead.summary || lead.content || "打开查看完整线索。",
@@ -101,16 +82,8 @@ Page({
     });
   },
   async handleContact() {
-    if (isDemoLeadId(this.data.lead.id)) {
-      wx.showModal({
-        title: "示例联系方式",
-        content: "示例数据不展示真实电话。真实线索生成回应包后，可按规则查看联系方式。",
-        showCancel: false
-      });
-      return;
-    }
     const user = getCurrentUser();
-    if (!user) return;
+    if (!user || !this.data.lead.id) return;
     try {
       const res = await unlockOpportunityContact(this.data.lead.id, { userId: user.id });
       const contacts = (res.data && res.data.contacts) || [];
@@ -122,11 +95,7 @@ Page({
   },
   async handleSave() {
     const user = getCurrentUser();
-    if (!user) return;
-    if (isDemoLeadId(this.data.lead.id)) {
-      wx.showToast({ title: "已保存到跟进台", icon: "success" });
-      return;
-    }
+    if (!user || !this.data.lead.id) return;
     try {
       await saveOpportunityLead(this.data.lead.id, { userId: user.id, status: "saved", note: "从线索详情保存" });
       wx.showToast({ title: "已保存到跟进台", icon: "success" });
@@ -137,11 +106,7 @@ Page({
   async handleFollowupAction(event) {
     const user = getCurrentUser();
     const label = event.currentTarget.dataset.label || "已记录";
-    if (!user) return;
-    if (isDemoLeadId(this.data.lead.id)) {
-      wx.showToast({ title: label, icon: "success" });
-      return;
-    }
+    if (!user || !this.data.lead.id) return;
     try {
       await addOpportunityFollowup(this.data.lead.id, {
         userId: user.id,
@@ -154,7 +119,7 @@ Page({
     }
   },
   onShareAppMessage() {
-    const lead = this.data.lead || mockLead;
+    const lead = this.data.lead || {};
     return buildShareCardMessage(this, {
       title: lead.title || "商机线索",
       summary: lead.summary || "打开查看完整线索。",

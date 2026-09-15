@@ -1,6 +1,6 @@
 {
   "enableShareAppMessage": true,
-  "navigationBarTitleText": "我的工具",
+  "navigationBarTitleText": "微信群工具",
   "navigationStyle": "custom",
   "usingComponents": {
     "custom-nav": "/components/custom-nav/index"

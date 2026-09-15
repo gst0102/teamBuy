@@ -22,6 +22,62 @@
           <text>{{selectedContactCard.hint}}</text>
         </view>
 
+        <view class="bc-section bc-contact-section bc-contact-primary">
+          <view class="bc-contact-heading">
+            <view>
+              <view class="bc-section-title">联系{{view.businessCardHero.name}}</view>
+              <text wx:if="{{view.businessCardContactLocked && !isOwnerViewing}}">联系方式需在商机合作中解锁查看</text>
+              <text wx:else>客户可直接拨打电话、复制微信或查看二维码</text>
+            </view>
+            <view class="bc-contact-heading-mark">直接联系</view>
+          </view>
+          <view wx:if="{{view.businessCardDetail.phone}}" class="bc-contact-action-row" data-key="contact" bindtap="handleAction">
+            <view class="bc-contact-action-icon phone">电</view>
+            <view class="bc-contact-action-copy"><text>电话</text><view>{{view.businessCardDetail.phone}}</view></view>
+            <view class="bc-contact-action-button">拨打电话</view>
+          </view>
+          <view wx:if="{{view.businessCardDetail.wechat}}" class="bc-contact-action-row" data-key="private" bindtap="handleAction">
+            <view class="bc-contact-action-icon wechat">微</view>
+            <view class="bc-contact-action-copy"><text>微信</text><view>{{view.businessCardDetail.wechat}}</view></view>
+            <view class="bc-contact-action-button">复制微信</view>
+          </view>
+          <view wx:if="{{view.businessCardDetail.email}}" class="bc-contact-action-row" data-key="email" bindtap="handleAction">
+            <view class="bc-contact-action-icon email">邮</view>
+            <view class="bc-contact-action-copy"><text>邮箱</text><view>{{view.businessCardDetail.email}}</view></view>
+            <view class="bc-contact-action-button secondary">复制邮箱</view>
+          </view>
+          <view wx:if="{{view.businessCardDetail.website}}" class="bc-contact-action-row" data-key="website" bindtap="handleAction">
+            <view class="bc-contact-action-icon website">网</view>
+            <view class="bc-contact-action-copy"><text>网站</text><view>{{view.businessCardDetail.website}}</view></view>
+            <view class="bc-contact-action-button secondary">复制网址</view>
+          </view>
+          <view wx:if="{{view.businessCardDetail.qrCodeUrl}}" class="bc-contact-qr-row" data-url="{{view.businessCardDetail.qrCodeUrl}}" bindtap="handlePreviewImage">
+            <image class="bc-contact-qr-thumb" src="{{view.businessCardDetail.qrCodeUrl}}" mode="aspectFill"></image>
+            <view class="bc-contact-qr-copy"><view>微信二维码</view><text>点击查看大图，添加微信</text></view>
+            <text class="bc-contact-row-arrow">›</text>
+          </view>
+          <view wx:if="{{!view.businessCardDetail.hasContact && !view.businessCardContactLocked}}" class="bc-contact-empty">
+            <view>尚未设置联系方式</view>
+            <text wx:if="{{isOwnerViewing}}">客户打开后暂时无法直接联系你</text>
+            <text wx:else>可以先通过留言咨询联系发布者</text>
+            <button wx:if="{{isOwnerViewing}}" bindtap="handleEditBusinessCard">去编辑补充</button>
+          </view>
+          <view wx:if="{{!view.businessCardDetail.hasContact && view.businessCardContactLocked && !isOwnerViewing}}" class="bc-contact-empty locked">
+            <view>联系方式已隐藏</view>
+            <text>请从商机合作中解锁后查看</text>
+          </view>
+        </view>
+
+        <view class="bc-section bc-opportunity-profile" wx:if="{{view.businessCardDetail.industryTags.length}}">
+          <view class="bc-section-title">合作标签</view>
+          <view class="bc-keyword-row"><text wx:for="{{view.businessCardDetail.industryTags}}" wx:key="*this">{{item}}</text></view>
+        </view>
+
+        <view class="bc-section bc-intent-section" wx:if="{{view.businessCardDetail.cooperationIntent.text && view.businessCardDetail.cooperationIntent.active}}">
+          <view class="bc-intent-heading"><view class="bc-section-title">{{view.businessCardDetail.cooperationIntent.direction || '当前合作意向'}}</view><text>动态</text></view>
+          <view class="bc-section-body">{{view.businessCardDetail.cooperationIntent.text}}</view>
+        </view>
+
         <view class="bc-section" wx:if="{{view.businessCardDetail.keywords.length}}">
           <view class="bc-section-title">我能提供</view>
           <view class="bc-keyword-row"><text wx:for="{{view.businessCardDetail.keywords}}" wx:key="*this">{{item}}</text></view>
@@ -38,35 +94,13 @@
             <view class="bc-featured-item" wx:for="{{view.businessCardDetail.featuredResources}}" wx:key="id" data-id="{{item.id}}" bindtap="handleOpenFeaturedResource">
               <image wx:if="{{item.coverUrl}}" src="{{item.coverUrl}}" mode="aspectFill" />
               <view wx:else class="bc-featured-icon">{{item.typeInitial}}</view>
-              <view><view>{{item.title}}</view><text>{{item.typeLabel}} · {{item.summary || '点击查看资料'}}</text></view>
+              <view class="bc-featured-copy"><view>{{item.title}}</view><text>{{item.typeLabel}} · {{item.summary || '点击查看资料'}}</text><view wx:if="{{item.media.length}}" class="bc-featured-media-strip"><block wx:for="{{item.media}}" wx:key="id"><image wx:if="{{item.type === 'image'}}" src="{{item.url}}" mode="aspectFill" data-id="{{item.id}}" data-url="{{item.url}}" catchtap="handleFeaturedAttachment" /><view wx:elif="{{item.type === 'pdf'}}" class="bc-featured-media-mark pdf" data-id="{{item.id}}" data-type="pdf" data-url="{{item.url}}" catchtap="handleFeaturedAttachment">PDF</view><view wx:else class="bc-featured-media-mark link" data-id="{{item.id}}" data-type="link" data-url="{{item.url}}" catchtap="handleFeaturedAttachment">链</view></block></view></view>
               <text>›</text>
             </view>
           </view>
         </view>
 
-        <view class="bc-section bc-contact-section" wx:if="{{view.businessCardDetail.phone || view.businessCardDetail.wechat || view.businessCardDetail.email || view.businessCardDetail.website || view.businessCardDetail.qrCodeUrl}}">
-          <view>
-            <view class="bc-section-title">更多联系方式</view>
-            <view class="bc-contact-row" wx:if="{{view.businessCardDetail.phone}}">
-              <text>电话</text>
-              <view>{{view.businessCardDetail.phone}}</view>
-            </view>
-            <view class="bc-contact-row" wx:if="{{view.businessCardDetail.wechat}}">
-              <text>微信</text>
-              <view>{{view.businessCardDetail.wechat}}</view>
-            </view>
-            <view class="bc-contact-row" wx:if="{{view.businessCardDetail.email}}">
-              <text>邮箱</text>
-              <view>{{view.businessCardDetail.email}}</view>
-            </view>
-            <view class="bc-contact-row website" wx:if="{{view.businessCardDetail.website}}" data-key="website" bindtap="handleAction">
-              <text>网址</text>
-              <view>{{view.businessCardDetail.website}}</view>
-            </view>
-          </view>
-          <image wx:if="{{view.businessCardDetail.qrCodeUrl}}" class="bc-qr" src="{{view.businessCardDetail.qrCodeUrl}}" mode="aspectFill" data-url="{{view.businessCardDetail.qrCodeUrl}}" bindtap="handlePreviewImage"></image>
-          <view wx:else class="bc-qr placeholder">二维码</view>
-        </view>
+        <view wx:if="{{isOwnerViewing}}" class="bc-owner-preview-tip"><view>当前为本人预览</view><text>{{view.businessCardDetail.hasContact ? '客户打开后可直接拨打电话、复制微信或发起沟通' : '联系方式尚未补充，客户暂时无法直接联系你'}}</text></view>
         <customer-communication
           wx:if="{{!isOwnerViewing}}"
           actions="{{view.communicationActions}}"
@@ -425,11 +459,11 @@
       </view>
     </view>
     <view class="floating-share-actions">
-      <button wx:if="{{shareImageReady}}" open-type="share" catchtap="handleShareTap">好友</button>
-      <button wx:elif="{{shareImageState === 'preparing'}}" disabled="true">分享图生成中</button>
-      <button wx:elif="{{isOwnerViewing}}" bindtap="prepareShareSnapshot">{{shareStatusText}}</button>
-      <button wx:else disabled="true">{{shareStatusText}}</button>
-      <button bindtap="handleTimelineHint">朋友圈</button>
+      <button wx:if="{{shareImageReady}}" class="share-primary" open-type="share" catchtap="handleShareTap">发送给客户</button>
+      <view wx:elif="{{shareImageState === 'preparing'}}" class="share-primary share-status">分享图生成中</view>
+      <button wx:elif="{{isOwnerViewing}}" class="share-primary share-status" bindtap="prepareShareSnapshot">{{shareStatusText}}</button>
+      <view wx:else class="share-primary share-status disabled">{{shareStatusText}}</view>
+      <button class="share-secondary" bindtap="handleTimelineHint">朋友圈</button>
     </view>
 
     <view class="order-sheet-mask" wx:if="{{showOrderSheet}}" catchtap="handleCloseOrderSheet" catchtouchmove="noop">
@@ -479,5 +513,4 @@
     <button class="public-load-error-home" bindtap="handleBackHome">回到首页</button>
   </view>
 
-  <canvas canvas-id="businessCardShareCanvas" class="business-card-share-canvas"></canvas>
 </view>

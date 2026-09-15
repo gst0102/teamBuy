@@ -230,3 +230,19 @@ page {
   color: #0f7a4c;
   background: #edf7f1;
 }
+/* Typography scale v2: clarify the same-style flow and its privacy choices. */
+.page-shell .hero-title { font-size: 38rpx; }
+.page-shell .hero-desc { font-size: 26rpx; }
+.page-shell .mode-title { font-size: 29rpx; }
+.page-shell .mode-desc { font-size: 24rpx; }
+.page-shell .section-title { font-size: 32rpx; }
+.page-shell .source-label { font-size: 24rpx; }
+.page-shell .source-title { font-size: 28rpx; }
+.page-shell .source-sub { font-size: 23rpx; }
+.page-shell .own-note-title { font-size: 26rpx; }
+.page-shell .own-note-empty { font-size: 24rpx; }
+.page-shell .field-label { font-size: 26rpx; }
+.page-shell .field-input { font-size: 28rpx; }
+.page-shell .privacy-note { font-size: 23rpx; }
+.page-shell .step-item { font-size: 25rpx; }
+.page-shell .action-bar button { display: flex; align-items: center; justify-content: center; min-height: 72rpx; font-size: 26rpx; }

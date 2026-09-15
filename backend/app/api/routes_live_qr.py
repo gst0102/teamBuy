@@ -9,7 +9,7 @@ from datetime import timedelta
 import math
 
 import qrcode
-from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, Response
 
 from app.api.dependencies import get_app_service
@@ -17,9 +17,10 @@ from app.api.upload_utils import read_upload_with_limit
 from app.core.config import settings
 from app.models.domain import LiveQrCode
 from app.schemas.common import ApiResponse
-from app.schemas.ops_admin import LiveQrCodeCreateRequest, LiveQrCodeUpdateRequest
+from app.schemas.ops_admin import LiveQrCodeCreateRequest, LiveQrCodeUpdateRequest, LiveQrStyleUpdateRequest
 from app.services.app_service import AppService
 from app.services.helpers import new_id
+from app.services.media_storage_service import MediaStorageService
 from app.services.time_utils import SHANGHAI, now_iso, parse_iso
 
 
@@ -33,6 +34,8 @@ LIVE_QR_TARGET_QR_MAX_BYTES = 10 * 1024 * 1024
 LIVE_QR_MEMBER_FILTERS = {"all", "warning", "replace", "unknown"}
 LIVE_QR_MEMBER_WARNING_THRESHOLD = 180
 LIVE_QR_MEMBER_REPLACE_THRESHOLD = 200
+LIVE_QR_POSTER_MODES = {"plain", "source"}
+LIVE_QR_POSTER_MAX_PIXELS = 30_000_000
 
 
 def _verify_admin_token(provided_token: str | None) -> None:
@@ -89,11 +92,16 @@ def _expiry_meta(value: str | None) -> dict:
     except (TypeError, ValueError):
         return {"targetExpiryState": "unknown", "targetExpiresInDays": None}
     if remaining_seconds <= 0:
-        return {"targetExpiryState": "expired", "targetExpiresInDays": 0}
+        return {
+            "targetExpiryState": "expired",
+            "targetExpiresInDays": 0,
+            "targetExpiresAtText": expiry.strftime("%Y-%m-%d"),
+        }
     days = max(1, math.ceil(remaining_seconds / 86400))
     return {
         "targetExpiryState": "expiring_soon" if days <= 1 else "active",
         "targetExpiresInDays": days,
+        "targetExpiresAtText": expiry.strftime("%Y-%m-%d"),
     }
 
 
@@ -229,13 +237,32 @@ def _public_asset_url(request: Request, value: str | None) -> str:
 
 def _payload(request: Request, item: LiveQrCode) -> dict:
     code = quote(item.code, safe="")
-    return {
+    poster_mode = item.posterMode if item.posterMode in LIVE_QR_POSTER_MODES else "plain"
+    payload = {
         **item.model_dump(mode="json"),
         "publicUrl": _public_url(request, item.code),
-        "qrImageUrl": f"/live-qr/{code}.png?v={item.version}",
+        "qrImageUrl": (
+            item.posterImageUrl
+            if poster_mode == "source" and item.posterImageUrl
+            else f"/live-qr/{code}.png?v={item.version}"
+        ),
+        "targetQrImageUrl": item.targetQrImageUrl,
+        "posterMode": poster_mode,
         **_expiry_meta(item.targetExpiresAt),
         **_member_count_meta(item),
     }
+    history = []
+    for entry in reversed(item.targetQrHistory or []):
+        row = dict(entry)
+        row.setdefault("updatedAtText", str(row.get("targetUpdatedAt") or row.get("updatedAt") or "")[:10])
+        row.setdefault("expiresAtText", str(row.get("targetExpiresAt") or "")[:10])
+        history.append(row)
+    payload["history"] = history
+    payload["reminderConfigured"] = bool(
+        settings.wechat_miniapp_live_qr_subscribe_template_id
+        and settings.wechat_miniapp_live_qr_subscribe_field_keys()
+    )
+    return payload
 
 
 def _new_code(service: AppService) -> str:
@@ -244,6 +271,359 @@ def _new_code(service: AppService) -> str:
         if not service.repo.get_live_qr_code_by_code(candidate):
             return candidate
     raise HTTPException(status_code=503, detail="暂时无法生成新的活码，请稍后重试")
+
+
+def _user_live_qr_items(service: AppService, owner_user_id: str) -> list[LiveQrCode]:
+    if not service.repo.get_user(owner_user_id):
+        raise HTTPException(status_code=404, detail="用户不存在")
+    return [item for item in service.repo.list_live_qr_codes() if item.ownerUserId == owner_user_id]
+
+
+def _user_media_storage(service: AppService) -> MediaStorageService:
+    storage = service.media_storage_service
+    if storage.storage_mode == "mock":
+        return MediaStorageService(
+            storage_mode="local",
+            storage_dir=settings.media_storage_dir,
+            public_url_prefix=settings.media_public_url_prefix,
+            public_base_url=settings.public_base_url,
+        )
+    return storage
+
+
+def _normalize_poster_mode(value: str | None) -> str:
+    mode = str(value or "plain").strip().lower()
+    if mode not in LIVE_QR_POSTER_MODES:
+        raise HTTPException(status_code=400, detail="投放样式只支持纯二维码或保留原图样式")
+    return mode
+
+
+def _remove_media_ref(service: AppService, url: str | None, ref_type: str, ref_id: str) -> None:
+    if not url:
+        return
+    asset = service.repo.get_media_asset_by_url(url)
+    if asset:
+        service.repo.delete_media_asset_refs(asset.id, ref_type=ref_type, ref_id=ref_id, usage="current")
+
+
+def _qr_points(content: bytes):
+    try:
+        import cv2
+        import numpy as np
+    except ImportError as exc:
+        raise HTTPException(status_code=503, detail="二维码图片处理组件暂不可用，请稍后重试") from exc
+
+    image = cv2.imdecode(np.frombuffer(content, dtype=np.uint8), cv2.IMREAD_COLOR)
+    if image is None:
+        return None
+    detector = cv2.QRCodeDetector()
+    try:
+        _, points, _ = detector.detectAndDecode(image)
+    except cv2.error:
+        points = None
+    if points is None and hasattr(detector, "detectAndDecodeMulti"):
+        try:
+            detected, _, points, _ = detector.detectAndDecodeMulti(image)
+            if not detected:
+                points = None
+        except cv2.error:
+            points = None
+    if points is None:
+        try:
+            detected, points = detector.detect(image)
+            if not detected:
+                points = None
+        except cv2.error:
+            points = None
+    if points is None:
+        return None
+    values = np.asarray(points, dtype=float)
+    if values.ndim >= 3:
+        values = values[0]
+    values = values.reshape(-1, 2)
+    return values if len(values) >= 4 else None
+
+
+def _build_live_qr_poster(content: bytes, fixed_url: str) -> bytes:
+    try:
+        from PIL import Image, ImageDraw
+    except ImportError as exc:
+        raise HTTPException(status_code=503, detail="图片处理组件暂不可用，请稍后重试") from exc
+
+    try:
+        source = Image.open(BytesIO(content))
+        source.load()
+    except (OSError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="无法读取原图，请重新上传清晰的二维码图片") from exc
+    if source.width * source.height > LIVE_QR_POSTER_MAX_PIXELS:
+        raise HTTPException(status_code=413, detail="原图尺寸过大，请压缩后重新上传")
+    points = _qr_points(content)
+    if points is None:
+        raise HTTPException(status_code=400, detail="无法定位原图中的二维码，请上传二维码清晰且无遮挡的图片")
+
+    poster = source.convert("RGBA")
+    left_point = float(points[:, 0].min())
+    right_point = float(points[:, 0].max())
+    top_point = float(points[:, 1].min())
+    bottom_point = float(points[:, 1].max())
+    detected_side = max(right_point - left_point, bottom_point - top_point)
+    side = min(
+        max(int(round(detected_side * 1.16)), int(detected_side) + 16),
+        poster.width,
+        poster.height,
+    )
+    center_x = (left_point + right_point) / 2
+    center_y = (top_point + bottom_point) / 2
+    left = max(0, min(poster.width - side, int(round(center_x - side / 2))))
+    top = max(0, min(poster.height - side, int(round(center_y - side / 2))))
+
+    qr = qrcode.QRCode(
+        version=None,
+        error_correction=qrcode.constants.ERROR_CORRECT_M,
+        box_size=10,
+        border=4,
+    )
+    qr.add_data(fixed_url)
+    qr.make(fit=True)
+    replacement = qr.make_image(fill_color="#20221f", back_color="#ffffff").convert("RGBA")
+    replacement = replacement.resize((side, side), Image.Resampling.LANCZOS)
+    ImageDraw.Draw(poster).rectangle((left, top, left + side, top + side), fill="#ffffff")
+    poster.paste(replacement, (left, top))
+    output = BytesIO()
+    poster.save(output, format="PNG", optimize=True)
+    return output.getvalue()
+
+
+def _store_live_qr_poster(
+    service: AppService,
+    content: bytes,
+    owner_user_id: str | None,
+    resource_id: str,
+    fixed_url: str,
+) -> str:
+    poster_content = _build_live_qr_poster(content, fixed_url)
+    return service.process_and_store_media(
+        media_id=new_id("live_qr_poster"),
+        media_type="image",
+        content=poster_content,
+        content_type="image/png",
+        filename="live-qr-poster.png",
+        owner_user_id=owner_user_id,
+        ref_type="live_qr_poster",
+        ref_id=resource_id,
+        usage="current",
+        preserve_source_format=True,
+        storage_service=_user_media_storage(service) if owner_user_id else None,
+    )
+
+
+async def _store_user_target_qr(
+    service: AppService,
+    file: UploadFile,
+    owner_user_id: str,
+    resource_id: str,
+) -> tuple[str, str, bytes]:
+    if file.content_type and file.content_type not in {"image/png", "image/jpeg", "image/webp"}:
+        raise HTTPException(status_code=400, detail="群二维码仅支持 PNG、JPEG 或 WebP 图片")
+    content = await read_upload_with_limit(
+        file,
+        LIVE_QR_TARGET_QR_MAX_BYTES,
+        "群二维码图片不能超过10MB",
+    )
+    target_url = _decode_qr_target_url(content)
+    image_url = service.process_and_store_media(
+        media_id=new_id("live_qr_target"),
+        media_type="image",
+        content=content,
+        content_type=file.content_type,
+        filename=file.filename,
+        owner_user_id=owner_user_id,
+        ref_type="live_qr_target",
+        ref_id=resource_id,
+        usage="current",
+        preserve_source_format=True,
+        storage_service=_user_media_storage(service),
+    )
+    return target_url, image_url, content
+
+
+@router.get("/api/live-qr-codes", response_model=ApiResponse[list[dict]])
+def list_user_live_qr_codes(
+    request: Request,
+    ownerUserId: str = Query(...),
+    service: AppService = Depends(get_app_service),
+):
+    return ApiResponse(data=[_payload(request, item) for item in _user_live_qr_items(service, ownerUserId)])
+
+
+@router.post("/api/live-qr-codes", response_model=ApiResponse[dict])
+async def create_user_live_qr_code(
+    request: Request,
+    ownerUserId: str = Form(...),
+    styleMode: str = Form(default="plain"),
+    file: UploadFile = File(...),
+    service: AppService = Depends(get_app_service),
+):
+    items = _user_live_qr_items(service, ownerUserId)
+    item_id = new_id("live_qr")
+    poster_mode = _normalize_poster_mode(styleMode)
+    target_url, image_url, content = await _store_user_target_qr(service, file, ownerUserId, item_id)
+    now = now_iso()
+    code = _new_code(service)
+    try:
+        service._enforce_content_safety(
+            "live_qr",
+            item_id,
+            {"name": f"微信群活码 {len(items) + 1}", "targetUrl": target_url},
+            owner_user_id=ownerUserId,
+            content_revision=now,
+            for_publish=True,
+        )
+    except Exception:
+        _remove_media_ref(service, image_url, "live_qr_target", item_id)
+        raise
+    poster_url = None
+    if poster_mode == "source":
+        try:
+            poster_url = _store_live_qr_poster(service, content, ownerUserId, item_id, _public_url(request, code))
+        except Exception:
+            _remove_media_ref(service, image_url, "live_qr_target", item_id)
+            raise
+    item = LiveQrCode(
+        id=item_id,
+        code=code,
+        ownerUserId=ownerUserId,
+        name=f"微信群活码 {len(items) + 1}",
+        targetQrImageUrl=image_url,
+        targetQrImageUpdatedAt=now,
+        posterMode=poster_mode,
+        posterImageUrl=poster_url,
+        targetUrl=target_url,
+        targetExpiresAt=_default_expiry(now),
+        targetUpdatedAt=now,
+        createdAt=now,
+        updatedAt=now,
+    )
+    service.repo.save_live_qr_code(item)
+    return ApiResponse(message="活码已生成", data=_payload(request, item))
+
+
+@router.post("/api/live-qr-codes/{qr_id}/target-qr", response_model=ApiResponse[dict])
+async def update_user_live_qr_target(
+    qr_id: str,
+    request: Request,
+    ownerUserId: str = Form(...),
+    file: UploadFile = File(...),
+    service: AppService = Depends(get_app_service),
+):
+    current = service.repo.get_live_qr_code(qr_id)
+    if not current:
+        raise HTTPException(status_code=404, detail="活码不存在")
+    if current.ownerUserId != ownerUserId:
+        raise HTTPException(status_code=403, detail="无权修改该活码")
+    target_url, image_url, content = await _store_user_target_qr(service, file, ownerUserId, current.id)
+    now = now_iso()
+    try:
+        service._enforce_content_safety(
+            "live_qr",
+            current.id,
+            {"name": current.name, "targetUrl": target_url},
+            owner_user_id=ownerUserId,
+            content_revision=now,
+            for_publish=True,
+        )
+    except Exception:
+        _remove_media_ref(service, image_url, "live_qr_target", current.id)
+        raise
+    poster_url = current.posterImageUrl
+    if current.posterMode == "source":
+        try:
+            poster_url = _store_live_qr_poster(service, content, ownerUserId, current.id, _public_url(request, current.code))
+        except Exception:
+            _remove_media_ref(service, image_url, "live_qr_target", current.id)
+            raise
+    if current.targetQrImageUrl and current.targetQrImageUrl != image_url:
+        _remove_media_ref(service, current.targetQrImageUrl, "live_qr_target", current.id)
+    if current.posterImageUrl and current.posterImageUrl != poster_url:
+        _remove_media_ref(service, current.posterImageUrl, "live_qr_poster", current.id)
+    updated = current.model_copy(update={
+        "targetQrImageUrl": image_url,
+        "targetQrImageUpdatedAt": now,
+        "posterImageUrl": poster_url,
+        "targetUrl": target_url,
+        "targetExpiresAt": _default_expiry(now),
+        "targetUpdatedAt": now,
+        "targetQrHistory": [
+            *(current.targetQrHistory or []),
+            {
+                "version": int(current.version or 1),
+                "targetUpdatedAt": current.targetUpdatedAt,
+                "targetExpiresAt": current.targetExpiresAt,
+            },
+        ][-20:],
+        "version": int(current.version or 1) + 1,
+        "updatedAt": now,
+    })
+    service.repo.save_live_qr_code(updated)
+    return ApiResponse(message="二维码已更新，固定入口保持不变", data=_payload(request, updated))
+
+
+@router.patch("/api/live-qr-codes/{qr_id}/style", response_model=ApiResponse[dict])
+def update_user_live_qr_style(
+    qr_id: str,
+    payload: LiveQrStyleUpdateRequest,
+    request: Request,
+    service: AppService = Depends(get_app_service),
+):
+    current = service.repo.get_live_qr_code(qr_id)
+    if not current:
+        raise HTTPException(status_code=404, detail="活码不存在")
+    if current.ownerUserId != payload.ownerUserId:
+        raise HTTPException(status_code=403, detail="无权修改该活码")
+    mode = _normalize_poster_mode(payload.styleMode)
+    poster_url = current.posterImageUrl if mode == "source" else None
+    if mode == "source" and not poster_url:
+        if not current.targetQrImageUrl:
+            raise HTTPException(status_code=400, detail="请先上传微信群二维码")
+        content = _user_media_storage(service).read_bytes(current.targetQrImageUrl)
+        if not content:
+            raise HTTPException(status_code=400, detail="原二维码图片暂无法读取，请重新上传二维码")
+        poster_url = _store_live_qr_poster(
+            service,
+            content,
+            payload.ownerUserId,
+            current.id,
+            _public_url(request, current.code),
+        )
+    if current.posterImageUrl and current.posterImageUrl != poster_url:
+        _remove_media_ref(service, current.posterImageUrl, "live_qr_poster", current.id)
+    updated = current.model_copy(update={
+        "posterMode": mode,
+        "posterImageUrl": poster_url,
+        "updatedAt": now_iso(),
+    })
+    service.repo.save_live_qr_code(updated)
+    return ApiResponse(message="投放样式已更新", data=_payload(request, updated))
+
+
+@router.delete("/api/live-qr-codes/{qr_id}", response_model=ApiResponse[dict])
+def delete_user_live_qr_code(
+    qr_id: str,
+    ownerUserId: str = Query(...),
+    service: AppService = Depends(get_app_service),
+):
+    current = service.repo.get_live_qr_code(qr_id)
+    if not current:
+        raise HTTPException(status_code=404, detail="活码不存在")
+    if current.ownerUserId != ownerUserId:
+        raise HTTPException(status_code=403, detail="无权删除该活码")
+    if current.targetQrImageUrl:
+        _remove_media_ref(service, current.targetQrImageUrl, "live_qr_target", current.id)
+    if current.posterImageUrl:
+        _remove_media_ref(service, current.posterImageUrl, "live_qr_poster", current.id)
+    if not service.repo.delete_live_qr_code(current.id):
+        raise HTTPException(status_code=404, detail="活码不存在")
+    return ApiResponse(message="活码已删除", data={"id": current.id})
 
 
 @router.get("/ops/live-qr")
@@ -350,23 +730,40 @@ async def upload_live_qr_target_qr(
         usage="current",
         preserve_source_format=True,
     )
-    if current.targetQrImageUrl and current.targetQrImageUrl != image_url:
-        previous_asset = service.repo.get_media_asset_by_url(current.targetQrImageUrl)
-        if previous_asset:
-            service.repo.delete_media_asset_refs(
-                previous_asset.id,
-                ref_type="live_qr_target",
-                ref_id=current.id,
-                usage="current",
+    poster_url = current.posterImageUrl
+    if current.posterMode == "source":
+        try:
+            poster_url = _store_live_qr_poster(
+                service,
+                content,
+                None,
+                current.id,
+                _public_url(request, current.code),
             )
+        except Exception:
+            _remove_media_ref(service, image_url, "live_qr_target", current.id)
+            raise
+    if current.targetQrImageUrl and current.targetQrImageUrl != image_url:
+        _remove_media_ref(service, current.targetQrImageUrl, "live_qr_target", current.id)
+    if current.posterImageUrl and current.posterImageUrl != poster_url:
+        _remove_media_ref(service, current.posterImageUrl, "live_qr_poster", current.id)
     now = now_iso()
     updated = current.model_copy(
         update={
             "targetQrImageUrl": image_url,
             "targetQrImageUpdatedAt": now,
+            "posterImageUrl": poster_url,
             "targetUrl": target_url,
             "targetExpiresAt": _default_expiry(now),
             "targetUpdatedAt": now,
+            "targetQrHistory": [
+                *(current.targetQrHistory or []),
+                {
+                    "version": int(current.version or 1),
+                    "targetUpdatedAt": current.targetUpdatedAt,
+                    "targetExpiresAt": current.targetExpiresAt,
+                },
+            ][-20:],
             "version": int(current.version or 1) + 1,
             "updatedAt": now,
         }
@@ -445,6 +842,14 @@ def create_live_qr_code(
         createdAt=now,
         updatedAt=now,
     )
+    service._enforce_content_safety(
+        "live_qr",
+        item.id,
+        {"name": item.name, "description": item.description, "targetUrl": item.targetUrl},
+        owner_user_id=item.ownerUserId,
+        content_revision=item.updatedAt,
+        for_publish=True,
+    )
     service.repo.save_live_qr_code(item)
     return ApiResponse(message="活码已创建", data=_payload(request, item))
 
@@ -491,6 +896,14 @@ def update_live_qr_code(
         updates["status"] = status
     updates["updatedAt"] = now_iso()
     updated = current.model_copy(update=updates)
+    service._enforce_content_safety(
+        "live_qr",
+        updated.id,
+        {"name": updated.name, "description": updated.description, "targetUrl": updated.targetUrl},
+        owner_user_id=updated.ownerUserId,
+        content_revision=updated.updatedAt,
+        for_publish=True,
+    )
     service.repo.save_live_qr_code(updated)
     return ApiResponse(message="活码已更新", data=_payload(request, updated))
 
@@ -560,6 +973,23 @@ def resolve_live_qr(code: str, request: Request, service: AppService = Depends(g
     value = _validate_code(code)
     current = service.repo.get_live_qr_code_by_code(value)
     if not current:
+        return HTMLResponse(
+            "<!doctype html><meta charset='utf-8'><title>入口暂不可用</title>"
+            "<h1>这个入口暂时不可用</h1><p>请联系发布者获取最新入口。</p>",
+            status_code=410,
+            headers={"Cache-Control": "no-store, max-age=0"},
+        )
+    try:
+        service._enforce_content_safety(
+            "live_qr",
+            current.id,
+            {"name": current.name, "description": current.description, "targetUrl": current.targetUrl},
+            owner_user_id=current.ownerUserId,
+            content_revision=current.targetUpdatedAt or current.updatedAt,
+            for_publish=True,
+            persist=False,
+        )
+    except HTTPException:
         return HTMLResponse(
             "<!doctype html><meta charset='utf-8'><title>入口暂不可用</title>"
             "<h1>这个入口暂时不可用</h1><p>请联系发布者获取最新入口。</p>",

@@ -27,6 +27,7 @@ let customerIntelligenceSummaryCacheGeneration = 0;
 const notificationConfigCache = {};
 const notificationConfigInFlight = {};
 let notificationConfigCacheGeneration = 0;
+const UPLOAD_TIMEOUT_MS = 30000;
 
 function toAbsoluteUrl(url) {
   if (!url) return url;
@@ -104,6 +105,23 @@ function normalizeAndCacheCard(card) {
 
 function normalizeAndCacheNote(note) {
   return withCachedMedia(normalizeNotePayload(note));
+}
+
+function normalizeNoteForFirstPaint(note) {
+  const normalized = normalizeNotePayload(note);
+  if (!normalized || typeof normalized !== "object") return normalized;
+  return {
+    ...normalized,
+    coverDisplayUrl: normalized.coverUrl || "",
+    media: Array.isArray(normalized.media)
+      ? normalized.media.map((item) => ({ ...item, displayUrl: item && item.url }))
+      : normalized.media
+  };
+}
+
+function warmNoteMedia(note) {
+  if (!note || typeof note !== "object") return Promise.resolve(note);
+  return withCachedMedia(normalizeNotePayload(note)).catch(() => note);
 }
 
 function authHeader() {
@@ -350,7 +368,7 @@ function updateUserProfile(userId, payload) {
   });
 }
 
-function fetchPendingImports() {
+function fetchPendingImports(options = {}) {
   return request({
     url: "/api/imports/pending"
   }).then(async (res) => ({
@@ -358,8 +376,12 @@ function fetchPendingImports() {
     data: Array.isArray(res.data)
       ? await Promise.all(res.data.map(async (item) => ({
           ...item,
-          generatedCard: await normalizeAndCacheCard(item.generatedCard),
-          generatedNote: await normalizeAndCacheNote(item.generatedNote)
+          generatedCard: options.metadataOnly
+            ? normalizeCardPayload(item.generatedCard)
+            : await normalizeAndCacheCard(item.generatedCard),
+          generatedNote: options.metadataOnly
+            ? normalizeNoteForFirstPaint(item.generatedNote)
+            : await normalizeAndCacheNote(item.generatedNote)
         })))
       : res.data
   }));
@@ -440,21 +462,26 @@ function fetchNotes(params = {}, options = {}) {
   if (params.topicId) query.push(`topicId=${encodeURIComponent(params.topicId)}`);
   if (params.sort) query.push(`sort=${encodeURIComponent(params.sort)}`);
   if (params.includeDeleted) query.push("includeDeleted=true");
+  if (params.limit !== undefined && params.limit !== null && params.limit !== "") query.push(`limit=${encodeURIComponent(params.limit)}`);
+  if (params.offset !== undefined && params.offset !== null && params.offset !== "") query.push(`offset=${encodeURIComponent(params.offset)}`);
   const suffix = query.length ? `?${query.join("&")}` : "";
   const generation = noteListGeneration;
   const promise = request({
     url: `/api/notes${suffix}`
   }).then(async (res) => {
-    const data = Array.isArray(res.data)
-      ? options.metadataOnly
-        ? res.data.map(normalizeNotePayload)
-        : await Promise.all(res.data.map(normalizeAndCacheNote))
-      : res.data;
-    if (Array.isArray(data)) {
-      if (generation === noteListGeneration) writeCache(key, data);
+    const payload = Array.isArray(res.data) ? res.data : (res.data && typeof res.data === "object" ? res.data : []);
+    const items = Array.isArray(payload) ? payload : (Array.isArray(payload.items) ? payload.items : []);
+    const normalizedItems = options.metadataOnly
+      ? items.map(normalizeNotePayload)
+      : await Promise.all(items.map(normalizeAndCacheNote));
+    const data = Array.isArray(payload)
+      ? normalizedItems
+      : { ...payload, items: normalizedItems };
+    if (Array.isArray(payload) && generation === noteListGeneration) writeCache(key, data);
+    if (Array.isArray(payload) && !options.metadataOnly) {
       // A metadata list must not overwrite the detail cache with a partial
       // payload. Full note detail is cached only after a full fetch.
-      if (!options.metadataOnly) data.forEach(writeNoteItemCache);
+      data.forEach(writeNoteItemCache);
     }
     return { ...res, data };
   }).finally(() => {
@@ -467,6 +494,15 @@ function fetchNotes(params = {}, options = {}) {
 function fetchBusinessCardSummary(ownerUserId) {
   return request({
     url: `/api/notes/business-card-summary?ownerUserId=${encodeURIComponent(ownerUserId || "")}`
+  }).then((res) => {
+    const data = res && res.data && typeof res.data === "object" ? res.data : {};
+    return {
+      ...res,
+      data: {
+        ...data,
+        businessCard: normalizeNotePayload(data.businessCard)
+      }
+    };
   });
 }
 
@@ -673,12 +709,91 @@ function fetchNote(noteId, ownerUserId, options = {}) {
 }
 
 function fetchPublicNote(noteId) {
+  const app = getApp();
+  const currentUser = (app && app.globalData && app.globalData.currentUser) || wx.getStorageSync("currentUser") || {};
+  const viewerUserId = currentUser && currentUser.id ? `?viewerUserId=${encodeURIComponent(currentUser.id)}` : "";
   return request({
-    url: `/api/notes/public/${noteId}`
-  }).then(async (res) => ({
+    url: `/api/notes/public/${noteId}${viewerUserId}`
+  }).then((res) => {
+    const data = normalizeNoteForFirstPaint(res.data);
+    // Media is an enhancement for the public page, not a prerequisite for
+    // showing its title, body and primary actions.
+    warmNoteMedia(data);
+    return { ...res, data };
+  });
+}
+
+function fetchBusinessOpportunityCards(params = {}) {
+  const query = [];
+  ["mode", "keyword", "industry", "subIndustry", "city", "cursor", "limit", "viewerUserId"].forEach((key) => {
+    if (params[key] !== undefined && params[key] !== null && params[key] !== "") {
+      query.push(`${key}=${encodeURIComponent(params[key])}`);
+    }
+  });
+  return request({ url: `/api/business-opportunities/cards${query.length ? `?${query.join("&")}` : ""}` }).then((res) => ({
     ...res,
-    data: await normalizeAndCacheNote(res.data)
+    data: {
+      ...(res.data || {}),
+      items: Array.isArray(res.data && res.data.items) ? res.data.items.map(normalizeBusinessOpportunityCard) : []
+    }
   }));
+}
+
+function normalizeBusinessOpportunityCard(card) {
+  if (!card || typeof card !== "object") return card;
+  return {
+    ...card,
+    avatarUrl: toAbsoluteUrl(card.avatarUrl),
+    coverUrl: toAbsoluteUrl(card.coverUrl),
+    contacts: Array.isArray(card.contacts)
+      ? card.contacts.map((item) => ({ ...item, contactValue: item.contactType === "wechatQr" ? toAbsoluteUrl(item.contactValue) : item.contactValue }))
+      : card.contacts,
+    featuredResources: Array.isArray(card.featuredResources)
+      ? card.featuredResources.map((item) => ({ ...item, coverUrl: toAbsoluteUrl(item.coverUrl) }))
+      : card.featuredResources
+  };
+}
+
+function fetchBusinessOpportunityCard(noteId, viewerUserId = "") {
+  const query = viewerUserId ? `?viewerUserId=${encodeURIComponent(viewerUserId)}` : "";
+  return request({ url: `/api/business-opportunities/cards/${encodeURIComponent(noteId)}${query}` }).then((res) => ({
+    ...res,
+    data: normalizeBusinessOpportunityCard(res.data)
+  }));
+}
+
+function unlockBusinessOpportunityCard(noteId, userId) {
+  return request({
+    url: `/api/business-opportunities/cards/${encodeURIComponent(noteId)}/unlock`,
+    method: "POST",
+    data: { userId }
+  }).then((res) => ({
+    ...res,
+    data: {
+      ...(res.data || {}),
+      card: normalizeBusinessOpportunityCard(res.data && res.data.card)
+    }
+  }));
+}
+
+function reportBusinessOpportunityContactInvalid(noteId, userId, reason = "联系方式失效") {
+  return request({
+    url: `/api/business-opportunities/cards/${encodeURIComponent(noteId)}/contact-reports`,
+    method: "POST",
+    data: { userId, reason }
+  }).then((res) => ({
+    ...res,
+    data: {
+      ...(res.data || {}),
+      card: normalizeBusinessOpportunityCard(res.data && res.data.card)
+    }
+  }));
+}
+
+function fetchResourceWallet(ownerUserId) {
+  return request({
+    url: `/api/resource-wallet/me?ownerUserId=${encodeURIComponent(ownerUserId || "")}`
+  });
 }
 
 function geocodeAddress(params = {}) {
@@ -727,6 +842,9 @@ function fetchOrders(params = {}) {
   if (params.userId) query.push(`userId=${encodeURIComponent(params.userId)}`);
   if (params.role) query.push(`role=${encodeURIComponent(params.role)}`);
   if (params.noteId) query.push(`noteId=${encodeURIComponent(params.noteId)}`);
+  if (params.cursor !== undefined && params.cursor !== null && params.cursor !== "") query.push(`cursor=${encodeURIComponent(params.cursor)}`);
+  if (params.limit !== undefined && params.limit !== null && params.limit !== "") query.push(`limit=${encodeURIComponent(params.limit)}`);
+  if (params.summaryOnly) query.push("summaryOnly=true");
   return request({ url: `/api/orders?${query.join("&")}` });
 }
 
@@ -793,6 +911,20 @@ function saveNoteShareSnapshot(noteId, payload) {
   return request({
     url: `/api/notes/${noteId}/share-snapshot`,
     method: "PATCH",
+    data: payload
+  }).then(async (res) => {
+    const data = await normalizeAndCacheNote(res.data);
+    writeNoteItemCache(data);
+    invalidateNoteListCaches(payload.ownerUserId);
+    invalidateResourceStoreCards(payload.ownerUserId);
+    return { ...res, data };
+  });
+}
+
+function prepareNoteShareSnapshot(noteId, payload) {
+  return request({
+    url: `/api/notes/${encodeURIComponent(noteId)}/share-snapshot/prepare`,
+    method: "POST",
     data: payload
   }).then(async (res) => {
     const data = await normalizeAndCacheNote(res.data);
@@ -1016,6 +1148,7 @@ function uploadAsset({ filePath, mediaType = "image", ownerUserId = "" }) {
       url: buildApiUrl("/api/uploads/asset"),
       filePath,
       name: "file",
+      timeout: UPLOAD_TIMEOUT_MS,
       header: authHeader(),
       formData: {
         ownerUserId,
@@ -1051,12 +1184,190 @@ function uploadAsset({ filePath, mediaType = "image", ownerUserId = "" }) {
   });
 }
 
+function normalizeLiveQrPayload(item) {
+  if (!item || typeof item !== "object") return item;
+  return {
+    ...item,
+    qrImageUrl: toAbsoluteUrl(item.qrImageUrl),
+    targetQrImageUrl: toAbsoluteUrl(item.targetQrImageUrl),
+    posterImageUrl: toAbsoluteUrl(item.posterImageUrl),
+    publicUrl: toAbsoluteUrl(item.publicUrl)
+  };
+}
+
+function uploadLiveQrFile({ filePath, ownerUserId, qrId = "", styleMode = "" }) {
+  return new Promise((resolve, reject) => {
+    const endpoint = qrId
+      ? `/api/live-qr-codes/${encodeURIComponent(qrId)}/target-qr`
+      : "/api/live-qr-codes";
+    wx.uploadFile({
+      url: buildApiUrl(endpoint),
+      filePath,
+      name: "file",
+      timeout: UPLOAD_TIMEOUT_MS,
+      header: authHeader(),
+      formData: { ownerUserId, ...(styleMode ? { styleMode } : {}) },
+      success(res) {
+        let data = {};
+        try {
+          data = JSON.parse(res.data);
+        } catch (error) {
+          reject({ detail: "活码上传返回解析失败" });
+          return;
+        }
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          resolve({ ...data, data: normalizeLiveQrPayload(data.data) });
+          return;
+        }
+        reject({ ...data, detail: data.detail || data.message || `活码上传失败（${res.statusCode || "无状态码"}）` });
+      },
+      fail(err) {
+        reject({ ...err, detail: "活码上传失败，请检查网络后重试" });
+      }
+    });
+  });
+}
+
+function fetchLiveQrCodes(ownerUserId) {
+  return request({
+    url: `/api/live-qr-codes?ownerUserId=${encodeURIComponent(ownerUserId)}`
+  }).then((response) => ({
+    ...response,
+    data: Array.isArray(response.data) ? response.data.map(normalizeLiveQrPayload) : []
+  }));
+}
+
+function createLiveQrCode({ filePath, ownerUserId, styleMode = "plain" }) {
+  return uploadLiveQrFile({ filePath, ownerUserId, styleMode });
+}
+
+function updateLiveQrTarget(qrId, filePath, ownerUserId) {
+  return uploadLiveQrFile({ filePath, ownerUserId, qrId });
+}
+
+function updateLiveQrStyle(qrId, styleMode, ownerUserId) {
+  return request({
+    url: `/api/live-qr-codes/${encodeURIComponent(qrId)}/style`,
+    method: "PATCH",
+    data: { ownerUserId, styleMode }
+  }).then((response) => ({
+    ...response,
+    data: normalizeLiveQrPayload(response.data)
+  }));
+}
+
+function deleteLiveQrCode(qrId, ownerUserId) {
+  return request({
+    url: `/api/live-qr-codes/${encodeURIComponent(qrId)}?ownerUserId=${encodeURIComponent(ownerUserId)}`,
+    method: "DELETE"
+  });
+}
+
+function normalizeGroupResourcePayload(item) {
+  if (!item || typeof item !== "object") return item;
+  return {
+    ...item,
+    qrImageUrl: toAbsoluteUrl(item.qrImageUrl)
+  };
+}
+
+function fetchGroupResources(params = {}) {
+  const query = [];
+  ["keyword", "cityCode", "cityLabel", "industry", "purpose", "cursor", "limit"].forEach((key) => {
+    if (params[key] !== undefined && params[key] !== null && params[key] !== "") query.push(`${key}=${encodeURIComponent(params[key])}`);
+  });
+  return request({
+    url: `/api/group-resources${query.length ? `?${query.join("&")}` : ""}`
+  }).then((response) => ({
+    ...response,
+    data: Array.isArray(response.data)
+      ? { items: response.data.map(normalizeGroupResourcePayload), hasMore: false, nextCursor: null }
+      : {
+          ...(response.data || {}),
+          items: Array.isArray(response.data && response.data.items) ? response.data.items.map(normalizeGroupResourcePayload) : []
+        }
+  }));
+}
+
+function fetchMyGroupResources(ownerUserId) {
+  return request({
+    url: `/api/group-resources/mine?ownerUserId=${encodeURIComponent(ownerUserId)}`
+  }).then((response) => ({
+    ...response,
+    data: Array.isArray(response.data) ? response.data.map(normalizeGroupResourcePayload) : []
+  }));
+}
+
+function fetchGroupResourcePublishQuota(ownerUserId) {
+  return request({
+    url: `/api/group-resources/publish-quota?ownerUserId=${encodeURIComponent(ownerUserId)}`
+  });
+}
+
+function fetchGroupResourceAdminStatus(userId) {
+  return request({
+    url: `/api/group-resources/admin-status?userId=${encodeURIComponent(userId || "")}`
+  });
+}
+
+function createGroupResource(payload) {
+  return request({ url: "/api/group-resources", method: "POST", data: payload });
+}
+
+function createAdminGroupResource(payload) {
+  return request({ url: "/api/group-resources/admin", method: "POST", data: payload });
+}
+
+function updateGroupResource(resourceId, payload) {
+  return request({
+    url: `/api/group-resources/${encodeURIComponent(resourceId)}`,
+    method: "PATCH",
+    data: payload
+  });
+}
+
+function deleteGroupResource(resourceId, ownerUserId) {
+  return request({
+    url: `/api/group-resources/${encodeURIComponent(resourceId)}?ownerUserId=${encodeURIComponent(ownerUserId)}`,
+    method: "DELETE"
+  });
+}
+
+function viewGroupResource(resourceId, userId) {
+  return request({
+    url: `/api/group-resources/${encodeURIComponent(resourceId)}/view`,
+    method: "POST",
+    data: { userId }
+  }).then((response) => ({
+    ...response,
+    data: response.data && {
+      ...response.data,
+      resource: normalizeGroupResourcePayload(response.data.resource)
+    }
+  }));
+}
+
+function fileGroupResourceComplaint(resourceId, userId, reason = "二维码失效") {
+  return request({
+    url: `/api/group-resources/${encodeURIComponent(resourceId)}/complaints`,
+    method: "POST",
+    data: { userId, reason }
+  }).then((response) => ({
+    ...response,
+    data: response.data && {
+      ...response.data,
+      resource: normalizeGroupResourcePayload(response.data.resource)
+    }
+  }));
+}
+
 function uploadShareSnapshot({ filePath, ownerUserId = "" }) {
   return new Promise((resolve, reject) => {
     wx.uploadFile({
       url: buildApiUrl("/api/uploads/share-snapshot"),
       filePath,
       name: "file",
+      timeout: UPLOAD_TIMEOUT_MS,
       header: authHeader(),
       formData: { ownerUserId },
       success(res) {
@@ -1096,6 +1407,7 @@ function uploadImageNote({ filePath, ownerUserId = "" }) {
       url: buildApiUrl("/api/notes/image-capture"),
       filePath,
       name: "file",
+      timeout: UPLOAD_TIMEOUT_MS,
       header: authHeader(),
       formData: {
         ownerUserId
@@ -1478,6 +1790,156 @@ function fetchMutualHelpStatus(userId) {
   return request({ url: `/api/scrm/mutual-help?userId=${encodeURIComponent(userId)}` });
 }
 
+function fetchMutualHelpTasks(params = {}) {
+  const query = [];
+  ["userId", "ownerOnly", "taskId", "taskKind", "cursor", "limit"].forEach((key) => {
+    if (params[key] !== undefined && params[key] !== null && params[key] !== "") {
+      query.push(`${key}=${encodeURIComponent(params[key])}`);
+    }
+  });
+  return request({ url: `/api/scrm/mutual-help/tasks${query.length ? `?${query.join("&")}` : ""}` }).then((res) => {
+    const data = res && res.data && typeof res.data === "object" ? { ...res.data } : {};
+    if (Array.isArray(data.items)) data.items = data.items.map(normalizeMutualHelpTaskPayload);
+    return { ...res, data };
+  });
+}
+
+function fetchMutualHelpTaskDetail(taskId, userId = "") {
+  const query = userId ? `?userId=${encodeURIComponent(userId)}` : "";
+  return request({ url: `/api/scrm/mutual-help/tasks/${encodeURIComponent(taskId)}${query}` }).then((res) => {
+    const data = res && res.data && typeof res.data === "object" ? { ...res.data } : {};
+    if (data.task) data.task = normalizeMutualHelpTaskPayload(data.task);
+    return { ...res, data };
+  });
+}
+
+function normalizeMutualHelpTaskPayload(task) {
+  if (!task || typeof task !== "object") return task;
+  const shareSnapshot = task.shareSnapshot && typeof task.shareSnapshot === "object"
+    ? { ...task.shareSnapshot, url: toAbsoluteUrl(task.shareSnapshot.url) }
+    : task.shareSnapshot;
+  return { ...task, shareSnapshot };
+}
+
+function prepareMutualHelpTaskShareSnapshot(taskId, params = {}) {
+  const query = [];
+  ["styleId", "fingerprint"].forEach((key) => {
+    if (params[key] !== undefined && params[key] !== null && params[key] !== "") {
+      query.push(`${key}=${encodeURIComponent(params[key])}`);
+    }
+  });
+  return request({
+    url: `/api/scrm/mutual-help/tasks/${encodeURIComponent(taskId)}/share-snapshot${query.length ? `?${query.join("&")}` : ""}`
+  }).then((res) => {
+    const data = res && res.data && typeof res.data === "object" ? { ...res.data } : {};
+    if (data.task) data.task = normalizeMutualHelpTaskPayload(data.task);
+    return { ...res, data };
+  });
+}
+
+function createMutualHelpTask(payload) {
+  return request({ url: "/api/scrm/mutual-help/tasks", method: "POST", data: payload });
+}
+
+function updateMutualHelpTask(taskId, payload) {
+  return request({ url: `/api/scrm/mutual-help/tasks/${encodeURIComponent(taskId)}`, method: "PATCH", data: payload });
+}
+
+function fetchMutualHelpSubmissions(taskId, userId) {
+  return request({ url: `/api/scrm/mutual-help/tasks/${encodeURIComponent(taskId)}/submissions?userId=${encodeURIComponent(userId)}` });
+}
+
+function fetchMutualHelpChatParticipants(taskId, userId) {
+  return request({ url: `/api/scrm/mutual-help/tasks/${encodeURIComponent(taskId)}/chat/participants?userId=${encodeURIComponent(userId)}` });
+}
+
+function openMutualHelpConversation(taskId, userId, executorUserId = "") {
+  return request({
+    url: `/api/scrm/mutual-help/tasks/${encodeURIComponent(taskId)}/chat/conversation`,
+    method: "POST",
+    data: { userId, executorUserId }
+  });
+}
+
+function fetchMutualHelpChatMessages(conversationId, userId, params = {}) {
+  const query = [`userId=${encodeURIComponent(userId)}`];
+  if (params.before) query.push(`before=${encodeURIComponent(params.before)}`);
+  if (params.limit) query.push(`limit=${encodeURIComponent(params.limit)}`);
+  return request({ url: `/api/scrm/mutual-help/chat/${encodeURIComponent(conversationId)}/messages?${query.join("&")}` });
+}
+
+function sendMutualHelpChatMessage(conversationId, payload) {
+  return request({
+    url: `/api/scrm/mutual-help/chat/${encodeURIComponent(conversationId)}/messages`,
+    method: "POST",
+    data: payload
+  });
+}
+
+function fetchMutualHelpExecutorReport(userId) {
+  return request({ url: `/api/scrm/mutual-help/report?userId=${encodeURIComponent(userId)}` });
+}
+
+function createMutualHelpSubmission(taskId, payload) {
+  return request({ url: `/api/scrm/mutual-help/tasks/${encodeURIComponent(taskId)}/submissions`, method: "POST", data: payload });
+}
+
+function approveMutualHelpSubmission(taskId, submissionId, userId) {
+  return request({
+    url: `/api/scrm/mutual-help/tasks/${encodeURIComponent(taskId)}/submissions/${encodeURIComponent(submissionId)}/approve`,
+    method: "POST",
+    data: { userId }
+  });
+}
+
+function rejectMutualHelpSubmission(taskId, submissionId, userId, reason) {
+  return request({
+    url: `/api/scrm/mutual-help/tasks/${encodeURIComponent(taskId)}/submissions/${encodeURIComponent(submissionId)}/reject`,
+    method: "POST",
+    data: { userId, reason }
+  });
+}
+
+function unlockMutualHelpWool(taskId, userId) {
+  return request({
+    url: `/api/scrm/mutual-help/tasks/${encodeURIComponent(taskId)}/wool-unlock`,
+    method: "POST",
+    data: { userId }
+  });
+}
+
+function addMutualHelpComment(taskId, payload) {
+  return request({
+    url: `/api/scrm/mutual-help/tasks/${encodeURIComponent(taskId)}/comments`,
+    method: "POST",
+    data: payload
+  });
+}
+
+function reportMutualHelpComment(taskId, commentId, userId, reason) {
+  return request({
+    url: `/api/scrm/mutual-help/tasks/${encodeURIComponent(taskId)}/comments/${encodeURIComponent(commentId)}/reports`,
+    method: "POST",
+    data: { userId, reason }
+  });
+}
+
+function tipMutualHelpPublisher(taskId, userId, amount) {
+  return request({
+    url: `/api/scrm/mutual-help/tasks/${encodeURIComponent(taskId)}/tips`,
+    method: "POST",
+    data: { userId, amount }
+  });
+}
+
+function requestMutualHelpWoolRefund(taskId, userId, reason) {
+  return request({
+    url: `/api/scrm/mutual-help/tasks/${encodeURIComponent(taskId)}/refunds`,
+    method: "POST",
+    data: { userId, reason }
+  });
+}
+
 function createMutualHelpRechargeOrder(userId, points) {
   return request({
     url: "/api/scrm/mutual-help/recharge/orders",
@@ -1499,6 +1961,20 @@ function confirmTestMutualHelpRechargeOrder(orderId, transactionId) {
     url: `/api/scrm/mutual-help/recharge/orders/${orderId}/test-confirm`,
     method: "POST",
     data: { transactionId }
+  });
+}
+
+function createMutualPointWithdrawal(userId, points) {
+  return request({
+    url: "/api/scrm/mutual-help/withdrawals",
+    method: "POST",
+    data: { userId, points }
+  });
+}
+
+function fetchMutualPointWithdrawals(userId) {
+  return request({
+    url: `/api/scrm/mutual-help/withdrawals?userId=${encodeURIComponent(userId || "")}`
   });
 }
 
@@ -1717,7 +2193,7 @@ function deleteLeadReminder(reminderId, ownerUserId) {
 
 function fetchOpportunityLeads(params = {}) {
   const query = [];
-  ["keyword", "userId", "city", "industry", "demandType", "contactStatus"].forEach((key) => {
+  ["keyword", "userId", "city", "industry", "demandType", "contactStatus", "cursor", "limit"].forEach((key) => {
     if (params[key]) query.push(`${key}=${encodeURIComponent(params[key])}`);
   });
   const suffix = query.length ? `?${query.join("&")}` : "";
@@ -1730,7 +2206,7 @@ function fetchOpportunityLead(leadId) {
 
 function fetchSavedOpportunityLeads(userId, params = {}) {
   const query = [`userId=${encodeURIComponent(userId)}`];
-  ["status", "keyword", "packageStatus"].forEach((key) => {
+  ["status", "keyword", "packageStatus", "cursor", "limit"].forEach((key) => {
     if (params[key]) query.push(`${key}=${encodeURIComponent(params[key])}`);
   });
   return request({ url: `/api/opportunity-leads/saved?${query.join("&")}` });
@@ -1810,7 +2286,7 @@ function saveOpportunitySubscription(payload) {
 
 function fetchSupplyDemandCards(params = {}) {
   const query = [];
-  ["keyword", "city", "industry", "demandType", "cardType", "contactStatus"].forEach((key) => {
+  ["keyword", "city", "industry", "demandType", "cardType", "contactStatus", "cursor", "limit"].forEach((key) => {
     if (params[key]) query.push(`${key}=${encodeURIComponent(params[key])}`);
   });
   return request({ url: `/api/supply-demand/cards${query.length ? `?${query.join("&")}` : ""}` });
@@ -1823,6 +2299,14 @@ function fetchMySupplyDemandCards(userId) {
 function fetchSupplyDemandCard(cardId, userId) {
   const query = userId ? `?userId=${encodeURIComponent(userId)}` : "";
   return request({ url: `/api/supply-demand/cards/${cardId}${query}` });
+}
+
+function unlockSupplyDemandCardContact(cardId, userId) {
+  return request({
+    url: `/api/supply-demand/cards/${encodeURIComponent(cardId)}/unlock-contact`,
+    method: "POST",
+    data: { userId }
+  });
 }
 
 function saveSupplyDemandCard(payload) {
@@ -1926,6 +2410,12 @@ module.exports = {
   fetchNote,
   getCachedNote,
   fetchPublicNote,
+  warmNoteMedia,
+  fetchBusinessOpportunityCards,
+  fetchBusinessOpportunityCard,
+  unlockBusinessOpportunityCard,
+  reportBusinessOpportunityContactInvalid,
+  fetchResourceWallet,
   geocodeAddress,
   searchEnterpriseResources,
   fetchCustomerActionConfig,
@@ -1941,6 +2431,7 @@ module.exports = {
   markThreadRead,
   updateNote,
   saveNoteShareSnapshot,
+  prepareNoteShareSnapshot,
   publishNote,
   revokeNote,
   duplicateNote,
@@ -1957,6 +2448,21 @@ module.exports = {
   deleteCategory,
   createCard,
   uploadAsset,
+  fetchLiveQrCodes,
+  createLiveQrCode,
+  updateLiveQrTarget,
+  updateLiveQrStyle,
+  deleteLiveQrCode,
+  fetchGroupResources,
+  fetchMyGroupResources,
+  fetchGroupResourcePublishQuota,
+  fetchGroupResourceAdminStatus,
+  createGroupResource,
+  createAdminGroupResource,
+  updateGroupResource,
+  deleteGroupResource,
+  viewGroupResource,
+  fileGroupResourceComplaint,
   uploadShareSnapshot,
   uploadImageNote,
   recognizeNoteImage,
@@ -1985,9 +2491,30 @@ module.exports = {
   createMembershipPayment,
   confirmTestMembershipOrder,
   fetchMutualHelpStatus,
+  fetchMutualHelpTasks,
+  fetchMutualHelpTaskDetail,
+  prepareMutualHelpTaskShareSnapshot,
+  createMutualHelpTask,
+  updateMutualHelpTask,
+  fetchMutualHelpSubmissions,
+  fetchMutualHelpChatParticipants,
+  openMutualHelpConversation,
+  fetchMutualHelpChatMessages,
+  sendMutualHelpChatMessage,
+  fetchMutualHelpExecutorReport,
+  createMutualHelpSubmission,
+  approveMutualHelpSubmission,
+  rejectMutualHelpSubmission,
+  unlockMutualHelpWool,
+  addMutualHelpComment,
+  reportMutualHelpComment,
+  tipMutualHelpPublisher,
+  requestMutualHelpWoolRefund,
   createMutualHelpRechargeOrder,
   createMutualHelpRechargePayment,
   confirmTestMutualHelpRechargeOrder,
+  createMutualPointWithdrawal,
+  fetchMutualPointWithdrawals,
   recordMutualHelpActivity,
   fetchReferralCenter,
   bindReferral,
@@ -2030,6 +2557,7 @@ module.exports = {
   fetchSupplyDemandCards,
   fetchMySupplyDemandCards,
   fetchSupplyDemandCard,
+  unlockSupplyDemandCardContact,
   saveSupplyDemandCard,
   updateSupplyDemandCard,
   submitSupplyDemandCard,

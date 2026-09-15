@@ -13,25 +13,38 @@ Page({
     tabs: shared.TAB_ITEMS,
     user: null,
     points: 100,
+    basePoints: 100,
+    rewardPoints: 0,
+    rewardPointsVisible: false,
     pointsTip: "登录后开始积累互助积分",
     publishedTasks: [],
     submittedTasks: [],
     publishedCount: 0,
     submittedCount: 0,
-    rechargeVisible: true,
-    rechargeEnabled: true,
+    rechargeVisible: false,
+    rechargeEnabled: false,
     withdrawalVisible: false,
     withdrawalEnabled: false,
     accountLoading: false,
+    syncError: false,
     theme: shared.getTheme()
   },
 
-  onShow() {
-    shared.syncAutoApprovedSubmissions();
+  async onShow() {
     const user = shared.getUser();
     const userId = shared.getUserId(user);
-    const tasks = shared.getTasks();
+    let syncError = false;
+    if (user) {
+      try {
+        await shared.syncServerTasks(userId);
+      } catch (error) {
+        // Do not present an old local snapshot as current account data.
+        syncError = true;
+      }
+    }
+    const tasks = syncError ? [] : shared.getTasks();
     const submissions = shared.getSubmissions(userId);
+    const balances = shared.getPointBalances(userId);
     const submittedTasks = submissions
       .map((submission) => {
         const task = tasks.find((item) => item.id === submission.taskId);
@@ -44,14 +57,26 @@ Page({
     this.setData({
       user,
       theme: shared.getTheme(),
-      points: user ? shared.getPoints(userId) : 100,
+      points: user ? balances.total : 100,
+      basePoints: user ? balances.base : 100,
+      rewardPoints: user ? balances.reward : 0,
+      rewardPointsVisible: false,
       pointsTip: user ? "继续积累互助积分" : "登录后开始积累互助积分",
       publishedTasks,
       submittedTasks,
       publishedCount: publishedTasks.length,
-      submittedCount: submittedTasks.length
+      submittedCount: submittedTasks.length,
+      rechargeVisible: false,
+      rechargeEnabled: false,
+      withdrawalVisible: false,
+      withdrawalEnabled: false,
+      syncError
     });
     this.loadMutualStatus(user);
+  },
+
+  handleRetrySync() {
+    this.onShow();
   },
 
   async loadMutualStatus(user) {
@@ -61,10 +86,13 @@ Page({
       const response = await api.fetchMutualHelpStatus(shared.getUserId(user));
       const data = response.data || {};
       const config = data.config || {};
-      if (data.account) shared.savePoints(data.account.balance, shared.getUserId(user));
+      const balances = shared.saveServerPointData(data, shared.getUserId(user));
       this.setData({
-        points: data.account ? data.account.balance : this.data.points,
-        rechargeVisible: config.rechargeVisible !== false,
+        points: balances.total,
+        basePoints: balances.base,
+        rewardPoints: balances.reward,
+        rewardPointsVisible: Boolean(user) && config.rechargeVisible === true,
+        rechargeVisible: config.rechargeVisible === true,
         rechargeEnabled: config.rechargeEnabled === true,
         withdrawalVisible: config.withdrawalVisible === true,
         withdrawalEnabled: config.withdrawalEnabled === true,
@@ -92,7 +120,7 @@ Page({
   handleRecharge() {
     if (!this.requireAccountAction()) return;
     if (!this.data.rechargeVisible || !this.data.rechargeEnabled) {
-      wx.showToast({ title: "充值功能暂未开放", icon: "none" });
+      wx.showToast({ title: "充值积分功能暂未开放", icon: "none" });
       return;
     }
     wx.navigateTo({ url: "/subpackages/my-tools-mutual-help/recharge/index" });
@@ -100,11 +128,11 @@ Page({
 
   handleWithdraw() {
     if (!this.requireAccountAction()) return;
-    if (!this.data.withdrawalVisible || !this.data.withdrawalEnabled) {
+    if (!this.data.rechargeVisible || !this.data.withdrawalVisible || !this.data.withdrawalEnabled) {
       wx.showToast({ title: "提现功能暂未开放", icon: "none" });
       return;
     }
-    wx.showToast({ title: "提现功能暂未开放", icon: "none" });
+    wx.navigateTo({ url: "/subpackages/my-tools-mutual-help/withdrawal/index" });
   },
 
   handleOpenTask(event) {
@@ -115,6 +143,11 @@ Page({
 
   handleGoTaskManage() {
     shared.navigateTab("task", this.data.activeTab);
+  },
+
+  handleGoReport() {
+    const user = shared.requireLogin("/subpackages/my-tools-mutual-help/report/index");
+    if (user) wx.navigateTo({ url: "/subpackages/my-tools-mutual-help/report/index" });
   },
 
   handleGoPublish() {

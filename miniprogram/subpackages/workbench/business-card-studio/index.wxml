@@ -40,9 +40,38 @@
     <view class="editor-section">
       <view class="section-heading"><view><view class="section-title">名片表达</view><view class="section-hint">让客户快速认识你，而不是重复写一份服务方案</view></view></view>
       <view class="form-field full"><view class="field-label">一句话介绍</view><input maxlength="40" value="{{structuredData.headline}}" data-key="headline" bindinput="handleStructuredInput" placeholder="例如：专注小微企业代理记账与财税咨询" /></view>
-      <view class="form-field full"><view class="field-label">我能提供 <text>2～6个关键词</text></view><input value="{{structuredData.serviceKeywordsText}}" data-key="serviceKeywordsText" bindinput="handleStructuredInput" placeholder="例如：代理记账，财税咨询，工商注册" /></view>
+      <view class="form-field full"><view class="field-label">我能提供 <text class="required-hint">必填，至少1项，最多6项</text></view><input value="{{structuredData.serviceKeywordsText}}" data-key="serviceKeywordsText" bindinput="handleStructuredInput" placeholder="例如：代理记账，财税咨询，工商注册" /></view>
       <view class="keyword-preview" wx:if="{{keywordChips.length}}"><text wx:for="{{keywordChips}}" wx:key="*this">{{item}}</text></view>
       <view class="form-field full"><view class="field-label">关于我 <text>选填</text></view><textarea maxlength="300" value="{{structuredData.bio}}" data-key="bio" bindinput="handleStructuredInput" placeholder="介绍你的经验、擅长领域和服务方式"></textarea></view>
+    </view>
+
+    <view class="editor-section opportunity-section">
+      <view class="section-heading"><view><view class="section-title">商机合作</view><view class="section-hint">名片内容会自动同步；是否公开展示，由你分别决定</view></view></view>
+      <view class="opportunity-publish-box">
+        <view class="opportunity-publish-title">要不要把你的信息展示到商机合作？</view>
+        <view class="opportunity-publish-hint">关闭时仍会保存名片，只是不出现在公开列表。</view>
+        <view class="opportunity-publish-row" data-key="resourceEnabled" bindtap="handleToggleBusinessOpportunity">
+          <view class="opportunity-publish-copy"><view>展示我的合作资源</view><text>让别人看到你“我能提供”的内容</text></view>
+          <view class="opportunity-switch {{businessOpportunity.resourceEnabled ? 'on' : ''}}"><view></view><text>{{businessOpportunity.resourceEnabled ? '已展示' : '未展示'}}</text></view>
+        </view>
+        <view class="opportunity-publish-row" data-key="intentEnabled" bindtap="handleToggleBusinessOpportunity">
+          <view class="opportunity-publish-copy"><view>发布当前合作需求</view><text>让合适的合作方看到你正在寻找什么</text></view>
+          <view class="opportunity-switch {{businessOpportunity.intentEnabled ? 'on' : ''}}"><view></view><text>{{businessOpportunity.intentEnabled ? '已发布' : '未发布'}}</text></view>
+        </view>
+      </view>
+      <view class="form-grid two-col">
+        <view class="form-field"><view class="field-label">所属行业 <text class="required-hint">必填</text></view><picker mode="selector" range="{{industryOptions}}" value="{{industryIndex}}" bindchange="handleIndustryChange"><view class="select-field {{businessOpportunity.industry ? '' : 'empty'}}">{{businessOpportunity.industry || '请选择行业'}}<text>⌄</text></view></picker></view>
+        <view class="form-field"><view class="field-label">细分行业 <text>选填</text></view><picker mode="selector" range="{{subIndustryOptions}}" value="{{subIndustryIndex}}" bindchange="handleSubIndustryChange"><view class="select-field {{businessOpportunity.subIndustry ? '' : 'empty'}}">{{businessOpportunity.subIndustry || '请选择细分行业'}}<text>⌄</text></view></picker></view>
+      </view>
+      <view class="form-field full"><view class="field-label">行业标签 <text>选填，最多8个</text></view><input value="{{businessOpportunity.industryTagsText}}" data-key="industryTagsText" bindinput="handleOpportunityInput" placeholder="例如：B2B，跨境，工厂资源" /></view>
+      <view class="opportunity-intent-box">
+        <view class="intent-box-head"><view><view class="field-label">当前合作需求 <text>选填</text></view><text>一句话说清楚你现在正在找什么</text></view><view class="intent-status">轻量填写</view></view>
+        <view class="form-field full"><input maxlength="60" value="{{businessOpportunity.cooperationIntent.text}}" bindinput="handleIntentInput" placeholder="例如：正在寻找华东地区的跨境物流合作伙伴" /></view>
+        <view class="intent-picker-row">
+          <picker mode="selector" range="{{intentDirectionOptions}}" value="{{businessOpportunity.cooperationIntent.direction === '我正在找合作' ? 1 : 0}}" bindchange="handleIntentDirectionChange"><view class="intent-picker">{{businessOpportunity.cooperationIntent.direction}}<text>⌄</text></view></picker>
+          <picker mode="selector" range="{{intentValidityOptions}}" value="{{businessOpportunity.cooperationIntent.validity === '7天内有效' ? 1 : businessOpportunity.cooperationIntent.validity === '30天内有效' ? 2 : 0}}" bindchange="handleIntentValidityChange"><view class="intent-picker">{{businessOpportunity.cooperationIntent.validity}}<text>⌄</text></view></picker>
+        </view>
+      </view>
     </view>
 
     <view class="editor-section">
@@ -87,7 +116,11 @@
     </view>
 
     <view class="bottom-space"></view>
-    <view class="bottom-bar"><button class="preview-button" disabled="{{!draftReady || saving}}" bindtap="handlePreview">预览客户页</button><button class="save-button" loading="{{saving}}" disabled="{{!draftReady || saving}}" bindtap="handlePublish">发客户</button></view>
+    <view class="bottom-bar">
+      <button class="preview-button" disabled="{{!draftReady || saving}}" bindtap="handlePreview">保存并预览</button>
+      <button wx:if="{{shareImageReady && !shareDirty}}" class="save-button" open-type="share" catchtap="handleShareTap">发客户</button>
+      <button wx:else class="save-button" loading="{{saving || shareImagePreparing}}" disabled="{{!draftReady || saving || shareImagePreparing}}" bindtap="handlePublish">{{shareStatusText}}</button>
+    </view>
   </block>
 
   <view wx:if="{{resourcePickerVisible}}" class="picker-mask" catchtouchmove="noop" catchtap="handleCloseResourcePicker">
@@ -103,6 +136,17 @@
         <view wx:if="{{!resourceOptions.length}}" class="picker-empty">资料库里还没有可以精选的资料</view>
       </scroll-view>
       <button class="picker-done" bindtap="handleCloseResourcePicker">完成（{{featuredResources.length}} / 3）</button>
+    </view>
+  </view>
+
+  <view wx:if="{{completionPromptVisible}}" class="completion-mask" catchtouchmove="noop" catchtap="noop">
+    <view class="completion-sheet" catchtap="noop">
+      <view class="completion-kicker">名片已完成</view>
+      <view class="completion-title">要不要把你的信息展示到商机合作？</view>
+      <view class="completion-hint">你可以只展示能提供的资源，也可以发布当前合作需求；以后随时能在名片里修改。</view>
+      <button class="completion-action primary" data-key="resourceEnabled" bindtap="handleChooseCompletionOption">展示我的合作资源</button>
+      <button class="completion-action secondary" data-key="intentEnabled" bindtap="handleChooseCompletionOption">发布当前合作需求</button>
+      <view class="completion-skip" bindtap="handleSkipCompletionChoice">先不公开，留在当前页面</view>
     </view>
   </view>
 </view>

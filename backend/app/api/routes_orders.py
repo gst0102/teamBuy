@@ -21,9 +21,12 @@ def list_orders(
     userId: str = Query(...),
     role: str = Query(...),
     noteId: str | None = Query(default=None),
+    cursor: str | None = Query(default=None),
+    limit: int | None = Query(default=None, ge=1, le=50),
+    summaryOnly: bool = Query(default=False),
     service: AppService = Depends(get_app_service),
 ):
-    return ApiResponse(data=service.list_orders(userId, role, noteId))
+    return ApiResponse(data=service.list_orders(userId, role, noteId, cursor, limit, summaryOnly))
 
 
 @router.get("/{order_id}", response_model=ApiResponse[dict])

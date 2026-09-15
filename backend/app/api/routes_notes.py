@@ -8,7 +8,7 @@ from app.api.dependencies import get_app_service, get_ops_console_store, get_syn
 from app.schemas.cards import RecordViewRequest
 from app.schemas.common import ApiResponse
 from app.schemas.notes import CustomerActionSubmitRequest, LinkCaptureRequest, ManualNoteDraftRequest, NoteInteractionEventRequest, NotePublishRequest, NoteTypeConfirmRequest, PropertyBatchCreateRequest, PropertyBatchParseRequest, PropertySameCloneRequest, QuickNoteCaptureRequest, TopicCreateRequest, TopicNoteRequest, UserNoteUpdateRequest
-from app.schemas.share_snapshots import ShareSnapshotRequest
+from app.schemas.share_snapshots import ShareSnapshotPrepareRequest, ShareSnapshotRequest
 from app.services.app_service import AppService
 from app.services.ops_console_store import OpsConsoleStore
 from app.services.sync_task_queue import SyncTaskQueue
@@ -32,7 +32,7 @@ def _strip_operations_only_fields(value):
     return value
 
 
-@router.get("", response_model=ApiResponse[list[dict]])
+@router.get("", response_model=ApiResponse[dict | list[dict]])
 def list_notes(
     ownerUserId: str = Query(...),
     keyword: str | None = Query(default=None),
@@ -43,6 +43,8 @@ def list_notes(
     topicId: str | None = Query(default=None),
     sort: str = Query(default="updated"),
     includeDeleted: bool = Query(default=False),
+    limit: int | None = Query(default=None, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
     service: AppService = Depends(get_app_service),
 ):
     return ApiResponse(
@@ -56,6 +58,8 @@ def list_notes(
             topic_id=topicId,
             sort=sort,
             include_deleted=includeDeleted,
+            limit=limit,
+            offset=offset,
         ))
     )
 
@@ -68,6 +72,14 @@ def get_business_card_summary(ownerUserId: str = Query(...), service: AppService
 @router.patch("/{note_id}/share-snapshot", response_model=ApiResponse[dict])
 def save_note_share_snapshot(note_id: str, payload: ShareSnapshotRequest, service: AppService = Depends(get_app_service)):
     return ApiResponse(data=_strip_operations_only_fields(service.save_note_share_snapshot(note_id, payload).model_dump()), message="share snapshot saved")
+
+
+@router.post("/{note_id}/share-snapshot/prepare", response_model=ApiResponse[dict])
+def prepare_note_share_snapshot(note_id: str, payload: ShareSnapshotPrepareRequest, service: AppService = Depends(get_app_service)):
+    return ApiResponse(
+        data=_strip_operations_only_fields(service.prepare_note_share_snapshot(note_id, payload).model_dump()),
+        message="share snapshot prepared",
+    )
 
 
 @router.get("/tag-suggestions", response_model=ApiResponse[dict])
@@ -172,8 +184,9 @@ def remove_note_from_topic(note_id: str, topic_id: str, ownerUserId: str = Query
 
 
 @router.get("/public/{note_id}", response_model=ApiResponse[dict])
-def get_public_note(note_id: str, service: AppService = Depends(get_app_service)):
-    return ApiResponse(data=service.get_public_note(note_id))
+def get_public_note(note_id: str, request: Request, viewerUserId: str | None = Query(default=None), service: AppService = Depends(get_app_service)):
+    viewer_id = getattr(request.state, "authenticated_user_id", None) if getattr(request.app.state, "production_auth_enabled", False) else viewerUserId
+    return ApiResponse(data=service.get_public_note(note_id, viewer_id))
 
 
 @router.post("/property-same/clone", response_model=ApiResponse[dict])
@@ -201,7 +214,7 @@ def record_note_event(note_id: str, payload: NoteInteractionEventRequest, servic
 
 @router.get("/{note_id}", response_model=ApiResponse[dict])
 def get_note(note_id: str, ownerUserId: str = Query(...), service: AppService = Depends(get_app_service)):
-    return ApiResponse(data=_strip_operations_only_fields(service.get_user_note(note_id, ownerUserId).model_dump()))
+    return ApiResponse(data=_strip_operations_only_fields(service.get_user_note_preview(note_id, ownerUserId)))
 
 
 @router.put("/{note_id}", response_model=ApiResponse[dict])

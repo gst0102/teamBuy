@@ -20,6 +20,11 @@ class OpportunityContactUnlockRequest(BaseModel):
     userId: str
 
 
+class BusinessOpportunityContactReportRequest(BaseModel):
+    userId: str
+    reason: str = Field(default="联系方式失效", max_length=40)
+
+
 class OpportunitySubscriptionUpsertRequest(BaseModel):
     userId: str
     id: str | None = None
@@ -47,6 +52,10 @@ class SupplyDemandCardUpsertRequest(BaseModel):
     linkedResourceType: str | None = None
     linkedResourceId: str | None = None
     tags: list[str] = Field(default_factory=list)
+    contactSource: str | None = None
+    contactType: str | None = None
+    contactValue: str | None = None
+    expiresAt: str | None = None
     status: str = Field(default="draft")
 
 

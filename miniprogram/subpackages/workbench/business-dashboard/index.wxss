@@ -1382,3 +1382,39 @@
 .insight-line:first-of-type {
   border-top: 0;
 }
+/* Typography scale v2: make dashboard priorities and customer signals readable. */
+.page-shell .screen-title { font-size: 34rpx; }
+.page-shell .screen-sub { font-size: 24rpx; }
+.page-shell .tab-item { font-size: 25rpx; }
+.page-shell .priority-kicker { font-size: 24rpx; }
+.page-shell .priority-title { font-size: 32rpx; }
+.page-shell .priority-desc { font-size: 25rpx; }
+.page-shell .priority-chip { font-size: 21rpx; }
+.page-shell .priority-metric { font-size: 24rpx; }
+.page-shell .section-title { font-size: 30rpx; }
+.page-shell .section-desc { font-size: 23rpx; }
+.page-shell .radar-empty { font-size: 24rpx; }
+.page-shell .radar-title { font-size: 28rpx; }
+.page-shell .radar-reason,
+.page-shell .radar-advice { font-size: 24rpx; }
+.page-shell .radar-script { font-size: 26rpx; }
+.page-shell .insight-card { font-size: 24rpx; }
+.page-shell .line-title { font-size: 27rpx; }
+.page-shell .line-sub { font-size: 22rpx; }
+.page-shell .priority-name { font-size: 28rpx; }
+.page-shell .priority-tag { font-size: 21rpx; }
+.page-shell .priority-source,
+.page-shell .priority-reason { font-size: 23rpx; }
+.page-shell .contact-btn,
+.page-shell .row-action { display: flex; align-items: center; justify-content: center; min-height: 64rpx; font-size: 24rpx; }
+.page-shell .dynamic-tab { font-size: 23rpx; }
+.page-shell .dynamic-line { font-size: 24rpx; }
+.page-shell .metric-label { font-size: 23rpx; }
+.page-shell .metric-value { font-size: 34rpx; }
+.page-shell .showcase-line { font-size: 24rpx; }
+.page-shell .rank-badge { font-size: 21rpx; }
+.page-shell .share-line,
+.page-shell .visitor-line { font-size: 23rpx; }
+.page-shell .rank-count { font-size: 25rpx; }
+.page-shell .filter-title { font-size: 26rpx; }
+.page-shell .filter-desc { font-size: 23rpx; }

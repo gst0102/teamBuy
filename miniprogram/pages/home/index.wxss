@@ -2177,3 +2177,53 @@
   .sales-action-card { min-height: 330rpx; }
   .action-card-title { max-width: 440rpx; }
 }
+
+/* 2026-09 bottom-tab typography: enlarge the information users read and act on. */
+.home-page .today-label { font-size: 24rpx; }
+.home-page .action-card-eyebrow { font-size: 24rpx; }
+.home-page .action-card-desc { font-size: 26rpx; }
+.home-page .action-card-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12rpx;
+  height: 76rpx;
+  padding: 0 20rpx;
+  font-size: 27rpx;
+}
+.home-page .action-card-button text { font-size: 32rpx; }
+.home-page .home-section-title { font-size: 32rpx; }
+.home-page .home-section-sub { font-size: 24rpx; }
+.home-page .home-section-link { font-size: 24rpx; }
+.home-page .feedback-range-tab { font-size: 23rpx; }
+.home-page .feedback-range-caption { font-size: 24rpx; }
+.home-page .feedback-action-head { font-size: 23rpx; }
+.home-page .feedback-value { font-size: 38rpx; }
+.home-page .feedback-value text { font-size: 20rpx; }
+.home-page .feedback-hint { font-size: 20rpx; }
+.home-page .home-radar-tag { font-size: 20rpx; }
+.home-page .home-radar-tag text { font-size: 21rpx; }
+.home-page .signal-unlock-title { font-size: 25rpx; }
+.home-page .signal-unlock-desc { font-size: 22rpx; }
+.home-page .signal-unlock-action { font-size: 24rpx; }
+.home-page .priority-eyebrow { font-size: 22rpx; }
+.home-page .priority-name { font-size: 31rpx; }
+.home-page .priority-signal { font-size: 25rpx; }
+.home-page .priority-source { font-size: 23rpx; }
+.home-page .priority-suggestion { font-size: 23rpx; }
+.home-page .priority-primary,
+.home-page .priority-secondary { font-size: 24rpx; }
+.home-page .recent-resource-cover-title { font-size: 28rpx; }
+.home-page .recent-resource-title { font-size: 26rpx; }
+.home-page .recent-resource-meta { font-size: 22rpx; }
+.home-page .recent-empty-title { font-size: 26rpx; }
+.home-page .recent-empty-desc { font-size: 22rpx; }
+.home-page .bind-guide-kicker { font-size: 24rpx; }
+.home-page .bind-guide-title { font-size: 36rpx; }
+.home-page .bind-guide-code-label { font-size: 23rpx; }
+.home-page .bind-guide-code-text { font-size: 30rpx; }
+.home-page .bind-guide-step-title { font-size: 28rpx; }
+.home-page .bind-guide-step-desc { font-size: 24rpx; }
+.home-page .bind-guide-primary,
+.home-page .bind-guide-secondary { font-size: 27rpx; }
+.home-page .bind-guide-foot { font-size: 23rpx; }

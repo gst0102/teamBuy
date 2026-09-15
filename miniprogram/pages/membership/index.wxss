@@ -468,3 +468,27 @@
 }
 
 .membership-footer-link text { font-size: 34rpx; }
+/* Typography scale v2: make membership benefits, access and payment states clear. */
+.membership-page .pending-payment-title { font-size: 27rpx; }
+.membership-page .pending-payment-copy { font-size: 23rpx; }
+.membership-page .membership-signal-pill { font-size: 22rpx; }
+.membership-page .membership-title { font-size: 40rpx; }
+.membership-page .membership-sub { font-size: 26rpx; }
+.membership-page .membership-price { font-size: 42rpx; }
+.membership-page .membership-cta { display: flex; align-items: center; justify-content: center; min-height: 76rpx; font-size: 28rpx; }
+.membership-page .membership-expiry,
+.membership-page .membership-billing { font-size: 23rpx; }
+.membership-page .membership-section-title { font-size: 32rpx; }
+.membership-page .benefit-title { font-size: 27rpx; }
+.membership-page .signal-preview-card { font-size: 24rpx; }
+.membership-page .signal-meta { font-size: 22rpx; }
+.membership-page .signal-line { font-size: 24rpx; }
+.membership-page .signal-lock { font-size: 23rpx; }
+.membership-page .membership-note { font-size: 23rpx; }
+.membership-page .info-panel-title { font-size: 29rpx; }
+.membership-page .info-panel-sub { font-size: 23rpx; }
+.membership-page .info-row { font-size: 24rpx; }
+.membership-page .rule { font-size: 24rpx; }
+.membership-page .membership-footer-link { font-size: 24rpx; }
+.membership-page .membership-disabled-title { font-size: 29rpx; }
+.membership-page .membership-disabled-copy { font-size: 24rpx; }

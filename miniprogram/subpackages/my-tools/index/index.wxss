@@ -3,6 +3,7 @@
   padding: 0 28rpx calc(52rpx + env(safe-area-inset-bottom));
   background:
     radial-gradient(circle at 90% 3%, rgba(255, 157, 82, 0.2), transparent 260rpx),
+    radial-gradient(circle at 8% 45%, rgba(76, 175, 80, 0.09), transparent 220rpx),
     linear-gradient(180deg, #fff8ef 0%, #f7f4ef 42%, #f8fafb 100%);
   color: #20262e;
   box-sizing: border-box;
@@ -82,9 +83,39 @@
   font-weight: 900;
 }
 
+.tool-card:first-child .tool-icon {
+  background: #fff0e5;
+  color: #e7672e;
+}
+
+.tool-card:nth-child(2) .tool-icon {
+  background: #e9f7ec;
+  color: #26a844;
+}
+
 .tool-card.disabled .tool-icon {
   background: #f0eeeb;
   color: #999d9f;
+}
+
+/* 群资源库已开放：用蓝色资源工具识别，避免灰色被误解为不可用。 */
+.tool-card.group-resource-library {
+  border-color: #d8e8ff;
+  background: rgba(255, 255, 255, 0.98);
+}
+
+.tool-card.group-resource-library .tool-icon {
+  background: #e8f2ff;
+  color: #1677ff;
+}
+
+.tool-card.group-resource-library .tool-tag {
+  background: #e8f2ff;
+  color: #1677ff;
+}
+
+.tool-card.group-resource-library .tool-arrow {
+  color: #4a8de8;
 }
 
 .tool-copy {
@@ -112,14 +143,29 @@
   flex: 0 0 auto;
 }
 
-.tool-status {
+.tool-tag {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 54rpx;
+  height: 36rpx;
+  padding: 0 10rpx;
+  border-radius: 999rpx;
+  background: #fff1e7;
   color: #e7672e;
   font-size: 20rpx;
   font-weight: 800;
   white-space: nowrap;
+  box-sizing: border-box;
 }
 
-.tool-card.disabled .tool-status {
+.tool-card:nth-child(2) .tool-tag {
+  background: #e9f7ec;
+  color: #24943c;
+}
+
+.tool-card.disabled .tool-tag {
+  background: #f0eeeb;
   color: #a0a3a5;
 }
 
@@ -138,3 +184,11 @@
   font-size: 20rpx;
   line-height: 1.5;
 }
+
+/* Typography scale v1: keep the tool launcher readable without changing its layout model. */
+.tools-kicker { font-size:23rpx; }
+.tools-subtitle { font-size:26rpx; }
+.tool-title { font-size:31rpx; }
+.tool-description { font-size:24rpx; }
+.tool-tag { min-width:64rpx; height:42rpx; padding:0 12rpx; font-size:22rpx; }
+.tools-note { font-size:23rpx; }

@@ -1,5 +1,5 @@
 <view class="mutual-page theme-{{theme}}">
-  <custom-nav title="我的工具" showBack="{{true}}" theme="{{theme}}" />
+  <custom-nav title="我的工具" showBack="{{true}}" fallbackUrl="/subpackages/my-tools-mutual-help/index/index" theme="{{theme}}" />
 
   <view class="mutual-content">
     <view class="theme-switch-row">
@@ -18,6 +18,18 @@
       <view class="mine-hero-label">当前互助积分</view>
       <view class="mine-hero-value">{{points}} <text class="points-unit">分</text></view>
       <view class="mine-hero-tip">{{pointsTip}}</view>
+      <view wx:if="{{rechargeVisible}}" class="points-breakdown">
+        <view class="point-balance-item point-balance-base">
+          <view class="point-balance-name"><text class="point-type-dot"></text>基础积分</view>
+          <view class="point-balance-value">{{basePoints}} 分</view>
+          <view class="point-balance-help">首次赠送 / 平台任务</view>
+        </view>
+        <view wx:if="{{rewardPointsVisible}}" class="point-balance-item point-balance-reward">
+          <view class="point-balance-name"><text class="point-type-dot"></text>充值积分</view>
+          <view class="point-balance-value">{{rewardPoints}} 分</view>
+          <view class="point-balance-help">充值获得 / 提现账户</view>
+        </view>
+      </view>
     </view>
 
     <view class="mine-stats">
@@ -25,9 +37,21 @@
       <view class="mine-stat"><view class="mine-stat-label">我领取的任务</view><view class="mine-stat-value">{{submittedCount}}</view></view>
     </view>
 
+    <view class="mine-report-entry" bindtap="handleGoReport">
+      <view class="mine-report-icon">▤</view>
+      <view class="mine-report-copy"><view class="mine-report-title">我的任务报表</view><view class="mine-report-subtitle">查看完成进度、验收结果和积分到账</view></view>
+      <view class="mine-report-arrow">›</view>
+    </view>
+
+    <view wx:if="{{syncError}}" class="empty-state retry-state" bindtap="handleRetrySync">
+      <view class="empty-title">我的任务暂时无法读取</view>
+      <view class="empty-copy">当前不展示旧缓存，点击这里重试获取服务端最新数据。</view>
+      <button class="secondary-action manage-empty-action">重新加载</button>
+    </view>
+
     <view class="mine-actions">
-      <button wx:if="{{rechargeVisible}}" class="small-action" bindtap="handleRecharge">{{rechargeEnabled ? '充值积分' : '充值暂未开放'}}</button>
-      <button wx:if="{{withdrawalVisible}}" class="small-action" bindtap="handleWithdraw">{{withdrawalEnabled ? '提现积分' : '提现暂未开放'}}</button>
+      <button wx:if="{{rechargeVisible}}" class="small-action" bindtap="handleRecharge">{{rechargeEnabled ? '充值积分' : '充值入口暂未开放'}}</button>
+      <button wx:if="{{rechargeVisible && withdrawalVisible}}" class="small-action" bindtap="handleWithdraw">{{withdrawalEnabled ? '提现积分' : '提现暂未开放'}}</button>
     </view>
 
     <view class="mine-section">

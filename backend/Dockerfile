@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgomp1 \
     libglib2.0-0 \
     libxcb1 \
+    fonts-noto-cjk \
     && apt-get clean
 
 COPY requirements.txt ./

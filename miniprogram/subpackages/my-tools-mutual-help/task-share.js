@@ -1,16 +1,14 @@
 const shared = require("./shared");
+const api = require("../../services/api");
 const {
-  SHARE_CARD_STYLE_VERSION,
-  buildShareCardMessage,
   buildShareCardTitle,
   createShareSnapshotFingerprint,
   isShareImageUrl,
-  prepareShareCardImage,
   setShareMenuEnabled
 } = require("../../plugins/share-snapshot/index");
 
 const TASK_SHARE_PATH = "/subpackages/my-tools-mutual-help/task-detail/index";
-const MUTUAL_TASK_SHARE_CARD_STYLE_VERSION = "mutual_task_share_v2";
+const MUTUAL_TASK_SHARE_CARD_STYLE_VERSION = "mutual_task_backend_v5";
 
 function taskShareRevision(task = {}) {
   return String(task.updatedAt || task.createdAt || "0");
@@ -49,42 +47,48 @@ function taskShareSummary(task = {}) {
   if (description && !/^#小程序:\/\//.test(description) && !/^https?:\/\//i.test(description)) {
     return description;
   }
-  if (task.taskKind === "miniapp") return "打开目标小程序，完成体验后提交反馈";
+  if (task.taskKind === "miniapp") return `打开${task.targetTitle || "目标小程序"}后按说明体验，返回提交记录`;
   if (task.taskKind === "wool") return "查看福利说明并按步骤使用";
   return "按任务说明完成后提交材料";
 }
 
+function taskShareTitle(task = {}) {
+  const title = String(task.title || "互帮互助任务").trim() || "互帮互助任务";
+  return task.taskKind === "wool"
+    ? `${title}｜先看福利再决定`
+    : `${title}｜完成任务得${Number(task.executorReward || 0)}分`;
+}
+
 function buildTaskShareSource(task = {}) {
-  const imageUrl = firstTaskImage(task);
   const links = shared.normalizeTaskLinks(task.taskLinks, task.shortLink);
   const woolPolicy = task.taskKind === "wool"
     ? shared.normalizeWoolPolicy(task.woolPolicy, task)
     : null;
-  const remaining = task.remaining === null || task.remaining === undefined
-    ? "长期开放"
-    : `剩余 ${Math.max(0, Number(task.remaining) || 0)} 份`;
   const facts = task.taskKind === "wool"
     ? [
         woolPolicy.unlockFeePoints > 0 ? "解锁 " + woolPolicy.unlockFeePoints + " 分" : "免费查看",
-        woolPolicy.allowTip ? "可自愿打赏" : "无额外积分",
-        remaining
+        woolPolicy.allowTip ? "可自愿打赏" : "无额外积分"
       ]
-    : [
-        `+${Number(task.executorReward || 0)} 分`,
-        remaining,
-        String(task.deadlineText || "长期开放").trim()
-      ];
+    : [`+${Number(task.executorReward || 0)}分`];
+  const isWool = task.taskKind === "wool";
+  const isMiniapp = task.taskKind === "miniapp";
   return {
-    layoutId: imageUrl ? "image_info" : "text_info",
+    // Keep the same fixed 5:4 action hierarchy for image and no-image tasks;
+    // the renderer changes only the visual content inside the shared frame.
+    layoutId: "mutual_task",
     templateKind: "mutual_task",
+    taskKind: task.taskKind || "ordinary",
     title: String(task.title || "互帮互助任务").trim() || "互帮互助任务",
     summary: taskShareSummary(task),
-    badge: task.taskKind === "miniapp" ? "小程序任务" : (task.taskKind === "wool" ? "羊毛" : "普通任务"),
+    badge: isMiniapp ? "小程序任务" : (isWool ? "羊毛福利" : "普通任务"),
     facts,
-    primaryImageUrl: imageUrl,
+    primaryImageUrl: firstTaskImage(task),
     shareTargetLabel: links.length ? shared.summarizeTaskLinks(links) : "任务入口",
-    marketingLine: "互助赚积分，让别人帮你完成",
-    footer: "点开任务，完成后赚积分"
+    workflowSteps: isMiniapp ? ["打开任务", "体验一下", "返回提交"] : (isWool ? ["查看福利", "按步骤使用", "反馈体验"] : ["打开任务", "完成任务", "返回提交"]),
+    rewardText: isWool
+      ? (woolPolicy.unlockFeePoints > 0 ? `查看 ${woolPolicy.unlockFeePoints} 分` : "免费查看")
+      : `+${Number(task.executorReward || 0)}分`,
+    footer: isWool ? "点击查看福利" : "点击开始任务"
   };
 }
 
@@ -100,16 +104,17 @@ function taskShareFingerprint(task, source) {
 
 function getReadyTaskSnapshot(task, source) {
   const snapshot = task && task.shareSnapshot;
-  if (!snapshot || snapshot.status !== "ready" || !isShareImageUrl(snapshot.url)) return null;
+  if (!snapshot || snapshot.status !== "ready" || snapshot.renderer !== "backend" || !isShareImageUrl(snapshot.url)) return null;
   if (String(snapshot.styleId || "") !== MUTUAL_TASK_SHARE_CARD_STYLE_VERSION) return null;
   if (String(snapshot.sourceRevision || "") !== taskShareRevision(task)) return null;
-  if (String(snapshot.fingerprint || "") !== taskShareFingerprint(task, source)) return null;
+  if (!String(snapshot.fingerprint || "").trim()) return null;
   return snapshot;
 }
 
 function buildTaskShareSnapshot(task, source, imageUrl) {
   return {
     status: "ready",
+    renderer: "backend",
     url: imageUrl,
     styleId: MUTUAL_TASK_SHARE_CARD_STYLE_VERSION,
     sourceRevision: taskShareRevision(task),
@@ -176,13 +181,19 @@ async function prepareTaskShareImageForList(page, task, ownerUserId = "") {
   const source = buildTaskShareSource(task);
   const existing = getReadyTaskSnapshot(task, source);
   if (existing) return existing.url;
-  const imageUrl = await prepareShareCardImage(page, {
-    ...source,
-    path: taskSharePath(task)
-  }, { ownerUserId });
-  if (!isShareImageUrl(imageUrl)) return "";
-  persistTaskShareSnapshot(task, buildTaskShareSnapshot(task, source, imageUrl));
-  return imageUrl;
+  const response = await api.prepareMutualHelpTaskShareSnapshot(task.id, {
+    styleId: MUTUAL_TASK_SHARE_CARD_STYLE_VERSION,
+    fingerprint: taskShareFingerprint(task, source)
+  });
+  const data = response && response.data ? response.data : {};
+  const serverTask = data.task || {};
+  const snapshot = serverTask.shareSnapshot || data.snapshot || {};
+  if (snapshot.renderer !== "backend" || !isShareImageUrl(snapshot.url)) return "";
+  const mergedTask = { ...task, ...serverTask, shareSnapshot: snapshot };
+  const ready = getReadyTaskSnapshot(mergedTask, buildTaskShareSource(mergedTask));
+  if (!ready) return "";
+  persistTaskShareSnapshot(mergedTask, ready);
+  return ready.url;
 }
 
 function buildTaskShareMessage(page, task) {
@@ -195,7 +206,7 @@ function buildTaskShareMessage(page, task) {
   const snapshot = getReadyTaskSnapshot(task, source);
   if (snapshot) {
     return {
-      title: buildShareCardTitle(`${String(task.title || "互帮互助任务").trim()}｜邀请你完成任务`),
+      title: buildShareCardTitle(taskShareTitle(task)),
       path,
       imageUrl: snapshot.url
     };
@@ -205,11 +216,10 @@ function buildTaskShareMessage(page, task) {
     setShareMenuEnabled(false);
     return null;
   }
-  return buildShareCardMessage(page, {
-    ...buildTaskShareSource(task),
-    title: `${String(task.title || "互帮互助任务").trim()}｜邀请你完成任务`,
-    path
-  });
+  // A task share must always use the server-owned snapshot. Do not fall back
+  // to a page capture or a client canvas when the backend snapshot is missing.
+  setShareMenuEnabled(false);
+  return null;
 }
 
 module.exports = {

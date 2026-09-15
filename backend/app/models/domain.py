@@ -61,7 +61,14 @@ OpportunityPushDigestStatus = Literal["pending", "read", "dismissed"]
 MembershipOrderStatus = Literal["pending", "paid", "refunded", "closed"]
 MembershipEntitlementStatus = Literal["active", "expired", "revoked"]
 MutualRechargeOrderStatus = Literal["pending", "paid", "closed", "refunded"]
-MutualActivityEventType = Literal["published", "completed"]
+MutualActivityEventType = Literal[
+    "published",
+    "completed",
+    "opened",
+    "returned",
+    "open_cancelled",
+    "open_failed",
+]
 ReferralRewardStatus = Literal["pending", "available", "reserved", "withdrawn", "revoked"]
 ReferralWithdrawalStatus = Literal[
     "pending",
@@ -73,9 +80,24 @@ ReferralWithdrawalStatus = Literal[
     "cancelled",
     "rejected",
 ]
+MutualPointWithdrawalStatus = Literal[
+    "pending",
+    "approved",
+    "waiting_user_confirm",
+    "processing",
+    "paid",
+    "failed",
+    "cancelled",
+    "rejected",
+]
 WechatSubscriptionGrantStatus = Literal["available", "reserved", "consumed", "invalid", "rejected"]
 WechatSubscriptionDeliveryStatus = Literal["queued", "sending", "sent", "failed", "skipped"]
-WechatSubscriptionNotificationType = Literal["view", "message"]
+WechatSubscriptionNotificationType = Literal["view", "message", "live_qr_expiry"]
+ContentSafetyRuleMatchType = Literal["contains", "exact"]
+ContentSafetyRuleSeverity = Literal["high", "medium", "low"]
+ContentSafetyRuleAction = Literal["block", "review", "warn"]
+ContentModerationStatus = Literal["allowed", "reviewing", "blocked", "overridden", "stale"]
+ContentModerationDecision = Literal["allow", "warn", "review", "block"]
 
 
 class User(BaseModel):
@@ -87,6 +109,11 @@ class User(BaseModel):
     wechat: str | None = None
     phone: str | None = None
     salesProfile: dict = Field(default_factory=dict)
+    # Narrow, server-authorized capabilities.  The mini program never grants
+    # itself a role; the ops console is the only writer for these values.
+    roles: list[str] = Field(default_factory=list)
+    groupResourcePenaltyDebt: int = 0
+    groupResourcePublishingPaused: bool = False
     createdAt: str
     updatedAt: str
 
@@ -231,6 +258,12 @@ class UserNote(BaseModel):
     locationText: str | None = None
     sourceRefs: list[str] = Field(default_factory=list)
     visibilityConfig: dict = Field(default_factory=dict)
+    # Platform operators may promote business-card entries in the public
+    # cooperation directory. These fields are intentionally removed from
+    # public payload builders; clients only receive the resulting order.
+    isPinned: bool = False
+    pinnedAt: str | None = None
+    pinnedBy: str | None = None
     createdAt: str
     updatedAt: str
 
@@ -604,6 +637,34 @@ class AutomationTask(BaseModel):
     updatedAt: str
 
 
+class AutomationBatchContent(BaseModel):
+    batchNo: int = Field(ge=1, le=100)
+    cardId: str | None = Field(default=None, max_length=120)
+    text: str | None = Field(default=None, max_length=2000)
+    enabled: bool = True
+    updatedAt: str | None = None
+
+
+class AutomationCardAsset(BaseModel):
+    id: str
+    cardId: str = Field(min_length=1, max_length=120)
+    deepLink: str | None = Field(default=None, max_length=2000)
+    cardTitle: str | None = Field(default=None, max_length=200)
+    status: Literal["active", "inactive", "expired"] = "active"
+    createdAt: str
+    updatedAt: str
+
+
+class AutomationGroupContentPlan(BaseModel):
+    id: str
+    groupCode: str = Field(min_length=1, max_length=40)
+    remark: str | None = Field(default=None, max_length=500)
+    status: Literal["active", "inactive"] = "active"
+    batchContents: list[AutomationBatchContent] = Field(default_factory=list)
+    createdAt: str
+    updatedAt: str
+
+
 class AutomationGroupCandidate(BaseModel):
     id: str
     deviceId: str
@@ -611,14 +672,22 @@ class AutomationGroupCandidate(BaseModel):
     source: AutomationGroupSource = "xiaohongshu"
     groupQRCode: str | None = None
     groupName: str | None = None
+    # One-way fingerprint only; never persist the member names used to derive it.
+    groupIdentity: str | None = None
+    # Scan-confirmed count of WeChat rows sharing this account/code/name route.
+    # None means a legacy/manual candidate whose physical multiplicity is unknown.
+    groupOccurrenceCount: int | None = Field(default=None, ge=1, le=10000)
     wechatAccountName: str | None = None
     savedAt: str
     joinStatus: AutomationJoinStatus = "unknown"
     canSend: bool | None = None
     remark: str | None = None
+    groupCodes: list[str] = Field(default_factory=list)
     topic: str | None = None
     region: str | None = None
     allowedContentTypes: list[str] = Field(default_factory=list)
+    batchContents: list[AutomationBatchContent] = Field(default_factory=list)
+    dailySendLimit: int = Field(default=3, ge=0, le=50)
     membershipStatus: AutomationMembershipStatus = "unknown"
     lastActivityAt: str | None = None
     lastVerifiedAt: str | None = None
@@ -738,6 +807,9 @@ class OpportunityLead(BaseModel):
     priority: str | None = None
     publishedAt: str | None = None
     expiresAt: str | None = None
+    # Explicitly marked operator test data may be permanently removed from
+    # the PC cleanup tool. Formal business records remain archive-only.
+    isTest: bool = False
     createdAt: str
     updatedAt: str
 
@@ -868,9 +940,20 @@ class SupplyDemandCard(BaseModel):
     linkedResourceType: str | None = None
     linkedResourceId: str | None = None
     tags: list[str] = Field(default_factory=list)
+    # Contact values are kept behind the detail/unlock boundary.  Existing
+    # cards may omit these fields and remain valid.
+    contactSource: str = "none"
+    contactType: str | None = None
+    contactValueEncrypted: str = ""
+    contactMasked: str = ""
+    contactVerifyStatus: str = "self_declared"
+    expiresAt: str | None = None
     reviewNote: str | None = None
     publishedAt: str | None = None
     reviewedAt: str | None = None
+    # Keep destructive cleanup opt-in and limited to records intentionally
+    # created as test data by an operator.
+    isTest: bool = False
     createdAt: str
     updatedAt: str
 
@@ -936,6 +1019,7 @@ class MutualPointAccount(BaseModel):
     # accountType lets future tools share the same points core without adding
     # another balance field or wallet table.
     accountType: str = "mutual_help"
+    pointType: str = "base"
     balance: int = 0
     totalGranted: int = 0
     totalConsumed: int = 0
@@ -947,6 +1031,7 @@ class MutualPointLedger(BaseModel):
     id: str
     userId: str
     accountType: str = "mutual_help"
+    pointType: str = "base"
     ledgerType: str
     pointsDelta: int
     balanceAfter: int
@@ -963,6 +1048,7 @@ class MutualRechargeOrder(BaseModel):
     id: str
     userId: str
     points: int
+    pointType: str = "reward"
     amountFen: int
     status: MutualRechargeOrderStatus = "pending"
     paymentChannel: str = "test"
@@ -979,7 +1065,115 @@ class MutualActivityEvent(BaseModel):
     userId: str
     taskId: str
     taskKind: str = "ordinary"
+    linkId: str = ""
+    sessionId: str = ""
+    metadata: dict = Field(default_factory=dict)
     idempotencyKey: str
+    createdAt: str
+
+
+class MutualHelpTask(BaseModel):
+    """Server-authoritative task data shared by every logged-in device."""
+
+    id: str
+    ownerUserId: str
+    taskKind: str = "ordinary"
+    title: str
+    category: str = "其他"
+    description: str = ""
+    contentBlocks: list[dict] = Field(default_factory=list)
+    acceptanceCriteriaBlocks: list[dict] = Field(default_factory=list)
+    taskLinks: list[dict] = Field(default_factory=list)
+    shortLink: str = ""
+    rewardPointType: str = "base"
+    # once: each user can complete the task once; daily: once per Shanghai
+    # calendar day while the task remains published and has quota.
+    repeatPolicy: str = "once"
+    woolPolicy: dict = Field(default_factory=dict)
+    rewardPoints: int = 0
+    executorReward: int = 0
+    # Recharge-point tasks reserve the full budget when published. This keeps
+    # a publisher from spending the same withdrawable points elsewhere while
+    # submissions are still arriving.
+    rewardBudgetReserved: int = 0
+    rewardBudgetUsed: int = 0
+    rewardBudgetReleased: int = 0
+    remaining: int | None = None
+    deadlineText: str = "长期开放"
+    status: str = "published"
+    woolAccessRecords: list[dict] = Field(default_factory=list)
+    woolComments: list[dict] = Field(default_factory=list)
+    woolCommentReports: list[dict] = Field(default_factory=list)
+    woolTips: list[dict] = Field(default_factory=list)
+    woolRefunds: list[dict] = Field(default_factory=list)
+    # Formal tasks are never hard-deleted by the PC cleanup tool unless an
+    # operator explicitly created them as test data.
+    isTest: bool = False
+    # Platform operators can promote a task without changing its lifecycle.
+    isPinned: bool = False
+    pinnedAt: str | None = None
+    pinnedBy: str | None = None
+    # Versioned server-generated image used by native WeChat sharing. History
+    # is retained for the media cleanup worker and is never sent to clients.
+    shareSnapshot: dict = Field(default_factory=dict)
+    shareSnapshotHistory: list[dict] = Field(default_factory=list)
+    createdAt: str
+    updatedAt: str
+
+
+class MutualHelpSubmission(BaseModel):
+    id: str
+    taskId: str
+    executorUserId: str
+    ownerUserId: str
+    # The server's Asia/Shanghai calendar day for this participation.
+    participationDay: str = ""
+    status: str = "submitted"
+    autoApproved: bool = False
+    text: str = ""
+    images: list[str] = Field(default_factory=list)
+    submittedAt: str
+    reviewDeadlineAt: str | None = None
+    approvedAt: str | None = None
+    completedAt: str | None = None
+    rewardSettled: bool = False
+    publisherCost: int = 0
+    executorReward: int = 0
+    publisherCostReserved: bool = False
+    publisherBudgetReserved: bool = False
+    publisherCostReservationReleased: bool = False
+    publisherCostAllocations: list[dict] = Field(default_factory=list)
+    rejectionReason: str = ""
+    rejectedAt: str | None = None
+    createdAt: str
+    updatedAt: str
+
+
+class MutualHelpConversation(BaseModel):
+    """One private publisher/executor conversation for a mutual-help task."""
+
+    id: str
+    taskId: str
+    ownerUserId: str
+    executorUserId: str
+    lastMessageAt: str | None = None
+    lastMessagePreview: str = ""
+    unreadByUser: dict[str, int] = Field(default_factory=dict)
+    createdAt: str
+    updatedAt: str
+
+
+class MutualHelpChatMessage(BaseModel):
+    id: str
+    conversationId: str
+    taskId: str
+    senderUserId: str
+    recipientUserId: str
+    messageType: str = "text"
+    text: str = ""
+    imageUrl: str = ""
+    miniProgram: dict = Field(default_factory=dict)
+    idempotencyKey: str = ""
     createdAt: str
 
 
@@ -1013,7 +1207,7 @@ class WechatSubscriptionDelivery(BaseModel):
     grantId: str
     templateId: str
     notificationType: WechatSubscriptionNotificationType = "view"
-    resourceType: Literal["card", "note", "showcase"]
+    resourceType: Literal["card", "note", "showcase", "live_qr"]
     resourceId: str
     resourceTitle: str
     viewerType: Literal["important", "ordinary", "anonymous"]
@@ -1080,6 +1274,31 @@ class ReferralWithdrawal(BaseModel):
     updatedAt: str
 
 
+class MutualPointWithdrawal(BaseModel):
+    """A manual-review withdrawal from the cashable recharge-point ledger."""
+
+    id: str
+    userId: str
+    pointType: str = "reward"
+    points: int
+    grossAmountFen: int
+    feeRateBasisPoints: int = 2000
+    feeFen: int = 0
+    amountFen: int
+    status: MutualPointWithdrawalStatus = "pending"
+    reviewedAt: str | None = None
+    paidAt: str | None = None
+    outBillNo: str | None = None
+    transferBillNo: str | None = None
+    transferState: str | None = None
+    packageInfo: str | None = None
+    failureReason: str | None = None
+    settlementSource: str | None = None
+    settlementNote: str | None = None
+    createdAt: str
+    updatedAt: str
+
+
 class SameStyleGeneration(BaseModel):
     id: str
     ownerUserId: str
@@ -1098,11 +1317,20 @@ class SameStyleGeneration(BaseModel):
 class LiveQrCode(BaseModel):
     id: str
     code: str
+    ownerUserId: str | None = None
     name: str
     description: str | None = None
     groupAvatarUrl: str | None = None
     targetQrImageUrl: str | None = None
     targetQrImageUpdatedAt: str | None = None
+    # The original upload remains the source of truth.  A source-style poster
+    # is an optional derived asset that replaces only the QR in that upload.
+    posterMode: Literal["plain", "source"] = "plain"
+    posterImageUrl: str | None = None
+    # Keep lightweight version metadata with the fixed entry.  Historical QR
+    # binaries are intentionally not retained; only the current target image
+    # is needed to keep the entry useful and media storage bounded.
+    targetQrHistory: list[dict] = Field(default_factory=list)
     automationGroupCandidateId: str | None = None
     groupMemberCount: int | None = None
     groupMemberCountCheckedAt: str | None = None
@@ -1116,6 +1344,109 @@ class LiveQrCode(BaseModel):
     targetUpdatedAt: str
     createdAt: str
     updatedAt: str
+
+
+class GroupResource(BaseModel):
+    id: str
+    ownerUserId: str
+    name: str
+    cityMode: Literal["national", "city"] = "city"
+    cityLabel: str = ""
+    cityCode: str | None = None
+    industry: str
+    purpose: str
+    tags: list[str] = Field(default_factory=list)
+    memberRange: str | None = None
+    activeLevel: str | None = None
+    remark: str | None = None
+    qrImageUrl: str
+    status: Literal["active", "expired", "rejected", "deleted"] = "active"
+    expiresAt: str
+    createdAt: str
+    updatedAt: str
+    qrUpdatedAt: str
+    views: int = 0
+    confirmCount: int = 0
+    rewardState: Literal["pending", "paid", "capped", "cancelled"] = "pending"
+    rewardAmount: int = 0
+    # `user` keeps the normal reward/penalty path.  Admin-created resources
+    # still use the canonical public catalogue but must not credit or punish a
+    # person merely because an operator entered the record.
+    sourceType: Literal["user", "mobile_admin", "platform_admin"] = "user"
+    createdByUserId: str | None = None
+    createdByOperator: str | None = None
+    # New group-resource submissions remain visible while they are under
+    # review. These fields are defaulted so old production payloads continue
+    # to load without a data migration.
+    reviewStatus: Literal["reviewing", "approved", "rejected", "paused", "removed"] = "reviewing"
+    qrVersion: int = 1
+    complaintCount: int = 0
+    lastComplaintAt: str | None = None
+    rewardReleasedAt: str | None = None
+    rewardRevokedAt: str | None = None
+    penaltyDebt: int = 0
+    reviewLogs: list[dict] = Field(default_factory=list)
+    complaints: list[dict] = Field(default_factory=list)
+    refundedViewLedgerIds: list[str] = Field(default_factory=list)
+    # Formal group resources are archive/remove-only. This flag is the sole
+    # opt-in for irreversible cleanup in the operations console.
+    isTest: bool = False
+    # Platform operators can promote an eligible resource without changing
+    # review status, expiry, reward or complaint handling.
+    isPinned: bool = False
+    pinnedAt: str | None = None
+    pinnedBy: str | None = None
+
+
+class ContentSafetyRule(BaseModel):
+    id: str
+    term: str
+    normalizedTerm: str
+    termHash: str
+    matchType: ContentSafetyRuleMatchType = "contains"
+    category: str = "platform_custom"
+    severity: ContentSafetyRuleSeverity = "medium"
+    action: ContentSafetyRuleAction = "review"
+    scopes: list[str] = Field(default_factory=list)
+    enabled: bool = True
+    version: int = 1
+    source: Literal["manual", "import", "provider"] = "manual"
+    expiresAt: str | None = None
+    operatorName: str = "ops"
+    reason: str = ""
+    createdAt: str
+    updatedAt: str
+
+
+class ContentModerationAssessment(BaseModel):
+    id: str
+    targetType: str
+    targetId: str
+    ownerUserId: str | None = None
+    contentRevision: str = ""
+    contentFingerprint: str
+    ruleVersion: str
+    status: ContentModerationStatus = "allowed"
+    decision: ContentModerationDecision = "allow"
+    matchedRuleIds: list[str] = Field(default_factory=list)
+    matchSummary: list[dict] = Field(default_factory=list)
+    reviewedBy: str | None = None
+    reviewedAt: str | None = None
+    reviewNote: str | None = None
+    createdAt: str
+    updatedAt: str
+
+
+class ContentModerationAuditLog(BaseModel):
+    id: str
+    eventType: str
+    targetType: str | None = None
+    targetId: str | None = None
+    assessmentId: str | None = None
+    ruleId: str | None = None
+    operatorName: str = "system"
+    details: dict = Field(default_factory=dict)
+    createdAt: str
 
 
 class AppState(BaseModel):
@@ -1149,6 +1480,8 @@ class AppState(BaseModel):
     automation_devices: list[AutomationDevice] = Field(default_factory=list)
     automation_tasks: list[AutomationTask] = Field(default_factory=list)
     automation_group_candidates: list[AutomationGroupCandidate] = Field(default_factory=list)
+    automation_card_assets: list[AutomationCardAsset] = Field(default_factory=list)
+    automation_group_content_plans: list[AutomationGroupContentPlan] = Field(default_factory=list)
     wecom_archive_cursors: list[WecomArchiveCursor] = Field(default_factory=list)
     wecom_archive_messages: list[WecomArchiveMessage] = Field(default_factory=list)
     resource_wallets: list[ResourceWallet] = Field(default_factory=list)
@@ -1174,11 +1507,20 @@ class AppState(BaseModel):
     mutual_point_ledgers: list[MutualPointLedger] = Field(default_factory=list)
     mutual_recharge_orders: list[MutualRechargeOrder] = Field(default_factory=list)
     mutual_activity_events: list[MutualActivityEvent] = Field(default_factory=list)
+    mutual_help_tasks: list[MutualHelpTask] = Field(default_factory=list)
+    mutual_help_submissions: list[MutualHelpSubmission] = Field(default_factory=list)
+    mutual_help_conversations: list[MutualHelpConversation] = Field(default_factory=list)
+    mutual_help_chat_messages: list[MutualHelpChatMessage] = Field(default_factory=list)
     notification_preferences: list[NotificationPreference] = Field(default_factory=list)
     wechat_subscription_grants: list[WechatSubscriptionGrant] = Field(default_factory=list)
     wechat_subscription_deliveries: list[WechatSubscriptionDelivery] = Field(default_factory=list)
     referral_relations: list[ReferralRelation] = Field(default_factory=list)
     referral_rewards: list[ReferralReward] = Field(default_factory=list)
     referral_withdrawals: list[ReferralWithdrawal] = Field(default_factory=list)
+    mutual_point_withdrawals: list[MutualPointWithdrawal] = Field(default_factory=list)
     same_style_generations: list[SameStyleGeneration] = Field(default_factory=list)
     live_qr_codes: list[LiveQrCode] = Field(default_factory=list)
+    group_resources: list[GroupResource] = Field(default_factory=list)
+    content_safety_rules: list[ContentSafetyRule] = Field(default_factory=list)
+    content_moderation_assessments: list[ContentModerationAssessment] = Field(default_factory=list)
+    content_moderation_audit_logs: list[ContentModerationAuditLog] = Field(default_factory=list)

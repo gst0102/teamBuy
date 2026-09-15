@@ -39,3 +39,21 @@ page { background: #f3f7fd; }
 .delete-button { background: #eef3f9; color: #334155; }
 .save-button { background: linear-gradient(135deg, #1284ff, #0864ea); color: #fff; }
 .delete-button::after, .save-button::after { border: 0; }
+/* Typography scale v2: keep URL/article editing readable and controls explicit. */
+.link-editor-page .link-loading { font-size: 25rpx; }
+.link-editor-page .section-title { font-size: 32rpx; }
+.link-editor-page .preview-link { font-size: 24rpx; }
+.link-editor-page .article-source { font-size: 23rpx; }
+.link-editor-page .article-title { font-size: 34rpx; }
+.link-editor-page .article-recommendation,
+.link-editor-page .article-description { font-size: 27rpx; }
+.link-editor-page .field-label { font-size: 26rpx; }
+.link-editor-page .title-input,
+.link-editor-page .link-input,
+.link-editor-page .link-textarea { font-size: 28rpx; }
+.link-editor-page .section-hint { font-size: 23rpx; }
+.link-editor-page .recommendation { font-size: 26rpx; }
+.link-editor-page .count { font-size: 22rpx; }
+.link-editor-page .privacy-card { font-size: 24rpx; }
+.link-editor-page .delete-button,
+.link-editor-page .save-button { display: flex; align-items: center; justify-content: center; min-height: 72rpx; font-size: 26rpx; }

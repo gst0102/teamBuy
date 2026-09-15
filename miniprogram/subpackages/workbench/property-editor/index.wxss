@@ -91,3 +91,27 @@ page { background: #f3f7fd; overflow-x: hidden; }
 .delete-button { background: #eef3f9; color: #334155; }
 .save-button { background: linear-gradient(135deg, #1284ff, #0864ea); color: #fff; }
 .delete-button::after, .save-button::after { border: 0; }
+/* Typography scale v2: make property details and fields readable without widening the form grid. */
+.property-page .property-loading { font-size: 25rpx; }
+.property-page .section-heading { font-size: 32rpx; }
+.property-page .section-link { font-size: 24rpx; }
+.property-page .customer-title { font-size: 32rpx; }
+.property-page .customer-price { font-size: 32rpx; }
+.property-page .customer-facts { font-size: 24rpx; }
+.property-page .customer-chips text { font-size: 21rpx; }
+.property-page .section-note { font-size: 23rpx; }
+.property-page .field-label { font-size: 26rpx; }
+.property-page .property-input,
+.property-page .full-input,
+.property-page .property-textarea { font-size: 28rpx; }
+.property-page .property-map-address { font-size: 25rpx; }
+.property-page .highlights-card { font-size: 24rpx; }
+.property-page .highlight-chip { font-size: 22rpx; }
+.property-page .text-count { font-size: 22rpx; }
+.property-page .progressive-row { font-size: 25rpx; }
+.property-page .row-title { font-size: 27rpx; }
+.property-page .row-summary { font-size: 23rpx; }
+.property-page .small-add-button { display: flex; align-items: center; justify-content: center; min-height: 60rpx; font-size: 23rpx; }
+.property-page .supplement-item { font-size: 24rpx; }
+.property-page .link-confirm { font-size: 25rpx; }
+.property-page .property-bottom-bar button { display: flex; align-items: center; justify-content: center; min-height: 72rpx; font-size: 26rpx; }

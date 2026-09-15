@@ -9,31 +9,6 @@ const statusConfig = [
   { key: "invalid", label: "无效" }
 ];
 
-const mockSavedCards = [
-  {
-    id: "opp_demo_1",
-    statusKey: "saved",
-    status: "待联系",
-    title: "长沙新店找本地推广渠道",
-    reminder: "今天 18:00",
-    latestAction: "已保存，未生成回应包",
-    note: "适合发服务介绍页和案例合集",
-    packageStatus: "未生成",
-    nextAction: "生成回应包"
-  },
-  {
-    id: "opp_demo_2",
-    statusKey: "following",
-    status: "跟进中",
-    title: "社区团购团长找稳定货源",
-    reminder: "明天 10:30",
-    latestAction: "已电话沟通，等样品清单",
-    note: "适合发商品合集",
-    packageStatus: "已生成",
-    nextAction: "打开资料"
-  }
-];
-
 const packageFilters = [
   { key: "", label: "全部回应包" },
   { key: "generated", label: "已生成" },
@@ -70,35 +45,39 @@ function mapSaved(row = {}) {
   };
 }
 
-function buildTabs(cards = [], activeStatus = "saved") {
+function buildTabs(cards = [], activeStatus = "saved", statusCounts = null) {
   return statusConfig.map((item) => ({
     ...item,
-    count: cards.filter((card) => card.statusKey === item.key).length,
+    count: statusCounts && statusCounts[item.key] !== undefined
+      ? Number(statusCounts[item.key] || 0)
+      : cards.filter((card) => card.statusKey === item.key).length,
     active: activeStatus === item.key
   }));
 }
 
-function isDemoLeadId(value) {
-  return /^opp_demo_/.test(String(value || ""));
-}
-
 Page({
   data: {
-    statusTabs: buildTabs(mockSavedCards),
+    statusTabs: buildTabs([]),
     activeStatus: "saved",
     activePackageStatus: "",
     packageFilters,
-    savedCards: mockSavedCards,
-    visibleCards: mockSavedCards.filter((item) => item.statusKey === "saved"),
-    usingMock: true,
+    savedCards: [],
+    visibleCards: [],
+    loading: true,
+    loadingMore: false,
+    loadError: false,
+    loadEmpty: false,
+    hasMore: false,
+    nextCursor: "",
     shareCardImage: ""
   },
   onShow() {
-    this.loadSaved();
+    this.loadSaved(true);
     this.prepareShareImage();
   },
   prepareShareImage() {
-    const first = (this.data.visibleCards || [])[0] || mockSavedCards[0];
+    const first = (this.data.visibleCards || [])[0];
+    if (!first) return Promise.resolve(null);
     return prepareShareCardImage(this, {
       title: "已保存线索",
       summary: first.note || first.title || "打开查看已保存的商机跟进台。",
@@ -107,30 +86,55 @@ Page({
       shareTargetLabel: "商机"
     });
   },
-  async loadSaved() {
+  async loadSaved(reset = true) {
     const user = getCurrentUser();
     if (!user) {
       wx.reLaunch({ url: "/pages/login/index" });
       return;
     }
+    if (!reset && (this.data.loading || this.data.loadingMore || !this.data.hasMore)) return;
+    const requestSeq = (this._savedRequestSeq || 0) + 1;
+    this._savedRequestSeq = requestSeq;
+    const cursor = reset ? "" : (this.data.nextCursor || "");
+    this.setData(reset
+      ? { loading: true, loadingMore: false, loadError: false, loadEmpty: false, nextCursor: "", hasMore: false }
+      : { loadingMore: true, loadError: false });
     try {
       const res = await fetchSavedOpportunityLeads(user.id, {
         status: this.data.activeStatus,
-        packageStatus: this.data.activePackageStatus
+        packageStatus: this.data.activePackageStatus,
+        cursor,
+        limit: 20
       });
-      const cards = Array.isArray(res.data) ? res.data.map(mapSaved) : [];
-      this.applyCards(cards.length ? cards : mockSavedCards, !cards.length);
+      if (requestSeq !== this._savedRequestSeq) return;
+      const payload = res.data || {};
+      const incoming = (Array.isArray(payload) ? payload : (payload.items || [])).map(mapSaved);
+      const cards = reset
+        ? incoming
+        : [...(this.data.savedCards || []), ...incoming.filter((item) => !(this.data.savedCards || []).some((old) => old.id === item.id))];
+      const statusCounts = Array.isArray(payload) ? null : payload.statusCounts;
+      this.applyCards(cards, statusCounts);
+      this.setData({
+        loading: false,
+        loadingMore: false,
+        loadError: false,
+        loadEmpty: reset && !cards.length,
+        nextCursor: Array.isArray(payload) ? "" : (payload.nextCursor || ""),
+        hasMore: Boolean(!Array.isArray(payload) && payload.hasMore)
+      });
     } catch (error) {
-      this.applyCards(mockSavedCards, true);
+      if (requestSeq !== this._savedRequestSeq) return;
+      this.setData(reset
+        ? { loading: false, loadingMore: false, loadError: true, loadEmpty: false, hasMore: false }
+        : { loadingMore: false, loadError: true });
     }
   },
-  applyCards(cards, usingMock) {
+  applyCards(cards, statusCounts) {
     const visibleCards = this.filterCards(cards);
     this.setData({
       savedCards: cards,
       visibleCards,
-      statusTabs: buildTabs(cards, this.data.activeStatus),
-      usingMock
+      statusTabs: buildTabs(cards, this.data.activeStatus, statusCounts)
     });
     this.prepareShareImage();
   },
@@ -147,11 +151,11 @@ Page({
       activeStatus,
       statusTabs: buildTabs(this.data.savedCards, activeStatus)
     });
-    this.loadSaved();
+    this.loadSaved(true);
   },
   handlePackageFilterTap(event) {
     this.setData({ activePackageStatus: event.currentTarget.dataset.key || "" });
-    this.loadSaved();
+    this.loadSaved(true);
   },
   handleOpenDetail(event) {
     wx.navigateTo({ url: `/pages/opportunity-detail/index?id=${event.currentTarget.dataset.id}` });
@@ -172,10 +176,6 @@ Page({
       } else {
         wx.navigateTo({ url: `/pages/response-package/index?leadId=${id}` });
       }
-      return;
-    }
-    if (isDemoLeadId(id)) {
-      wx.showToast({ title: action, icon: "success" });
       return;
     }
     try {
@@ -201,10 +201,6 @@ Page({
       itemList: labels,
       success: async (res) => {
         const status = values[res.tapIndex] || current;
-        if (isDemoLeadId(id)) {
-          wx.showToast({ title: labels[res.tapIndex], icon: "success" });
-          return;
-        }
         try {
           await saveOpportunityLead(id, {
             userId: user.id,
@@ -212,7 +208,7 @@ Page({
             note: `状态改为${labels[res.tapIndex]}`
           });
           wx.showToast({ title: "状态已更新", icon: "success" });
-          this.loadSaved();
+          this.loadSaved(true);
         } catch (error) {
           wx.showToast({ title: "更新失败", icon: "none" });
         }
@@ -237,10 +233,6 @@ Page({
         if (option.offset === 0 && target.getTime() < now.getTime()) {
           target.setDate(target.getDate() + 1);
         }
-        if (isDemoLeadId(id)) {
-          wx.showToast({ title: "提醒已设置", icon: "success" });
-          return;
-        }
         try {
           const card = this.data.savedCards.find((item) => item.id === id) || {};
           await saveOpportunityLead(id, {
@@ -250,12 +242,15 @@ Page({
             reminderAt: target.toISOString()
           });
           wx.showToast({ title: "提醒已设置", icon: "success" });
-          this.loadSaved();
+          this.loadSaved(true);
         } catch (error) {
           wx.showToast({ title: "设置失败", icon: "none" });
         }
       }
     });
+  },
+  onReachBottom() {
+    this.loadSaved(false);
   },
   onShareAppMessage() {
     return buildShareCardMessage(this, {

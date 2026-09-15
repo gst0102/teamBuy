@@ -1258,3 +1258,30 @@ page {
   white-space: nowrap;
 }
 .showcase-select-banner { display: flex; align-items: center; justify-content: space-between; gap: 16rpx; margin: 20rpx 24rpx 0; padding: 20rpx 22rpx; border: 1rpx solid #cfe0f7; border-radius: 16rpx; background: #edf5ff; box-sizing: border-box; }.showcase-select-title { display: block; color: #145dcc; font-size: 28rpx; font-weight: 800; }.showcase-select-desc { display: block; margin-top: 5rpx; color: #6b7b91; font-size: 21rpx; }.showcase-select-close { flex: 0 0 auto; color: #1677ff; font-size: 23rpx; }
+/* Typography scale v2: make collection management readable while preserving compact card density. */
+.page-shell .showcase-mode { font-size: 31rpx; }
+.page-shell .showcase-select-title { font-size: 30rpx; }
+.page-shell .showcase-select-desc { font-size: 24rpx; }
+.page-shell .showcase-search-input { font-size: 28rpx; }
+.page-shell .showcase-quick-chip { font-size: 24rpx; }
+.page-shell .showcase-section-title { font-size: 34rpx; }
+.page-shell .showcase-section-meta { font-size: 24rpx; }
+.page-shell .showcase-refresh-tip { font-size: 22rpx; }
+.page-shell .showcase-card-title { font-size: 29rpx; }
+.page-shell .showcase-card-tags text { font-size: 20rpx; }
+.page-shell .showcase-type-tag,
+.page-shell .showcase-status-tag,
+.page-shell .showcase-same-style-tag { font-size: 20rpx; }
+.page-shell .showcase-card-count { font-size: 23rpx; }
+.page-shell .showcase-card-effect { font-size: 22rpx; }
+.page-shell .showcase-feedback-link { font-size: 23rpx; }
+.page-shell .showcase-card-actions button,
+.page-shell .showcase-card-actions text { display: flex; align-items: center; justify-content: center; min-height: 68rpx; font-size: 24rpx; }
+.page-shell .showcase-more-action { font-size: 28rpx; }
+.page-shell .showcase-filter-empty-title { font-size: 31rpx; }
+.page-shell .showcase-filter-empty-sub { font-size: 24rpx; }
+.page-shell .showcase-filter-empty-reset { font-size: 25rpx; }
+.page-shell .showcase-loading,
+.page-shell .showcase-load-error { font-size: 24rpx; }
+.page-shell .showcase-error-title { font-size: 31rpx; }
+.page-shell .showcase-error-sub { font-size: 24rpx; }

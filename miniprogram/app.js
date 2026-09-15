@@ -4,7 +4,7 @@ const customerDetailStore = require("./stores/customer-detail-store");
 const resourceStore = require("./stores/resource-store");
 const { clearAllCachedMedia } = require("./utils/media-cache");
 
-const CLIENT_BUILD_VERSION = "20260828-share-card-v10";
+const CLIENT_BUILD_VERSION = "20260907-server-share-card-v1";
 
 App({
   globalData: {

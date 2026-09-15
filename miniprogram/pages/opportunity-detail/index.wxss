@@ -245,3 +245,16 @@
   max-width: 260rpx;
   min-width: 0;
 }
+/* Typography scale v2: keep an opportunity's fit, fields and next action clear. */
+.detail-page .hero-badge { font-size: 22rpx; }
+.detail-page .hero-title { font-size: 38rpx; }
+.detail-page .hero-summary { font-size: 26rpx; }
+.detail-page .panel-title { font-size: 30rpx; }
+.detail-page .field-grid { font-size: 25rpx; }
+.detail-page .content-box { font-size: 27rpx; line-height: 1.65; }
+.detail-page .action-copy { font-size: 25rpx; }
+.detail-page .fit-tags text { font-size: 21rpx; }
+.detail-page .suggest-card { font-size: 25rpx; }
+.detail-page .main-action,
+.detail-page .secondary-actions button { display: flex; align-items: center; justify-content: center; min-height: 72rpx; font-size: 26rpx; }
+.detail-page .follow-panel { font-size: 24rpx; }

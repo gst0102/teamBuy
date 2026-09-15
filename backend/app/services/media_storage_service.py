@@ -33,6 +33,9 @@ class MediaStorageBackend(Protocol):
     def delete_url(self, url: str) -> bool:
         ...
 
+    def read_bytes(self, url: str) -> bytes | None:
+        ...
+
     def is_managed_url(self, url: str) -> bool:
         ...
 
@@ -56,6 +59,9 @@ class MockMediaStorageBackend:
         # Mock storage never creates a real object. Treat cleanup as complete
         # so metadata does not stay forever in test/runtime state.
         return True
+
+    def read_bytes(self, url: str) -> bytes | None:
+        return None
 
     def is_managed_url(self, url: str) -> bool:
         return str(url or "").startswith("/mock-media/")
@@ -112,6 +118,23 @@ class LocalMediaStorageBackend:
             return True
         except OSError:
             return False
+
+    def read_bytes(self, url: str) -> bytes | None:
+        path = self._managed_path(url)
+        prefix = self.public_url_prefix.rstrip("/") or "/media"
+        if not path.startswith(f"{prefix}/"):
+            return None
+        file_name = path[len(prefix) + 1 :]
+        if not file_name or "/" in file_name or "\\" in file_name or file_name in {".", ".."}:
+            return None
+        target = (self.storage_dir / file_name).resolve()
+        storage_root = self.storage_dir.resolve()
+        if target.parent != storage_root:
+            return None
+        try:
+            return target.read_bytes()
+        except OSError:
+            return None
 
     def is_managed_url(self, url: str) -> bool:
         path = self._managed_path(url)
@@ -177,6 +200,23 @@ class ObjectStorageMediaBackend:
             return True
         except Exception:
             return False
+
+    def read_bytes(self, url: str) -> bytes | None:
+        prefix = f"{self.public_base_url}/"
+        value = str(url or "")
+        if not value.startswith(prefix):
+            return None
+        object_key = unquote(value[len(prefix) :])
+        if not object_key or ".." in object_key.split("/"):
+            return None
+        if self.key_prefix and not object_key.startswith(f"{self.key_prefix}/"):
+            return None
+        try:
+            response = self._client().get_object(Bucket=self.bucket, Key=object_key)
+            body = response.get("Body")
+            return body.read() if body else None
+        except Exception:
+            return None
 
     def is_managed_url(self, url: str) -> bool:
         return str(url or "").startswith(f"{self.public_base_url}/")
@@ -256,6 +296,12 @@ class MediaStorageService:
         if not callable(delete):
             return False
         return bool(delete(url))
+
+    def read_bytes(self, url: str) -> bytes | None:
+        read = getattr(self.backend, "read_bytes", None)
+        if not callable(read):
+            return None
+        return read(url)
 
     def is_managed_url(self, url: str) -> bool:
         value = str(url or "")

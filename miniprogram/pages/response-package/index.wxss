@@ -274,3 +274,19 @@
 .light-action::after {
   border: 0;
 }
+/* Typography scale v2: keep response-package selection and generated copy readable. */
+.package-page .hero-kicker { font-size: 24rpx; }
+.package-page .hero-title { font-size: 38rpx; }
+.package-page .hero-sub { font-size: 26rpx; }
+.package-page .price-pill { font-size: 24rpx; }
+.package-page .panel-title { font-size: 30rpx; }
+.package-page .panel-sub { font-size: 23rpx; }
+.package-page .summary-grid { font-size: 24rpx; }
+.package-page .asset-title { font-size: 28rpx; }
+.package-page .asset-summary { font-size: 25rpx; }
+.package-page .asset-reason { font-size: 23rpx; }
+.package-page .refresh-btn { font-size: 25rpx; }
+.package-page .copy-box,
+.package-page .link-box { font-size: 27rpx; line-height: 1.65; }
+.package-page .follow-text { font-size: 26rpx; line-height: 1.6; }
+.package-page .bottom-actions button { display: flex; align-items: center; justify-content: center; min-height: 72rpx; font-size: 26rpx; }

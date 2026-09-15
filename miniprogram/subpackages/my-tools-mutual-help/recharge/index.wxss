@@ -161,3 +161,15 @@
 .recharge-button::after {
   border: 0;
 }
+
+/* Typography scale v1 for the recharge page. */
+.recharge-intro .subtitle { font-size:28rpx; }
+.balance-label,.balance-tip { font-size:26rpx; }
+.balance-value text { font-size:30rpx; }
+.section-title { font-size:34rpx; }
+.package-points text { font-size:25rpx; }
+.package-price { font-size:30rpx; }
+.package-mark { font-size:23rpx; }
+.closed-title { font-size:29rpx; }
+.closed-copy,.status-text,.recharge-note { font-size:25rpx; }
+.recharge-button { height:92rpx; font-size:32rpx; }

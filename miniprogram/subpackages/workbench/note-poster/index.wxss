@@ -139,3 +139,11 @@
   height: 600px;
   pointer-events: none;
 }
+/* Typography scale v2: make poster preparation states and actions legible. */
+.page-shell .share-status { font-size: 26rpx; }
+.page-shell .share-actions button { display: flex; align-items: center; justify-content: center; min-height: 72rpx; font-size: 26rpx; }
+.page-shell .preview-link { font-size: 25rpx; }
+.page-shell .copy-panel .panel-title { font-size: 30rpx; }
+.page-shell .copy-text { font-size: 26rpx; }
+.page-shell .copy-button,
+.page-shell .retry-button { font-size: 25rpx; }

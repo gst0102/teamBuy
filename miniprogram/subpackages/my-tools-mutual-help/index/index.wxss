@@ -1,1 +1,148 @@
 @import "../shared.wxss";
+
+/* The hall is a decision surface: one compact summary, one filter row, and
+ * task cards that answer what / reward / timing without becoming detail pages. */
+.task-hall-page .points-card {
+  border-color: #e5d8ca;
+  background: #fffdf9;
+  box-shadow: none;
+}
+
+.task-hall-page .points-tip {
+  color: #68737e;
+  font-size: 22rpx;
+}
+
+.task-hall-page .section-row {
+  margin-top: 32rpx;
+}
+
+.task-hall-page .section-helper {
+  color: #65727f;
+  font-size: 22rpx;
+}
+
+.task-hall-page .hall-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  min-width: 0;
+}
+
+.task-hall-page .hall-toolbar .filter-row {
+  flex: 1;
+  min-width: 0;
+}
+
+.task-hall-page .hall-toolbar .layout-switch {
+  flex: 0 0 auto;
+  margin-top: 18rpx;
+}
+
+.task-hall-page .layout-option {
+  width: 66rpx;
+  font-size: 20rpx;
+}
+
+.task-hall-page .task-list {
+  gap: 18rpx;
+}
+
+.task-hall-page .task-card {
+  padding: 22rpx 22rpx 18rpx;
+  border-color: #dfe5e9;
+  border-radius: 22rpx;
+  background: #ffffff;
+  box-shadow: none;
+}
+
+.task-hall-page .task-title {
+  margin-top: 14rpx;
+}
+
+.task-hall-page .task-frequency {
+  margin-top: 8rpx;
+  color: #c45f32;
+  font-size: 22rpx;
+}
+
+.task-hall-page .task-description {
+  margin-top: 9rpx;
+  color: #566473;
+  font-size: 24rpx;
+  -webkit-line-clamp: 2;
+}
+
+.task-hall-page .task-comment-summary {
+  margin-top: 10rpx;
+  color: #2d806d;
+  font-size: 22rpx;
+}
+
+.task-hall-page .task-foot {
+  margin-top: 17rpx;
+  padding-top: 15rpx;
+  border-color: #e6ebef;
+  color: #65727f;
+}
+
+.task-hall-page .task-go {
+  padding: 7rpx 14rpx;
+  border-radius: 999rpx;
+  background: #fff1e7;
+  color: #d85d2b;
+}
+
+.task-hall-page .task-list.columns-2 .task-card {
+  min-height: 310rpx;
+  padding: 18rpx 16rpx 16rpx;
+}
+
+.task-hall-page .task-list.columns-2 .task-title {
+  font-size: 27rpx;
+}
+
+.task-hall-page .task-list.columns-2 .task-frequency {
+  font-size: 20rpx;
+}
+
+.task-hall-page .task-list.columns-2 .task-description {
+  font-size: 22rpx;
+  -webkit-line-clamp: 1;
+}
+
+.task-hall-page .task-list.columns-2 .task-foot {
+  align-items: center;
+  flex-direction: row;
+  gap: 8rpx;
+  margin-top: auto;
+  font-size: 20rpx;
+}
+
+.task-hall-page .task-list.columns-2 .task-go {
+  align-self: auto;
+  font-size: 22rpx;
+}
+
+.mutual-page.theme-dark.task-hall-page .points-card,
+.mutual-page.theme-dark.task-hall-page .task-card {
+  border-color: #354352;
+  background: #1d2731;
+  box-shadow: none;
+}
+
+.mutual-page.theme-dark.task-hall-page .points-tip,
+.mutual-page.theme-dark.task-hall-page .section-helper,
+.mutual-page.theme-dark.task-hall-page .task-description,
+.mutual-page.theme-dark.task-hall-page .task-foot {
+  color: #a9b6c2;
+}
+
+.mutual-page.theme-dark.task-hall-page .task-foot {
+  border-color: #354352;
+}
+
+.mutual-page.theme-dark.task-hall-page .task-go {
+  background: #493328;
+  color: #ffad7d;
+}

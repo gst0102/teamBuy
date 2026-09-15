@@ -628,3 +628,30 @@ button {
   line-height: 1.55;
   text-align: center;
 }
+/* Typography scale v2: make referral ledger and withdrawal states legible. */
+.referral-detail-page .state-title { font-size: 30rpx; }
+.referral-detail-page .state-copy { font-size: 24rpx; }
+.referral-detail-page .detail-balance-label { font-size: 24rpx; }
+.referral-detail-page .detail-balance-amount { font-size: 42rpx; }
+.referral-detail-page .detail-balance-meta { font-size: 22rpx; }
+.referral-detail-page .detail-withdraw-entry { font-size: 25rpx; }
+.referral-detail-page .tab-item { font-size: 25rpx; }
+.referral-detail-page .section-title { font-size: 30rpx; }
+.referral-detail-page .section-caption { font-size: 23rpx; }
+.referral-detail-page .withdraw-amount-label { font-size: 25rpx; }
+.referral-detail-page .withdraw-available { font-size: 23rpx; }
+.referral-detail-page .withdraw-option-amount { font-size: 29rpx; }
+.referral-detail-page .withdraw-option-state { font-size: 21rpx; }
+.referral-detail-page .withdraw-selection-hint { font-size: 23rpx; }
+.referral-detail-page .withdraw-submit-btn,
+.referral-detail-page .confirm-transfer-btn { display: flex; align-items: center; justify-content: center; min-height: 72rpx; font-size: 26rpx; }
+.referral-detail-page .rule-summary-item,
+.referral-detail-page .rule-detail-row { font-size: 24rpx; }
+.referral-detail-page .ledger-title { font-size: 26rpx; }
+.referral-detail-page .ledger-time { font-size: 22rpx; }
+.referral-detail-page .ledger-amount,
+.referral-detail-page .ledger-status { font-size: 23rpx; }
+.referral-detail-page .empty-card { font-size: 25rpx; }
+.referral-detail-page .withdrawal-amount { font-size: 28rpx; }
+.referral-detail-page .withdrawal-meta { font-size: 22rpx; }
+.referral-detail-page .withdrawal-status { font-size: 23rpx; }

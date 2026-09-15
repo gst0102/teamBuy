@@ -116,3 +116,26 @@
 .business-content { margin-top: 11rpx; color: #66758a; font-size: 24rpx; line-height: 1.5; }
 .recognition-note { width: 100%; margin-top: 22rpx; padding: 18rpx; border-radius: 18rpx; background: #f6f8fb; color: #718096; font-size: 21rpx; line-height: 1.5; text-align: center; box-sizing: border-box; }
 .business-actions { width: 100%; }
+/* Typography scale v2: enlarge the creation path while leaving compact icons and marks alone. */
+.create-page .create-title { font-size: 38rpx; }
+.create-page .create-subtitle { font-size: 26rpx; }
+.create-page .create-input { font-size: 28rpx; }
+.create-page .pending-content-label { font-size: 24rpx; }
+.create-page .pending-content { font-size: 26rpx; }
+.create-page .input-tool,
+.create-page .organize-button { font-size: 25rpx; }
+.create-page .scene-name { font-size: 25rpx; }
+.create-page .link-sheet-head { font-size: 32rpx; }
+.create-page .link-sheet-hint { font-size: 24rpx; }
+.create-page .link-input { font-size: 28rpx; }
+.create-page .link-confirm { display: flex; align-items: center; justify-content: center; min-height: 72rpx; font-size: 26rpx; }
+.create-page .property-batch-title { font-size: 32rpx; }
+.create-page .result-subtitle { font-size: 25rpx; }
+.create-page .property-candidate-title { font-size: 28rpx; }
+.create-page .property-candidate-summary { font-size: 24rpx; }
+.create-page .property-candidate-price { font-size: 27rpx; }
+.create-page .property-tag { font-size: 21rpx; }
+.create-page .property-batch-actions button { display: flex; align-items: center; justify-content: center; min-height: 72rpx; font-size: 26rpx; }
+.create-page .business-title { font-size: 32rpx; }
+.create-page .business-content { font-size: 26rpx; }
+.create-page .business-actions button { display: flex; align-items: center; justify-content: center; min-height: 72rpx; font-size: 26rpx; }

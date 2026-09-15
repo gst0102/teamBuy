@@ -1,4 +1,5 @@
 const shared = require("../shared");
+const api = require("../../../services/api");
 
 Page({
   data: {
@@ -12,26 +13,68 @@ Page({
       linkInput: "",
       linkTitle: "",
       miniDescription: "",
-      category: "文本校对",
+      completionCriteria: "",
+      repeatPolicy: "once",
+      category: "互助",
       contentBlocks: [{ id: "draft-content-text", type: "text", text: "", url: "" }],
       acceptanceBlocks: [{ id: "draft-acceptance-text", type: "text", text: "", url: "" }],
       quota: "",
       rewardPoints: "5",
+      rewardPointType: "base",
       woolUnlockFee: "0",
       woolAllowTip: true
     },
     currentPoints: 100,
+    currentPointTypePoints: 100,
+    currentPointTypeLabel: "基础积分",
+    rechargeVisible: false,
+    // 任务入口是可选，但不能默认藏起来；普通任务和羊毛任务都要让
+    // 发布者第一眼看到可以粘贴公众号、网页或目标小程序链接。
+    advancedOpen: true,
     publishing: false,
+    accountLoading: false,
     kindCopy: shared.getTaskKindCopy("ordinary"),
     theme: shared.getTheme()
   },
 
   onShow() {
     const user = shared.getUser();
+    const userId = shared.getUserId(user);
+    const balances = shared.getPointBalances(userId);
     this.setData({
-      currentPoints: user ? shared.getPoints(shared.getUserId(user)) : 100,
+      currentPoints: user ? balances.total : 100,
+      currentPointTypePoints: user ? balances.base : 100,
+      currentPointTypeLabel: "基础积分",
+      rechargeVisible: false,
       theme: shared.getTheme()
     });
+    this.loadPointStatus(user);
+  },
+
+  async loadPointStatus(user) {
+    if (!user || this.data.accountLoading) return;
+    this.setData({ accountLoading: true });
+    try {
+      const response = await api.fetchMutualHelpStatus(shared.getUserId(user));
+      const data = response.data || {};
+      const balances = shared.saveServerPointData(data, shared.getUserId(user));
+      const rechargeVisible = data.config && data.config.rechargeVisible === true;
+      const pointType = rechargeVisible ? shared.taskPointType(this.data.draft || {}) : shared.POINT_TYPE_BASE;
+      const draft = !rechargeVisible && this.data.draft.rewardPointType === shared.POINT_TYPE_REWARD
+        ? { ...this.data.draft, rewardPointType: shared.POINT_TYPE_BASE }
+        : this.data.draft;
+      this.setData({
+        draft,
+        rechargeVisible,
+        currentPoints: balances.total,
+        currentPointTypePoints: balances[pointType],
+        currentPointTypeLabel: shared.POINT_TYPE_LABELS[pointType]
+      });
+    } catch (error) {
+      // Draft editing remains available when the optional refresh is down.
+    } finally {
+      this.setData({ accountLoading: false });
+    }
   },
 
   handleThemeChange(event) {
@@ -45,13 +88,46 @@ Page({
   handleTaskKindChange(event) {
     const taskKind = event.currentTarget.dataset.kind;
     const nextCategories = taskKind === "wool" ? shared.WOOL_CATEGORY_OPTIONS : shared.CATEGORY_OPTIONS;
-    const nextCategory = taskKind === "wool" ? "优惠券/折扣" : "文本校对";
+    const nextCategory = taskKind === "wool" ? "优惠券/折扣" : "互助";
+    const nextPointType = taskKind === "wool" || !this.data.rechargeVisible
+      ? shared.POINT_TYPE_BASE
+      : (this.data.draft.rewardPointType === shared.POINT_TYPE_REWARD ? shared.POINT_TYPE_REWARD : shared.POINT_TYPE_BASE);
+    const balances = shared.getPointBalances(shared.getUserId());
     this.setData({
       taskKind,
       categories: nextCategories,
       kindCopy: shared.getTaskKindCopy(taskKind),
-      "draft.category": nextCategory
+      "draft.category": nextCategory,
+      "draft.rewardPointType": nextPointType,
+      currentPointTypePoints: balances[nextPointType],
+      currentPointTypeLabel: shared.POINT_TYPE_LABELS[nextPointType],
+      ...(taskKind === "wool" ? { "draft.repeatPolicy": "once" } : {})
     });
+  },
+
+  handleRewardPointTypeChange(event) {
+    if (event.currentTarget.dataset.pointType === shared.POINT_TYPE_REWARD && !this.data.rechargeVisible) {
+      wx.showToast({ title: "充值积分奖励暂未开放", icon: "none" });
+      return;
+    }
+    const rewardPointType = event.currentTarget.dataset.pointType === shared.POINT_TYPE_REWARD
+      ? shared.POINT_TYPE_REWARD
+      : shared.POINT_TYPE_BASE;
+    const balances = shared.getPointBalances(shared.getUserId());
+    this.setData({
+      "draft.rewardPointType": rewardPointType,
+      currentPointTypePoints: balances[rewardPointType],
+      currentPointTypeLabel: shared.POINT_TYPE_LABELS[rewardPointType]
+    });
+  },
+
+  handleRepeatPolicyChange(event) {
+    const repeatPolicy = event.currentTarget.dataset.policy === "daily" ? "daily" : "once";
+    this.setData({ "draft.repeatPolicy": repeatPolicy });
+  },
+
+  handleToggleAdvanced() {
+    this.setData({ advancedOpen: !this.data.advancedOpen });
   },
 
   handleWoolUnlockMode(event) {
@@ -183,23 +259,27 @@ Page({
 
   validateDraft(user, draft = this.data.draft) {
     if (!String(draft.title || "").trim()) return "请填写任务标题";
+    if (draft.rewardPointType === shared.POINT_TYPE_REWARD && !this.data.rechargeVisible) return "充值积分奖励暂未开放";
     if (this.data.taskKind === "miniapp") {
       if (!shared.normalizeTaskLinks(draft.taskLinks).some((link) => link.type === "miniapp")) return "请添加小程序短链接";
+      if (!String(draft.completionCriteria || "").trim()) return "请填写完成标准";
+      if (draft.rewardPointType === shared.POINT_TYPE_REWARD && (!String(draft.quota || "").trim() || Number(draft.quota) < 1)) return "充值积分奖励任务必须填写任务次数";
       return "";
     }
     if (!draft.category) return "请选择任务分类";
     if (!shared.normalizeBlocks(draft.contentBlocks).length) return "请添加任务内容文字段或图片段";
-    if (this.data.taskKind === "ordinary" && !shared.normalizeBlocks(draft.acceptanceBlocks).length) return "请添加验收标准文字段或图片段";
+    if (this.data.taskKind === "ordinary" && !shared.normalizeBlocks(draft.acceptanceBlocks).length) return "请添加完成标准文字段或图片段";
     const reward = this.data.taskKind === "wool" ? 0 : Number(draft.rewardPoints);
-    if (!Number.isFinite(reward) || reward < 0) return "奖励积分请填写 0 或正整数";
-    if (this.data.taskKind !== "wool" && reward < 5) return "奖励积分最低为 5 分";
+    if (!Number.isFinite(reward) || reward < 0) return "任务积分请填写 0 或正整数";
+    if (this.data.taskKind !== "wool" && reward < 5) return "任务积分最低为 5 分";
     if (this.data.taskKind === "wool" && (!/^\d+$/.test(String(draft.woolUnlockFee || "").trim()) || Number(draft.woolUnlockFee) < 0)) return "查看费用请填写 0 或正整数";
     if (String(draft.quota || "").trim() && (!/^\d+$/.test(String(draft.quota).trim()) || Number(draft.quota) < 1)) return "任务次数请填写正整数";
+    if (this.data.taskKind !== "wool" && draft.rewardPointType === shared.POINT_TYPE_REWARD && (!String(draft.quota || "").trim() || Number(draft.quota) < 1)) return "充值积分奖励任务必须填写任务次数";
     if (!user) return "";
     return "";
   },
 
-  handlePublish() {
+  async handlePublish() {
     if (this.data.publishing) return;
     const returnUrl = "/subpackages/my-tools-mutual-help/publish/index";
     const user = shared.requireLogin(returnUrl);
@@ -224,12 +304,15 @@ Page({
       ? shared.buildBlocks(draft.miniDescription, [])
       : shared.normalizeBlocks(draft.contentBlocks);
     const acceptanceCriteriaBlocks = this.data.taskKind === "miniapp"
-      ? [{ type: "text", text: "成功打开目标小程序，停留不少于 3 秒，返回后点击完成任务。反馈文字和图片可选。" }]
+      ? [{ type: "text", text: String(draft.completionCriteria || "").trim() }]
       : (this.data.taskKind === "ordinary" ? shared.normalizeBlocks(draft.acceptanceBlocks) : []);
     const firstTextBlock = contentBlocks.find((block) => block.type === "text");
     const task = {
       id: `local_${Date.now()}_${Math.floor(Math.random() * 10000)}`,
       taskKind: this.data.taskKind,
+      repeatPolicy: this.data.taskKind === "wool"
+        ? "once"
+        : (draft.repeatPolicy === "daily" ? "daily" : "once"),
       title: String(draft.title).trim(),
       category: this.data.taskKind === "miniapp" ? "小程序任务" : draft.category,
       description: this.data.taskKind === "miniapp"
@@ -238,12 +321,13 @@ Page({
       contentBlocks,
       acceptanceCriteriaBlocks,
       taskLinks,
+      rewardPointType: this.data.taskKind === "wool" ? shared.POINT_TYPE_BASE : (draft.rewardPointType === shared.POINT_TYPE_REWARD ? shared.POINT_TYPE_REWARD : shared.POINT_TYPE_BASE),
       shortLink: (taskLinks.find((link) => link.type === "miniapp") || {}).shortLink || "",
       woolPolicy: this.data.taskKind === "wool" ? {
         unlockFeePoints: Number(draft.woolUnlockFee || 0),
         allowTip: Boolean(draft.woolAllowTip)
-      } : null,
-      publisherPoints: shared.getPoints(shared.getUserId(user)),
+      } : {},
+      publisherPoints: shared.getPointsByType(shared.getUserId(user), this.data.taskKind === "wool" ? shared.POINT_TYPE_BASE : draft.rewardPointType),
       rewardPoints,
       executorReward: this.data.taskKind === "miniapp" ? 4 : (this.data.taskKind === "wool" ? 0 : Math.floor(rewardPoints * 0.8)),
       remaining: String(draft.quota || "").trim() ? Number(draft.quota) : null,
@@ -252,15 +336,21 @@ Page({
       status: "published",
       createdAt: new Date().toISOString()
     };
-    const tasks = shared.getTasks();
-    tasks.unshift(task);
-    shared.saveTasks(tasks);
-    shared.recordActivity("published", task, shared.getUserId(user)).catch(() => {});
-    this.setData({ publishing: true }, () => {
+    this.setData({ publishing: true });
+    try {
+      const response = await api.createMutualHelpTask(task);
+      const serverTask = response && response.data && response.data.task ? response.data.task : task;
+      const tasks = shared.getTasks().filter((item) => item.id !== serverTask.id);
+      tasks.unshift(serverTask);
+      shared.saveTasks(tasks);
+      shared.recordActivity("published", serverTask, shared.getUserId(user)).catch(() => {});
       wx.showToast({ title: "任务已发布", icon: "success" });
       setTimeout(() => wx.redirectTo({
-        url: `/subpackages/my-tools-mutual-help/task-manage/detail/index?id=${encodeURIComponent(task.id)}`
+        url: `/subpackages/my-tools-mutual-help/task-manage/detail/index?id=${encodeURIComponent(serverTask.id)}`
       }), 500);
-    });
+    } catch (error) {
+      wx.showToast({ title: String((error && (error.detail || error.message)) || "发布失败，请稍后重试"), icon: "none" });
+      this.setData({ publishing: false });
+    }
   }
 });

@@ -411,3 +411,27 @@
   color: #f97316;
   font-weight: 900;
 }
+/* Typography scale v2: make feedback submission and records readable on mobile. */
+.feedback-page .hero-kicker { font-size: 24rpx; }
+.feedback-page .hero-title { font-size: 40rpx; }
+.feedback-page .hero-sub { font-size: 26rpx; }
+.feedback-page .hero-badge { font-size: 22rpx; }
+.feedback-page .reward-title { font-size: 30rpx; }
+.feedback-page .reward-sub { font-size: 24rpx; }
+.feedback-page .reward-item { font-size: 25rpx; }
+.feedback-page .panel-tabs { font-size: 25rpx; }
+.feedback-page .type-card { font-size: 24rpx; }
+.feedback-page .type-title { font-size: 27rpx; }
+.feedback-page .type-hint { font-size: 23rpx; }
+.feedback-page .type-reward { font-size: 24rpx; }
+.feedback-page .field-label { font-size: 26rpx; }
+.feedback-page .field-input,
+.feedback-page .field-textarea { font-size: 28rpx; }
+.feedback-page .image-add { font-size: 25rpx; }
+.feedback-page .submit-btn { display: flex; align-items: center; justify-content: center; min-height: 72rpx; font-size: 27rpx; }
+.feedback-page .contact-line { font-size: 24rpx; }
+.feedback-page .record-empty { font-size: 25rpx; }
+.feedback-page .record-title { font-size: 27rpx; }
+.feedback-page .record-meta { font-size: 22rpx; }
+.feedback-page .record-status { font-size: 22rpx; }
+.feedback-page .record-content { font-size: 25rpx; }

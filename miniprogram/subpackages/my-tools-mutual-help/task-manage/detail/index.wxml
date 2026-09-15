@@ -1,5 +1,5 @@
 <view class="mutual-page theme-{{theme}}">
-  <custom-nav title="任务管理" showBack="{{true}}" theme="{{theme}}" />
+  <custom-nav title="任务管理" showBack="{{true}}" fallbackUrl="/subpackages/my-tools-mutual-help/task-manage/index" theme="{{theme}}" />
 
   <view class="mutual-content" wx:if="{{task}}">
     <view class="theme-switch-row">
@@ -14,52 +14,55 @@
       <view class="back-line" bindtap="handleBackToManage">‹ 返回我发布的任务</view>
       <view class="manage-detail-status {{task.taskClosed ? 'closed' : ''}}">{{task.statusLabel}}</view>
       <view class="task-detail-title">{{task.title}}</view>
-      <view class="task-detail-meta"><text class="task-kind {{task.taskKind === 'ordinary' ? 'ordinary' : (task.taskKind === 'wool' ? 'wool' : '')}}">{{task.kindLabel}}</text><text wx:if="{{task.taskKind !== 'wool'}}">发布者 -{{task.rewardPoints}} 分/次</text><text wx:else>{{task.woolAccessLabel}}</text><text>{{task.remainingText}}</text></view>
+      <view class="task-detail-meta"><text class="task-kind {{task.taskKind === 'ordinary' ? 'ordinary' : (task.taskKind === 'wool' ? 'wool' : '')}}">{{task.kindLabel}}</text><text wx:if="{{task.taskKind !== 'wool'}}">{{task.rewardPointTypeLabel}} · 发布者 -{{task.rewardPoints}} 分/次</text><text wx:else>{{task.woolAccessLabel}}</text><text>{{task.remainingText}}</text></view>
     </view>
 
     <view class="manage-progress-card">
-      <view class="manage-progress-heading"><view class="detail-label">发布进度</view><text>余额 {{points}} 分</text></view>
-      <view class="manage-metrics">
-        <view class="manage-metric"><text>{{task.taskKind === 'wool' ? '已解锁' : '已完成'}}</text><strong>{{task.taskKind === 'wool' ? task.woolUnlockCount : task.completedCount}}</strong><small>{{task.taskKind === 'wool' ? '查看完整内容' : '已结算次数'}}</small></view>
-        <view wx:if="{{task.taskKind !== 'wool'}}" class="manage-metric pending"><text>待验收</text><strong>{{task.pendingCount}}</strong><small>等待你的判断</small></view>
-        <view wx:else class="manage-metric"><text>评论</text><strong>{{comments.length}}</strong><small>查看者反馈</small></view>
+      <view class="manage-progress-heading"><view class="detail-label">发布进度</view><text>总积分 {{points}} 分 · 基础 {{basePoints}} · 充值 {{rewardPoints}}</text></view>
+      <view wx:if="{{task.taskKind !== 'wool'}}" class="manage-metrics four">
+        <view class="manage-metric"><text>已参与</text><strong>{{task.activitySummary.participatedCount}}</strong><small>打开入口</small></view>
+        <view class="manage-metric pending"><text>已提交</text><strong>{{task.activitySummary.submittedCount}}</strong><small>提交记录</small></view>
+        <view class="manage-metric"><text>已验收</text><strong>{{task.activitySummary.acceptedCount}}</strong><small>通过验收</small></view>
+        <view class="manage-metric"><text>已结算</text><strong>{{task.activitySummary.settledCount}}</strong><small>积分到账</small></view>
+      </view>
+      <view wx:else class="manage-metrics">
+        <view class="manage-metric"><text>已解锁</text><strong>{{task.woolUnlockCount}}</strong><small>查看完整内容</small></view>
+        <view class="manage-metric"><text>评论</text><strong>{{comments.length}}</strong><small>查看者反馈</small></view>
         <view class="manage-metric"><text>剩余</text><strong>{{task.remaining === null ? '不限' : task.remaining}}</strong><small>可领取次数</small></view>
       </view>
     </view>
 
-    <view class="manage-section manage-comment-section">
-      <view class="manage-section-heading"><view class="section-heading">任务评论</view><view class="manage-section-count">{{comments.length}} 条</view></view>
-      <view wx:if="{{pendingReportCount || pendingRefundCount}}" class="manage-review-deadline">待处理：评论举报 {{pendingReportCount}} 条 · 解锁退款 {{pendingRefundCount}} 条</view>
-      <view wx:if="{{comments.length}}" class="manage-comment-list">
-        <view wx:for="{{comments}}" wx:key="id" class="manage-comment-item">
-          <view class="manage-review-item-head"><text>{{item.authorLabel}}{{item.completed ? ' · 已完成' : ''}}</text><text>{{item.createdAtText}}</text></view>
-          <view wx:if="{{item.recommendLabel}}" class="task-comment-badge {{item.recommendChoice}}">{{item.recommendLabel}}</view>
-          <view wx:if="{{item.text}}" class="manage-review-text">{{item.text}}</view>
+    <view class="manage-chat-section">
+      <view class="manage-chat-heading"><view><view class="detail-label">执行者沟通</view><view class="manage-chat-helper">每位执行者单独沟通，彼此不可见</view></view><text>{{chatParticipants.length}} 人</text></view>
+      <view wx:if="{{chatParticipants.length}}" class="manage-chat-list">
+        <view wx:for="{{chatParticipants}}" wx:key="executorUserId" class="manage-chat-row">
+          <image wx:if="{{item.executor.avatarUrl}}" class="manage-chat-avatar" src="{{item.executor.avatarUrl}}" mode="aspectFill" />
+          <view wx:else class="manage-chat-avatar manage-chat-avatar-fallback">{{item.avatarInitial}}</view>
+          <view class="manage-chat-person"><view class="manage-chat-name">{{item.executor.nickname}}</view><view class="manage-chat-last">{{item.lastMessagePreview || (item.submissionCount ? '已提交任务，点此开始沟通' : '已开始参与，点此沟通')}}</view></view>
+          <view wx:if="{{item.unreadCount}}" class="manage-chat-unread">{{item.unreadCount}}</view>
+          <button class="manage-chat-button" data-executor-id="{{item.executorUserId}}" bindtap="handleOpenChat">沟通</button>
         </view>
       </view>
-      <view wx:else class="manage-review-empty">暂时还没有评论</view>
-    </view>
-
-    <view wx:if="{{task.taskKind === 'ordinary'}}" class="manage-section">
-      <view class="manage-section-heading"><view class="section-heading">待我验收</view><view class="manage-section-count">{{task.pendingCount}} 条</view></view>
-      <view class="manage-review-empty" wx:if="{{!task.pendingCount}}">当前还没有待验收提交</view>
-      <view wx:else class="manage-review-list">
-        <view wx:for="{{submissions}}" wx:key="id" class="manage-review-item">
-          <view class="manage-review-item-head"><text>执行者提交</text><text>{{item.submittedAtText}}</text></view>
-          <view wx:if="{{item.text}}" class="manage-review-text">{{item.text}}</view>
-          <view wx:if="{{item.images.length}}" class="manage-review-images">
-            <view wx:for="{{item.images}}" wx:key="*this" class="manage-review-image-wrap">
-              <image class="manage-review-image" src="{{item}}" mode="widthFix" data-url="{{item}}" bindtap="handlePreviewImage" show-menu-by-longpress="true"></image>
-              <button class="save-image-button" data-url="{{item}}" bindtap="handleSaveImage">保存到相册</button>
-            </view>
-          </view>
-          <view class="manage-review-deadline">{{autoApproveDays}} 天未处理将自动通过</view>
-          <button class="manage-approve-button" data-submission-id="{{item.id}}" bindtap="handleApproveSubmission">通过验收 · +{{task.executorReward}} 分</button>
-        </view>
-      </view>
+      <view wx:else class="manage-chat-empty">执行者开始参与任务后，会在这里出现。</view>
     </view>
 
     <view class="task-detail-card manage-rules-card">
+      <view class="detail-section manage-entry-section" wx:if="{{task.taskLinks.length}}">
+        <view class="executor-section-kicker">第一步 · 先做这件事</view>
+        <view class="detail-label">{{task.taskKind === 'wool' ? '使用入口' : '任务入口'}}</view>
+        <view class="detail-helper">{{task.taskKind === 'wool' ? '先检查福利入口，再确认内容。' : '先打开任务入口，再按任务说明和完成标准执行。'}}</view>
+        <view class="task-link-list-detail">
+          <view wx:for="{{task.taskLinks}}" wx:key="id" class="task-link-card">
+            <view class="task-link-icon {{item.type}}">{{item.typeLabel}}</view>
+            <view class="task-link-copy">
+              <view class="task-link-title">{{item.displayTitle}}</view>
+              <view class="task-link-description">{{item.opened ? '已打开，可继续检查任务内容' : item.detailDescription}}</view>
+            </view>
+            <button class="task-link-action {{item.openMode === 'browser' ? 'browser' : ''}} {{item.opened ? 'opened' : ''}}" data-index="{{index}}" bindtap="handleOpenLink">{{item.opened ? '再次打开' : item.actionLabel}}</button>
+          </view>
+        </view>
+      </view>
+
       <view class="detail-section">
         <view class="detail-label">{{task.taskKind === 'wool' ? '羊毛说明' : '任务说明'}}</view>
         <view class="content-blocks">
@@ -74,7 +77,7 @@
       </view>
 
       <view wx:if="{{task.taskKind === 'ordinary'}}" class="detail-section">
-        <view class="detail-label">验收标准</view>
+        <view class="detail-label">完成标准</view>
         <view class="detail-helper">按这里的标准判断执行者提交是否通过</view>
         <view class="content-blocks">
           <block wx:for="{{task.acceptanceCriteriaBlocks}}" wx:key="id">
@@ -86,21 +89,40 @@
           </block>
         </view>
       </view>
+    </view>
 
-      <view class="detail-section" wx:if="{{task.taskLinks.length}}">
-        <view class="detail-label">{{task.taskKind === 'wool' ? '使用入口' : '任务入口'}}</view>
-        <view class="detail-helper">{{task.taskKind === 'wool' ? '检查福利入口是否可用。' : '检查任务入口，执行者会从任务详情进入。'}}</view>
-        <view class="task-link-list-detail">
-          <view wx:for="{{task.taskLinks}}" wx:key="id" class="task-link-card">
-            <view class="task-link-icon {{item.type}}">{{item.typeLabel}}</view>
-            <view class="task-link-copy">
-              <view class="task-link-title">{{item.displayTitle}}</view>
-              <view class="task-link-description">{{item.opened ? '已打开，可继续检查任务内容' : item.detailDescription}}</view>
+    <view wx:if="{{task.taskKind !== 'wool'}}" class="manage-section">
+      <view class="manage-section-heading"><view class="section-heading">参与记录</view><view class="manage-section-count">{{submissions.length}} 条</view></view>
+      <view class="manage-review-empty" wx:if="{{!submissions.length}}">还没有人提交任务，完成任务后会在这里留下记录。</view>
+      <view wx:else class="manage-review-list">
+        <view wx:for="{{submissions}}" wx:key="id" class="manage-review-item">
+          <view class="manage-review-item-head"><text>{{item.executorLabel}} · {{item.statusLabel}}</text><text>{{item.statusAtText}}</text></view>
+          <view wx:if="{{item.text}}" class="manage-review-text">{{item.text}}</view>
+          <view wx:if="{{item.images.length}}" class="manage-review-images">
+            <view wx:for="{{item.images}}" wx:key="*this" class="manage-review-image-wrap">
+              <image class="manage-review-image" src="{{item}}" mode="widthFix" data-url="{{item}}" bindtap="handlePreviewImage" show-menu-by-longpress="true"></image>
+              <button class="save-image-button" data-url="{{item}}" bindtap="handleSaveImage">保存到相册</button>
             </view>
-            <button class="task-link-action {{item.openMode === 'browser' ? 'browser' : ''}} {{item.opened ? 'opened' : ''}}" data-index="{{index}}" bindtap="handleOpenLink">{{item.opened ? '再次打开' : item.actionLabel}}</button>
           </view>
+          <view wx:if="{{item.status === 'submitted'}}" class="manage-review-deadline">{{autoApproveDays}} 天未处理将自动通过</view>
+          <view wx:elif="{{item.rewardSettled}}" class="manage-review-deadline">已结算 · 执行者获得 +{{item.executorReward || task.executorReward}} {{task.rewardPointTypeLabel}}</view>
+          <button wx:if="{{item.status === 'submitted'}}" class="manage-approve-button" data-submission-id="{{item.id}}" bindtap="handleApproveSubmission">通过验收 · +{{task.executorReward}} {{task.rewardPointTypeLabel}}</button>
+          <button wx:if="{{item.status === 'submitted'}}" class="manage-reject-button" data-submission-id="{{item.id}}" bindtap="handleRejectSubmission">退回提交</button>
         </view>
       </view>
+    </view>
+
+    <view class="manage-section manage-comment-section">
+      <view class="manage-section-heading"><view class="section-heading">任务评论</view><view class="manage-section-count">{{comments.length}} 条</view></view>
+      <view wx:if="{{pendingReportCount || pendingRefundCount}}" class="manage-review-deadline">待处理：评论举报 {{pendingReportCount}} 条 · 解锁退款 {{pendingRefundCount}} 条</view>
+      <view wx:if="{{comments.length}}" class="manage-comment-list">
+        <view wx:for="{{comments}}" wx:key="id" class="manage-comment-item">
+          <view class="manage-review-item-head"><text>{{item.authorLabel}}{{item.completed ? ' · 已完成' : ''}}</text><text>{{item.createdAtText}}</text></view>
+          <view wx:if="{{item.recommendLabel}}" class="task-comment-badge {{item.recommendChoice}}">{{item.recommendLabel}}</view>
+          <view wx:if="{{item.text}}" class="manage-review-text">{{item.text}}</view>
+        </view>
+      </view>
+      <view wx:else class="manage-review-empty">暂时还没有评论</view>
     </view>
 
     <view class="status-note">{{statusText}}</view>

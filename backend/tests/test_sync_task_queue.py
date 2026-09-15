@@ -29,6 +29,31 @@ def test_sync_task_queue_persists_task_and_logs_success(tmp_path: Path):
     asyncio.run(run())
 
 
+def test_sync_task_queue_enqueue_once_deduplicates_retried_callbacks(tmp_path: Path):
+    repo = JsonRepository(tmp_path / "state.json")
+    queue = SyncTaskQueue(repo, auto_schedule=False)
+
+    first, created = queue.enqueue_once(
+        "automation-completion-email",
+        {"report": {"runId": "run-001"}},
+        idempotency_key="device-01:run-001",
+        max_attempts=5,
+    )
+    duplicate, duplicate_created = queue.enqueue_once(
+        "automation-completion-email",
+        {"report": {"runId": "run-001", "changed": True}},
+        idempotency_key="device-01:run-001",
+        max_attempts=5,
+    )
+
+    assert created is True
+    assert duplicate_created is False
+    assert duplicate.id == first.id
+    assert duplicate.payload == {"report": {"runId": "run-001"}}
+    assert len(repo.list_sync_tasks()) == 1
+    assert repo.list_sync_task_logs(first.id)[0].payload == {"taskName": "automation-completion-email"}
+
+
 def test_sync_task_queue_retries_failed_task(tmp_path: Path):
     async def run():
         repo = JsonRepository(tmp_path / "state.json")

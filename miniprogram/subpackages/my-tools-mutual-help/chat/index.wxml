@@ -1,0 +1,43 @@
+<view class="mutual-page chat-page theme-{{theme}}">
+  <custom-nav title="任务沟通" showBack="{{true}}" fallbackUrl="/subpackages/my-tools-mutual-help/mine/index" theme="{{theme}}" />
+
+  <view class="chat-heading">
+    <view class="chat-heading-title">{{peer.nickname || '任务沟通'}}</view>
+    <view class="chat-heading-subtitle">{{taskTitle}} · 仅你与发布者可见</view>
+  </view>
+
+  <scroll-view class="chat-scroll" scroll-y scroll-with-animation scroll-into-view="{{scrollIntoView}}" enable-back-to-top>
+    <view wx:if="{{loading}}" class="chat-state">正在连接沟通…</view>
+    <view wx:elif="{{!messages.length}}" class="chat-empty">
+      <view class="chat-empty-icon">✦</view>
+      <view class="chat-empty-title">沟通从这里开始</view>
+      <view class="chat-empty-copy">可以发送文字、任务截图，或任务中的小程序入口。</view>
+    </view>
+    <view wx:for="{{messages}}" wx:key="id" id="{{item.renderId}}" class="chat-message {{item.isMine ? 'mine' : 'peer'}}">
+      <image wx:if="{{item.isMine ? currentUser.avatarUrl : peer.avatarUrl}}" class="chat-avatar" src="{{item.isMine ? currentUser.avatarUrl : peer.avatarUrl}}" mode="aspectFill" />
+      <view wx:else class="chat-avatar chat-avatar-fallback">{{item.isMine ? '我' : '对方'}}</view>
+      <view class="chat-message-body">
+        <view class="chat-name">{{item.isMine ? (currentUser.nickname || '我') : (peer.nickname || '发布者')}}</view>
+        <view wx:if="{{item.messageType === 'text'}}" class="chat-bubble {{item.isMine ? 'mine' : 'peer'}}">{{item.text}}</view>
+        <image wx:elif="{{item.messageType === 'image'}}" class="chat-image" src="{{item.imageUrl}}" mode="widthFix" show-menu-by-longpress="true" data-url="{{item.imageUrl}}" bindtap="handlePreviewImage" />
+        <view wx:elif="{{item.messageType === 'mini_program'}}" class="chat-mini-card" data-short-link="{{item.miniProgram.shortLink}}" bindtap="handleOpenMiniProgram">
+          <view class="chat-mini-icon">小程序</view>
+          <view class="chat-mini-copy"><view class="chat-mini-title">{{item.miniProgram.title || '任务小程序'}}</view><view class="chat-mini-subtitle">点击打开</view></view>
+          <view class="chat-mini-arrow">›</view>
+        </view>
+        <view class="chat-time">{{item.timeText}}</view>
+      </view>
+    </view>
+    <view class="chat-bottom-space" />
+  </scroll-view>
+
+  <view wx:if="{{attachmentOpen}}" class="chat-attachment-panel">
+    <view class="chat-attachment-option" bindtap="handleChooseImage"><view class="chat-attachment-icon image">▧</view><text>发送截图</text></view>
+    <view class="chat-attachment-option" bindtap="handleChooseMiniProgram"><view class="chat-attachment-icon mini">⌁</view><text>小程序卡片</text></view>
+  </view>
+  <view class="chat-composer">
+    <view class="chat-composer-plus {{attachmentOpen ? 'active' : ''}}" bindtap="handleToggleAttachments">{{attachmentOpen ? '×' : '+'}}</view>
+    <input class="chat-input" value="{{inputText}}" maxlength="2000" confirm-type="send" placeholder="输入消息…" bindinput="handleInput" bindconfirm="handleSendText" />
+    <button class="chat-send-button" bindtap="handleSendText" disabled="{{sending || !inputText}}">{{sending ? '…' : '发送'}}</button>
+  </view>
+</view>

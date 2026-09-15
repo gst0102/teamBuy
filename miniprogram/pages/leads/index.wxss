@@ -692,3 +692,38 @@
   color: #334155;
   background: #ffffff;
 }
+/* Typography scale v2: prioritize lead urgency, source and follow-up actions. */
+.page-shell .hero-title { font-size: 40rpx; }
+.page-shell .hero-subtitle { font-size: 26rpx; }
+.page-shell .stat-value { font-size: 38rpx; }
+.page-shell .stat-label { font-size: 23rpx; }
+.page-shell .reminder-label { font-size: 24rpx; }
+.page-shell .reminder-value { font-size: 34rpx; }
+.page-shell .reminder-action { font-size: 24rpx; }
+.page-shell .quick-title { font-size: 28rpx; }
+.page-shell .quick-sub { font-size: 23rpx; }
+.page-shell .quick-pill { font-size: 22rpx; }
+.page-shell .drill-title { font-size: 29rpx; }
+.page-shell .drill-sub { font-size: 23rpx; }
+.page-shell .drill-more { font-size: 24rpx; }
+.page-shell .priority-title { font-size: 29rpx; }
+.page-shell .priority-sub { font-size: 24rpx; }
+.page-shell .priority-action { font-size: 24rpx; }
+.page-shell .source-group-title { font-size: 27rpx; }
+.page-shell .source-group-sub { font-size: 23rpx; }
+.page-shell .source-group-count { font-size: 23rpx; }
+.page-shell .viewer-filter,
+.page-shell .schedule-filter,
+.page-shell .active-view-reset { font-size: 24rpx; }
+.page-shell .lead-card { font-size: 25rpx; }
+.page-shell .lead-status { font-size: 23rpx; }
+.page-shell .due-badge { font-size: 21rpx; }
+.page-shell .lead-source,
+.page-shell .source-label { font-size: 23rpx; }
+.page-shell .source-title { font-size: 27rpx; }
+.page-shell .source-link { font-size: 23rpx; }
+.page-shell .call-action,
+.page-shell .wechat { display: flex; align-items: center; justify-content: center; min-height: 64rpx; font-size: 24rpx; }
+.page-shell .lead-brief { font-size: 24rpx; }
+.page-shell .card-actions button { display: flex; align-items: center; justify-content: center; min-height: 66rpx; font-size: 24rpx; }
+.page-shell .empty-state { font-size: 25rpx; }

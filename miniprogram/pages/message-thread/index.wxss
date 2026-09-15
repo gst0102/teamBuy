@@ -210,3 +210,14 @@
   color: #94a3b8;
   text-align: center;
 }
+/* Typography scale v2: make message context and composer comfortable to use. */
+.page .home-link,
+.page .radar-link { display: flex; align-items: center; justify-content: center; min-height: 64rpx; font-size: 24rpx; }
+.page .thread-head .title { font-size: 32rpx; }
+.page .thread-head .subtitle { font-size: 24rpx; }
+.page .empty { font-size: 25rpx; }
+.page .sender-name { font-size: 23rpx; }
+.page .bubble { font-size: 27rpx; line-height: 1.55; }
+.page .bubble view { font-size: 21rpx; }
+.page .composer input { font-size: 28rpx; }
+.page .composer button { display: flex; align-items: center; justify-content: center; min-height: 68rpx; font-size: 26rpx; }

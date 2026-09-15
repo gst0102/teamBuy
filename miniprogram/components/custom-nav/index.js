@@ -28,6 +28,10 @@ Component({
       type: Boolean,
       value: false
     },
+    fallbackUrl: {
+      type: String,
+      value: ""
+    },
     rightText: {
       type: String,
       value: ""
@@ -55,8 +59,25 @@ Component({
   },
   methods: {
     handleBack() {
-      if (!this.data.showBack || !this.data.canGoBack) return;
-      wx.navigateBack();
+      if (!this.data.showBack) return;
+      if (this.data.canGoBack) {
+        wx.navigateBack();
+        return;
+      }
+
+      if (!this.data.fallbackUrl) return;
+      const tabPages = [
+        "/pages/home/index",
+        "/pages/library/index",
+        "/pages/profile/index",
+        "/pages/visits/index"
+      ];
+      const target = this.data.fallbackUrl.split("?")[0];
+      if (tabPages.includes(target)) {
+        wx.switchTab({ url: this.data.fallbackUrl });
+        return;
+      }
+      wx.redirectTo({ url: this.data.fallbackUrl });
     }
   }
 });

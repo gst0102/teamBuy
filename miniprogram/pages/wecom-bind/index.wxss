@@ -71,3 +71,6 @@ button {
   color: #3974c7;
   background: #edf4ff;
 }
+/* Typography scale v2: make the binding handoff clear. */
+.page .status { font-size: 30rpx; }
+.page .message { font-size: 26rpx; line-height: 1.6; }

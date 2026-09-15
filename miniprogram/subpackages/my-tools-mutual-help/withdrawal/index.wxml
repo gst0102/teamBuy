@@ -1,0 +1,65 @@
+<view class="withdrawal-page">
+  <custom-nav title="提现积分" showBack="{{true}}" fallbackUrl="/subpackages/my-tools-mutual-help/account/index" />
+
+  <view class="withdrawal-content">
+    <block wx:if="{{rechargeVisible}}">
+    <view class="withdrawal-intro">
+      <view class="eyebrow">互帮互助</view>
+      <view class="title">提现积分</view>
+      <view class="subtitle">充值积分任务验收到账，审核通过后转入微信零钱。</view>
+    </view>
+
+    <view class="balance-card">
+      <view class="balance-label">可提现充值积分</view>
+      <view class="balance-value">{{balances.reward}} <text>分</text></view>
+      <view class="balance-tip">1 元 = {{rules.pointsPerYuan}} 充值积分 · 当前可折合 ¥{{calculation.grossYuan}}</view>
+    </view>
+
+    <view class="form-card">
+      <view class="section-title">提现数量</view>
+      <view class="amount-row">
+        <input class="amount-input" type="number" value="{{withdrawalPoints}}" bindinput="handleInput" placeholder="请输入充值积分数量" />
+        <view class="all-button" bindtap="handleAll">全部</view>
+      </view>
+      <view class="form-hint">最低 {{rules.minimumPoints}} 分，每天最多提交 1 笔</view>
+
+      <view class="calculation-card">
+        <view><text>提现金额</text><text>¥{{calculation.grossYuan}}</text></view>
+        <view><text>手续费（{{rules.feePercent}}%）</text><text>− ¥{{calculation.feeYuan}}</text></view>
+        <view class="calculation-total"><text>预计到账</text><text>¥{{calculation.amountYuan}}</text></view>
+      </view>
+
+      <view wx:if="{{!withdrawalVisible || !withdrawalEnabled}}" class="closed-card">
+        <view class="closed-title">提现入口暂未开放</view>
+        <view class="closed-copy">充值积分仍可用于发布充值积分奖励任务。</view>
+      </view>
+      <view class="status-text">{{statusText}}</view>
+      <button class="submit-button" loading="{{submitting}}" disabled="{{submitting || !rechargeVisible || !withdrawalEnabled || !withdrawalVisible}}" bindtap="handleSubmit">提交提现申请</button>
+      <view class="submit-note">申请提交后会冻结对应充值积分。审核拒绝、转账失败或撤销时，积分会退回。</view>
+    </view>
+
+    <view wx:if="{{withdrawalVisible}}" class="rules-card">
+      <view class="section-title">提现说明</view>
+      <view class="rule-row"><text class="rule-mark">兑</text><view><view class="rule-title">提现范围</view><view class="rule-copy">{{rules.accountScopeText || '仅充值积分和充值积分任务奖励可提现；基础积分不可提现。'}}</view></view></view>
+      <view class="rule-row"><text class="rule-mark">额</text><view><view class="rule-title">兑换与最低金额</view><view class="rule-copy">{{rules.conversionText || '10 充值积分 = 1 元。'}}{{rules.minimumText || '单笔最低提现 100 充值积分。'}}</view></view></view>
+      <view class="rule-row"><text class="rule-mark">费</text><view><view class="rule-title">手续费</view><view class="rule-copy">{{rules.feeText || '提现手续费为提现金额的 20%。'}}</view></view></view>
+      <view class="rule-row"><text class="rule-mark">次</text><view><view class="rule-title">申请次数与时间</view><view class="rule-copy">{{rules.withdrawalWindowText || '每日均可提交。'}}{{rules.dailyLimitText || '每日最多提交 1 笔。'}}</view></view></view>
+      <view class="rule-row"><text class="rule-mark">审</text><view><view class="rule-title">审核与到账</view><view class="rule-copy">{{rules.reviewTimeText || '提交后进入 PC 管理员审核。'}}{{rules.arrivalTimeText || '到账时间以微信商户转账结果为准。'}}</view></view></view>
+      <view class="rule-row last"><text class="rule-mark">退</text><view><view class="rule-title">失败与撤销</view><view class="rule-copy">{{rules.failureText || '审核拒绝、转账失败或撤销时，冻结积分退回。'}}</view></view></view>
+    </view>
+
+    <view class="section-title recent-title">最近申请</view>
+    <view wx:if="{{withdrawals.length}}" class="withdrawal-list">
+      <view wx:for="{{withdrawals}}" wx:key="id" class="withdrawal-item">
+        <view><view class="withdrawal-points">{{item.points}} 分</view><view class="withdrawal-time">{{item.createdAt}}</view></view>
+        <view class="withdrawal-right"><view class="withdrawal-amount">¥{{item.amountYuan}}</view><view class="withdrawal-status">{{item.displayStatus || item.status}}</view></view>
+      </view>
+    </view>
+    <view wx:else class="empty-card">还没有提现申请</view>
+    </block>
+    <view wx:else class="closed-card withdrawal-closed-page">
+      <view class="closed-title">提现积分入口暂未开放</view>
+      <view class="closed-copy">当前未开放充值积分展示，提现功能暂不可用。</view>
+    </view>
+  </view>
+</view>

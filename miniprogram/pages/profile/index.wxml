@@ -74,10 +74,17 @@
           <view class="tool-item-icon mutual">互</view>
           <text class="tool-item-title">互帮互助</text>
         </view>
-        <view class="tool-item disabled" bindtap="handleOpenUnavailableTool">
+        <view class="tool-item" bindtap="handleOpenWechatTools">
           <view class="tool-item-icon groups">群</view>
           <text class="tool-item-title">微信群工具</text>
-          <text class="tool-item-status">即将上线</text>
+        </view>
+        <view class="tool-item" bindtap="handleOpenBusinessOpportunity">
+          <view class="tool-item-icon opportunity">商</view>
+          <text class="tool-item-title">商机合作</text>
+        </view>
+        <view class="tool-item" bindtap="handleOpenMyAccount">
+          <view class="tool-item-icon account">账</view>
+          <text class="tool-item-title">我的账户</text>
         </view>
       </view>
     </view>
@@ -227,13 +234,14 @@
     <view class="resource-rule-modal" catchtap="noop">
       <view class="rule-modal-title">积分规则</view>
       <view class="rule-modal-row"><text>查看群资源</text><strong>-30</strong></view>
-      <view class="rule-modal-row"><text>发布群</text><strong>冻结 +20</strong></view>
-      <view class="rule-modal-row"><text>冻结积分</text><strong>确认可进后到账</strong></view>
+      <view class="rule-modal-row"><text>发布有效群资源</text><strong>待确认 +20</strong></view>
+      <view class="rule-modal-row"><text>每日新发布</text><strong>最多 1 个</strong></view>
+      <view class="rule-modal-row"><text>累计发布奖励</text><strong>最多 100 分</strong></view>
+      <view class="rule-modal-row"><text>更新或自然到期</text><strong>不奖励不扣分</strong></view>
       <view class="rule-modal-row"><text>企业查询</text><strong>-5/项</strong></view>
       <view class="rule-modal-row"><text>24 小时缓存</text><strong>不重复扣</strong></view>
       <button class="editor-primary rule-modal-btn" bindtap="handleCloseResourceRules">知道了</button>
     </view>
   </view>
 
-  <canvas canvas-id="profileBusinessCardShareCanvas" class="profile-business-card-share-canvas"></canvas>
 </view>

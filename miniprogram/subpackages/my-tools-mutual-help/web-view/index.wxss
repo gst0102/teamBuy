@@ -2,3 +2,57 @@ page {
   min-height: 100vh;
   background: #f4f8fc;
 }
+
+.web-view-page {
+  min-height: 100vh;
+  background: #f4f8fc;
+}
+
+web-view {
+  display: block;
+  width: 100%;
+  height: calc(100vh - 176rpx);
+}
+
+.web-view-fallback {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 520rpx;
+  padding: 48rpx 36rpx;
+  box-sizing: border-box;
+  text-align: center;
+}
+
+.web-view-fallback-title {
+  color: #2e4052;
+  font-size: 34rpx;
+  font-weight: 900;
+}
+
+.web-view-fallback-copy {
+  margin-top: 18rpx;
+  color: #71859a;
+  font-size: 25rpx;
+  line-height: 1.55;
+}
+
+.web-view-fallback-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 300rpx;
+  height: 76rpx;
+  min-height: 76rpx;
+  margin: 28rpx 0 0;
+  padding: 0;
+  border: 0;
+  border-radius: 999rpx;
+  background: #2f7ddd;
+  color: #ffffff;
+  font-size: 25rpx;
+  font-weight: 900;
+  line-height: 1;
+  box-sizing: border-box;
+}

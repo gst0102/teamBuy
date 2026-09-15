@@ -125,3 +125,48 @@ def test_points_core_transfer_is_atomic_and_idempotent():
     assert state.mutual_point_accounts[0].balance == 95
     assert state.mutual_point_accounts[1].balance == 5
     assert len(state.mutual_point_ledgers) == 3
+
+
+def test_points_core_keeps_base_and_reward_ledgers_separate():
+    state = AppState()
+    core = PointsCoreService()
+    core.ensure_account(state, "user-a", point_type="base", initial_points=100)
+    core.ensure_account(state, "user-a", point_type="reward", initial_points=0)
+
+    base = core.consume(
+        state,
+        "user-a",
+        5,
+        reason="基础任务发布",
+        idempotency_key="task:base-1:cost",
+        point_type="base",
+    )
+    reward = core.grant(
+        state,
+        "user-a",
+        20,
+        reason="奖励任务完成",
+        idempotency_key="task:reward-1:reward",
+        point_type="reward",
+    )
+    repeated_base = core.consume(
+        state,
+        "user-a",
+        5,
+        reason="重复基础任务发布",
+        idempotency_key="task:base-1:cost",
+        point_type="base",
+    )
+
+    assert base["account"].balance == 95
+    assert reward["account"].balance == 20
+    assert repeated_base["duplicate"] is True
+    assert {(item.pointType, item.balance) for item in state.mutual_point_accounts} == {("base", 95), ("reward", 20)}
+    assert {item.pointType for item in state.mutual_point_ledgers} == {"base", "reward"}
+    assert core.list_ledgers(state, "user-a", point_type="reward")[0].pointsDelta == 20
+
+
+def test_points_core_rejects_unknown_point_type():
+    with pytest.raises(HTTPException) as exc_info:
+        PointsCoreService().ensure_account(AppState(), "user-a", point_type="cash")
+    assert exc_info.value.status_code == 400

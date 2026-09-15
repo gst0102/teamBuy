@@ -1,7 +1,10 @@
 const api = require("../../services/api");
 const {
+  BUSINESS_CARD_SHARE_IMAGE_VARIANT,
   buildBusinessCardShareSource,
-  generateUnifiedShareCardImage
+  buildBusinessCardShareTitle,
+  generateUnifiedShareCardImage,
+  truncateShareTitle
 } = require("../../utils/business-card-share");
 const {
   cleanImagePrimaryText,
@@ -10,12 +13,12 @@ const {
 } = require("../../utils/note-display");
 
 const SNAPSHOT_STATUS_READY = "ready";
-// v10 uses one fixed 5:4 JPG contract with two non-business presentations:
-// image-first when a real cover exists, and info-first when it does not. The
-// snapshot is exported and persisted before native sharing is enabled, so a
-// missing imageUrl can never fall through to a library-page screenshot.
-const SHARE_CARD_STYLE_VERSION = "share_card_v10";
-const SHARE_CARD_TEMPLATE_REVISION = "share_template_business_collection_v4";
+// Showcase cards still use the existing client-rendered contract. Note cards
+// use a new version so an old Canvas snapshot can never be mistaken for the
+// server-rendered image after this migration.
+const SHARE_CARD_STYLE_VERSION = "share_card_v12";
+const NOTE_SHARE_CARD_STYLE_VERSION = "share_card_backend_v8";
+const SHARE_CARD_TEMPLATE_REVISION = "share_template_business_collection_v6";
 const shareSnapshotInFlight = {};
 const shareSnapshotMemory = {};
 const shareSnapshotFailures = {};
@@ -44,7 +47,7 @@ function cleanShareText(value, fallback = "") {
 
 function buildShareCardTitle(title, fallback = "资料整理助手") {
   const cleanTitle = cleanShareText(title, fallback);
-  return cleanTitle.includes("｜") ? cleanTitle : `${cleanTitle}｜点开查看完整资料`;
+  return truncateShareTitle(cleanTitle.includes("｜") ? cleanTitle : `${cleanTitle}｜点开查看完整资料`);
 }
 
 function normalizeShareCardSource(source = {}) {
@@ -63,6 +66,8 @@ function normalizeShareCardSource(source = {}) {
       }))
       .filter((item) => item.type === "image" ? Boolean(item.url) : Boolean(item.text))
     : [];
+  const layoutId = cleanShareText(source.layoutId || source.kind, "text_info");
+  const defaultFooter = layoutId === "business_card" ? "点击查看完整名片" : SHARE_CARD_FOOTER;
   return {
     title: cleanShareText(source.title, "资料整理助手"),
     // Do not inject a second “open the mini program” CTA into the JPG. The
@@ -75,13 +80,19 @@ function normalizeShareCardSource(source = {}) {
     // page screenshot when a snapshot is missing.
     path: cleanShareText(source.path),
     shareTargetLabel: cleanShareText(source.shareTargetLabel || source.badge, "资料"),
-    layoutId: cleanShareText(source.layoutId || source.kind, "text_info"),
+    layoutId,
     templateKind: cleanShareText(source.templateKind),
     marketingLine: cleanShareText(source.marketingLine),
+    workflowSteps: (Array.isArray(source.workflowSteps) ? source.workflowSteps : [])
+      .map((item) => cleanShareText(item))
+      .filter(Boolean)
+      .slice(0, 3),
     facts,
+    rewardText: cleanShareText(source.rewardText),
+    trustLine: cleanShareText(source.trustLine),
     blocks,
     primaryImageUrl: cleanShareText(source.primaryImageUrl || source.coverUrl),
-    footer: cleanShareText(source.footer, "资料整理助手 · 点击查看完整资料")
+    footer: cleanShareText(source.footer, defaultFooter)
   };
 }
 
@@ -278,7 +289,7 @@ function shareCardBadge(kind) {
     product: "商品",
     service_offer: "服务方案",
     business_card: "电子名片",
-    text_note: "文字资料"
+    text_note: "普通资料"
   }[kind] || "资料";
 }
 
@@ -348,13 +359,6 @@ function normalizePropertyShareData(note = {}, data = {}) {
   };
 }
 
-function formatPropertySharePrice(value, listingMode = "") {
-  const text = String(value || "").trim();
-  if (!text) return "";
-  if (/元|万|万元|每月|\/月|¥|￥/.test(text)) return text;
-  return `${text}${["sale", "sell", "出售"].includes(String(listingMode || "").trim()) ? "万元" : "元/月"}`;
-}
-
 function formatProductSharePrice(value) {
   const text = String(value || "").trim();
   if (!text || /元|万|¥|￥/.test(text)) return text;
@@ -411,22 +415,22 @@ function buildNoteShareTitle(note = {}, user = {}) {
   const plan = buildNoteSharePlan(note, user);
   const source = plan.source || {};
   if (plan.kind === "business_card") {
-    return source.title || "电子名片";
+    return buildBusinessCardShareTitle(source.businessCard || source);
+  }
+  if (plan.kind === "image_ocr") {
+    return truncateShareTitle(`图片资料｜${source.title || "图片资料"}`);
   }
   if (plan.kind === "property") {
     const property = source.propertyData || {};
-    const details = [
-      formatPropertySharePrice(property.price, property.listingMode),
-      property.layout,
-      property.area ? `${property.area}㎡` : ""
-    ].filter(Boolean);
-    return [property.community || source.title || "房源资料", details.join(" · ")].filter(Boolean).join("\n");
+    return truncateShareTitle(`房源资料｜${property.community || source.title || "房源资料"}`);
   }
   if (plan.kind === "product") {
-    const price = String((source.facts || [])[0] || "").trim();
-    return [price, source.title || "商品资料"].filter(Boolean).join(" ");
+    return truncateShareTitle(`电商资料｜${source.title || "商品资料"}`);
   }
-  return source.title || note.title || "资料详情";
+  if (plan.kind === "text_note") {
+    return truncateShareTitle(`普通资料｜${source.title || note.title || "资料详情"}`);
+  }
+  return truncateShareTitle(source.title || note.title || "资料详情");
 }
 
 function buildNoteContentBlocks(note = {}) {
@@ -510,6 +514,7 @@ function buildNoteSharePlan(note = {}, user = {}) {
       ...source,
       ...card,
       layoutId: "business_card",
+      shareImageVariant: BUSINESS_CARD_SHARE_IMAGE_VARIANT,
       businessCard: card,
       title: card.name || note.title || "电子名片",
       blocks: businessText ? [{ id: "business_summary", type: "text", text: businessText, sortOrder: 0 }] : [],
@@ -618,10 +623,10 @@ function buildNoteSharePlan(note = {}, user = {}) {
     source.primaryImageUrl = getNoteSharePrimaryImage(note, data, source, blocks);
   }
 
-  const styleId = SHARE_CARD_STYLE_VERSION;
+  const styleId = NOTE_SHARE_CARD_STYLE_VERSION;
   const fingerprint = createShareSnapshotFingerprint("note", noteId, sourceRevision, styleId, {
     ...source,
-    shareCardStyleVersion: SHARE_CARD_STYLE_VERSION
+    shareCardStyleVersion: styleId
   });
   return {
     entity: { ...note, id: noteId, revision: note.revision || 0, visibilityConfig: config },
@@ -635,7 +640,11 @@ function buildNoteSharePlan(note = {}, user = {}) {
 
 function isCurrentNoteShareSnapshot(note = {}, snapshot = {}, user = {}) {
   const plan = buildNoteSharePlan(note, user);
-  return isShareSnapshotReady(snapshot, plan.sourceRevision, plan.fingerprint)
+  return Boolean(snapshot)
+    && snapshot.renderer === "backend"
+    && snapshot.status === SNAPSHOT_STATUS_READY
+    && isShareImageUrl(snapshot.url)
+    && String(snapshot.sourceRevision || "") === String(plan.sourceRevision || "")
     && String(snapshot.styleId || "") === plan.styleId;
 }
 
@@ -654,8 +663,13 @@ function getNoteShareSnapshotState(note = {}, ownerUserId = "", user = {}) {
   const plan = buildNoteSharePlan(note, user);
   const snapshot = getNoteShareSnapshot(note);
   const requestKey = shareSnapshotRequestKey("note", plan.entity.id, ownerUserId, plan.sourceRevision, plan.styleId, plan.fingerprint);
-  if (isShareSnapshotReady(snapshot, plan.sourceRevision, plan.fingerprint) && String(snapshot.styleId || "") === plan.styleId) {
-    return { status: "ready", snapshot, ...plan };
+  if (isCurrentNoteShareSnapshot(plan.entity, snapshot, user)) {
+    return {
+      ...plan,
+      status: "ready",
+      snapshot,
+      fingerprint: String(snapshot.fingerprint || plan.fingerprint)
+    };
   }
   if (shareSnapshotInFlight[requestKey]) return { status: "preparing", snapshot, ...plan };
   const failure = shareSnapshotFailures[requestKey];
@@ -665,27 +679,50 @@ function getNoteShareSnapshotState(note = {}, ownerUserId = "", user = {}) {
   return { status: snapshot ? "stale" : "missing", snapshot, ...plan };
 }
 
-async function prepareNoteShareSnapshot({ page, canvasId, note, ownerUserId, user = {} }) {
+async function prepareNoteShareSnapshot({ note, ownerUserId, user = {} }) {
   const plan = buildNoteSharePlan(note, user);
   const requestKey = shareSnapshotRequestKey("note", plan.entity.id, ownerUserId, plan.sourceRevision, plan.styleId, plan.fingerprint);
+  const current = getNoteShareSnapshot(note);
+  if (isCurrentNoteShareSnapshot(plan.entity, current, user)) {
+    const result = {
+      ...plan,
+      snapshot: current,
+      fingerprint: String(current.fingerprint || plan.fingerprint),
+      entity: note,
+      reused: true
+    };
+    rememberSnapshot(requestKey, result);
+    return result;
+  }
+  if (shareSnapshotInFlight[requestKey]) return shareSnapshotInFlight[requestKey];
   try {
-    const result = await ensureShareSnapshot({
-      entityType: "note",
-      entity: plan.entity,
+    const request = api.prepareNoteShareSnapshot(plan.entity.id, {
       ownerUserId,
-      styleId: plan.styleId,
+      sourceRevision: plan.sourceRevision,
       fingerprint: plan.fingerprint,
-      generate: () => {
-        const options = { upload: true, ownerUserId };
-        return generateUnifiedShareCardImage(page, canvasId, plan.source, options);
+      styleId: plan.styleId
+    }).then((response) => {
+      const savedEntity = response && response.data ? response.data : plan.entity;
+      const snapshot = getNoteShareSnapshot(savedEntity);
+      if (!isCurrentNoteShareSnapshot(savedEntity, snapshot, user) || !String(snapshot.fingerprint || "").trim()) {
+        throw new Error("server share snapshot returned an unusable snapshot");
       }
+      const result = {
+        ...plan,
+        snapshot,
+        fingerprint: String(snapshot.fingerprint || plan.fingerprint),
+        entity: savedEntity,
+        reused: false
+      };
+      rememberSnapshot(requestKey, result);
+      return result;
+    }).finally(() => {
+      delete shareSnapshotInFlight[requestKey];
     });
+    shareSnapshotInFlight[requestKey] = request;
+    const result = await request;
     delete shareSnapshotFailures[requestKey];
-    // Keep the entity returned by the save API.  It contains the persisted
-    // snapshot and must not be replaced by the pre-generation plan entity;
-    // otherwise the page can show the uploaded URL while its local state
-    // still believes that no snapshot was saved.
-    return { ...plan, ...result };
+    return result;
   } catch (error) {
     shareSnapshotFailures[requestKey] = { failedAt: Date.now(), error };
     throw error;
@@ -711,7 +748,7 @@ function buildShareMessage({ title, path, snapshot, sourceRevision, fingerprint,
   const targetPath = String(path || "").trim();
   if (!targetPath || targetPath.indexOf("/pages/library/index") === 0) return null;
   return {
-    title: title || "资料详情",
+    title: truncateShareTitle(title || "资料详情"),
     path: targetPath,
     imageUrl: snapshot.url
   };
@@ -819,6 +856,7 @@ async function ensureShareSnapshot({
 module.exports = {
   SHARE_CARD_CANVAS_ID,
   SHARE_CARD_STYLE_VERSION,
+  NOTE_SHARE_CARD_STYLE_VERSION,
   SHARE_CARD_TEMPLATE_REVISION,
   buildShareCardMessage,
   buildShareCardTitle,

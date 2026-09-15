@@ -1,0 +1,98 @@
+<view class="page-shell opportunity-page">
+  <custom-nav title="商机合作" showBack="{{true}}" fallbackUrl="/pages/profile/index" />
+
+  <view class="opportunity-hero">
+    <view class="hero-orb orb-one"></view>
+    <view class="hero-orb orb-two"></view>
+    <view class="hero-publish-entry" bindtap="handleOpenPublishSheet"><text>＋</text> 发布合作信息</view>
+    <view class="hero-copy">
+      <view class="hero-kicker">BUSINESS CONNECTION</view>
+      <view class="hero-title">让对的人相遇，<br />让合作自然发生。</view>
+      <view class="hero-sub">从一张名片开始，看见能力，也表达你的需求。</view>
+    </view>
+    <block wx:if="{{walletBalance !== null}}">
+      <view class="hero-divider"></view>
+      <view class="hero-points"><text>{{walletBalance}}</text><view>我的可用积分</view></view>
+    </block>
+  </view>
+  <view class="hero-tip-panel"><view class="hero-tip"><view class="hero-tip-mark">!</view><view class="hero-tip-copy"><view>温馨提示：</view><text>合作有风险，建议多线下交流、充分了解后再决定，谨慎为上。</text></view></view></view>
+
+  <view class="opportunity-tabs">
+    <view wx:for="{{tabs}}" wx:key="key" class="opportunity-tab {{activeTab === item.key ? 'active' : ''}}" data-key="{{item.key}}" bindtap="handleTabTap">
+      <view>{{item.label}}</view><text>{{item.note}}</text>
+    </view>
+  </view>
+
+  <block wx:if="{{activeTab !== 'mine'}}">
+    <view class="search-box">
+      <text class="search-icon">⌕</text>
+      <input value="{{keyword}}" confirm-type="search" placeholder="搜索行业、能力或合作方向" bindinput="handleSearchInput" bindconfirm="handleSearchConfirm" />
+      <text wx:if="{{keyword}}" class="search-clear" data-value="" bindtap="handleSearchInput">×</text>
+    </view>
+
+    <view class="filter-card">
+      <view class="filter-head"><view>按行业发现</view><text>细分标签更容易被找到</text></view>
+      <scroll-view scroll-x class="filter-scroll" show-scrollbar="{{false}}">
+        <view class="filter-row">
+          <view wx:for="{{industryFilters}}" wx:key="label" class="filter-chip {{item.active ? 'active' : ''}}" data-value="{{item.label}}" bindtap="handleIndustryTap">{{item.label}}</view>
+        </view>
+      </scroll-view>
+      <scroll-view wx:if="{{subIndustryOptions.length}}" scroll-x class="filter-scroll sub-filter-scroll" show-scrollbar="{{false}}">
+        <view class="filter-row sub-filter-row">
+          <view wx:for="{{subIndustryOptions}}" wx:key="label" class="sub-filter-chip {{item.active ? 'active' : ''}}" data-value="{{item.label}}" bindtap="handleSubIndustryTap">{{item.label}}</view>
+        </view>
+      </scroll-view>
+    </view>
+
+    <view class="result-head"><view><view class="section-title">{{activeTab === 'intent' ? '正在找合作' : '合作资源'}}</view><text>{{activeTab === 'intent' ? '看看谁正在找合作，找到可以马上聊的人' : '先看对方能提供什么，再决定是否深入了解'}}</text></view><view class="cost-tip">查看联系方式 <strong>{{viewCostPoints}} 积分</strong></view></view>
+
+    <view wx:if="{{loading && !cards.length}}" class="loading-card"><view class="loading-dot"></view><text>正在寻找合适的合作伙伴…</text></view>
+    <view wx:elif="{{listError && !cards.length}}" class="empty-card retry" bindtap="loadCards"><view class="empty-icon">!</view><view>暂时无法读取合作名片</view><text>点击重试</text></view>
+    <view wx:elif="{{!loading && !listError && !cards.length && !myCardChecked}}" class="loading-card"><view class="loading-dot"></view><text>正在确认你的合作名片…</text></view>
+    <view wx:elif="{{!loading && !listError && !cards.length}}" class="empty-card"><view class="empty-icon">＋</view><view>{{activeTab === 'intent' ? '暂时没有公开的合作需求' : '还没有找到匹配的合作资源'}}</view><text>{{myCard ? '你已有合作名片，也可以直接发布一条合作信息' : '你可以先完善自己的电子名片'}}</text><button bindtap="handleEmptyAction">{{myCard ? '发布合作信息' : '制作我的名片'}}</button></view>
+    <view wx:if="{{listError && cards.length}}" class="inline-load-error" bindtap="loadCards">最新合作名片读取失败，点击重试</view>
+    <view wx:if="{{opportunityError}}" class="inline-load-error" bindtap="loadCards">部分用户发布的合作机会暂时未加载，点击重试</view>
+    <view wx:if="{{loading && cards.length}}" class="inline-loading">正在更新合作名片…</view>
+    <block wx:if="{{cards.length}}">
+      <view wx:for="{{cards}}" wx:key="id" class="partner-card" data-id="{{item.id}}" data-source="{{item.sourceType}}" bindtap="handleOpenCard">
+        <view class="partner-card-top"><view class="partner-avatar-wrap"><image wx:if="{{item.avatarUrl}}" class="partner-avatar" src="{{item.avatarUrl}}" mode="aspectFill" lazy-load="{{true}}" /><view wx:else class="partner-avatar placeholder">{{item.avatarInitial}}</view><view wx:if="{{item.hasContact}}" class="avatar-dot"></view></view><view class="partner-identity"><view class="partner-name">{{item.title}}</view><view class="partner-role">{{item.roleLine}}</view><view class="partner-location">{{item.locationLine}}</view></view><view class="partner-arrow">›</view></view>
+        <view wx:if="{{activeTab === 'intent'}}" class="intent-card"><view class="intent-label">{{item.intentLabel}}</view><view class="intent-text">{{item.intentText}}</view></view>
+        <view wx:else class="headline">{{item.headline || '欢迎基于专业能力进一步沟通合作。'}}</view>
+        <view class="partner-tags"><text wx:for="{{item.tags}}" wx:key="*this">{{item}}</text><text wx:if="{{item.industryLabel}}" class="industry-tag">{{item.industryLabel}}</text></view>
+        <view wx:if="{{item.contactWarning}}" class="contact-warning-list">{{item.contactWarning}}</view>
+        <view class="partner-card-foot"><view class="partner-foot-meta"><text>{{item.timeText}}</text><text wx:if="{{item.sourceLabel}}" class="partner-source">{{item.sourceLabel}}</text></view><text class="contact-state">{{item.contactLabel}} · {{viewCostPoints}}积分</text></view>
+      </view>
+      <view wx:if="{{loadingMore}}" class="load-more">正在加载更多…</view>
+      <view wx:elif="{{!hasMore}}" class="load-more">已经看到这里了</view>
+    </block>
+  </block>
+
+  <block wx:else>
+    <view wx:if="{{myCardLoading}}" class="loading-card mine-loading"><view class="loading-dot"></view><text>正在读取我的名片…</text></view>
+    <view wx:elif="{{myCardError}}" class="empty-card retry" bindtap="loadMyCard"><view class="empty-icon">!</view><view>名片读取失败</view><text>点击重试</text></view>
+    <view wx:elif="{{!myCard}}" class="empty-card mine-empty"><view class="empty-icon card-icon">名</view><view>你还没有电子名片</view><text>制作一张名片，就能展示你的合作资源</text><button bindtap="handleOpenEditor">开始制作名片</button></view>
+    <view wx:else class="mine-card-wrap">
+      <view class="mine-card-label">我的合作名片</view>
+      <view class="mine-card partner-card" data-id="{{myCard.id}}" bindtap="handleOpenCard">
+        <view class="partner-card-top"><view class="partner-avatar-wrap"><image wx:if="{{myCard.avatarUrl}}" class="partner-avatar" src="{{myCard.avatarUrl}}" mode="aspectFill" /><view wx:else class="partner-avatar placeholder">{{myCard.avatarInitial}}</view></view><view class="partner-identity"><view class="partner-name">{{myCard.title}}</view><view class="partner-role">{{myCard.roleLine}}</view><view class="partner-location">{{myCard.locationLine}}</view></view></view>
+        <view class="headline">{{myCard.headline || '还没有填写一句话介绍'}}</view>
+        <view class="partner-tags"><text wx:for="{{myCard.tags}}" wx:key="*this">{{item}}</text><text wx:if="{{myCard.industryLabel}}" class="industry-tag">{{myCard.industryLabel}}</text></view>
+        <view wx:if="{{myCard.intentText && myCard.intentLabel}}" class="mine-intent"><text>{{myCard.intentLabel}}</text><view>{{myCard.intentText}}</view></view>
+      </view>
+      <view class="mine-actions"><button class="secondary-action" bindtap="handlePreviewMyCard">预览客户页</button><button class="primary-action" bindtap="handleOpenEditor">编辑名片</button></view>
+      <view class="mine-tip">行业和“我能提供”是必填内容；当前合作意向可随时更新。</view>
+    </view>
+  </block>
+
+  <view wx:if="{{publishSheetVisible}}" class="publish-sheet-mask" catchtouchmove="noop" catchtap="handleClosePublishSheet">
+    <view class="publish-sheet" catchtap="noop">
+      <view class="publish-sheet-handle"></view>
+      <view class="publish-sheet-head"><view><view class="publish-sheet-title">发布合作信息</view><view class="publish-sheet-subtitle">让别人知道你能提供什么，或你正在找什么</view></view><view class="publish-sheet-close" bindtap="handleClosePublishSheet">×</view></view>
+      <view class="publish-choice" data-type="card" bindtap="handleChoosePublish"><view class="publish-choice-icon">名</view><view class="publish-choice-copy"><view>完善我的合作名片</view><text>长期展示你的身份、能力和联系方式</text></view><text class="publish-choice-arrow">›</text></view>
+      <view class="publish-choice opportunity-choice" data-type="opportunity" bindtap="handleChoosePublish"><view class="publish-choice-icon">机</view><view class="publish-choice-copy"><view>发布一条合作机会</view><text>发布一条具体、有效期有限的合作信息</text></view><text class="publish-choice-arrow">›</text></view>
+      <view class="publish-sheet-note">联系方式默认隐藏，经过对方同意后才可解锁</view>
+    </view>
+  </view>
+
+  <view class="bottom-safe-space"></view>
+</view>

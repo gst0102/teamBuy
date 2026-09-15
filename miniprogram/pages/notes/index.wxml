@@ -1,4 +1,4 @@
-<view class="page-shell">
+<view class="page-shell notes-page">
   <custom-nav title="资料库" />
 
   <view class="notes-header">
@@ -85,7 +85,20 @@
     <text class="{{viewMode === 'grid' ? 'active' : ''}}" data-mode="grid" bindtap="handleViewModeChange">双列卡片</text>
   </view>
 
-  <view class="note-grid" wx:if="{{notes.length && viewMode === 'grid'}}">
+  <view wx:if="{{loading && !notes.length}}" class="empty-state loading-state">
+    <view>正在读取资料</view>
+    <view class="empty-sub">先读取资料信息，图片和分享图会在后台补齐。</view>
+  </view>
+  <view wx:elif="{{!loading && loadError && !notes.length}}" class="empty-state retry-state" bindtap="handleRetry">
+    <view>资料暂时无法读取</view>
+    <view class="empty-sub">点击重试，网络恢复后会继续加载。</view>
+    <button>重新加载</button>
+  </view>
+  <view wx:if="{{loadError && notes.length}}" class="inline-load-error" bindtap="handleRetry">最新资料读取失败，点击重试</view>
+  <view wx:if="{{loading && notes.length}}" class="inline-loading">正在更新资料…</view>
+
+  <block wx:if="{{notes.length}}">
+  <view class="note-grid" wx:if="{{viewMode === 'grid'}}">
     <view wx:for="{{notes}}" wx:key="id" class="grid-card" data-id="{{item.id}}" bindtap="handleEdit">
       <view wx:if="{{item.isServiceOffer}}" class="grid-service-card tone-{{item.serviceOfferPreview.tone}}">
         <view class="grid-service-head">
@@ -113,7 +126,7 @@
     </view>
   </view>
 
-  <view class="note-list" wx:if="{{notes.length && viewMode === 'list'}}">
+  <view class="note-list" wx:if="{{viewMode === 'list'}}">
     <block wx:for="{{notes}}" wx:key="id">
       <view wx:if="{{item.isBookmark}}" class="bookmark-card" data-id="{{item.id}}" data-bookmark="{{true}}" data-url="{{item.sourceUrl}}" data-title="{{item.title}}" bindtap="handleOpen">
         <image wx:if="{{item.coverUrl}}" class="bookmark-cover" src="{{item.coverDisplayUrl ? item.coverDisplayUrl : item.coverUrl}}" mode="aspectFill"></image>
@@ -324,10 +337,11 @@
       </view>
     </block>
   </view>
+  <view wx:if="{{notesHasMore}}" class="load-more" bindtap="loadMoreNotes">{{notesLoadingMore ? '正在加载更多…' : '上滑加载更多'}}</view>
+  </block>
 
-  <view class="empty-state" wx:else>
+  <view class="empty-state" wx:if="{{!loading && !loadError && !notes.length}}">
     <view>暂无笔记</view>
     <view class="empty-sub">从企业微信导入并认领后，会出现在这里。</view>
   </view>
-  <canvas canvas-id="salesCardListShareCanvas" class="business-card-share-canvas"></canvas>
 </view>

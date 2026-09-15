@@ -1,5 +1,5 @@
 <view class="mutual-page theme-{{theme}}">
-  <custom-nav title="任务详情" showBack="{{true}}" theme="{{theme}}" />
+  <custom-nav title="任务详情" showBack="{{true}}" fallbackUrl="/subpackages/my-tools-mutual-help/index/index" theme="{{theme}}" />
 
   <view class="mutual-content" wx:if="{{task}}">
     <view class="theme-switch-row">
@@ -10,95 +10,208 @@
       </view>
     </view>
 
-    <view class="task-detail-header">
-      <view class="back-line" bindtap="handleBackToHome">‹ 返回任务大厅</view>
+    <view class="executor-hero {{task.taskKind === 'wool' ? 'executor-wool-hero' : ''}}">
+      <view class="executor-kicker">{{task.taskKind === 'wool' ? '执行者福利' : '执行者任务'}}</view>
       <view class="task-detail-title">{{task.title}}</view>
-      <view class="task-detail-meta"><text class="task-kind {{task.taskKind === 'ordinary' ? 'ordinary' : (task.taskKind === 'wool' ? 'wool' : '')}}">{{task.kindLabel}}</text><text>{{task.remainingText}}</text><text>{{task.deadlineText}}</text></view>
-      <view wx:if="{{task.taskKind !== 'wool'}}" class="task-detail-reward-row"><text class="task-detail-reward">{{task.rewardText}}</text><text class="task-detail-reward-copy">完成任务赚积分</text></view>
-      <view wx:if="{{task.taskKind === 'wool'}}" class="wool-detail-meta"><text>{{task.woolAccessLabel}}</text><text>{{task.woolRewardLabel}}</text></view>
-    </view>
+      <view class="executor-facts">
+        <view class="executor-fact executor-fact-kind">{{task.kindLabel}}</view>
+        <view wx:if="{{task.taskKind !== 'wool'}}" class="executor-fact">{{task.repeatPolicy === 'daily' ? '每天一次' : '仅限一次'}}</view>
+        <view wx:else class="executor-fact">{{task.woolPolicy.unlockFeePoints > 0 ? '付费查看' : '免费查看'}}</view>
+        <view class="executor-fact">{{task.remainingText}}</view>
+        <view class="executor-fact">{{task.deadlineText}}</view>
+      </view>
 
-    <view class="mutual-growth-banner detail-growth-banner">
-      <view class="growth-badge">互助</view>
-      <view class="growth-copy">
-        <view class="growth-title">互助赚积分，让别人帮你完成</view>
-        <view class="growth-subtitle">{{task.taskKind === 'wool' ? '先看清福利，再决定是否解锁' : '完成任务获得积分，发布需求时让别人帮你完成'}}</view>
+      <view wx:if="{{task.taskKind !== 'wool'}}" class="executor-reward-card">
+        <view>
+          <view class="executor-reward-label">完成后奖励</view>
+          <view class="executor-reward-line"><text class="executor-reward-value">{{task.rewardText}}</text><text class="executor-reward-copy">平台记录，完成后到账</text></view>
+        </view>
+        <view class="executor-reward-mark">互助</view>
+      </view>
+      <view wx:else class="executor-reward-card executor-wool-reward-card">
+        <view>
+          <view class="executor-reward-label">查看完整福利</view>
+          <view class="executor-reward-line"><text class="executor-reward-value">{{task.woolLocked ? task.woolCardRewardText : '已解锁'}}</text><text class="executor-reward-copy">{{task.woolLocked ? '解锁后查看福利' : '已解锁，可直接使用'}}</text></view>
+        </view>
+        <view class="executor-reward-mark">羊毛</view>
       </view>
     </view>
 
-    <button wx:if="{{shareCardReady}}" class="manage-share-button task-detail-share-button" open-type="share">分享任务到微信群</button>
-    <view wx:elif="{{shareStatusText}}" class="manage-share-status task-detail-share-status">{{shareStatusText}}</view>
+    <view wx:if="{{task.taskKind !== 'wool'}}" class="executor-flow">
+      <view class="executor-flow-step active"><text>1</text><view>打开入口</view></view>
+      <view class="executor-flow-line"></view>
+      <view class="executor-flow-step"><text>2</text><view>完成体验</view></view>
+      <view class="executor-flow-line"></view>
+      <view class="executor-flow-step"><text>3</text><view>返回提交</view></view>
+    </view>
+    <view wx:else class="executor-flow executor-wool-flow">
+      <view class="executor-flow-step active"><text>1</text><view>{{task.woolLocked ? '解锁查看' : '查看福利'}}</view></view>
+      <view class="executor-flow-line"></view>
+      <view class="executor-flow-step {{task.woolLocked ? '' : 'active'}}"><text>2</text><view>使用福利</view></view>
+    </view>
 
     <view class="task-detail-card">
-      <view wx:if="{{task.woolLocked}}" class="task-unlock-card">
-        <view class="task-unlock-title">先解锁，再查看完整内容</view>
-        <view class="task-unlock-copy">任务评论仍可先看；解锁后才能查看完整福利说明和使用入口。</view>
-        <button class="wool-unlock-button" bindtap="handleUnlockWool">支付 {{task.woolPolicy.unlockFeePoints}} 分解锁</button>
+      <view wx:if="{{task.taskClosed}}" class="executor-closed-banner">
+        <view class="executor-closed-title">{{task.statusLabel}}</view>
+        <view class="executor-closed-copy">{{task.taskKind === 'wool' ? '这个福利当前不能继续查看，请返回任务大厅选择其他内容。' : '这个任务当前不能继续提交，请返回任务大厅选择其他任务。'}}</view>
       </view>
 
-      <block wx:if="{{!task.woolLocked}}">
-      <view class="detail-section">
-        <view class="detail-label">{{task.taskKind === 'wool' ? '羊毛说明' : '任务说明'}}</view>
-        <view class="content-blocks">
-          <block wx:for="{{task.contentBlocks}}" wx:key="id">
-            <text wx:if="{{item.type === 'text'}}" class="content-text">{{item.text}}</text>
-            <view wx:elif="{{item.type === 'image'}}" class="content-image-wrap">
-              <image class="content-image" src="{{item.url}}" mode="widthFix" show-menu-by-longpress="true" data-url="{{item.url}}" bindtap="handlePreviewImage"></image>
-              <button class="save-image-button" data-url="{{item.url}}" bindtap="handleSaveImage">保存到相册</button>
-            </view>
-          </block>
+      <view wx:if="{{task.taskKind === 'wool'}}" class="executor-primary-section executor-wool-primary-section">
+        <view class="executor-section-kicker">{{task.woolLocked ? '第一步 · 先解锁' : '第一步 · 使用福利'}}</view>
+        <view class="executor-section-title">{{task.woolLocked ? '先查看完整福利' : '打开福利入口'}}</view>
+        <view class="executor-section-helper">{{task.woolLocked ? '支付查看费用后，才能看到完整说明和使用入口。' : '按福利说明操作，遇到问题可以在下方反馈。'}}</view>
+
+        <view wx:if="{{task.woolLocked}}" class="executor-unlock-action">
+          <view class="executor-unlock-copy">
+            <view class="executor-unlock-title">{{task.woolCardRewardText}}</view>
+            <view class="executor-unlock-helper">{{task.woolAccessLabel}}</view>
+          </view>
+          <button class="wool-unlock-button executor-wool-unlock-button" bindtap="handleUnlockWool" disabled="{{task.taskClosed}}">支付 {{task.woolPolicy.unlockFeePoints}} 分查看</button>
         </view>
-      </view>
 
-      <view wx:if="{{task.taskKind === 'ordinary'}}" class="detail-section">
-        <view class="detail-label">验收标准</view>
-        <view class="detail-helper">完成后按下面的标准判断是否通过</view>
-        <view class="content-blocks">
-          <block wx:for="{{task.acceptanceCriteriaBlocks}}" wx:key="id">
-            <text wx:if="{{item.type === 'text'}}" class="content-text">{{item.text}}</text>
-            <view wx:elif="{{item.type === 'image'}}" class="content-image-wrap">
-              <image class="content-image" src="{{item.url}}" mode="widthFix" show-menu-by-longpress="true" data-url="{{item.url}}" bindtap="handlePreviewImage"></image>
-              <button class="save-image-button" data-url="{{item.url}}" bindtap="handleSaveImage">保存到相册</button>
+        <view wx:else class="task-link-list-detail">
+          <view wx:if="{{task.taskLinks.length}}">
+            <view wx:for="{{task.taskLinks}}" wx:key="id" class="task-link-card executor-task-link-card executor-wool-link-card">
+              <view class="task-link-icon {{item.type}}">{{item.typeLabel}}</view>
+              <view class="task-link-copy">
+                <view class="task-link-title">{{item.displayTitle}}</view>
+                <view class="task-link-description">{{item.opened ? '已打开，可继续使用福利' : item.detailDescription}}</view>
+              </view>
+              <button class="task-link-action {{item.openMode === 'browser' ? 'browser' : ''}} {{item.opened ? 'opened' : ''}}" data-index="{{index}}" bindtap="handleOpenLink" disabled="{{task.taskClosed}}">{{item.opened ? '再次打开' : item.actionLabel}}</button>
             </view>
-          </block>
+          </view>
+          <view wx:else class="executor-empty-entry">福利入口暂未配置，请联系发布者补充入口。</view>
         </view>
+        <view wx:if="{{!task.woolLocked}}" class="executor-entry-note">打开入口后按说明使用福利；羊毛任务无需提交完成材料。</view>
+      </view>
+      <view wx:if="{{task.taskKind === 'wool' && !task.woolLocked && !isOwner}}" class="executor-chat-entry" bindtap="handleOpenChat">
+        <view class="executor-chat-icon">聊</view>
+        <view class="executor-chat-copy"><view class="executor-chat-title">联系任务发布者</view><view class="executor-chat-subtitle">截图、文字或小程序入口都可以在这里沟通</view></view>
+        <view class="executor-chat-arrow">›</view>
       </view>
 
-      <view class="detail-section" wx:if="{{task.taskLinks.length}}">
-        <view class="detail-label">{{task.taskKind === 'wool' ? '使用入口' : '任务入口'}}</view>
-        <view class="detail-helper">{{task.taskKind === 'wool' ? '打开入口领取或使用福利。' : (task.taskKind === 'miniapp' ? '打开入口体验，返回后点击完成。' : '先打开入口完成操作，再按验收标准提交材料。')}}</view>
-        <view class="task-link-list-detail">
-          <view wx:for="{{task.taskLinks}}" wx:key="id" class="task-link-card">
-            <view class="task-link-icon {{item.type}}">{{item.typeLabel}}</view>
-            <view class="task-link-copy">
-              <view class="task-link-title">{{item.displayTitle}}</view>
-              <view class="task-link-description">{{item.opened ? (task.taskKind === 'wool' ? '已打开，可继续使用福利' : '已打开，可返回提交任务') : item.detailDescription}}</view>
+      <block wx:if="{{!task.woolLocked && task.taskKind !== 'wool'}}">
+        <view wx:if="{{task.taskLinks.length}}" class="executor-primary-section">
+          <view class="executor-section-kicker">第一步 · 先做这件事</view>
+          <view class="executor-section-title">{{task.taskKind === 'miniapp' ? '点击小程序' : '打开任务入口'}}</view>
+          <view class="executor-section-helper">{{task.taskKind === 'miniapp' ? '进入目标小程序体验，完成后返回这里提交。' : '先打开入口完成操作，再按标准提交材料。'}}</view>
+          <view class="task-link-list-detail">
+            <view wx:for="{{task.taskLinks}}" wx:key="id" class="task-link-card executor-task-link-card">
+              <view class="task-link-icon {{item.type}}">{{item.typeLabel}}</view>
+              <view class="task-link-copy">
+                <view class="task-link-title">{{item.displayTitle}}</view>
+                <view class="task-link-description">{{item.opened ? (task.taskKind === 'miniapp' ? '已打开，可返回提交任务' : '已打开，可按标准提交材料') : item.detailDescription}}</view>
+              </view>
+              <button class="task-link-action {{item.openMode === 'browser' ? 'browser' : ''}} {{item.opened ? 'opened' : ''}}" data-index="{{index}}" bindtap="handleOpenLink" disabled="{{task.taskClosed}}">{{item.opened ? '再次打开' : item.actionLabel}}</button>
             </view>
-            <button class="task-link-action {{item.openMode === 'browser' ? 'browser' : ''}} {{item.opened ? 'opened' : ''}}" data-index="{{index}}" bindtap="handleOpenLink">{{item.opened ? '再次打开' : item.actionLabel}}</button>
+          </view>
+          <view class="executor-entry-note">打开入口后会直接跳转；返回本页即可继续。</view>
+        </view>
+        <view wx:elif="{{task.taskKind === 'ordinary'}}" class="executor-primary-section executor-ordinary-guidance">
+          <view class="executor-section-kicker">第一步 · 先完成任务</view>
+          <view class="executor-section-title">阅读说明并开始</view>
+          <view class="executor-section-helper">按任务说明和完成标准完成工作，随后提交文字或图片材料。</view>
+        </view>
+
+        <view wx:if="{{!isOwner}}" class="executor-chat-entry" bindtap="handleOpenChat">
+          <view class="executor-chat-icon">聊</view>
+          <view class="executor-chat-copy"><view class="executor-chat-title">联系任务发布者</view><view class="executor-chat-subtitle">截图、文字或小程序入口都可以在这里沟通</view></view>
+          <view class="executor-chat-arrow">›</view>
+        </view>
+
+        <view class="detail-section executor-full-task-section">
+          <view class="executor-section-title-row"><view class="executor-section-title">完整任务</view><view class="executor-section-tag">按标准完成</view></view>
+          <view class="executor-brief-row">
+            <view class="executor-brief-item"><text>任务类型</text><strong>{{task.kindLabel}}</strong></view>
+            <view class="executor-brief-item"><text>参与规则</text><strong>{{task.repeatPolicy === 'daily' ? '每天一次' : '仅限一次'}}</strong></view>
+            <view class="executor-brief-item"><text>完成结果</text><strong>{{task.taskKind === 'miniapp' ? '体验反馈' : '提交材料'}}</strong></view>
+          </view>
+          <view class="detail-subsection">
+            <view class="detail-label">任务说明</view>
+            <view class="content-blocks">
+              <block wx:for="{{task.contentBlocks}}" wx:key="id">
+                <text wx:if="{{item.type === 'text'}}" class="content-text">{{item.text}}</text>
+                <view wx:elif="{{item.type === 'image'}}" class="content-image-wrap">
+                  <image class="content-image" src="{{item.url}}" mode="widthFix" show-menu-by-longpress="true" data-url="{{item.url}}" bindtap="handlePreviewImage"></image>
+                  <button class="save-image-button" data-url="{{item.url}}" bindtap="handleSaveImage">保存到相册</button>
+                </view>
+              </block>
+            </view>
           </view>
         </view>
-        <view class="detail-helper">小程序会直接跳转，网页入口按提示打开。</view>
-      </view>
+
+        <view class="detail-section executor-standard-section">
+          <view class="executor-section-title-row"><view class="executor-section-title">完成标准</view><view class="executor-section-tag">发布者按此验收</view></view>
+          <view class="content-blocks">
+            <block wx:for="{{task.acceptanceCriteriaBlocks}}" wx:key="id">
+              <text wx:if="{{item.type === 'text'}}" class="content-text">{{item.text}}</text>
+              <view wx:elif="{{item.type === 'image'}}" class="content-image-wrap">
+                <image class="content-image" src="{{item.url}}" mode="widthFix" show-menu-by-longpress="true" data-url="{{item.url}}" bindtap="handlePreviewImage"></image>
+                <button class="save-image-button" data-url="{{item.url}}" bindtap="handleSaveImage">保存到相册</button>
+              </view>
+            </block>
+          </view>
+        </view>
+
+        <view class="detail-section" wx:if="{{task.taskKind === 'miniapp' || task.taskKind === 'ordinary'}}">
+          <view class="executor-section-title-row"><view class="executor-section-title">完成反馈</view><view class="executor-section-tag">可选</view></view>
+          <textarea class="form-textarea" value="{{submissionText}}" maxlength="500" placeholder="写下你的体验或修改建议，不填也可以" bindinput="handleSubmissionInput"></textarea>
+          <view class="image-blocks">
+            <view wx:for="{{submissionImages}}" wx:key="*this" class="image-block">
+              <image src="{{item}}" mode="aspectFit"></image>
+              <view class="remove-image" data-index="{{index}}" bindtap="handleRemoveImage">×</view>
+            </view>
+            <button wx:if="{{submissionImages.length < 6}}" class="add-image-button" bindtap="handleChooseImages">＋<text> 添加图片</text></button>
+          </view>
+          <view class="detail-helper">反馈文字和图片都不是必填项，完成体验后直接提交即可。</view>
+        </view>
       </block>
 
-      <view wx:if="{{task.taskKind === 'ordinary' || task.taskKind === 'wool'}}" class="detail-section task-comment-section">
-        <view class="detail-label">用户评论 <text class="detail-helper-inline">（先看反馈，再决定是否值得做）</text></view>
+      <view wx:if="{{!task.woolLocked && task.taskKind === 'wool'}}" class="detail-section executor-full-task-section executor-wool-full-task-section">
+        <view class="executor-section-title-row"><view class="executor-section-title">完整福利</view><view class="executor-section-tag">解锁后可见</view></view>
+        <view class="executor-brief-row">
+          <view class="executor-brief-item"><text>福利类型</text><strong>羊毛福利</strong></view>
+          <view class="executor-brief-item"><text>查看方式</text><strong>{{task.woolPolicy.unlockFeePoints > 0 ? '付费查看' : '免费查看'}}</strong></view>
+          <view class="executor-brief-item"><text>使用结果</text><strong>领取或使用</strong></view>
+        </view>
+        <view class="detail-subsection">
+          <view class="detail-label">福利说明</view>
+          <view class="content-blocks">
+            <block wx:for="{{task.contentBlocks}}" wx:key="id">
+              <text wx:if="{{item.type === 'text'}}" class="content-text">{{item.text}}</text>
+              <view wx:elif="{{item.type === 'image'}}" class="content-image-wrap">
+                <image class="content-image" src="{{item.url}}" mode="widthFix" show-menu-by-longpress="true" data-url="{{item.url}}" bindtap="handlePreviewImage"></image>
+                <button class="save-image-button" data-url="{{item.url}}" bindtap="handleSaveImage">保存到相册</button>
+              </view>
+            </block>
+          </view>
+        </view>
+        <view class="executor-wool-policy-note">{{task.woolRewardLabel}}</view>
+      </view>
+
+      <view class="status-note" wx:if="{{statusText}}">
+        <text>{{statusText}}</text>
+        <text wx:if="{{!isOwner && (submissionStatus === 'approved' || submissionStatus === 'completed')}}" class="status-note-points">当前积分 {{points}} 分</text>
+      </view>
+      <button wx:if="{{!task.woolLocked && task.taskKind === 'miniapp'}}" class="primary-action executor-submit-action" disabled="{{task.taskClosed || submitting || !hasOpenedTarget || task.submitted}}" loading="{{submitting}}" bindtap="handleSubmit">{{task.submitted ? (task.repeatPolicy === 'daily' ? '今日已完成' : '已完成') : (hasOpenedTarget ? '提交完成' : '打开小程序后提交')}}</button>
+      <button wx:elif="{{!task.woolLocked && task.taskKind === 'ordinary'}}" class="primary-action executor-submit-action" disabled="{{task.taskClosed || submitting || task.submitted}}" loading="{{submitting}}" bindtap="handleSubmit">{{task.submitted ? (task.repeatPolicy === 'daily' ? '今日已完成' : '已完成') : '提交任务'}}</button>
+
+      <view wx:if="{{task.taskKind === 'miniapp' || task.taskKind === 'ordinary' || task.taskKind === 'wool'}}" class="detail-section task-comment-section">
+        <view class="executor-section-title-row"><view class="executor-section-title">用户反馈</view><view class="executor-section-tag">先看评价</view></view>
         <view class="task-comment-summary">{{task.commentSummary.text}}</view>
         <view wx:if="{{comments.length}}" class="task-comment-list">
           <view wx:for="{{comments}}" wx:key="id" class="task-comment-item">
             <view class="task-comment-head">
-              <view><text class="task-comment-author">{{item.authorLabel}}</text><text wx:if="{{item.completed}}" class="task-comment-verified">已完成</text></view>
+              <view><text class="task-comment-author">{{item.authorLabel}}</text><text wx:if="{{item.completed}}" class="task-comment-verified">已完成体验</text></view>
               <text class="task-comment-date">{{item.createdAtText}}</text>
             </view>
             <view wx:if="{{item.recommendLabel}}" class="task-comment-badge {{item.recommendChoice}}">{{item.recommendLabel}}</view>
             <view wx:if="{{item.text}}" class="task-comment-text">{{item.text}}</view>
-            <view wx:if="{{!isOwner}}" class="task-comment-actions">
-              <button class="task-comment-report" data-comment-id="{{item.id}}" bindtap="handleReportComment">举报</button>
-            </view>
+            <view wx:if="{{!isOwner}}" class="task-comment-actions"><button class="task-comment-report" data-comment-id="{{item.id}}" bindtap="handleReportComment">举报</button></view>
           </view>
         </view>
         <view wx:else class="task-comment-empty">还没有用户评论，完成后可以留下第一条反馈。</view>
-        <view wx:if="{{!isOwner && !task.woolLocked}}" class="comment-editor">
+        <view wx:if="{{!task.woolLocked && commentEligible}}" class="comment-editor">
           <view class="comment-choice-row">
             <view class="comment-choice {{commentChoice === 'worth_it' ? 'active' : ''}}" data-choice="worth_it" bindtap="handleCommentChoice">值得做</view>
             <view class="comment-choice {{commentChoice === 'neutral' ? 'active' : ''}}" data-choice="neutral" bindtap="handleCommentChoice">一般</view>
@@ -106,8 +219,10 @@
           </view>
           <textarea class="comment-input" value="{{commentText}}" maxlength="300" placeholder="写下你的真实体验，选填；只评价也可以" bindinput="handleCommentInput"></textarea>
           <button class="comment-submit" loading="{{commentSubmitting}}" disabled="{{commentSubmitting}}" bindtap="handleSubmitComment">发布评论</button>
+          <button class="comment-skip" disabled="{{commentSubmitting}}" bindtap="handleSkipComment">暂不评论，回任务大厅</button>
         </view>
         <view wx:elif="{{task.woolLocked}}" class="task-comment-empty">解锁后可以参与任务并发布评论。</view>
+        <view wx:else class="task-comment-empty">提交完成记录后，可以写下你的真实体验。</view>
       </view>
 
       <view wx:if="{{task.taskKind === 'wool' && !task.woolLocked && !isOwner}}" class="wool-extra-actions">
@@ -117,26 +232,24 @@
         <view wx:if="{{refundRequested}}" class="wool-action-note">退款申请已提交，等待审核。</view>
       </view>
 
-      <view class="detail-section" wx:if="{{!task.woolLocked && (task.taskKind === 'miniapp' || task.taskKind === 'ordinary')}}">
-        <view wx:if="{{task.taskKind === 'miniapp'}}" class="detail-label">完成反馈 <text class="detail-helper-inline">（可选）</text></view>
-        <view wx:else class="detail-label">提交材料 <text class="detail-helper-inline">（按验收标准）</text></view>
-        <textarea class="form-textarea" value="{{submissionText}}" maxlength="500" placeholder="写下你的体验或修改建议，不填也可以" bindinput="handleSubmissionInput"></textarea>
-        <view class="image-blocks">
-          <view wx:for="{{submissionImages}}" wx:key="*this" class="image-block">
-            <image src="{{item}}" mode="aspectFit"></image>
-            <view class="remove-image" data-index="{{index}}" bindtap="handleRemoveImage">×</view>
-          </view>
-          <button wx:if="{{submissionImages.length < 6}}" class="add-image-button" bindtap="handleChooseImages">＋<text> 添加图片</text></button>
-        </view>
-        <view class="detail-helper">{{task.taskKind === 'miniapp' ? '反馈文字和图片都不是必填项。' : '按验收标准提交文字、图片或两者。'}}</view>
+    </view>
+  </view>
+  <view wx:if="{{commentPromptVisible}}" class="comment-prompt-mask" catchtouchmove="noop">
+    <view class="comment-prompt-panel" catchtap="noop">
+      <view class="comment-prompt-kicker">任务已提交</view>
+      <view class="comment-prompt-title">愿意留下这次体验评价吗？</view>
+      <view class="comment-prompt-status">{{statusText}}</view>
+      <view class="comment-prompt-helper">选择一个评价，也可以补充几句话；发布后将自动回到任务大厅。</view>
+      <view class="comment-choice-row comment-prompt-choice-row">
+        <view class="comment-choice {{commentPromptChoice === 'worth_it' ? 'active' : ''}}" data-choice="worth_it" bindtap="handleCommentPromptChoice">值得做</view>
+        <view class="comment-choice {{commentPromptChoice === 'neutral' ? 'active' : ''}}" data-choice="neutral" bindtap="handleCommentPromptChoice">一般</view>
+        <view class="comment-choice {{commentPromptChoice === 'not_worth_it' ? 'active' : ''}}" data-choice="not_worth_it" bindtap="handleCommentPromptChoice">不建议</view>
       </view>
-
-      <view class="status-note" wx:if="{{statusText}}">
-        <text>{{statusText}}</text>
-        <text wx:if="{{!isOwner && (submissionStatus === 'approved' || submissionStatus === 'completed')}}" class="status-note-points">当前积分 {{points}} 分</text>
+      <textarea class="comment-input comment-prompt-input" value="{{commentPromptText}}" maxlength="300" placeholder="写下你的真实体验，选填；只评价也可以" bindinput="handleCommentPromptInput"></textarea>
+      <view class="comment-prompt-actions">
+        <button class="comment-prompt-cancel" disabled="{{commentPromptSubmitting}}" bindtap="handleSkipCommentPrompt">暂不评论</button>
+        <button class="comment-prompt-submit" loading="{{commentPromptSubmitting}}" disabled="{{commentPromptSubmitting}}" bindtap="handleSubmitCommentPrompt">发布并回大厅</button>
       </view>
-      <button wx:if="{{!task.woolLocked && task.taskKind === 'miniapp'}}" class="primary-action" disabled="{{task.taskClosed || submitting || !hasOpenedTarget || submissionStatus === 'approved' || submissionStatus === 'completed'}}" loading="{{submitting}}" bindtap="handleSubmit">{{hasOpenedTarget ? '提交完成' : '先打开任务入口'}}</button>
-      <button wx:elif="{{!task.woolLocked && task.taskKind === 'ordinary'}}" class="primary-action" disabled="{{task.taskClosed || submitting}}" loading="{{submitting}}" bindtap="handleSubmit">提交任务</button>
     </view>
   </view>
   <canvas canvas-id="shareCardCanvas" class="share-card-canvas"></canvas>

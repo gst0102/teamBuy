@@ -704,3 +704,32 @@
 .modal-action {
   margin-top: 24rpx;
 }
+/* Typography scale v2: make company search results and query costs easy to compare. */
+.enterprise-page .hero-kicker { font-size: 24rpx; }
+.enterprise-page .hero-title { font-size: 40rpx; }
+.enterprise-page .search-input { font-size: 28rpx; }
+.enterprise-page .search-btn { display: flex; align-items: center; justify-content: center; font-size: 26rpx; }
+.enterprise-page .hot-chip { font-size: 22rpx; }
+.enterprise-page .recent-row { font-size: 24rpx; }
+.enterprise-page .result-head { font-size: 25rpx; }
+.enterprise-page .company-name { font-size: 29rpx; }
+.enterprise-page .company-tags text { font-size: 21rpx; }
+.enterprise-page .company-field { font-size: 24rpx; }
+.enterprise-page .card-foot { font-size: 23rpx; }
+.enterprise-page .outline-btn,
+.enterprise-page .primary-action,
+.enterprise-page .modal-action { display: flex; align-items: center; justify-content: center; min-height: 68rpx; font-size: 25rpx; }
+.enterprise-page .empty-title { font-size: 31rpx; }
+.enterprise-page .empty-sub { font-size: 24rpx; }
+.enterprise-page .detail-title { font-size: 34rpx; }
+.enterprise-page .detail-card { font-size: 26rpx; }
+.enterprise-page .follow-btn { display: flex; align-items: center; justify-content: center; min-height: 72rpx; font-size: 26rpx; }
+.enterprise-page .info-grid { font-size: 24rpx; }
+.enterprise-page .ai-advice { font-size: 25rpx; }
+.enterprise-page .query-title { font-size: 30rpx; }
+.enterprise-page .query-label { font-size: 24rpx; }
+.enterprise-page .query-cost { font-size: 25rpx; }
+.enterprise-page .query-result-title { font-size: 28rpx; }
+.enterprise-page .query-result-row { font-size: 24rpx; }
+.enterprise-page .save-success,
+.enterprise-page .rule-modal { font-size: 24rpx; }

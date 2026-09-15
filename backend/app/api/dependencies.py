@@ -5,6 +5,7 @@ import asyncio
 from app.core.config import BACKEND_DIR, settings
 from app.services.app_service import AppService
 from app.services.automation_control_service import AutomationControlService
+from app.services.automation_notification_service import send_automation_completion_email
 from app.services.background_task_worker import BackgroundTaskWorker
 from app.services.bootstrap import seed_runtime_state
 from app.services.card_parser_service import CardParserService
@@ -95,11 +96,17 @@ _sync_task_queue = SyncTaskQueue(
     lock_timeout_seconds=settings.wecom_sync_lock_timeout_seconds,
     auto_schedule=settings.sync_task_auto_schedule,
 )
-OCR_TASK_NAMES = {"ocr-recognize-note", "property-table-ocr", "wechat-subscription-send"}
+BACKGROUND_TASK_NAMES = {
+    "ocr-recognize-note",
+    "property-table-ocr",
+    "wechat-subscription-send",
+    "automation-completion-email",
+}
 
 
 def _run_background_maintenance() -> None:
     _service.recover_stale_subscription_grants()
+    _service.queue_live_qr_expiry_notifications(_sync_task_queue)
     _automation_control_service.schedule_live_qr_member_count_tasks()
 
 
@@ -107,7 +114,7 @@ _ocr_task_worker = BackgroundTaskWorker(
     _sync_task_queue,
     enabled=settings.sync_task_worker_enabled,
     interval_seconds=settings.sync_task_worker_interval_seconds,
-    task_names=OCR_TASK_NAMES,
+    task_names=BACKGROUND_TASK_NAMES,
     max_running=max(settings.ocr_task_concurrency, 1),
     maintenance_callback=_run_background_maintenance,
 )
@@ -131,10 +138,25 @@ async def _run_wechat_subscription_send_task(payload: dict) -> dict:
     return await _service.send_wechat_subscription_task(payload)
 
 
+async def _run_automation_completion_email_task(payload: dict) -> dict:
+    # SMTP is blocking I/O; keep it off the worker event loop so other durable
+    # tasks can continue while the mail server connects or retries.
+    report = payload.get("report")
+    if not isinstance(report, dict):
+        raise ValueError("Automation completion email task is missing its report")
+    result = await asyncio.to_thread(send_automation_completion_email, report)
+    if result.get("sent") is not True:
+        # The durable queue owns bounded retries and records the final failure
+        # in sync_tasks/sync_task_logs for operator inspection.
+        raise RuntimeError(f"Automation completion email was not sent: {result.get('reason') or 'unknown'}")
+    return {"syncStatus": "success", "email": result}
+
+
 def register_background_task_handlers() -> None:
     _sync_task_queue.register("ocr-recognize-note", _run_ocr_recognize_task)
     _sync_task_queue.register("property-table-ocr", _run_property_table_ocr_task)
     _sync_task_queue.register("wechat-subscription-send", _run_wechat_subscription_send_task)
+    _sync_task_queue.register("automation-completion-email", _run_automation_completion_email_task)
 
 
 register_background_task_handlers()

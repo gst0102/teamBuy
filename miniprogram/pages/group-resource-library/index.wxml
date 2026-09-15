@@ -1,349 +1,217 @@
 <view class="page-shell group-resource-page">
-  <custom-nav title="{{pageTitle}}" />
+  <custom-nav title="{{viewMode === 'live-qr' ? '免费工具' : pageTitle}}" showBack="{{publishStep === 0}}" fallbackUrl="/pages/profile/index" />
 
   <block wx:if="{{publishStep === 0}}">
     <view class="hub-hero">
-      <view>
-        <view class="hero-kicker">贡献群资源，换更多渠道</view>
-        <view class="hero-title">群资源库</view>
-        <view class="hero-sub">找群、发群，把渠道流量变成资料反馈和跟进机会。</view>
-      </view>
+      <view class="hero-title">{{viewMode === 'live-qr' ? '免费工具' : '群资源库'}}</view>
+      <view class="hero-sub">{{viewMode === 'live-qr' ? '一个固定入口，二维码过期后也能继续更新。' : '找群、发群，把分散在微信群里的资源变成可搜索的群库。'}}</view>
     </view>
 
-    <view class="search-panel">
-      <view class="search-box">
-        <input class="search-input" value="{{keyword}}" placeholder="搜城市 / 类型 / 用途" confirm-type="search" bindinput="handleKeywordInput" bindconfirm="handleSearch" />
-        <button class="search-btn" bindtap="handleSearch">搜索</button>
-      </view>
-      <view class="hot-row">
-        <view wx:for="{{hotKeywords}}" wx:key="*this" class="hot-chip" data-keyword="{{item}}" bindtap="handleHotKeyword">{{item}}</view>
-      </view>
+    <view class="resource-tabs">
+      <view class="resource-tab {{viewMode === 'browse' ? 'active' : ''}}" data-mode="browse" bindtap="handleViewModeChange">找群</view>
+      <view class="resource-tab {{viewMode === 'mine' ? 'active' : ''}}" data-mode="mine" bindtap="handleViewModeChange">我的发布</view>
+      <view class="resource-tab {{viewMode === 'live-qr' ? 'active' : ''}}" data-mode="live-qr" bindtap="handleViewModeChange">免费工具</view>
     </view>
 
-    <view class="stat-row">
-      <view class="stat-card">
-        <view class="stat-value">{{groups.length}}</view>
-        <view class="stat-label">可搜群</view>
-      </view>
-      <view class="stat-card">
-        <view class="stat-value">{{myGroups.length}}</view>
-        <view class="stat-label">我发布</view>
-      </view>
-      <view class="stat-card">
-        <view class="stat-value">{{viewedCount}}</view>
-        <view class="stat-label">已查看</view>
-      </view>
-    </view>
-
-    <view class="action-panel">
-      <view>
-        <view class="action-title">添加微信群</view>
-        <view class="action-sub">上传二维码，点选城市、类型和用途。确认可进后到账 20 积分。</view>
-      </view>
-      <button class="primary-btn publish-btn" bindtap="handleOpenPublisher">添加</button>
-    </view>
-
-    <view class="section-head">
-      <view>
-        <view class="section-title">{{keyword ? '搜索结果' : '最近可查看'}}</view>
-        <view class="section-sub">{{displayGroups.length ? '先判断是否适合，再消耗积分查看二维码。' : '没有匹配结果，可以先发布你手里的群。'}}</view>
-      </view>
-      <view class="section-link" bindtap="handleShowMine">我的资源</view>
-    </view>
-
-    <view class="group-list" wx:if="{{displayGroups.length}}">
-      <view wx:for="{{displayGroups}}" wx:key="id" class="group-card">
-        <view class="group-top">
-          <view class="group-title">{{item.name}}</view>
-          <view class="group-status {{item.viewed ? 'done' : ''}}">{{item.viewed ? '已查看' : item.statusText}}</view>
+    <block wx:if="{{viewMode !== 'live-qr'}}">
+      <view class="group-points-card">
+        <view class="group-points-main">
+          <view class="group-points-info"><view class="group-points-label">可用积分</view><view class="group-points-line"><text class="group-points-value">{{points}}</text><text class="group-points-unit">分</text></view></view>
         </view>
-        <view class="group-meta">
-          <text>{{item.city}}</text>
-          <text>{{item.type}}</text>
-          <text>{{item.members}}</text>
-          <text>{{item.activeLevel}}</text>
+        <view class="group-points-breakdown {{rewardPointsVisible ? '' : 'single'}}">
+          <view class="group-point-item group-point-base"><view class="group-point-name"><text class="group-point-dot"></text>基础积分</view><view class="group-point-value">{{basePoints}} 分</view><view class="group-point-help">首次赠送 / 平台任务</view></view>
+          <view wx:if="{{rewardPointsVisible}}" class="group-point-item group-point-reward"><view class="group-point-name"><text class="group-point-dot"></text>充值积分</view><view class="group-point-value">{{rewardPoints}} 分</view><view class="group-point-help">充值获得 / 提现账户</view></view>
         </view>
-        <view class="purpose-row">
-          <text wx:for="{{item.purposes}}" wx:key="*this">{{item}}</text>
+        <view class="group-points-rule">查看群扣除15积分，发布有效群，奖励10积分。</view>
+      </view>
+
+      <view class="search-panel">
+        <view class="search-box">
+          <input class="search-input" value="{{keyword}}" placeholder="搜群名 / 行业 / 用途" confirm-type="search" bindinput="handleKeywordInput" bindconfirm="handleSearch" />
+          <button class="search-btn" bindtap="handleSearch">搜索</button>
         </view>
-        <view class="group-foot">
-          <view class="group-signal">查看 {{item.views}} · 确认可进 {{item.confirmCount}}<text wx:if="{{item.pendingReward}}"> · 冻结 {{item.pendingReward}}</text></view>
-          <view class="group-actions">
-            <button wx:if="{{item.canDelete}}" class="delete-btn" data-id="{{item.id}}" bindtap="handleDeleteGroup">删除</button>
-            <button class="{{item.viewed ? 'ghost-btn' : 'primary-btn'}} small-btn" data-id="{{item.id}}" bindtap="handleViewQr">{{item.viewed ? '再次查看' : '查看二维码 -30'}}</button>
+        <view class="filter-row" wx:if="{{viewMode === 'browse'}}">
+          <view class="filter-chip {{browseCityLabel ? 'active' : ''}}" bindtap="handleClearBrowseCity">{{browseCityLabel || '全部城市'}}</view>
+          <picker mode="region" value="{{browseRegion}}" bindchange="handleBrowseRegionChange">
+            <view class="filter-chip picker-chip">{{browseCityLabel || '选择城市'}}⌄</view>
+          </picker>
+          <picker mode="selector" range="{{browseIndustryOptions}}" value="{{browseIndustryIndex}}" bindchange="handleBrowseIndustryChange">
+            <view class="filter-chip picker-chip">{{browseIndustryOptions[browseIndustryIndex]}}⌄</view>
+          </picker>
+          <picker mode="selector" range="{{browsePurposeOptions}}" value="{{browsePurposeIndex}}" bindchange="handleBrowsePurposeChange">
+            <view class="filter-chip picker-chip">{{browsePurposeOptions[browsePurposeIndex]}}⌄</view>
+          </picker>
+        </view>
+        <view class="hot-row" wx:if="{{viewMode === 'browse'}}">
+          <view wx:for="{{hotKeywords}}" wx:key="*this" class="hot-chip" data-keyword="{{item}}" bindtap="handleHotKeyword">{{item}}</view>
+        </view>
+      </view>
+
+      <view class="stat-row">
+        <view class="stat-card"><view class="stat-value">{{activeGroupCount}}</view><view class="stat-label">当前有效</view></view>
+        <view class="stat-card"><view class="stat-value">{{myGroups.length}}</view><view class="stat-label">我发布</view></view>
+        <view class="stat-card"><view class="stat-value">{{viewedCount}}</view><view class="stat-label">已查看</view></view>
+      </view>
+
+      <view wx:if="{{viewMode === 'browse'}}" class="action-panel">
+        <view class="action-copy">
+          <view class="action-title">我也有群，去发布</view>
+          <view class="action-sub">分享你手里的群资源，让更多人找到；发布入口在“我的发布”。</view>
+        </view>
+        <button class="primary-btn publish-btn" bindtap="handleOpenPublisher">去发布</button>
+      </view>
+
+      <view class="section-head">
+        <view class="section-heading">
+          <view class="section-title">{{viewMode === 'mine' ? '我的发布' : (keyword || browseCityLabel ? '筛选结果' : '当前有效群')}}</view>
+          <view class="section-sub">{{viewMode === 'mine' ? '只展示你发布的群资源。' : '只展示 7 天内有效的群资源。'}}</view>
+        </view>
+        <view wx:if="{{viewMode === 'mine'}}" class="section-actions">
+          <button class="publish-mine-btn" bindtap="handleOpenPublisher">＋ 发布群</button>
+          <button wx:if="{{isGroupResourceAdmin}}" class="admin-add-btn" bindtap="handleOpenAdminPublisher">管理员新增</button>
+        </view>
+      </view>
+
+      <view wx:if="{{loading && !displayGroups.length}}" class="empty-state loading-state">
+        <view class="empty-title">正在读取群资源</view>
+        <view class="empty-sub">先加载可用信息，二维码会在你点击查看时处理。</view>
+      </view>
+      <view wx:if="{{!loading && displayGroups.length && ((viewMode === 'browse' && browseError) || (viewMode === 'mine' && mineError))}}" class="inline-load-error" bindtap="handleRetryGroups">{{viewMode === 'mine' ? mineError : browseError}} 点击重试</view>
+      <view wx:if="{{loading && displayGroups.length}}" class="inline-loading">正在更新群资源…</view>
+
+      <view class="group-list" wx:if="{{displayGroups.length}}">
+        <view wx:for="{{displayGroups}}" wx:key="id" class="group-card {{item.isExpired ? 'expired' : ''}}">
+          <view class="group-top">
+            <view class="group-title">{{item.name}}</view>
+            <view class="group-status {{item.isExpired ? 'expired' : ''}}">{{item.statusText}}</view>
+          </view>
+          <view class="group-meta">
+            <text>{{item.city}}</text><text>{{item.industry}}</text><text>{{item.purpose}}</text>
+          </view>
+          <view class="group-tags" wx:if="{{item.tags.length}}"><text wx:for="{{item.tags}}" wx:key="*this" class="group-tag">{{item}}</text></view>
+          <view class="group-foot">
+            <view class="group-signal">有效至 {{item.expireAtText}} · 查看 {{item.views}}<text wx:if="{{viewMode === 'mine' && item.rewardText}}"> · {{item.rewardText}}</text></view>
+            <view class="group-actions" wx:if="{{viewMode === 'mine'}}">
+              <button class="delete-btn" data-id="{{item.id}}" bindtap="handleDeleteGroup">删除群资源</button>
+              <button class="primary-btn small-btn" data-id="{{item.id}}" bindtap="handleUpdateGroupQr">{{item.isExpired ? '上传新码' : '更新二维码'}}</button>
+            </view>
+            <view class="group-actions" wx:else>
+              <button class="{{item.viewed ? 'ghost-btn' : 'primary-btn'}} small-btn" data-id="{{item.id}}" bindtap="handleViewQr">{{item.viewed ? '再次查看' : '查看二维码 -15'}}</button>
+            </view>
           </view>
         </view>
       </view>
-    </view>
 
-    <view class="empty-state" wx:else>
-      <view class="empty-title">还没有匹配的群</view>
-      <view class="empty-sub">可以换个关键词，或先发布你手里的微信群资源。</view>
-      <button class="primary-btn empty-btn" bindtap="handleOpenPublisher">去添加</button>
-    </view>
+      <view class="empty-state" wx:elif="{{!loading && ((viewMode === 'browse' && browseError) || (viewMode === 'mine' && mineError))}}" bindtap="handleRetryGroups">
+        <view class="empty-title">{{viewMode === 'mine' ? mineError : browseError}}</view>
+        <view class="empty-sub">点击这里重新加载，不使用旧缓存冒充最新数据。</view>
+        <button class="primary-btn empty-btn">重新加载</button>
+      </view>
+
+      <view class="empty-state" wx:elif="{{!loading}}">
+        <view class="empty-title">{{viewMode === 'mine' ? '还没有发布群资源' : '暂时没有匹配的有效群'}}</view>
+        <view class="empty-sub">{{viewMode === 'mine' ? '上传你手里的微信群二维码，填写城市和行业即可发布。' : '换个城市、行业或用途试试，也可以发布你手里的群。'}}</view>
+        <button class="primary-btn empty-btn" bindtap="handleOpenPublisher">{{viewMode === 'mine' ? '发布第一个群' : '去发布'}}</button>
+      </view>
+    </block>
+
+    <block wx:else>
+      <view class="live-qr-intro-card">
+        <view class="live-qr-mark">码</view>
+        <view class="live-qr-intro-copy"><view class="live-qr-intro-title">上传一次，固定入口长期使用</view><view class="live-qr-intro-sub">每个群保存一个活码，二维码到期前直接更新。</view></view>
+        <button class="primary-btn live-qr-add-btn" bindtap="handleOpenLiveQrCreator">新增活码</button>
+      </view>
+
+      <view class="live-qr-loading" wx:if="{{liveQrLoading}}">正在加载活码…</view>
+      <view class="live-qr-error" wx:if="{{liveQrError}}">{{liveQrError}}</view>
+      <block wx:if="{{liveQrView === 'list'}}">
+        <view class="live-qr-section-head"><view class="live-qr-section-title">我的活码</view><view class="live-qr-section-count">{{liveQrCodes.length}} 个</view></view>
+        <view class="live-qr-list" wx:if="{{liveQrCodes.length}}">
+          <view class="live-qr-summary-card" wx:for="{{liveQrCodes}}" wx:key="id" data-id="{{item.id}}" bindtap="handleOpenLiveQrDetail">
+            <image class="live-qr-summary-thumb" src="{{item.qrImageUrl}}" mode="aspectFit"></image>
+            <view class="live-qr-summary-main">
+              <view class="live-qr-summary-title">{{item.name}}</view>
+              <view class="live-qr-summary-meta">{{item.remarkText}}</view>
+              <view class="live-qr-summary-meta">生成于 {{item.createdAtText}}</view>
+            </view>
+            <view class="live-qr-summary-side"><view class="live-qr-summary-status {{item.statusClass}}">{{item.statusText}}</view><view class="live-qr-summary-expiry">{{item.statusClass === 'expired' ? '已过期' : '剩余 ' + item.targetExpiresInDays + ' 天'}}</view><view class="live-qr-summary-arrow">›</view></view>
+          </view>
+        </view>
+
+        <view class="live-qr-empty-card live-qr-list-empty" wx:else>
+          <view class="live-qr-empty-icon">+</view><view class="live-qr-empty-title">还没有活码</view><view class="live-qr-empty-sub">上传一张微信群二维码，系统会自动生成可长期分享的固定入口。</view>
+          <view class="live-qr-style-picker"><view class="live-qr-style-title">投放样式</view><view class="live-qr-style-options"><view class="live-qr-style-option {{liveQrStyleMode === 'plain' ? 'active' : ''}}" data-mode="plain" bindtap="handleChooseLiveQrStyle">纯二维码</view><view class="live-qr-style-option {{liveQrStyleMode === 'source' ? 'active' : ''}}" data-mode="source" bindtap="handleChooseLiveQrStyle">保留原图</view></view></view>
+          <view class="live-qr-style-hint" wx:if="{{liveQrStyleMode === 'source'}}">只替换二维码，保留原图头像、群名称和排版</view>
+          <button class="primary-btn live-qr-create-btn" bindtap="handleOpenLiveQrCreator">上传二维码并生成</button>
+        </view>
+      </block>
+
+      <block wx:elif="{{liveQrView === 'detail' && liveQrDetail}}">
+        <view class="live-qr-detail-toolbar" bindtap="handleBackLiveQrList"><view class="live-qr-detail-back">‹</view><view class="live-qr-detail-back-text">我的活码</view></view>
+        <view class="live-qr-detail-card">
+          <view class="live-qr-detail-head"><view><view class="live-qr-card-title">{{liveQrDetail.name}}</view><view class="live-qr-card-sub">固定入口 · {{liveQrDetail.statusText}}</view></view><view class="live-qr-status {{liveQrDetail.statusClass === 'expired' ? 'expired' : ''}}">{{liveQrDetail.statusText}}</view></view>
+          <view class="live-qr-pair">
+            <view class="live-qr-side"><image class="live-qr-preview" src="{{liveQrDetail.targetQrImageUrl}}" mode="aspectFit"></image><view class="live-qr-side-label">微信群码</view><view class="live-qr-side-sub">当前二维码</view></view>
+            <view class="live-qr-arrow">→</view>
+            <view class="live-qr-side"><image class="live-qr-preview {{liveQrDetail.posterMode === 'source' ? 'poster-preview' : ''}}" src="{{liveQrDetail.qrImageUrl}}" mode="aspectFit"></image><view class="live-qr-side-label">{{liveQrDetail.posterMode === 'source' ? '投放图片' : '固定活码'}}</view><view class="live-qr-side-sub">{{liveQrDetail.posterMode === 'source' ? '保留原图样式' : '分享这个入口'}}</view></view>
+          </view>
+          <view class="live-qr-style-row"><view class="live-qr-style-copy"><view class="live-qr-style-title">投放样式</view><view class="live-qr-style-sub">{{liveQrDetail.posterModeText}}</view></view><view class="live-qr-style-options"><view class="live-qr-style-option {{liveQrDetail.posterMode === 'plain' ? 'active' : ''}}" data-id="{{liveQrDetail.id}}" data-mode="plain" bindtap="handleChangeLiveQrStyle">纯二维码</view><view class="live-qr-style-option {{liveQrDetail.posterMode === 'source' ? 'active' : ''}}" data-id="{{liveQrDetail.id}}" data-mode="source" bindtap="handleChangeLiveQrStyle">保留原图</view></view></view>
+          <view class="live-qr-style-hint" wx:if="{{liveQrDetail.posterMode === 'source'}}">只替换二维码，保留原图头像、群名称和排版</view>
+          <view class="live-qr-expiry-row"><view class="live-qr-days {{liveQrDetail.targetExpiryState === 'expired' ? 'expired' : ''}}">{{liveQrDetail.targetExpiryState === 'expired' ? '已过期' : '剩余 ' + liveQrDetail.targetExpiresInDays + ' 天'}}</view><view class="live-qr-expires">有效期至 {{liveQrDetail.targetExpiresAtText}}</view></view>
+          <view class="live-qr-reminder-row"><view class="live-qr-reminder-dot {{liveQrDetail.reminderState === 'accepted' ? 'on' : ''}}"></view><view class="live-qr-reminder-text">{{liveQrDetail.reminderText}}</view><button wx:if="{{liveQrDetail.reminderState !== 'accepted' && liveQrDetail.reminderConfigured !== false}}" class="live-qr-reminder-btn" data-id="{{liveQrDetail.id}}" bindtap="handleEnableLiveQrReminder">开启提醒</button></view>
+          <view class="live-qr-note-row">{{liveQrDetail.remarkText}}</view>
+          <view class="live-qr-url">固定入口已生成 · {{liveQrDetail.publicUrl}}</view>
+          <view class="live-qr-actions"><button class="ghost-btn live-qr-action-btn" data-id="{{liveQrDetail.id}}" bindtap="handleDownloadLiveQr">保存活码</button><button class="primary-btn live-qr-action-btn" data-id="{{liveQrDetail.id}}" bindtap="handleUpdateLiveQr">更新二维码</button><button class="delete-btn live-qr-delete-btn" data-id="{{liveQrDetail.id}}" bindtap="handleDeleteLiveQr">删除</button></view>
+        </view>
+      </block>
+
+      <view class="live-qr-rule">免费使用 · 每个活码有效期 7 天 · 到期前可直接更新</view>
+    </block>
   </block>
 
   <block wx:else>
     <view class="flow-page">
-      <view class="flow-back" bindtap="handleFlowBack">‹</view>
-      <view class="flow-step-title">{{pageTitle}}</view>
+      <view class="flow-back" bindtap="handleFlowBack">‹</view><view class="flow-step-title">{{pageTitle}}</view>
 
       <view wx:if="{{publishStep === 1}}">
-        <view class="flow-stat">当前新增 <text>{{groups.length}}</text> 个群 · <text>{{confirmedTotal}}</text> 个确认可进</view>
+        <view class="publish-quota-card" wx:if="{{!adminPublishMode}}">
+          <view wx:if="{{publishQuotaLoading}}" class="publish-quota-loading">正在读取今日发布额度…</view>
+          <view wx:elif="{{publishQuotaReady}}" class="publish-quota-main"><text class="publish-quota-value">{{publishQuota.remainingToday}}</text><view><view class="publish-quota-title">今天还能发布</view><view class="publish-quota-unit">个群资源</view></view></view>
+          <view wx:else class="publish-quota-loading">今日额度暂不可读取，提交时会按服务器规则校验。</view>
+          <view class="publish-quota-note">每天最多新发布 {{publishQuota.dailyLimit}} 个，删除后今日额度不会恢复；需要修改时可更新二维码。</view>
+        </view>
+        <view class="publish-quota-card admin-quota-card" wx:else>
+          <view class="publish-quota-title">管理员新增</view>
+          <view class="publish-quota-note">不占个人发布额度，不产生个人发布奖励。</view>
+        </view>
+        <view class="flow-stat">已发布 <text>{{myGroups.length}}</text> 个群资源</view>
         <view class="upload-card" bindtap="handleChooseQr">
           <image wx:if="{{draft.qrImage}}" class="upload-preview" src="{{draft.qrImage}}" mode="aspectFill"></image>
-          <view wx:else class="upload-placeholder">
-            <view class="upload-icon">↑</view>
-            <view class="upload-title">上传微信群二维码</view>
-            <view class="upload-sub">仅用于识别，不会公开展示</view>
-          </view>
+          <view wx:else class="upload-placeholder"><view class="upload-icon">↑</view><view class="upload-title">上传微信群二维码</view><view class="upload-sub">仅用于识别与审核，不会在列表公开展示</view></view>
         </view>
-
-        <view class="recognize-card">
-          <view class="recognize-title">识别结果</view>
-          <view class="recognize-row ok">
-            <view class="recognize-icon">✓</view>
-            <view>
-              <view>已识别二维码</view>
-              <text>{{draft.qrImage ? '图片已上传' : '等待上传图片'}}</text>
-            </view>
-          </view>
-          <view class="recognize-row ok">
-            <view class="recognize-icon">群</view>
-            <view>
-              <view>疑似微信群二维码</view>
-              <text>发布前还需补充群信息</text>
-            </view>
-          </view>
-          <view class="recognize-row ok">
-            <view class="recognize-icon">盾</view>
-            <view>
-              <view>未发现重复</view>
-              <text>当前库中未发现相同二维码</text>
-            </view>
-          </view>
-          <view class="recognize-row ok">
-            <view class="recognize-icon">5</view>
-            <view>
-              <view>默认有效期 5 天</view>
-              <text>可在下一步修改</text>
-            </view>
-          </view>
-        </view>
-
-        <button class="flow-primary" bindtap="handleNextFromUpload">下一步</button>
-        <view class="flow-lock">二维码将仅用于识别与审核</view>
+        <view class="recognize-card"><view class="recognize-title">发布前检查</view><view class="recognize-row ok"><view class="recognize-icon">✓</view><view><view>{{draft.qrImage ? '已上传二维码' : '等待上传二维码'}}</view><text>二维码只会展示给已扣除积分的查看者</text></view></view><view class="recognize-row ok"><view class="recognize-icon">7</view><view><view>默认有效 7 天</view><text>到期后自动从找群列表隐藏</text></view></view></view>
+        <button class="flow-primary" bindtap="handleNextFromUpload">下一步</button><view class="flow-lock" wx:if="{{adminPublishMode}}">管理员新增不占个人发布额度，不产生个人发布奖励</view><view class="flow-lock" wx:else>每天最多发布 1 个，更新已有群不重复奖励</view>
       </view>
 
       <view wx:if="{{publishStep === 2}}">
-        <view class="flow-subtitle">能点选就点选，只有自定义需要输入</view>
-
-        <view class="choice-section">
-          <view class="choice-title">城市 / 区域</view>
-          <view class="choice-hint">默认用当前城市，也可以设为全国或用微信地区选择器修改。</view>
-          <view class="city-picker-row">
-            <view class="choice-chip national-chip {{draft.cityMode === 'national' ? 'active' : ''}}" bindtap="handleUseNational">全国</view>
-            <picker mode="region" value="{{draft.region}}" bindchange="handleRegionChange">
-              <view class="region-picker {{draft.cityMode === 'city' ? 'active' : ''}}">
-                <view class="region-main">{{draft.cityMode === 'national' ? '选择城市' : draft.cityLabel}}</view>
-                <view class="region-sub">省 / 市</view>
-              </view>
-            </picker>
-          </view>
-        </view>
-
-        <view class="choice-section">
-          <view class="choice-title">群类型</view>
-          <view class="choice-row">
-            <view wx:for="{{typeOptions}}" wx:key="*this" class="choice-chip {{draft.typeIndex === index ? 'active' : ''}}" data-index="{{index}}" bindtap="handleTypeChoice">{{item}}</view>
-          </view>
-        </view>
-
-        <view class="choice-section">
-          <view class="choice-title">用途</view>
-          <view class="choice-row">
-            <view wx:for="{{purposeChoices}}" wx:key="label" class="choice-chip {{item.selected ? 'active' : ''}}" data-value="{{item.label}}" bindtap="handleTogglePurpose">{{item.label}}</view>
-          </view>
-        </view>
-
-        <view class="choice-section">
-          <view class="choice-title">人数区间</view>
-          <view class="choice-row">
-            <view wx:for="{{memberOptions}}" wx:key="*this" class="choice-chip {{draft.memberIndex === index ? 'active' : ''}}" data-index="{{index}}" bindtap="handleMemberChoice">{{item}}</view>
-          </view>
-        </view>
-
-        <view class="choice-section">
-          <view class="choice-title">活跃度</view>
-          <view class="choice-row">
-            <view wx:for="{{activeOptions}}" wx:key="*this" class="choice-chip {{draft.activeIndex === index ? 'active' : ''}}" data-index="{{index}}" bindtap="handleActiveChoice">{{item}}</view>
-          </view>
-        </view>
-
-        <view class="choice-section">
-          <view class="choice-title">自定义标签 <text>选填</text></view>
-          <view class="tag-edit-row">
-            <view class="tag-pill" wx:for="{{draft.customTags}}" wx:key="*this">{{item}}</view>
-            <view class="tag-add" bindtap="handleAddTag">+ 添加</view>
-          </view>
-        </view>
-
+        <view class="flow-subtitle">选择城市、行业和用途，方便其他人找到你的群</view>
+        <view class="choice-section"><view class="choice-title">城市 / 区域</view><view class="city-picker-row"><view class="choice-chip national-chip {{draft.cityMode === 'national' ? 'active' : ''}}" bindtap="handleUseNational">全国</view><picker mode="region" value="{{draft.region}}" bindchange="handleRegionChange"><view class="region-picker {{draft.cityMode === 'city' ? 'active' : ''}}"><view class="region-main">{{draft.cityMode === 'national' ? '全国' : draft.cityLabel}}</view><view class="region-sub">省 / 市</view></view></picker></view></view>
+        <view class="choice-section"><view class="choice-title">所属行业</view><view class="choice-row"><view wx:for="{{industryOptions}}" wx:key="*this" class="choice-chip {{draft.industryIndex === index ? 'active' : ''}}" data-index="{{index}}" bindtap="handleIndustryChoice">{{item}}</view></view></view>
+        <view class="choice-section"><view class="choice-title">补充标签 <text>选填，帮助别人找到</text></view><view class="tag-edit-row"><view wx:for="{{draft.tags}}" wx:key="*this" class="tag-pill">{{item}}<text class="tag-remove" data-index="{{index}}" catchtap="handleRemoveCustomTag">×</text></view><view wx:if="{{!tagInputVisible}}" class="tag-add" bindtap="handleShowTagInput">＋ 添加标签</view></view><view wx:if="{{tagInputVisible}}" class="tag-input-row"><input value="{{tagInput}}" maxlength="20" placeholder="例如：AI工具、长沙本地" bindinput="handleCustomTagInput" bindconfirm="handleAddCustomTag" confirm-type="done"/><button class="tag-input-btn" bindtap="handleAddCustomTag">添加</button></view></view>
+        <view class="choice-section"><view class="choice-title">用途</view><view class="choice-row"><view wx:for="{{purposeChoices}}" wx:key="label" class="choice-chip {{item.selected ? 'active' : ''}}" data-index="{{index}}" bindtap="handleTogglePurpose">{{item.label}}</view></view></view>
         <button class="flow-primary" bindtap="handleNextFromInfo">下一步</button>
       </view>
 
       <view wx:if="{{publishStep === 3}}">
-        <view class="expire-card">
-          <view class="choice-title">设置有效期 <text>每个群必须设置</text></view>
-          <view class="expire-row">
-            <view wx:for="{{expireOptions}}" wx:key="days" class="expire-chip {{draft.expireIndex === index ? 'active' : ''}} {{item.recommend ? 'recommend' : ''}}" data-index="{{index}}" bindtap="handleExpireChoice">
-              <view wx:if="{{item.recommend}}" class="recommend-badge">推荐</view>
-              {{item.label}}
-            </view>
-          </view>
-
-          <view class="why-card">
-            <view class="why-title">为什么需要设置有效期？</view>
-            <view class="why-row">
-              <view class="why-icon">时</view>
-              <view>
-                <view>5 天内自然过期不扣分</view>
-                <text>过期后将自动下架，不影响你的积分</text>
-              </view>
-            </view>
-            <view class="why-row">
-              <view class="why-icon">铃</view>
-              <view>
-                <view>到期前会提醒更新</view>
-                <text>到期前 1 天提醒你，及时更新可继续获得积分</text>
-              </view>
-            </view>
-            <view class="why-row">
-              <view class="why-icon">盾</view>
-              <view>
-                <view>保证信息有效性</view>
-                <text>帮助大家找到最新、可进的优质群</text>
-              </view>
-            </view>
-          </view>
-        </view>
-
-        <view class="optional-card">
-          <view class="optional-title">可选：补充以下信息</view>
-          <view class="optional-row">
-            <view>群名称</view>
-            <input value="{{draft.name}}" placeholder="选填，便于识别该群" data-key="name" bindinput="handleDraftInput" />
-          </view>
-          <view class="optional-row">
-            <view>入群备注</view>
-            <input value="{{draft.remark}}" placeholder="选填，如入群门槛、验证方式等" data-key="remark" bindinput="handleDraftInput" />
-          </view>
-        </view>
-
-        <button class="flow-primary" bindtap="handleSubmitGroup">预览发布</button>
-        <view class="flow-lock">发布前可再次预览全部信息</view>
+        <view class="expire-card"><view class="choice-title">设置有效期 <text>最长 7 天</text></view><view class="expire-row"><view wx:for="{{expireOptions}}" wx:key="days" class="expire-chip {{draft.expireIndex === index ? 'active' : ''}}" data-index="{{index}}" bindtap="handleExpireChoice"><view wx:if="{{item.recommend}}" class="recommend-badge">推荐</view>{{item.label}}</view></view><view class="why-card"><view class="why-title">保持群信息新鲜</view><view class="why-row"><view class="why-icon">时</view><view><view>到期自动隐藏</view><text>避免大家点到失效二维码</text></view></view><view class="why-row"><view class="why-icon">换</view><view><view>更新二维码即可恢复</view><text>更新已有群不重复奖励</text></view></view></view></view>
+        <view class="optional-card"><view class="optional-title">补充信息</view><view class="optional-row"><view>群名称</view><input value="{{draft.name}}" placeholder="选填，系统会自动生成名称" data-key="name" bindinput="handleDraftInput" /></view><view class="optional-row"><view>入群备注</view><input value="{{draft.remark}}" placeholder="选填，如入群门槛、验证方式" data-key="remark" bindinput="handleDraftInput" /></view></view>
+        <button class="flow-primary" bindtap="handleSubmitGroup">{{adminPublishMode ? '保存并发布' : '确认发布'}}</button><view class="flow-lock" wx:if="{{adminPublishMode}}">管理员新增通过内容检查后立即进入找群，不占个人额度，也不产生个人奖励</view><view class="flow-lock" wx:else>发布奖励审核中，不会立即计入可用积分</view>
       </view>
 
-      <view wx:if="{{publishStep === 4}}">
-        <view class="success-hero">
-          <view class="success-check">✓</view>
-          <view>
-            <view class="success-title">发布成功！</view>
-            <view class="success-points">冻结 <text>20</text> 积分</view>
-          </view>
-        </view>
-
-        <view class="success-card">
-          <view class="success-avatar">群</view>
-          <view>
-            <view class="success-group-title">{{successGroup.name}}</view>
-            <view class="success-tags">
-              <text>{{successGroup.type}}</text>
-              <text>{{successGroup.purposes[0]}}</text>
-              <text>{{successGroup.members}}</text>
-            </view>
-            <view class="success-expire">有效至 {{successGroup.expireText}} · 确认后到账</view>
-          </view>
-        </view>
-
-        <view class="next-card">
-          <view class="next-row">
-            <view class="next-icon">时</view>
-            <view>
-              <view>新发布，等待用户确认可进</view>
-              <text>2 人确认成功进群或后台确认后，冻结积分会转为可用积分</text>
-            </view>
-          </view>
-        </view>
-
-        <view class="next-card">
-          <view class="next-title">接下来你可以</view>
-          <view class="next-row">
-            <view class="next-icon">换</view>
-            <view>
-              <view>持续更新，获得更多积分</view>
-              <text>保持群有效，可获得更多确认奖励；失效会扣罚</text>
-            </view>
-          </view>
-          <view class="next-row">
-            <view class="next-icon">享</view>
-            <view>
-              <view>分享给需要的人</view>
-              <text>让更多人看到你的优质群资源</text>
-            </view>
-          </view>
-        </view>
-
-        <button class="flow-primary" bindtap="handleContinuePublish">继续发布</button>
-        <button class="flow-secondary" bindtap="handleViewResources">查看我的资源</button>
-      </view>
+      <view wx:if="{{publishStep === 4}}"><view class="success-hero"><view class="success-check">✓</view><view><view class="success-title">{{successIsAdmin ? '管理员新增成功' : '发布成功'}}</view><view class="success-points" wx:if="{{successIsAdmin}}">已进入找群，其他人现在就能按城市、行业和标签找到它</view><view class="success-points" wx:elif="{{successReward}}">审核中 <text>+{{successReward}}</text> 积分</view><view class="success-points" wx:else>本次已达到奖励上限</view></view></view><view class="success-card"><view class="success-avatar">群</view><view><view class="success-group-title">{{successGroup.name}}</view><view class="success-tags"><text>{{successGroup.industry}}</text><text>{{successGroup.purpose}}</text><text wx:for="{{successGroup.tags}}" wx:key="*this">{{item}}</text></view><view class="success-expire">有效至 {{successGroup.expireAtText}} · 可在找群中被搜索</view></view></view><view class="next-card"><view class="next-row"><view class="next-icon">换</view><view><view>到期前更新二维码</view><text>更新已有群不会重复奖励，入口会继续保留</text></view></view></view><button class="flow-primary" bindtap="handleViewResources">查看我的发布</button></view>
     </view>
   </block>
 
-  <view class="qr-mask" wx:if="{{rulesVisible}}" bindtap="handleCloseRules">
-    <view class="rule-modal" catchtap="noop">
-      <view class="modal-title">积分规则</view>
-      <view class="rule-list">
-        <view class="rule-row">
-          <text>首次进入</text>
-          <strong>+100 积分</strong>
-        </view>
-        <view class="rule-row">
-          <text>发布微信群</text>
-          <strong>冻结 +20</strong>
-        </view>
-        <view class="rule-row">
-          <text>2 人/后台确认可进</text>
-          <strong>转可用</strong>
-        </view>
-        <view class="rule-row">
-          <text>查看二维码</text>
-          <strong>-30 积分</strong>
-        </view>
-        <view class="rule-row warn">
-          <text>确认失效后退还查看者</text>
-          <strong>+30 积分</strong>
-        </view>
-        <view class="rule-row danger">
-          <text>虚假/风险群下架</text>
-          <strong>扣回并罚分</strong>
-        </view>
-        <view class="rule-row danger">
-          <text>超过 5 天多人反馈失效</text>
-          <strong>-20 积分</strong>
-        </view>
-      </view>
-      <view class="modal-desc">同一个群再次查看不重复扣分。冻结积分需要确认可进后才到账。</view>
-      <button class="primary-btn modal-btn" bindtap="handleCloseRules">知道了</button>
-    </view>
-  </view>
-
-  <view class="qr-mask" wx:if="{{qrViewer}}" bindtap="handleCloseQr">
-    <view class="qr-modal" catchtap="noop">
-      <view class="modal-title">{{qrViewer.name}}</view>
-      <image wx:if="{{qrViewer.qrImage}}" class="modal-qr" src="{{qrViewer.qrImage}}" mode="aspectFill"></image>
-      <view wx:else class="modal-qr placeholder">二维码</view>
-      <view class="modal-desc">二维码不会公开展示给未消耗积分的用户。</view>
-      <button class="primary-btn modal-btn" bindtap="handleCloseQr">知道了</button>
-    </view>
-  </view>
+  <view class="qr-mask" wx:if="{{rulesVisible}}" bindtap="handleCloseRules"><view class="rule-modal" catchtap="noop"><view class="modal-title">群资源规则</view><view class="rule-list"><view class="rule-row"><text>每天新发布上限</text><strong>1 个</strong></view><view class="rule-row"><text>发布奖励累计上限</text><strong>100 积分</strong></view><view class="rule-row"><text>查看群</text><strong>-15 积分</strong></view><view class="rule-row warn"><text>发布有效群</text><strong>+10 积分</strong></view><view class="rule-row"><text>更新已有群</text><strong>不重复奖励</strong></view></view><view class="modal-desc">同一个群再次查看不重复扣分，失效群会自动隐藏。</view><button class="primary-btn modal-btn" bindtap="handleCloseRules">知道了</button></view></view>
+  <view class="qr-mask" wx:if="{{qrViewer}}" bindtap="handleCloseQr"><view class="qr-modal" catchtap="noop"><view class="modal-title">{{qrViewer.name}}</view><image wx:if="{{qrViewer.qrImage}}" class="modal-qr" src="{{qrViewer.qrImage}}" mode="aspectFit"></image><view wx:else class="modal-qr placeholder">二维码</view><view class="modal-desc">二维码仅对本次查看者展示。</view><button class="primary-btn modal-btn" bindtap="handleSaveViewedQr">保存</button><button class="report-invalid-btn" bindtap="handleReportQrInvalid">二维码失效？举报</button></view></view>
 </view>

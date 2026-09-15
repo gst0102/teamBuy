@@ -1223,11 +1223,57 @@
   color: #9aa4b2;
 }
 
-.business-card-share-canvas {
-  position: fixed;
-  left: -9999rpx;
-  top: -9999rpx;
-  width: 750rpx;
-  height: 1800rpx;
-  pointer-events: none;
+/* Typography scale v2: make the library's reading and editing paths easier to scan. */
+.page-shell .notes-title { font-size: 38rpx; }
+.page-shell .notes-subtitle { font-size: 26rpx; }
+.page-shell .notes-count { font-size: 32rpx; }
+.page-shell .search-input { font-size: 28rpx; }
+.page-shell .migration-title { font-size: 28rpx; }
+.page-shell .migration-sub { font-size: 23rpx; }
+.page-shell .migration-action { font-size: 24rpx; }
+.page-shell .filter-title { font-size: 26rpx; }
+.page-shell .filter-chip { font-size: 24rpx; }
+.page-shell .list-meta { font-size: 23rpx; }
+.page-shell .view-switch { font-size: 24rpx; }
+.page-shell .grid-title { font-size: 28rpx; }
+.page-shell .grid-summary { font-size: 24rpx; }
+.page-shell .grid-price { font-size: 28rpx; }
+.page-shell .grid-badge,
+.page-shell .grid-tag { font-size: 20rpx; }
+.page-shell .bookmark-source { font-size: 22rpx; }
+.page-shell .bookmark-title { font-size: 30rpx; }
+.page-shell .bookmark-summary { font-size: 25rpx; }
+.page-shell .bookmark-meta { font-size: 22rpx; }
+.page-shell .bookmark-topics text,
+.page-shell .bookmark-tags text { font-size: 20rpx; }
+.page-shell .bookmark-actions text { font-size: 23rpx; }
+.page-shell .typed-title { font-size: 30rpx; }
+.page-shell .typed-primary { font-size: 28rpx; }
+.page-shell .typed-secondary { font-size: 24rpx; }
+.page-shell .typed-actions text,
+.page-shell .typed-actions button { display: flex; align-items: center; justify-content: center; min-height: 68rpx; font-size: 24rpx; }
+.notes-page .inline-load-error,
+.notes-page .load-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 72rpx;
+  margin: 14rpx 0;
+  color: #8a96a8;
+  font-size: 24rpx;
+  text-align: center;
+}
+
+.notes-page .inline-load-error {
+  padding: 12rpx 20rpx;
+  border-radius: 14rpx;
+  color: #b42318;
+  background: #fff1f0;
+}
+
+.notes-page .inline-loading {
+  padding: 12rpx 20rpx;
+  color: #667085;
+  font-size: 24rpx;
+  text-align: center;
 }

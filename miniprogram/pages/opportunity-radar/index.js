@@ -9,56 +9,6 @@ const tabs = [
   { key: "sub", label: "订阅" }
 ];
 
-const mockTopOpportunity = {
-  id: "opp_demo_1",
-  level: "高匹配",
-  score: 92,
-  title: "长沙新店找本地推广渠道",
-  summary: "餐饮新店准备开业，想找能触达社区和商圈客户的合作方。",
-  city: "长沙",
-  industry: "本地生活",
-  demandType: "找渠道",
-  contactStatus: "有电话 · 已核验",
-  trustStatus: "可联系",
-  expireText: "2 天内优先联系",
-  action: "生成服务介绍页和案例合集发给对方",
-  reasons: ["长沙", "本地商家", "推广渠道", "有联系方式"],
-  radar: [
-    { label: "城市", value: 96 },
-    { label: "行业", value: 88 },
-    { label: "需求", value: 94 },
-    { label: "联系", value: 86 },
-    { label: "时效", value: 91 }
-  ]
-};
-
-const mockMoreOpportunities = [
-  {
-    id: "opp_demo_2",
-    level: "中匹配",
-    score: 78,
-    title: "社区团购团长找稳定货源",
-    summary: "希望找到日用品、食品类供给方，可接受样品试卖。",
-    city: "长沙",
-    industry: "团购",
-    contactStatus: "可私信",
-    action: "整理商品合集后申请联系",
-    reasons: ["团购", "货源", "可联系"]
-  },
-  {
-    id: "opp_demo_3",
-    level: "中匹配",
-    score: 74,
-    title: "企业客户找活动执行供应商",
-    summary: "下周有线下活动，需要摄影、物料和现场执行团队。",
-    city: "长沙",
-    industry: "企业服务",
-    contactStatus: "联系方式待核验",
-    action: "先保存，等核验后生成回应包",
-    reasons: ["企业客户", "服务合作", "时效强"]
-  }
-];
-
 function scoreLead(lead = {}, index = 0) {
   let score = 68;
   if (lead.city) score += 8;
@@ -98,22 +48,19 @@ function mapLead(lead = {}, index = 0) {
   };
 }
 
-function isDemoLeadId(value) {
-  return /^opp_demo_/.test(String(value || ""));
-}
-
 Page({
   data: {
     tabs,
     activeTab: "mine",
-    topOpportunity: mockTopOpportunity,
-    moreOpportunities: mockMoreOpportunities,
+    topOpportunity: {},
+    moreOpportunities: [],
     recommendationTitle: "今日推荐机会",
     recommendationMeta: "进入页面时按订阅条件刷新",
     pushDigests: [],
     generatingDigest: false,
-    loading: false,
-    usingMock: true,
+    loading: true,
+    loadError: false,
+    loadEmpty: false,
     shareCardImage: ""
   },
   onShow() {
@@ -127,7 +74,8 @@ Page({
     this.prepareShareImage();
   },
   prepareShareImage() {
-    const lead = this.data.topOpportunity || mockTopOpportunity;
+    const lead = this.data.topOpportunity || {};
+    if (!lead.id) return Promise.resolve(null);
     return prepareShareCardImage(this, {
       title: "我的机会",
       summary: lead.summary || "系统按你的资料和订阅条件推荐可跟进机会。",
@@ -137,7 +85,7 @@ Page({
     });
   },
   async loadOpportunities() {
-    this.setData({ loading: true });
+    this.setData({ loading: true, loadError: false, loadEmpty: false });
     try {
       const user = getCurrentUser();
       const res = await fetchOpportunityLeads({ userId: user && user.id });
@@ -145,9 +93,9 @@ Page({
       const list = rawList.map(mapLead);
       if (!list.length) {
         this.setData({
-          topOpportunity: mockTopOpportunity,
-          moreOpportunities: mockMoreOpportunities,
-          usingMock: true
+          topOpportunity: {},
+          moreOpportunities: [],
+          loadEmpty: true
         });
         return;
       }
@@ -156,14 +104,16 @@ Page({
         moreOpportunities: list.slice(1),
         recommendationTitle: (res.data && res.data.recommendationTitle) || "今日推荐机会",
         recommendationMeta: (res.data && res.data.rule) || "按订阅条件生成",
-        usingMock: false
+        loadEmpty: false,
+        loadError: false
       });
       this.prepareShareImage();
     } catch (error) {
       this.setData({
-        topOpportunity: mockTopOpportunity,
-        moreOpportunities: mockMoreOpportunities,
-        usingMock: true
+        topOpportunity: {},
+        moreOpportunities: [],
+        loadError: true,
+        loadEmpty: false
       });
     } finally {
       this.setData({ loading: false });
@@ -231,10 +181,6 @@ Page({
       return;
     }
     if (!lead || !lead.id) return;
-    if (isDemoLeadId(lead.id)) {
-      wx.showToast({ title: "已保存到跟进台", icon: "success" });
-      return;
-    }
     if (!String(lead.id).startsWith("opp_")) {
       wx.showToast({ title: "这条不是商机线索，请去供需详情申请", icon: "none" });
       return;

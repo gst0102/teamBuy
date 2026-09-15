@@ -216,3 +216,40 @@
 .actions button::after {
   border: 0;
 }
+/* Typography scale v2: make saved opportunities easy to scan and reopen. */
+.saved-page .hero-kicker { font-size: 24rpx; }
+.saved-page .hero-title { font-size: 40rpx; }
+.saved-page .hero-sub { font-size: 26rpx; }
+.saved-page .status-tab { font-size: 25rpx; }
+.saved-page .filter-pill { font-size: 23rpx; }
+.saved-page .saved-card .card-title { font-size: 29rpx; }
+.saved-page .saved-card .status-pill,
+.saved-page .saved-card .package-pill { font-size: 21rpx; }
+.saved-page .follow-grid,
+.saved-page .note-box { font-size: 24rpx; }
+.saved-page .actions button { display: flex; align-items: center; justify-content: center; min-height: 68rpx; font-size: 25rpx; }
+.saved-page .inline-load-error,
+.saved-page .load-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 72rpx;
+  margin: 14rpx 0;
+  color: #8a96a8;
+  font-size: 24rpx;
+  text-align: center;
+}
+
+.saved-page .inline-load-error {
+  padding: 12rpx 20rpx;
+  border-radius: 14rpx;
+  color: #b42318;
+  background: #fff1f0;
+}
+
+.saved-page .inline-loading {
+  padding: 12rpx 20rpx;
+  color: #667085;
+  font-size: 24rpx;
+  text-align: center;
+}

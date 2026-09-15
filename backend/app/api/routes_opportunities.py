@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from app.api.dependencies import get_app_service
 from app.schemas.common import ApiResponse
@@ -8,6 +8,7 @@ from app.schemas.opportunities import (
     OpportunityLeadFollowupRequest,
     OpportunityLeadSaveRequest,
     OpportunityContactUnlockRequest,
+    BusinessOpportunityContactReportRequest,
     OpportunitySubscriptionUpsertRequest,
     OpportunityPushDigestRequest,
     ResponsePackageCreateRequest,
@@ -32,6 +33,8 @@ def list_opportunity_leads(
     industry: str | None = Query(default=None),
     demandType: str | None = Query(default=None),
     contactStatus: str | None = Query(default=None),
+    cursor: str | None = Query(default=None),
+    limit: int | None = Query(default=None, ge=1, le=50),
     service: AppService = Depends(get_app_service),
 ):
     if userId:
@@ -43,6 +46,8 @@ def list_opportunity_leads(
                 industry=industry,
                 demand_type=demandType,
                 contact_status=contactStatus,
+                cursor=cursor,
+                limit=limit,
             )
         )
     return ApiResponse(
@@ -52,16 +57,20 @@ def list_opportunity_leads(
             industry=industry,
             demand_type=demandType,
             contact_status=contactStatus,
+            cursor=cursor,
+            limit=limit,
         )
     )
 
 
-@router.get("/saved", response_model=ApiResponse[list[dict]])
+@router.get("/saved", response_model=ApiResponse[dict | list[dict]])
 def list_saved_opportunity_leads(
     userId: str = Query(...),
     status: str | None = Query(default=None),
     keyword: str | None = Query(default=None),
     packageStatus: str | None = Query(default=None),
+    cursor: str | None = Query(default=None),
+    limit: int | None = Query(default=None, ge=1, le=50),
     service: AppService = Depends(get_app_service),
 ):
     return ApiResponse(
@@ -70,6 +79,8 @@ def list_saved_opportunity_leads(
             status=status,
             keyword=keyword,
             package_status=packageStatus,
+            cursor=cursor,
+            limit=limit,
         )
     )
 
@@ -192,6 +203,92 @@ def get_response_package_radar(
 subscriptions_router = APIRouter(prefix="/api/opportunity-subscriptions", tags=["opportunity-subscriptions"])
 supply_demand_router = APIRouter(prefix="/api/supply-demand/cards", tags=["supply-demand"])
 push_router = APIRouter(prefix="/api/opportunity-push-digests", tags=["opportunity-push-digests"])
+business_opportunity_router = APIRouter(prefix="/api/business-opportunities", tags=["business-opportunities"])
+
+
+def _business_opportunity_viewer_id(request: Request, fallback: str | None = None) -> str | None:
+    """Use the middleware-verified session identity in production.
+
+    The fallback keeps local/test mode convenient, but is deliberately ignored
+    once production identity enforcement is enabled. Public GET endpoints may
+    receive an optional Authorization header; anonymous visitors remain
+    allowed to browse the redacted catalogue and detail page.
+    """
+    if getattr(request.app.state, "production_auth_enabled", False):
+        return str(getattr(request.state, "authenticated_user_id", "") or "").strip() or None
+    return str(fallback or "").strip() or None
+
+
+@business_opportunity_router.get("/cards", response_model=ApiResponse[dict])
+def list_business_opportunity_cards(
+    request: Request,
+    mode: str = Query(default="capability"),
+    keyword: str | None = Query(default=None),
+    industry: str | None = Query(default=None),
+    subIndustry: str | None = Query(default=None),
+    city: str | None = Query(default=None),
+    cursor: str | None = Query(default=None),
+    limit: int = Query(default=10, ge=1, le=20),
+    viewerUserId: str | None = Query(default=None),
+    service: AppService = Depends(get_app_service),
+):
+    return ApiResponse(
+        data=service.list_business_opportunity_cards(
+            mode=mode,
+            keyword=keyword,
+            industry=industry,
+            sub_industry=subIndustry,
+            city=city,
+            cursor=cursor,
+            limit=limit,
+            viewer_user_id=_business_opportunity_viewer_id(request, viewerUserId),
+        )
+    )
+
+
+@business_opportunity_router.get("/cards/{note_id}", response_model=ApiResponse[dict])
+def get_business_opportunity_card(
+    note_id: str,
+    request: Request,
+    viewerUserId: str | None = Query(default=None),
+    service: AppService = Depends(get_app_service),
+):
+    return ApiResponse(data=service.get_business_opportunity_card_detail(
+        note_id,
+        viewer_user_id=_business_opportunity_viewer_id(request, viewerUserId),
+    ))
+
+
+@business_opportunity_router.post("/cards/{note_id}/unlock", response_model=ApiResponse[dict])
+def unlock_business_opportunity_card(
+    note_id: str,
+    request: Request,
+    payload: OpportunityContactUnlockRequest,
+    service: AppService = Depends(get_app_service),
+):
+    user_id = _business_opportunity_viewer_id(request, payload.userId)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="请先登录后查看联系方式")
+    return ApiResponse(data=service.unlock_business_opportunity_card(note_id, user_id))
+
+
+@business_opportunity_router.post("/cards/{note_id}/contact-reports", response_model=ApiResponse[dict])
+def report_business_opportunity_contact_invalid(
+    note_id: str,
+    request: Request,
+    payload: BusinessOpportunityContactReportRequest,
+    service: AppService = Depends(get_app_service),
+):
+    user_id = _business_opportunity_viewer_id(request, payload.userId)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="请先登录后举报联系方式")
+    return ApiResponse(
+        data=service.report_business_opportunity_contact_invalid(
+            note_id,
+            user_id,
+            payload.reason,
+        )
+    )
 
 
 @subscriptions_router.get("/me", response_model=ApiResponse[list[dict]])
@@ -229,7 +326,7 @@ def delete_opportunity_subscription(
     return ApiResponse(data=service.delete_opportunity_subscription(subscription_id, userId))
 
 
-@supply_demand_router.get("", response_model=ApiResponse[list[dict]])
+@supply_demand_router.get("", response_model=ApiResponse[dict | list[dict]])
 def list_supply_demand_cards(
     keyword: str | None = Query(default=None),
     city: str | None = Query(default=None),
@@ -237,6 +334,8 @@ def list_supply_demand_cards(
     demandType: str | None = Query(default=None),
     cardType: str | None = Query(default=None),
     contactStatus: str | None = Query(default=None),
+    cursor: str | None = Query(default=None),
+    limit: int | None = Query(default=None, ge=1, le=50),
     service: AppService = Depends(get_app_service),
 ):
     return ApiResponse(
@@ -247,6 +346,8 @@ def list_supply_demand_cards(
             demand_type=demandType,
             card_type=cardType,
             contact_status=contactStatus,
+            cursor=cursor,
+            limit=limit,
         )
     )
 
@@ -275,6 +376,15 @@ def get_supply_demand_card(
     service: AppService = Depends(get_app_service),
 ):
     return ApiResponse(data=service.get_supply_demand_card_detail(card_id, viewer_user_id=userId))
+
+
+@supply_demand_router.post("/{card_id}/unlock-contact", response_model=ApiResponse[dict])
+def unlock_supply_demand_card_contact(
+    card_id: str,
+    payload: OpportunityContactUnlockRequest,
+    service: AppService = Depends(get_app_service),
+):
+    return ApiResponse(data=service.unlock_supply_demand_card_contact(card_id, payload.userId))
 
 
 @supply_demand_router.post("", response_model=ApiResponse[dict])

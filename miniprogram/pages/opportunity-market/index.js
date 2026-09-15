@@ -2,35 +2,6 @@ const { fetchOpportunityLeads, fetchSupplyDemandCards, saveOpportunityLead } = r
 const { getCurrentUser } = require("../../utils/dashboard");
 const { buildShareCardMessage, prepareShareCardImage } = require("../../plugins/share-snapshot/index");
 
-const mockCards = [
-  {
-    id: "opp_demo_1",
-    type: "demand",
-    badge: "官方收录",
-    title: "长沙新店找本地推广渠道",
-    summary: "餐饮新店准备开业，想找能触达社区和商圈客户的合作方。",
-    city: "长沙",
-    industry: "本地生活",
-    demandType: "找渠道",
-    contactStatus: "有电话",
-    trustStatus: "可联系",
-    timeText: "今天 10:20"
-  },
-  {
-    id: "supply_demo_1",
-    type: "supply",
-    badge: "我能提供",
-    title: "长沙地推团队可接门店开业",
-    summary: "可提供社区派单、商圈地推、团长对接，适合本地门店。",
-    city: "长沙",
-    industry: "推广渠道",
-    demandType: "服务介绍页",
-    contactStatus: "申请联系",
-    trustStatus: "待审核",
-    timeText: "昨天 18:40"
-  }
-];
-
 const filterGroups = [
   { key: "city", label: "城市", options: ["全部", "长沙", "上海", "深圳", "全国"] },
   { key: "industry", label: "行业", options: ["全部", "本地生活", "团购", "企业服务", "推广渠道"] },
@@ -76,10 +47,6 @@ function buildStats(cards = []) {
   ];
 }
 
-function isMockCardId(value) {
-  return /^(opp_demo_|supply_demo_)/.test(String(value || ""));
-}
-
 function buildFilterGroups(activeFilters = {}) {
   return filterGroups.map((group) => ({
     ...group,
@@ -93,7 +60,7 @@ function buildFilterGroups(activeFilters = {}) {
 
 Page({
   data: {
-    stats: buildStats(mockCards),
+    stats: buildStats([]),
     activeFilters: {
       city: "全部",
       industry: "全部",
@@ -108,17 +75,21 @@ Page({
       demandType: "全部",
       contactStatus: "全部"
     }),
-    cards: mockCards,
+    cards: [],
     loading: false,
-    usingMock: true,
+    loadError: false,
+    hasMore: false,
+    leadCursor: "",
+    supplyCursor: "",
+    loadingMore: false,
     shareCardImage: ""
   },
   onLoad() {
     this.loadMarket();
-    this.prepareShareImage();
   },
   prepareShareImage() {
-    const first = (this.data.cards || [])[0] || mockCards[0];
+    const first = (this.data.cards || [])[0];
+    if (!first) return Promise.resolve(null);
     return prepareShareCardImage(this, {
       title: "供需广场",
       summary: first.summary || "查看可合作的需求和供给资源。",
@@ -127,17 +98,31 @@ Page({
       shareTargetLabel: "供需"
     });
   },
-  async loadMarket() {
-    this.setData({ loading: true });
+  async loadMarket(reset = true) {
+    if (!reset && (this.data.loading || this.data.loadingMore || !this.data.hasMore)) return;
+    const requestSeq = (this._marketRequestSeq || 0) + 1;
+    this._marketRequestSeq = requestSeq;
+    const leadCursor = reset ? "" : (this.data.leadCursor || "");
+    const supplyCursor = reset ? "" : (this.data.supplyCursor || "");
+    this.setData(reset
+      ? { loading: true, loadingMore: false, loadError: false, hasMore: false, leadCursor: "", supplyCursor: "" }
+      : { loadingMore: true, loadError: false });
     try {
       const params = this.buildFilterParams();
       const shouldFetchLeads = this.data.activeFilters.cardType !== "供给";
       const [leadRes, supplyRes] = await Promise.all([
-        shouldFetchLeads ? fetchOpportunityLeads(params.lead) : Promise.resolve({ data: [] }),
-        fetchSupplyDemandCards(params.supply)
+        shouldFetchLeads
+          ? fetchOpportunityLeads({ ...params.lead, cursor: leadCursor, limit: 20 })
+          : Promise.resolve({ data: { items: [], hasMore: false, nextCursor: "" } }),
+        fetchSupplyDemandCards({ ...params.supply, cursor: supplyCursor, limit: 20 })
       ]);
-      const leadCards = Array.isArray(leadRes.data) ? leadRes.data.map(mapCard) : [];
-      const supplyCards = Array.isArray(supplyRes.data) ? supplyRes.data.map((item) => ({
+      if (requestSeq !== this._marketRequestSeq) return;
+      const leadPayload = leadRes.data || {};
+      const supplyPayload = supplyRes.data || {};
+      const leadItems = Array.isArray(leadPayload) ? leadPayload : (leadPayload.items || []);
+      const supplyItems = Array.isArray(supplyPayload) ? supplyPayload : (supplyPayload.items || []);
+      const leadCards = leadItems.map(mapCard);
+      const supplyCards = supplyItems.map((item) => ({
         ...item,
         sourceType: "supply_demand",
         type: item.cardType || "supply",
@@ -145,19 +130,36 @@ Page({
         contactStatus: item.contactRequirement || "申请联系",
         trustStatus: item.status === "published" ? "已审核" : "待审核",
         timeText: formatTime(item.publishedAt || item.updatedAt || item.createdAt)
-      })) : [];
-      const cards = [...leadCards, ...supplyCards];
-      if (!cards.length) {
-        this.setData({ cards: mockCards, stats: buildStats(mockCards), usingMock: true });
-        return;
-      }
-      this.setData({ cards, stats: buildStats(cards), usingMock: false });
-      this.prepareShareImage();
+      }));
+      const incoming = [...leadCards, ...supplyCards];
+      const cards = reset
+        ? incoming
+        : [...(this.data.cards || []), ...incoming.filter((item) => !(this.data.cards || []).some((old) => old.id === item.id))];
+      const nextLeadCursor = Array.isArray(leadPayload) ? "" : (leadPayload.nextCursor || "");
+      const nextSupplyCursor = Array.isArray(supplyPayload) ? "" : (supplyPayload.nextCursor || "");
+      const hasMore = Boolean(!Array.isArray(leadPayload) && leadPayload.hasMore) || Boolean(!Array.isArray(supplyPayload) && supplyPayload.hasMore);
+      this.setData({
+        cards,
+        stats: buildStats(cards),
+        loading: false,
+        loadingMore: false,
+        loadError: false,
+        hasMore,
+        leadCursor: nextLeadCursor,
+        supplyCursor: nextSupplyCursor
+      });
+      if (reset && cards.length) this.prepareShareImage();
     } catch (error) {
-      this.setData({ cards: mockCards, stats: buildStats(mockCards), usingMock: true });
+      if (requestSeq !== this._marketRequestSeq) return;
+      this.setData(reset
+        ? { loading: false, loadingMore: false, hasMore: false, loadError: true }
+        : { loadingMore: false, loadError: true });
     } finally {
-      this.setData({ loading: false });
+      if (requestSeq === this._marketRequestSeq && reset) this.setData({ loading: false });
     }
+  },
+  onReachBottom() {
+    this.loadMarket(false);
   },
   buildFilterParams() {
     const filters = this.data.activeFilters || {};
@@ -187,7 +189,7 @@ Page({
       activeFilters,
       filterGroups: buildFilterGroups(activeFilters)
     });
-    this.loadMarket();
+    this.loadMarket(true);
   },
   handleFilterInput(event) {
     const key = event.currentTarget.dataset.key;
@@ -202,7 +204,7 @@ Page({
     });
   },
   handleFilterConfirm() {
-    this.loadMarket();
+    this.loadMarket(true);
   },
   handleOpenDetail(event) {
     const id = event.currentTarget.dataset.id;
@@ -216,12 +218,8 @@ Page({
     const user = getCurrentUser();
     const id = event.currentTarget.dataset.id;
     if (!user || !id) return;
-    if (isMockCardId(id)) {
-      wx.showToast({ title: "已保存", icon: "success" });
-      return;
-    }
     if (!String(id).startsWith("opp_")) {
-      wx.showToast({ title: "已保存供需卡", icon: "success" });
+      wx.showToast({ title: "请打开详情申请合作", icon: "none" });
       return;
     }
     try {

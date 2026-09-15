@@ -20,6 +20,10 @@ function getWebHost(url) {
   return match ? String(match[1]).toLowerCase() : "";
 }
 
+function isOfficialAccountArticleUrl(url) {
+  return getWebHost(url) === "mp.weixin.qq.com";
+}
+
 function isWebViewBusinessDomain(host) {
   const normalizedHost = String(host || "").toLowerCase().replace(/:\d+$/, "");
   return WEBVIEW_BUSINESS_DOMAINS.some((domain) => {
@@ -79,6 +83,7 @@ function parseTaskLink(rawInput, titleInput = "") {
   if (/^https:\/\//i.test(raw)) {
     const host = getWebHost(raw);
     if (!host) return { ok: false, error: "网页链接格式不正确" };
+    const officialArticle = isOfficialAccountArticleUrl(raw);
     const allowed = isWebViewBusinessDomain(host);
     const webTitle = title || host;
     return {
@@ -91,10 +96,14 @@ function parseTaskLink(rawInput, titleInput = "") {
         url: raw,
         title: webTitle,
         displayTitle: webTitle,
-        description: allowed ? "在资料整理助手内打开网页" : "复制链接后用手机浏览器打开",
-        detailDescription: allowed ? "网页将在小程序内打开" : "请复制链接后用手机浏览器打开",
-        actionLabel: allowed ? "打开网页" : "复制链接",
-        openMode: allowed ? "webview" : "browser",
+        description: officialArticle
+          ? "使用微信能力打开公众号文章"
+          : (allowed ? "在资料整理助手内打开网页" : "复制链接后用手机浏览器打开"),
+        detailDescription: officialArticle
+          ? "点击打开公众号文章，失败时可复制链接"
+          : (allowed ? "网页将在小程序内打开" : "请复制链接后用手机浏览器打开"),
+        actionLabel: officialArticle ? "打开公众号文章" : (allowed ? "打开网页" : "复制到浏览器"),
+        openMode: officialArticle ? "official_article" : (allowed ? "webview" : "browser"),
         host
       }
     };
@@ -124,6 +133,7 @@ function summarizeTaskLinks(links = []) {
 module.exports = {
   WEBVIEW_BUSINESS_DOMAINS,
   getWebHost,
+  isOfficialAccountArticleUrl,
   isWebViewBusinessDomain,
   normalizeTaskLinks,
   parseTaskLink,

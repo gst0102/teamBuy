@@ -25,6 +25,23 @@
     </view>
   </view>
 
+  <view class="info-panel contact-panel">
+    <view class="panel-title">联系方式</view>
+    <view wx:if="{{card.contactLocked}}" class="supply-contact-lock" bindtap="handleUnlockContact">
+      <view class="supply-contact-lock-icon">锁</view>
+      <view class="supply-contact-lock-copy"><view>联系方式已保护</view><text>确认后可拨打电话或复制微信</text></view>
+      <button loading="{{unlocking}}" disabled="{{unlocking}}" catchtap="handleUnlockContact">查看 {{card.viewCostPoints || 1}} 积分</button>
+    </view>
+    <view wx:elif="{{card.contacts.length}}" class="supply-contact-list">
+      <view wx:for="{{card.contacts}}" wx:key="contactType" class="supply-contact-row">
+        <text>{{item.label}}</text><view>{{item.contactValue}}</view>
+        <button wx:if="{{item.contactType === 'phone'}}" data-index="{{index}}" catchtap="handleCallContact">拨打</button>
+        <button data-index="{{index}}" catchtap="handleCopyContact">复制</button>
+      </view>
+    </view>
+    <view wx:else class="tip-box contact-empty">发布者暂未设置电话或微信。</view>
+  </view>
+
   <view class="info-panel">
     <view class="panel-title">合作申请</view>
     <view wx:if="{{card.isMine}}" class="tip-box">这是你自己的发布，可在“我的发布”里查看收到的申请。</view>

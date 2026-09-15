@@ -551,3 +551,29 @@ button {
   margin-top: 4rpx;
   color: #806b61;
 }
+/* Typography scale v2: make referral balance, progress and withdrawal actions readable. */
+.referral-page .state-title { font-size: 30rpx; }
+.referral-page .state-copy { font-size: 24rpx; }
+.referral-page .refresh-status { font-size: 22rpx; }
+.referral-page .overview-kicker { font-size: 24rpx; }
+.referral-page .eligibility-pill { font-size: 22rpx; }
+.referral-page .balance-label { font-size: 24rpx; }
+.referral-page .balance-amount { font-size: 42rpx; }
+.referral-page .withdraw-entry { font-size: 25rpx; }
+.referral-page .balance-meta { font-size: 22rpx; }
+.referral-page .share-action-title { font-size: 30rpx; }
+.referral-page .share-action-sub { font-size: 24rpx; }
+.referral-page .share-action-btn { display: flex; align-items: center; justify-content: center; min-height: 68rpx; font-size: 25rpx; }
+.referral-page .stats-title-row { font-size: 25rpx; }
+.referral-page .stats-hint { font-size: 23rpx; }
+.referral-page .stat-value { font-size: 34rpx; }
+.referral-page .stat-label { font-size: 23rpx; }
+.referral-page .activity-title { font-size: 26rpx; }
+.referral-page .activity-time { font-size: 22rpx; }
+.referral-page .activity-amount,
+.referral-page .activity-status { font-size: 23rpx; }
+.referral-page .entry-title { font-size: 27rpx; }
+.referral-page .entry-sub { font-size: 23rpx; }
+.referral-page .rules-title { font-size: 29rpx; }
+.referral-page .rule-row { font-size: 24rpx; }
+.referral-page .rule-copy { font-size: 23rpx; }

@@ -156,6 +156,62 @@
   font-size: 20rpx;
 }
 
+.points-breakdown {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14rpx;
+  margin-top: 22rpx;
+  padding-top: 18rpx;
+  border-top: 2rpx solid rgba(170, 111, 69, 0.2);
+}
+
+.point-balance-item {
+  min-width: 0;
+  padding: 14rpx 16rpx;
+  border-radius: 16rpx;
+  background: rgba(255, 255, 255, 0.46);
+  box-sizing: border-box;
+}
+
+.point-balance-name {
+  display: flex;
+  align-items: center;
+  color: #5f6871;
+  font-size: 21rpx;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.point-type-dot {
+  display: inline-block;
+  width: 12rpx;
+  height: 12rpx;
+  margin-right: 8rpx;
+  border-radius: 999rpx;
+  background: #6ca9d5;
+}
+
+.point-balance-reward .point-type-dot {
+  background: #49aa91;
+}
+
+.point-balance-value {
+  margin-top: 8rpx;
+  color: #20262e;
+  font-size: 26rpx;
+  font-weight: 900;
+}
+
+.point-balance-help {
+  margin-top: 4rpx;
+  overflow: hidden;
+  color: #8a7464;
+  font-size: 17rpx;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .rule-button {
   display: flex;
   align-items: center;
@@ -458,11 +514,29 @@
   -webkit-line-clamp: 2;
 }
 
+.task-frequency {
+  margin-top: 7rpx;
+  color: #68737e;
+  font-size: 20rpx;
+  line-height: 1.35;
+  font-weight: 700;
+}
+
 .task-entry-summary {
   margin-top: 10rpx;
   overflow: hidden;
   color: #6c85a0;
   font-size: 19rpx;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-comment-summary {
+  margin-top: 10rpx;
+  overflow: hidden;
+  color: #168b76;
+  font-size: 20rpx;
+  font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -638,6 +712,13 @@
   margin-top: 13rpx;
   color: #7c8188;
   font-size: 21rpx;
+}
+
+.task-detail-frequency {
+  margin-top: 10rpx;
+  color: #d06436;
+  font-size: 21rpx;
+  font-weight: 800;
 }
 
 .task-detail-reward-row {
@@ -1456,6 +1537,56 @@
   font-weight: 900;
 }
 
+.point-type-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12rpx;
+  margin-top: 12rpx;
+}
+
+.point-type-option {
+  min-width: 0;
+  padding: 14rpx 16rpx;
+  border: 2rpx solid #d9e2eb;
+  border-radius: 16rpx;
+  background: #f7fafc;
+  box-sizing: border-box;
+}
+
+.point-type-option.active.base {
+  border-color: #6ca9d5;
+  background: #eaf5fc;
+}
+
+.point-type-option.active.reward {
+  border-color: #49aa91;
+  background: #eaf8f2;
+}
+
+.point-type-option-title {
+  color: #3d4853;
+  font-size: 22rpx;
+  font-weight: 900;
+}
+
+.point-type-option.active.base .point-type-option-title {
+  color: #2b78ac;
+}
+
+.point-type-option.active.reward .point-type-option-title {
+  color: #16846b;
+}
+
+.point-type-option-help {
+  margin-top: 5rpx;
+  overflow: hidden;
+  color: #8996a2;
+  font-size: 17rpx;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .form-required {
   color: #e7672e;
 }
@@ -1928,6 +2059,12 @@
   line-height: 1;
 }
 
+.manage-summary-sub {
+  margin-top: 6rpx;
+  color: #71859a;
+  font-size: 18rpx;
+}
+
 .manage-summary-value text {
   color: #738496;
   font-size: 19rpx;
@@ -2293,6 +2430,14 @@
   border-top: 2rpx solid #d6e4ef;
 }
 
+.manage-metrics.four {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.manage-metrics.four .manage-metric {
+  padding: 0 8rpx;
+}
+
 .manage-metric {
   min-width: 0;
   padding: 0 14rpx;
@@ -2313,6 +2458,7 @@
 .manage-metric text {
   color: #748899;
   font-size: 19rpx;
+  white-space: nowrap;
 }
 
 .manage-metric strong {
@@ -2444,6 +2590,24 @@
   box-sizing: border-box;
 }
 
+.manage-reject-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 58rpx;
+  margin: 12rpx 0 0;
+  padding: 0 14rpx;
+  border: 1rpx solid #e7b5a8;
+  border-radius: 999rpx;
+  background: #fff5f1;
+  color: #bd5a43;
+  font-size: 20rpx;
+  font-weight: 900;
+  line-height: 1;
+  box-sizing: border-box;
+}
+
 .manage-rules-card {
   margin-top: 24rpx;
 }
@@ -2524,6 +2688,143 @@
   line-height: 1.5;
   text-align: center;
 }
+
+/* Typography scale v1: semantic enlargement shared by all mutual-help pages. */
+.mutual-page .mutual-eyebrow { font-size:23rpx; }
+.mutual-page .mutual-subtitle { font-size:25rpx; }
+.mutual-page .module-tab { font-size:27rpx; }
+.mutual-page .points-label { font-size:26rpx; }
+.mutual-page .points-unit { font-size:24rpx; }
+.mutual-page .points-tip { font-size:23rpx; }
+.mutual-page .point-balance-name { font-size:24rpx; }
+.mutual-page .point-balance-value { font-size:30rpx; }
+.mutual-page .point-balance-help { font-size:20rpx; }
+.mutual-page .rule-button { width:112rpx; min-width:112rpx; max-width:112rpx; font-size:26rpx; }
+.mutual-page .growth-title { font-size:29rpx; }
+.mutual-page .growth-subtitle { font-size:23rpx; }
+.mutual-page .section-heading { font-size:33rpx; }
+.mutual-page .section-helper { font-size:21rpx; }
+.mutual-page .segment-item { min-width:118rpx; height:52rpx; font-size:23rpx; }
+.mutual-page .filter-chip { min-height:54rpx; font-size:24rpx; }
+.mutual-page .task-kind { font-size:21rpx; }
+.mutual-page .task-reward { min-width:82rpx; height:46rpx; font-size:23rpx; }
+.mutual-page .task-title { font-size:31rpx; }
+.mutual-page .task-description { font-size:24rpx; }
+.mutual-page .task-entry-summary { font-size:21rpx; }
+.mutual-page .task-comment-summary { font-size:22rpx; }
+.mutual-page .task-publisher { font-size:24rpx; }
+.mutual-page .task-foot { font-size:23rpx; }
+.mutual-page .task-go { font-size:25rpx; }
+.mutual-page .task-list.columns-2 .task-kind { font-size:19rpx; }
+.mutual-page .task-list.columns-2 .task-reward { min-width:70rpx; font-size:20rpx; }
+.mutual-page .task-list.columns-2 .task-title { font-size:27rpx; }
+.mutual-page .task-list.columns-2 .task-description { font-size:22rpx; }
+.mutual-page .task-list.columns-2 .task-publisher { font-size:22rpx; }
+.mutual-page .task-list.columns-2 .task-entry-summary { font-size:20rpx; }
+.mutual-page .task-list.columns-2 .task-foot { font-size:21rpx; }
+.mutual-page .task-list.columns-2 .task-go { font-size:23rpx; }
+.mutual-page .task-frequency { font-size:21rpx; }
+.mutual-page .task-detail-frequency { font-size:23rpx; }
+.mutual-page .empty-title { font-size:30rpx; }
+.mutual-page .empty-copy { font-size:23rpx; }
+.mutual-page .primary-action,.mutual-page .secondary-action,.mutual-page .submit-button { height:86rpx; font-size:30rpx; }
+.mutual-page .back-line { font-size:24rpx; }
+.mutual-page .task-detail-title { font-size:41rpx; }
+.mutual-page .task-detail-meta { font-size:23rpx; }
+.mutual-page .task-detail-reward-copy { font-size:23rpx; }
+.mutual-page .task-detail-share-hint { font-size:22rpx; }
+.mutual-page .share-task-button { flex-basis:220rpx; width:220rpx; font-size:23rpx; }
+.mutual-page .detail-label { font-size:27rpx; }
+.mutual-page .detail-helper,.mutual-page .detail-helper-inline { font-size:22rpx; }
+.mutual-page .content-text { font-size:27rpx; }
+.mutual-page .status-note-points { font-size:23rpx; }
+.mutual-page .task-unlock-title { font-size:29rpx; }
+.mutual-page .task-unlock-copy { font-size:23rpx; }
+.mutual-page .wool-unlock-button,.mutual-page .wool-tip-button,.mutual-page .wool-refund-button,.mutual-page .comment-submit { height:68rpx; font-size:24rpx; }
+.mutual-page .task-comment-summary { font-size:22rpx; }
+.mutual-page .task-comment-head { font-size:19rpx; }
+.mutual-page .task-comment-author { font-size:22rpx; }
+.mutual-page .task-comment-verified { font-size:19rpx; }
+.mutual-page .task-comment-badge { font-size:20rpx; }
+.mutual-page .task-comment-text { font-size:24rpx; }
+.mutual-page .task-comment-report { width:92rpx; font-size:19rpx; }
+.mutual-page .task-comment-empty { font-size:22rpx; }
+.mutual-page .comment-choice { height:56rpx; font-size:22rpx; }
+.mutual-page .comment-input { min-height:132rpx; font-size:27rpx; }
+.mutual-page .wool-action-note { font-size:22rpx; }
+.mutual-page .save-image-button { width:184rpx; font-size:21rpx; }
+.mutual-page .link-preview { font-size:25rpx; }
+.mutual-page .task-link-chip-icon,.mutual-page .task-link-icon { font-size:20rpx; }
+.mutual-page .task-link-chip-copy text { font-size:23rpx; }
+.mutual-page .task-link-chip-copy text + text { font-size:20rpx; }
+.mutual-page .task-link-chip-remove { min-width:76rpx; font-size:20rpx; }
+.mutual-page .add-task-link-button { width:190rpx; font-size:23rpx; }
+.mutual-page .task-link-title { font-size:26rpx; }
+.mutual-page .task-link-description { font-size:21rpx; }
+.mutual-page .task-link-action { width:174rpx; font-size:21rpx; }
+.mutual-page .miniapp-task-title { font-size:26rpx; }
+.mutual-page .miniapp-task-desc { font-size:22rpx; }
+.mutual-page .status-note { font-size:23rpx; }
+.mutual-page .form-title { font-size:41rpx; }
+.mutual-page .form-subtitle { font-size:25rpx; }
+.mutual-page .type-switch-item { height:74rpx; font-size:26rpx; }
+.mutual-page .type-explanation-label { font-size:23rpx; }
+.mutual-page .type-explanation-copy { font-size:22rpx; }
+.mutual-page .form-label { font-size:28rpx; }
+.mutual-page .point-type-option-title { font-size:25rpx; }
+.mutual-page .point-type-option-help { font-size:20rpx; }
+.mutual-page .form-hint { font-size:22rpx; }
+.mutual-page .form-input,.mutual-page .form-textarea { font-size:30rpx; }
+.mutual-page .form-input { height:82rpx; }
+.mutual-page .form-textarea { min-height:220rpx; }
+.mutual-page .category-chip { min-height:56rpx; font-size:24rpx; }
+.mutual-page .ordered-block-header { font-size:22rpx; }
+.mutual-page .ordered-block-index { font-size:20rpx; }
+.mutual-page .block-textarea { min-height:150rpx; font-size:29rpx; }
+.mutual-page .remove-block { font-size:20rpx; }
+.mutual-page .add-text-button,.mutual-page .add-image-button { min-height:68rpx; font-size:23rpx; }
+.mutual-page .block-hint { font-size:22rpx; }
+.mutual-page .publish-summary { font-size:24rpx; }
+.mutual-page .publish-summary strong { font-size:28rpx; }
+.mutual-page .mine-hero-label { font-size:24rpx; }
+.mutual-page .mine-hero-tip { font-size:24rpx; }
+.mutual-page .mine-stat-label { font-size:22rpx; }
+.mutual-page .mine-stat-value { font-size:31rpx; }
+.mutual-page .small-action { height:76rpx; font-size:26rpx; }
+.mutual-page .mine-task-title { font-size:26rpx; }
+.mutual-page .mine-task-sub { font-size:21rpx; }
+.mutual-page .mine-task-status { font-size:22rpx; }
+.mutual-page .mine-empty { font-size:23rpx; }
+.mutual-page .manage-eyebrow { font-size:23rpx; }
+.mutual-page .manage-title { font-size:41rpx; }
+.mutual-page .manage-summary-label,.mutual-page .manage-summary-side view { font-size:22rpx; }
+.mutual-page .manage-summary-sub { font-size:20rpx; }
+.mutual-page .manage-summary-value text { font-size:21rpx; }
+.mutual-page .manage-summary-side strong { font-size:27rpx; }
+.mutual-page .manage-task-reward { min-width:86rpx; height:46rpx; font-size:23rpx; }
+.mutual-page .manage-task-brand-row { font-size:21rpx; }
+.mutual-page .manage-task-status,.mutual-page .manage-detail-status { min-width:92rpx; height:42rpx; font-size:21rpx; }
+.mutual-page .manage-task-title { font-size:32rpx; }
+.mutual-page .manage-task-cover-hint { font-size:19rpx; }
+.mutual-page .manage-task-icon-row { font-size:22rpx; }
+.mutual-page .manage-task-description { font-size:23rpx; }
+.mutual-page .manage-task-entry-summary { font-size:21rpx; }
+.mutual-page .manage-task-meta { font-size:22rpx; }
+.mutual-page .manage-task-progress text { font-size:21rpx; }
+.mutual-page .manage-task-foot { font-size:22rpx; }
+.mutual-page .manage-share-button,.mutual-page .manage-delete-button { height:64rpx; font-size:23rpx; }
+.mutual-page .manage-share-status { font-size:22rpx; }
+.mutual-page .manage-empty-action { height:72rpx; font-size:26rpx; }
+.mutual-page .manage-progress-heading > text { font-size:22rpx; }
+.mutual-page .manage-metric text { font-size:21rpx; }
+.mutual-page .manage-metric small { font-size:19rpx; }
+.mutual-page .manage-review-empty,.mutual-page .manage-review-placeholder { font-size:23rpx; }
+.mutual-page .manage-review-item-head { font-size:21rpx; }
+.mutual-page .manage-review-text { font-size:24rpx; }
+.mutual-page .manage-review-deadline { font-size:20rpx; }
+.mutual-page .manage-approve-button { height:64rpx; font-size:23rpx; }
+.mutual-page .manage-reject-button { height:64rpx; font-size:23rpx; }
+.mutual-page .manage-pause-button { height:76rpx; font-size:27rpx; }
 
 /* A compact theme control stays above the module tabs on every mutual-help page. */
 .theme-switch-row {
@@ -2740,6 +3041,7 @@
 
 .mutual-page.theme-dark .manage-summary-label,
 .mutual-page.theme-dark .manage-summary-side view,
+.mutual-page.theme-dark .manage-summary-sub,
 .mutual-page.theme-dark .manage-task-meta,
 .mutual-page.theme-dark .manage-task-foot,
 .mutual-page.theme-dark .manage-task-progress text,
@@ -2798,6 +3100,23 @@
 .mutual-page.theme-dark .mine-hero-label,
 .mutual-page.theme-dark .mine-hero-tip {
   color: #ffbd91;
+}
+
+.mutual-page.theme-dark .points-breakdown {
+  border-top-color: rgba(255, 189, 145, 0.24);
+}
+
+.mutual-page.theme-dark .point-balance-item {
+  background: rgba(26, 35, 45, 0.62);
+}
+
+.mutual-page.theme-dark .point-balance-name,
+.mutual-page.theme-dark .point-balance-help {
+  color: #b9c4cf;
+}
+
+.mutual-page.theme-dark .point-balance-value {
+  color: #fff6ef;
 }
 
 .mutual-page.theme-dark .points-value,
@@ -2867,9 +3186,40 @@
   color: #a8b4c1;
 }
 
+.mutual-page.theme-dark .task-frequency {
+  color: #adbac7;
+}
+
+.mutual-page.theme-dark .task-detail-frequency {
+  color: #ffad7d;
+}
+
 .mutual-page.theme-dark .task-entry-summary,
 .mutual-page.theme-dark .manage-task-entry-summary {
   color: #8db8d9;
+}
+
+.mutual-page.theme-dark .point-type-option {
+  border-color: #3b4a59;
+  background: #202b36;
+}
+
+.mutual-page.theme-dark .point-type-option.active.base {
+  border-color: #4e8bb7;
+  background: #203747;
+}
+
+.mutual-page.theme-dark .point-type-option.active.reward {
+  border-color: #3b997f;
+  background: #1d3d36;
+}
+
+.mutual-page.theme-dark .point-type-option-title {
+  color: #d5dee7;
+}
+
+.mutual-page.theme-dark .point-type-option-help {
+  color: #94a5b5;
 }
 
 .mutual-page.theme-dark .task-foot,
@@ -2910,6 +3260,12 @@
   border-color: #39785f;
   background: #193d30;
   color: #8ce0b7;
+}
+
+.mutual-page.theme-dark .manage-reject-button {
+  border-color: #8a564a;
+  background: #42251f;
+  color: #f2a99a;
 }
 
 .mutual-page.theme-dark .manage-pause-button {
@@ -3240,4 +3596,519 @@
 
 .mutual-page.theme-dark .wool-toggle.active {
   background: #75428f;
+}
+
+/* Executor detail v2: one decision path, one primary action. */
+.executor-hero {
+  padding: 24rpx 4rpx 0;
+}
+
+.executor-kicker,
+.executor-section-kicker {
+  color: #d7632f;
+  font-size: 20rpx;
+  font-weight: 900;
+  letter-spacing: 1rpx;
+}
+
+.executor-hero .task-detail-title {
+  margin-top: 10rpx;
+  font-size: 42rpx;
+  letter-spacing: -1rpx;
+}
+
+.executor-facts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8rpx;
+  margin-top: 18rpx;
+}
+
+.executor-fact {
+  min-width: 0;
+  overflow: hidden;
+  padding: 9rpx 6rpx;
+  border-radius: 10rpx;
+  background: #f3f5f6;
+  color: #68747e;
+  font-size: 18rpx;
+  line-height: 1.2;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.executor-fact-kind {
+  background: #fff0e4;
+  color: #d7632f;
+  font-weight: 900;
+}
+
+.executor-reward-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14rpx;
+  margin-top: 16rpx;
+  padding: 18rpx 20rpx;
+  border: 2rpx solid #f2cfad;
+  border-radius: 18rpx;
+  background: linear-gradient(135deg, #fff4e7, #ffe7cf);
+  box-sizing: border-box;
+}
+
+.executor-reward-label {
+  color: #a46a48;
+  font-size: 18rpx;
+}
+
+.executor-reward-line {
+  display: flex;
+  align-items: baseline;
+  gap: 10rpx;
+  margin-top: 5rpx;
+}
+
+.executor-reward-value {
+  color: #d85d2b;
+  font-size: 32rpx;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.executor-reward-copy {
+  color: #9a7158;
+  font-size: 18rpx;
+  white-space: nowrap;
+}
+
+.executor-reward-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 58rpx;
+  width: 58rpx;
+  height: 58rpx;
+  border-radius: 17rpx;
+  background: #e87536;
+  color: #ffffff;
+  font-size: 18rpx;
+  font-weight: 900;
+}
+
+.executor-flow {
+  display: flex;
+  align-items: center;
+  margin: 18rpx 4rpx 0;
+  padding: 14rpx 12rpx;
+  border: 2rpx solid #e5e9eb;
+  border-radius: 17rpx;
+  background: #ffffff;
+  box-sizing: border-box;
+}
+
+.executor-flow-step {
+  display: flex;
+  align-items: center;
+  gap: 7rpx;
+  flex: 0 0 auto;
+  color: #8b959c;
+  font-size: 18rpx;
+  white-space: nowrap;
+}
+
+.executor-flow-step text {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30rpx;
+  height: 30rpx;
+  border-radius: 50%;
+  background: #e9edef;
+  color: #7c878e;
+  font-size: 16rpx;
+  font-weight: 900;
+}
+
+.executor-flow-step.active {
+  color: #d7632f;
+  font-weight: 900;
+}
+
+.executor-flow-step.active text {
+  background: #e87536;
+  color: #ffffff;
+}
+
+.executor-flow-line {
+  flex: 1;
+  height: 2rpx;
+  margin: 0 8rpx;
+  background: #e6eaec;
+}
+
+.executor-closed-banner {
+  margin-bottom: 18rpx;
+  padding: 16rpx 18rpx;
+  border: 2rpx solid #f0c5b2;
+  border-radius: 15rpx;
+  background: #fff3ec;
+}
+
+.executor-closed-title {
+  color: #c8582e;
+  font-size: 23rpx;
+  font-weight: 900;
+}
+
+.executor-closed-copy {
+  margin-top: 5rpx;
+  color: #9e7664;
+  font-size: 19rpx;
+  line-height: 1.4;
+}
+
+.executor-primary-section {
+  padding: 4rpx 0 20rpx;
+}
+
+.executor-section-title {
+  color: #20262e;
+  font-size: 29rpx;
+  font-weight: 900;
+  line-height: 1.25;
+}
+
+.executor-primary-section .executor-section-title {
+  margin-top: 6rpx;
+  font-size: 31rpx;
+}
+
+.executor-section-helper {
+  margin-top: 6rpx;
+  color: #7f8991;
+  font-size: 20rpx;
+  line-height: 1.4;
+}
+
+.executor-task-link-card {
+  margin-top: 14rpx;
+  border-color: #b9d9e1;
+  background: linear-gradient(135deg, #f2fbfa, #eaf5fb);
+}
+
+.executor-task-link-card .task-link-action {
+  width: 164rpx;
+  height: 62rpx;
+  min-height: 62rpx;
+  background: #147f79;
+  border-color: #147f79;
+  color: #ffffff;
+  font-size: 21rpx;
+}
+
+.executor-task-link-card .task-link-action.opened {
+  background: #eef9f2;
+  border-color: #a9d8bc;
+  color: #237c51;
+}
+
+.executor-task-link-card .task-link-action[disabled] {
+  background: #d7dddf;
+  border-color: #d7dddf;
+  color: #ffffff;
+}
+
+.executor-entry-note {
+  margin-top: 9rpx;
+  color: #8b969e;
+  font-size: 18rpx;
+  line-height: 1.4;
+}
+
+.executor-section-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12rpx;
+}
+
+.executor-section-tag {
+  flex: 0 0 auto;
+  padding: 6rpx 10rpx;
+  border-radius: 999rpx;
+  background: #f2f5f6;
+  color: #75818a;
+  font-size: 17rpx;
+  white-space: nowrap;
+}
+
+.executor-brief-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8rpx;
+  margin-top: 14rpx;
+  padding: 12rpx 0;
+  border-top: 2rpx solid #edf0f1;
+  border-bottom: 2rpx solid #edf0f1;
+}
+
+.executor-brief-item {
+  min-width: 0;
+  padding: 0 10rpx;
+  border-left: 2rpx solid #edf0f1;
+}
+
+.executor-brief-item:first-child {
+  padding-left: 0;
+  border-left: 0;
+}
+
+.executor-brief-item text,
+.executor-brief-item strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.executor-brief-item text {
+  color: #8a959c;
+  font-size: 17rpx;
+}
+
+.executor-brief-item strong {
+  margin-top: 5rpx;
+  color: #35434b;
+  font-size: 20rpx;
+  font-weight: 900;
+}
+
+.detail-subsection {
+  margin-top: 18rpx;
+}
+
+.executor-submit-action {
+  margin-top: 20rpx;
+}
+
+.mutual-page.theme-dark .executor-fact {
+  background: #25313c;
+  color: #a6b3bf;
+}
+
+.mutual-page.theme-dark .executor-fact-kind {
+  background: #493024;
+  color: #ffb184;
+}
+
+.mutual-page.theme-dark .executor-reward-card {
+  border-color: #60402c;
+  background: linear-gradient(135deg, #382b24, #443025);
+}
+
+.mutual-page.theme-dark .executor-reward-label,
+.mutual-page.theme-dark .executor-reward-copy {
+  color: #c9a58e;
+}
+
+.mutual-page.theme-dark .executor-flow,
+.mutual-page.theme-dark .executor-task-link-card {
+  border-color: #354352;
+  background: #202b36;
+}
+
+.mutual-page.theme-dark .executor-flow-step {
+  color: #9aa8b7;
+}
+
+.mutual-page.theme-dark .executor-flow-step text {
+  background: #354352;
+  color: #b7c3ce;
+}
+
+.mutual-page.theme-dark .executor-flow-step.active {
+  color: #ffb184;
+}
+
+.mutual-page.theme-dark .executor-flow-line,
+.mutual-page.theme-dark .executor-brief-row,
+.mutual-page.theme-dark .executor-brief-item {
+  border-color: #354352;
+}
+
+.mutual-page.theme-dark .executor-section-title,
+.mutual-page.theme-dark .executor-brief-item strong {
+  color: #f1f5f9;
+}
+
+.mutual-page.theme-dark .executor-section-helper,
+.mutual-page.theme-dark .executor-entry-note,
+.mutual-page.theme-dark .executor-brief-item text {
+  color: #9aa8b7;
+}
+
+.mutual-page.theme-dark .executor-section-tag {
+  background: #25313c;
+  color: #a6b3bf;
+}
+
+.mutual-page.theme-dark .executor-closed-banner {
+  border-color: #6a3e32;
+  background: #3a2926;
+}
+
+.mutual-page.theme-dark .executor-closed-title {
+  color: #ffae7c;
+}
+
+.mutual-page.theme-dark .executor-closed-copy {
+  color: #c5a096;
+}
+
+/* Task-type variants keep the same executor shell while changing the action. */
+.executor-wool-reward-card {
+  border-color: #d9c7ee;
+  background: linear-gradient(135deg, #faf4ff, #f0e8ff);
+}
+
+.executor-wool-reward-card .executor-reward-label,
+.executor-wool-reward-card .executor-reward-copy {
+  color: #816a93;
+}
+
+.executor-wool-reward-card .executor-reward-value {
+  color: #814ba9;
+}
+
+.executor-wool-reward-card .executor-reward-mark {
+  background: #8a4bb1;
+}
+
+.executor-wool-flow .executor-flow-step.active {
+  color: #814ba9;
+}
+
+.executor-wool-flow .executor-flow-step.active text {
+  background: #8a4bb1;
+}
+
+.executor-unlock-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14rpx;
+  margin-top: 16rpx;
+  padding: 16rpx 18rpx;
+  border: 2rpx solid #d9c7ee;
+  border-radius: 18rpx;
+  background: linear-gradient(135deg, #faf4ff, #f4edff);
+  box-sizing: border-box;
+}
+
+.executor-unlock-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.executor-unlock-title {
+  color: #673a8d;
+  font-size: 23rpx;
+  font-weight: 900;
+}
+
+.executor-unlock-helper {
+  margin-top: 5rpx;
+  overflow: hidden;
+  color: #816a93;
+  font-size: 18rpx;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.executor-wool-unlock-button {
+  flex: 0 0 210rpx;
+  width: 210rpx;
+  height: 64rpx;
+  min-height: 64rpx;
+  margin: 0;
+  padding: 0 10rpx;
+  border-color: #8a4bb1;
+  background: #8a4bb1;
+  color: #ffffff;
+  font-size: 20rpx;
+}
+
+.executor-wool-unlock-button[disabled] {
+  border-color: #d8d3cd;
+  background: #d8d3cd;
+  color: #ffffff;
+  box-shadow: none;
+}
+
+.executor-wool-link-card {
+  border-color: #d9c7ee;
+  background: linear-gradient(135deg, #fbf8ff, #f4edff);
+}
+
+.executor-wool-link-card .task-link-action {
+  background: #8a4bb1;
+  border-color: #8a4bb1;
+}
+
+.executor-wool-link-card .task-link-action.opened {
+  background: #f4edff;
+  border-color: #cdb3e2;
+  color: #75428f;
+}
+
+.executor-ordinary-guidance {
+  padding-bottom: 18rpx;
+}
+
+.executor-empty-entry {
+  margin-top: 16rpx;
+  padding: 18rpx;
+  border: 2rpx dashed #d9c7ee;
+  border-radius: 16rpx;
+  background: #fbf8ff;
+  color: #816a93;
+  font-size: 20rpx;
+  line-height: 1.45;
+  text-align: center;
+}
+
+.executor-wool-policy-note {
+  margin-top: 14rpx;
+  padding: 12rpx 14rpx;
+  border-radius: 13rpx;
+  background: #faf6ff;
+  color: #816a93;
+  font-size: 18rpx;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.mutual-page.theme-dark .executor-wool-reward-card,
+.mutual-page.theme-dark .executor-unlock-action,
+.mutual-page.theme-dark .executor-wool-link-card,
+.mutual-page.theme-dark .executor-empty-entry,
+.mutual-page.theme-dark .executor-wool-policy-note {
+  border-color: #684a7a;
+  background: #302541;
+}
+
+.mutual-page.theme-dark .executor-wool-reward-card .executor-reward-label,
+.mutual-page.theme-dark .executor-wool-reward-card .executor-reward-copy,
+.mutual-page.theme-dark .executor-unlock-helper,
+.mutual-page.theme-dark .executor-empty-entry,
+.mutual-page.theme-dark .executor-wool-policy-note {
+  color: #c1a5cd;
+}
+
+.mutual-page.theme-dark .executor-wool-reward-card .executor-reward-value,
+.mutual-page.theme-dark .executor-wool-flow .executor-flow-step.active,
+.mutual-page.theme-dark .executor-unlock-title {
+  color: #e4b9f4;
 }

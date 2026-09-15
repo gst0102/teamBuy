@@ -64,6 +64,12 @@ services:
       - ./backend:/app:ro
       - teambuy_backend_media:/app/mock/media
       - ./backend/secrets:/app/secrets:ro
+    healthcheck:
+      test: ["CMD-SHELL", "test -r /proc/1/cmdline && tr '\\000' ' ' < /proc/1/cmdline | grep -q 'app.worker'"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     depends_on:
       postgres:
         condition: service_healthy
@@ -91,6 +97,12 @@ services:
       - ./backend:/app:ro
       - teambuy_backend_media:/app/mock/media
       - ./backend/secrets:/app/secrets:ro
+    healthcheck:
+      test: ["CMD-SHELL", "test -r /proc/1/cmdline && tr '\\000' ' ' < /proc/1/cmdline | grep -q 'app.worker'"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     depends_on:
       postgres:
         condition: service_healthy

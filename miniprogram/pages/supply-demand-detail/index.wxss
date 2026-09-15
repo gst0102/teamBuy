@@ -174,3 +174,30 @@
 button::after {
   border: 0;
 }
+/* Typography scale v2: keep a public demand detail focused on fit and application. */
+.sd-detail-page .badge { font-size: 22rpx; }
+.sd-detail-page .hero-title { font-size: 38rpx; }
+.sd-detail-page .hero-sub { font-size: 26rpx; }
+.sd-detail-page .owner-row { font-size: 24rpx; }
+.sd-detail-page .panel-title { font-size: 30rpx; }
+.sd-detail-page .field-grid { font-size: 25rpx; }
+.sd-detail-page .tag-row text { font-size: 21rpx; }
+.sd-detail-page .tip-box { font-size: 24rpx; }
+.sd-detail-page .apply-input { font-size: 28rpx; }
+.sd-detail-page .apply-btn { display: flex; align-items: center; justify-content: center; min-height: 72rpx; font-size: 26rpx; }
+.contact-panel { margin-top:18rpx; }
+.supply-contact-lock { display:flex; align-items:center; gap:14rpx; margin-top:16rpx; padding:18rpx; border-radius:16rpx; background:#f7fafc; }
+.supply-contact-lock-icon { display:flex; align-items:center; justify-content:center; flex:0 0 52rpx; width:52rpx; height:52rpx; border-radius:14rpx; background:#edf1f5; color:#6f8293; font-size:20rpx; font-weight:900; }
+.supply-contact-lock-copy { flex:1; min-width:0; }
+.supply-contact-lock-copy view { color:#344d63; font-size:25rpx; font-weight:900; }
+.supply-contact-lock-copy text { display:block; margin-top:5rpx; color:#9aa7b4; font-size:21rpx; }
+.supply-contact-lock button { display:flex; align-items:center; justify-content:center; flex:0 0 176rpx; width:176rpx; height:58rpx; margin:0; padding:0; border:0; border-radius:13rpx; background:#168087; color:#fff; font-size:22rpx; font-weight:900; white-space:nowrap; }
+.supply-contact-lock button::after { border:0; }
+.supply-contact-list { margin-top:12rpx; }
+.supply-contact-row { display:grid; grid-template-columns:80rpx minmax(0,1fr) auto auto; align-items:center; gap:10rpx; min-height:78rpx; border-bottom:1rpx solid #edf1f5; }
+.supply-contact-row:last-child { border-bottom:0; }
+.supply-contact-row > text { color:#168087; font-size:24rpx; font-weight:900; }
+.supply-contact-row > view { min-width:0; overflow:hidden; color:#344d63; font-size:24rpx; text-overflow:ellipsis; white-space:nowrap; }
+.supply-contact-row button { display:flex; align-items:center; justify-content:center; width:76rpx; height:52rpx; margin:0; padding:0; border:1rpx solid #c9e5e3; border-radius:11rpx; background:#f3fbfa; color:#168087; font-size:20rpx; font-weight:900; white-space:nowrap; }
+.supply-contact-row button::after { border:0; }
+.contact-empty { margin-top:10rpx; }

@@ -140,3 +140,13 @@
   background: #eef4ff;
   color: #55708f;
 }
+/* Typography scale v2: make browsing history useful at a glance. */
+.view-history-page .view-history-intro-title { font-size: 34rpx; }
+.view-history-page .view-history-intro-sub { font-size: 24rpx; }
+.view-history-page .view-history-state-title { font-size: 30rpx; }
+.view-history-page .view-history-state-sub { font-size: 24rpx; }
+.view-history-page .view-history-primary,
+.view-history-page .view-history-secondary { display: flex; align-items: center; justify-content: center; min-height: 72rpx; font-size: 26rpx; }
+.view-history-page .view-history-row-title { font-size: 27rpx; }
+.view-history-page .view-history-row-time { font-size: 22rpx; }
+.view-history-page .view-history-row-arrow { font-size: 34rpx; }

@@ -3,7 +3,7 @@ const resourceStore = require("../../../stores/resource-store");
 const messagePlugin = require("../../../plugins/message-plugin/index");
 const { getCurrentUser } = require("../../../utils/dashboard");
 const { buildBusinessCardShareTitle } = require("../../../utils/business-card-share");
-const { getNoteShareSnapshotState, getShareImageUrlFromState, getShareSourceRevision, isShareImageUrl, setShareMenuEnabled, SHARE_CARD_STYLE_VERSION } = require("../../../plugins/share-snapshot/index");
+const { getNoteShareSnapshotState, getShareImageUrlFromState, getShareSourceRevision, isShareImageUrl, setShareMenuEnabled, NOTE_SHARE_CARD_STYLE_VERSION } = require("../../../plugins/share-snapshot/index");
 const { getSalesPageTemplates, templateToneClass } = require("../../../utils/sales-page-templates");
 const { cleanImagePrimaryText, imagePrimaryTitle, isImagePrimaryNote } = require("../../../utils/note-display");
 const { buildContactCandidates, normalizePhoneList, removePhoneFromFields, unresolvedContactCandidates } = require("../../../utils/contact-review");
@@ -1973,8 +1973,9 @@ Page({
     const ready = Boolean(
       snapshot
       && snapshot.status === "ready"
+      && snapshot.renderer === "backend"
       && String(snapshot.sourceRevision || "") === getShareSourceRevision("note", { revision: this.data.revision })
-      && String(snapshot.styleId || "") === SHARE_CARD_STYLE_VERSION
+      && String(snapshot.styleId || "") === NOTE_SHARE_CARD_STYLE_VERSION
       && isShareImageUrl(snapshot.url)
     );
     setShareMenuEnabled(ready);

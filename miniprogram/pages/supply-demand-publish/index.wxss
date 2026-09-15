@@ -247,3 +247,16 @@ textarea {
 button::after {
   border: 0;
 }
+/* Typography scale v2: make demand publishing readable without loosening its field grid. */
+.publish-page .hero-kicker { font-size: 24rpx; }
+.publish-page .hero-title { font-size: 38rpx; }
+.publish-page .hero-sub { font-size: 26rpx; }
+.publish-page .type-chip { font-size: 23rpx; }
+.publish-page .field-label { font-size: 26rpx; }
+.publish-page .small-chip { font-size: 21rpx; }
+.publish-page .field-hint { font-size: 23rpx; }
+.publish-page .clear-link { font-size: 23rpx; }
+.publish-page .selected-resource { font-size: 25rpx; }
+.publish-page .resource-empty { font-size: 24rpx; }
+.publish-page .resource-item { font-size: 24rpx; }
+.publish-page .bottom-actions button { display: flex; align-items: center; justify-content: center; min-height: 72rpx; font-size: 26rpx; }

@@ -647,3 +647,35 @@
     min-width: 136rpx;
   }
 }
+/* Typography scale v2: prioritize identity, evidence and the next customer action. */
+.customer-detail-page .customer-detail-name { font-size: 32rpx; }
+.customer-detail-page .customer-detail-intent,
+.customer-detail-page .customer-detail-lead-status { font-size: 24rpx; }
+.customer-detail-page .customer-detail-meta,
+.customer-detail-page .customer-detail-source { font-size: 24rpx; }
+.customer-detail-page .customer-detail-panel-heading { font-size: 30rpx; }
+.customer-detail-page .customer-detail-section-title { font-size: 30rpx; }
+.customer-detail-page .customer-detail-section-subtitle { font-size: 24rpx; }
+.customer-detail-page .customer-detail-evidence-title { font-size: 27rpx; }
+.customer-detail-page .customer-detail-evidence-count { font-size: 23rpx; }
+.customer-detail-page .customer-detail-evidence-link { font-size: 24rpx; }
+.customer-detail-page .customer-detail-evidence-empty { font-size: 24rpx; }
+.customer-detail-page .customer-detail-message-preview,
+.customer-detail-page .customer-detail-message-note,
+.customer-detail-page .customer-detail-message-content { font-size: 25rpx; }
+.customer-detail-page .customer-detail-message-time { font-size: 22rpx; }
+.customer-detail-page .customer-detail-action-kicker { font-size: 24rpx; }
+.customer-detail-page .customer-detail-evidence-label,
+.customer-detail-page .customer-detail-reason,
+.customer-detail-page .customer-detail-next-label { font-size: 24rpx; }
+.customer-detail-page .customer-detail-next-hint,
+.customer-detail-page .customer-detail-follow-up-sub,
+.customer-detail-page .customer-detail-follow-up-submit-hint { font-size: 23rpx; }
+.customer-detail-page .customer-detail-tag { font-size: 21rpx; }
+.customer-detail-page .customer-detail-follow-up-label { font-size: 25rpx; }
+.customer-detail-page .customer-detail-follow-up-input { font-size: 28rpx; }
+.customer-detail-page .customer-detail-follow-up-log { font-size: 24rpx; }
+.customer-detail-page .customer-detail-action-buttons button,
+.customer-detail-page .customer-detail-primary-btn,
+.customer-detail-page .customer-detail-message-button,
+.customer-detail-page .customer-detail-outline-btn { display: flex; align-items: center; justify-content: center; min-height: 72rpx; font-size: 26rpx; }

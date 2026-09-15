@@ -1,20 +1,21 @@
 <view class="recharge-page">
-  <custom-nav title="充值积分" showBack="{{true}}" />
+  <custom-nav title="充值积分" showBack="{{true}}" fallbackUrl="/subpackages/my-tools-mutual-help/account/index" />
 
   <view class="recharge-content">
+    <block wx:if="{{rechargeVisible}}">
     <view class="recharge-intro">
       <view class="eyebrow">互帮互助</view>
-      <view class="title">补充互助积分</view>
-      <view class="subtitle">充值后可发布更多任务，也可以继续参与任务交换。</view>
+      <view class="title">充值积分</view>
+      <view class="subtitle">充值积分可用于发布充值积分任务；充值积分任务奖励也会进入可提现账户。</view>
     </view>
 
     <view class="balance-card">
-      <view class="balance-label">当前互助积分</view>
-      <view class="balance-value">{{account ? account.balance : '--'}} <text>分</text></view>
-      <view class="balance-tip">一套积分用于发布、完成和解锁任务</view>
+      <view class="balance-label">当前充值积分</view>
+      <view class="balance-value">{{balances ? balances.reward : '--'}} <text>分</text></view>
+      <view class="balance-tip">完成任务和平台奖励进入基础积分；充值后才进入充值积分账户。总积分 {{balances ? balances.total : '--'}} 分</view>
     </view>
 
-    <view class="section-title">选择充值档位</view>
+    <view class="section-title">选择积分档位</view>
     <view class="package-grid">
       <view wx:for="{{packages}}" wx:key="points" class="package-card {{selectedPoints === item.points ? 'active' : ''}}" data-points="{{item.points}}" bindtap="handleSelectPackage">
         <view class="package-points">{{item.points}} <text>分</text></view>
@@ -24,12 +25,17 @@
     </view>
 
     <view wx:if="{{!rechargeVisible || !rechargeEnabled}}" class="closed-card">
-      <view class="closed-title">充值入口暂未开放</view>
+      <view class="closed-title">充值积分入口暂未开放</view>
       <view class="closed-copy">功能暂未开放，请稍后再试。</view>
     </view>
     <view wx:if="{{statusText}}" class="status-text">{{statusText}}</view>
 
-    <button class="recharge-button" loading="{{loading}}" disabled="{{loading || !rechargeEnabled || !rechargeVisible}}" bindtap="handleRecharge">立即充值 ¥{{selectedPoints / 10}}</button>
-    <view class="recharge-note">充值成功后积分自动到账。</view>
+    <button class="recharge-button" loading="{{loading}}" disabled="{{loading || !rechargeEnabled || !rechargeVisible}}" bindtap="handleRecharge">充值积分 ¥{{selectedPoints / 10}}</button>
+    <view class="recharge-note">充值完成后，积分进入充值积分账户。</view>
+    </block>
+    <view wx:else class="closed-card recharge-closed-page">
+      <view class="closed-title">充值积分入口暂未开放</view>
+      <view class="closed-copy">当前未开放充值积分展示，充值功能暂不可用。</view>
+    </view>
   </view>
 </view>

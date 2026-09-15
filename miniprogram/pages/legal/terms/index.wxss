@@ -49,3 +49,8 @@ page {
   font-size: 25rpx;
   line-height: 1.68;
 }
+/* Typography scale v2: make agreements readable without changing their legal wording. */
+.legal-page .legal-title { font-size: 34rpx; }
+.legal-page .legal-meta { font-size: 22rpx; }
+.legal-page .section-title { font-size: 30rpx; line-height: 1.4; }
+.legal-page .paragraph { font-size: 26rpx; line-height: 1.8; }

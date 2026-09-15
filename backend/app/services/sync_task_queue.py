@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 from collections.abc import Awaitable, Callable
 from datetime import timedelta
 from typing import Any
@@ -53,6 +54,44 @@ class SyncTaskQueue:
         if self.auto_schedule:
             self._schedule(task.id)
         return task
+
+    def enqueue_once(
+        self,
+        name: str,
+        payload: dict[str, Any],
+        *,
+        idempotency_key: str,
+        max_attempts: int = 3,
+    ) -> tuple[SyncTask, bool]:
+        """Persist one task per logical event, even if its caller retries."""
+        digest = hashlib.sha256(idempotency_key.encode("utf-8")).hexdigest()[:40]
+        now = now_iso()
+        task = SyncTask(
+            id=f"sync_task_{digest}",
+            name=name,
+            status="queued",
+            payload=payload,
+            attempts=0,
+            maxAttempts=max_attempts,
+            nextRunAt=now,
+            createdAt=now,
+            updatedAt=now,
+        )
+        created = self.repo.create_sync_task_if_absent(task)
+        if not created:
+            existing = self.repo.get_sync_task(task.id)
+            if existing is None:
+                raise RuntimeError("Idempotent task insert conflicted but the existing task could not be read")
+            if self.auto_schedule and self._is_ready(existing):
+                self._schedule(existing.id)
+            return existing, False
+
+        # The report remains in the durable task payload for delivery; avoid
+        # copying the full report into the more broadly exposed task log.
+        self._log(task.id, "queued", f"Task {name} queued", {"taskName": name})
+        if self.auto_schedule:
+            self._schedule(task.id)
+        return task, True
 
     def list_recent(self, limit: int = 50) -> list[SyncTask]:
         return self.repo.list_sync_tasks(limit=limit)

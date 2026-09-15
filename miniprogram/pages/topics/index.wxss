@@ -185,3 +185,11 @@
   color: #9aa4b2;
   font-size: 24rpx;
 }
+/* Typography scale v2: make topic names and management actions readable. */
+.page-shell .topic-name { font-size: 29rpx; }
+.page-shell .topic-desc { font-size: 24rpx; }
+.page-shell .topic-side { font-size: 23rpx; }
+.page-shell .topic-count { font-size: 30rpx; }
+.page-shell .create-panel { font-size: 25rpx; }
+.page-shell .empty-state,
+.page-shell .empty-sub { font-size: 24rpx; }

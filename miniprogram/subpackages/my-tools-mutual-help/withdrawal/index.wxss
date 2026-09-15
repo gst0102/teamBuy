@@ -1,0 +1,46 @@
+.withdrawal-page {
+  min-height: 100vh;
+  color: #172033;
+  background: #f5f7fb;
+}
+
+.withdrawal-content { padding: 44rpx 32rpx 72rpx; }
+.withdrawal-intro .eyebrow { color: #d85d2b; font-size: 25rpx; font-weight: 800; }
+.withdrawal-intro .title { margin-top: 14rpx; font-size: 48rpx; font-weight: 900; }
+.withdrawal-intro .subtitle { margin-top: 14rpx; color: #5f6d7b; font-size: 28rpx; line-height: 1.6; }
+.balance-card { margin-top: 34rpx; padding: 32rpx; border: 2rpx solid #f0d7b2; border-radius: 28rpx; background: linear-gradient(135deg, #fff1da, #ffe2b3); }
+.balance-label, .balance-tip { color: #765d41; font-size: 26rpx; }
+.balance-value { margin: 14rpx 0 8rpx; font-size: 72rpx; font-weight: 900; line-height: 1; }
+.balance-value text { margin-left: 10rpx; font-size: 30rpx; font-weight: 600; }
+.form-card { margin-top: 28rpx; padding: 30rpx; border: 2rpx solid #e0e6ef; border-radius: 26rpx; background: #fff; }
+.section-title { font-size: 34rpx; font-weight: 900; }
+.amount-row { display: flex; align-items: center; margin-top: 18rpx; padding: 0 22rpx; border: 2rpx solid #b9c9d9; border-radius: 18rpx; background: #f7f9fc; }
+.amount-input { flex: 1; min-width: 0; height: 82rpx; color: #172033; font-size: 34rpx; font-weight: 800; }
+.all-button { display: flex; align-items: center; justify-content: center; width: 86rpx; height: 54rpx; border-radius: 14rpx; background: #e4f1ff; color: #1d6fb8; font-size: 26rpx; font-weight: 800; }
+.form-hint, .submit-note, .closed-copy, .empty-card { margin-top: 12rpx; color: #687686; font-size: 25rpx; line-height: 1.6; }
+.calculation-card { margin-top: 24rpx; padding: 20rpx 22rpx; border-radius: 18rpx; background: #fff8ee; color: #765d41; font-size: 26rpx; }
+.calculation-card view { display: flex; justify-content: space-between; padding: 8rpx 0; }
+.calculation-total { margin-top: 8rpx; border-top: 2rpx solid #f0dfc8; color: #d85d2b; font-size: 30rpx; font-weight: 900; }
+.closed-card { margin-top: 22rpx; padding: 22rpx; border-radius: 18rpx; background: #fffaf4; }
+.closed-title { color: #8c6b46; font-size: 29rpx; font-weight: 800; }
+.status-text { margin-top: 18rpx; color: #b26527; font-size: 25rpx; line-height: 1.6; }
+.submit-button { display: flex; align-items: center; justify-content: center; width: 100%; height: 92rpx; margin-top: 26rpx; padding: 0; border: 0; border-radius: 24rpx; background: #ef6d35; color: #fff; font-size: 32rpx; font-weight: 900; line-height: 1; }
+.submit-button::after { border: 0; }
+.submit-button[disabled] { background: #c8cdd5; }
+.recent-title { margin: 44rpx 0 18rpx; }
+.withdrawal-list { overflow: hidden; border: 2rpx solid #e0e6ef; border-radius: 22rpx; background: #fff; }
+.withdrawal-item { display: flex; align-items: center; justify-content: space-between; padding: 24rpx; border-bottom: 2rpx solid #edf0f4; }
+.withdrawal-item:last-child { border-bottom: 0; }
+.withdrawal-points { color: #172033; font-size: 29rpx; font-weight: 900; }
+.withdrawal-time { margin-top: 8rpx; color: #758293; font-size: 23rpx; }
+.withdrawal-right { text-align: right; }
+.withdrawal-amount { color: #d85d2b; font-size: 29rpx; font-weight: 900; }
+.withdrawal-status { margin-top: 8rpx; color: #758293; font-size: 23rpx; }
+.empty-card { padding: 30rpx; border: 2rpx solid #e0e6ef; border-radius: 22rpx; background: #fff; text-align: center; }
+.rules-card { margin-top: 28rpx; padding: 30rpx; border: 2rpx solid #e0e6ef; border-radius: 26rpx; background: #fff; }
+.rules-card .section-title { margin: 0 0 10rpx; }
+.rule-row { display: flex; gap: 18rpx; padding: 22rpx 0; border-bottom: 2rpx solid #edf1f5; }
+.rule-row.last { border-bottom: 0; padding-bottom: 0; }
+.rule-mark { display: flex; align-items: center; justify-content: center; flex: 0 0 48rpx; width: 48rpx; height: 48rpx; border-radius: 16rpx; background: #eaf8f5; color: #168b83; font-size: 24rpx; font-weight: 900; }
+.rule-title { color: #172033; font-size: 28rpx; font-weight: 900; }
+.rule-copy { margin-top: 7rpx; color: #5f6d7b; font-size: 25rpx; line-height: 1.6; }

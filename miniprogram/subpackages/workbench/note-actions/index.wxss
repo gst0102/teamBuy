@@ -315,3 +315,15 @@
   font-size: 26rpx;
   text-align: center;
 }
+/* Typography scale v2: make note follow-up actions readable without changing their order. */
+.page .summary-band { font-size: 25rpx; }
+.page .section-title { font-size: 32rpx; }
+.page .sku-filter-row { font-size: 24rpx; }
+.page .sku-filter { font-size: 24rpx; }
+.page .summary-copy-btn { font-size: 25rpx; }
+.page .item-title { font-size: 28rpx; }
+.page .item-time { font-size: 22rpx; }
+.page .status-pill { font-size: 21rpx; }
+.page .detail-lines { font-size: 24rpx; }
+.page .relay-status-actions button,
+.page .lead-quick-actions button { display: flex; align-items: center; justify-content: center; min-height: 66rpx; font-size: 24rpx; }

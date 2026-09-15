@@ -2,8 +2,8 @@ const api = require("../../services/api");
 const messagePlugin = require("../../plugins/message-plugin/index");
 const { getCurrentUser, safeAvatarUrl } = require("../../utils/dashboard");
 const { getSalesPageTemplate, templateToneClass } = require("../../utils/sales-page-templates");
-const { buildBusinessCardShareTitle, buildServiceOfferShareTitle } = require("../../utils/business-card-share");
-const { buildNoteShareTitle, buildShareMessage, getNoteShareSnapshotState, getShareImageUrlFromState, prepareNoteShareSnapshot, setShareMenuEnabled, SHARE_CARD_STYLE_VERSION } = require("../../plugins/share-snapshot/index");
+const { buildBusinessCardShareTitle, buildServiceOfferShareTitle, truncateShareTitle } = require("../../utils/business-card-share");
+const { buildNoteShareTitle, buildShareMessage, getNoteShareSnapshotState, getShareImageUrlFromState, prepareNoteShareSnapshot, setShareMenuEnabled, NOTE_SHARE_CARD_STYLE_VERSION } = require("../../plugins/share-snapshot/index");
 const { cleanImagePrimaryText, getPrimaryImageUrl, imagePrimaryTitle, isImagePrimaryNote } = require("../../utils/note-display");
 const subscription = require("../../services/subscription");
 const { getAnonymousVisitorId } = require("../../utils/visitor-identity");
@@ -13,7 +13,7 @@ let lastLeadPhoneInMemory = "";
 
 function buildCustomerShareTitle(title) {
   const cleanTitle = String(title || "这份资料").replace(/\s+/g, " ").trim();
-  return `${cleanTitle}｜点开查看完整资料`;
+  return truncateShareTitle(cleanTitle.includes("｜") ? cleanTitle : `${cleanTitle}｜点开查看完整资料`);
 }
 
 function firstDistinctText(excluded, values) {
@@ -343,27 +343,61 @@ function businessCardResourceTypeLabel(cardType) {
   })[cardType] || "资料";
 }
 
+function businessCardAttachmentTypeLabel(type) {
+  return ({ image: "图片", pdf: "PDF", link: "链接" })[type] || "资料";
+}
+
 function buildBusinessCardDetail(data, note) {
+  const config = note.visibilityConfig || {};
+  const opportunity = config.businessOpportunity || {};
   const phone = data.phone || note.phone || "";
   const wechat = data.wechat || data.contactWechat || "";
   const email = data.email || data.mail || "";
   const qrCodeUrl = data.wechatQrUrl || data.qrCodeUrl || data.wechatQrCodeUrl || "";
   const keywords = (Array.isArray(data.serviceKeywords) ? data.serviceKeywords : splitFeatureText(data.serviceKeywords || data.serviceScope)).filter(Boolean).slice(0, 6);
+  const industryTags = Array.from(new Set([
+    opportunity.industry,
+    opportunity.subIndustry,
+    ...(Array.isArray(opportunity.industryTags) ? opportunity.industryTags : []),
+    data.industry,
+    data.subIndustry,
+    ...(Array.isArray(data.industryTags) ? data.industryTags : [])
+  ].map((item) => String(item || "").trim()).filter(Boolean))).slice(0, 8);
+  const cooperationIntent = opportunity.cooperationIntent || data.cooperationIntent || {};
+  const intentExpiry = cooperationIntent.expiresAt || "";
+  let intentActive = Boolean(cooperationIntent.text || cooperationIntent.summary);
+  if (intentExpiry) {
+    const expiryTime = new Date(intentExpiry).getTime();
+    intentActive = Number.isFinite(expiryTime) && expiryTime > Date.now();
+  }
   const featuredResources = (note.featuredResources || []).slice(0, 3).map((item) => ({
     ...item,
     typeLabel: businessCardResourceTypeLabel(item.cardType),
-    typeInitial: businessCardResourceTypeLabel(item.cardType).slice(0, 1)
+    typeInitial: businessCardResourceTypeLabel(item.cardType).slice(0, 1),
+    media: (Array.isArray(item.media) ? item.media : []).slice(0, 6).map((media) => ({
+      ...media,
+      typeLabel: businessCardAttachmentTypeLabel(media.type)
+    }))
   }));
+  const hasContact = Boolean(phone || wechat || email || data.website || data.companyWebsite || data.websiteUrl || data.url || qrCodeUrl);
   return {
     headline: data.headline || "",
     intro: data.bio || "",
     keywords,
+    industryTags,
+    cooperationIntent: {
+      direction: cooperationIntent.direction || "",
+      text: cooperationIntent.text || cooperationIntent.summary || "",
+      expiresAt: intentExpiry,
+      active: intentActive
+    },
     cityText: data.city || "",
     phone,
     wechat,
     email,
     website: data.website || data.companyWebsite || data.websiteUrl || data.url || "",
     qrCodeUrl,
+    hasContact,
     featuredResources
   };
 }
@@ -516,7 +550,8 @@ function buildView(note) {
   const config = note.visibilityConfig || {};
   const data = config.structuredData || {};
   const candidateShareSnapshot = config.shareSnapshot || {};
-  const shareSnapshot = String(candidateShareSnapshot.styleId || "") === SHARE_CARD_STYLE_VERSION
+  const shareSnapshot = String(candidateShareSnapshot.styleId || "") === NOTE_SHARE_CARD_STYLE_VERSION
+    && candidateShareSnapshot.renderer === "backend"
     ? candidateShareSnapshot
     : {};
   const ownerProfile = note.ownerProfile || {};
@@ -720,6 +755,7 @@ function buildView(note) {
     salesSections,
     salesHighlights,
     businessCardDetail,
+    businessCardContactLocked: Boolean(note.businessCardContactLocked),
     serviceOfferDetail,
     serviceOfferPrimaryActions,
     serviceOfferSecondaryActions,
@@ -987,6 +1023,7 @@ Page({
     publicLoadErrorTitle: "",
     publicLoadErrorMessage: "",
     openedStandalone: false,
+    previewMode: false,
     isOwnerViewing: false,
     pendingAction: "",
     relayDraft: {
@@ -1010,6 +1047,7 @@ Page({
       viewSessionId: createViewSessionId("note_view"),
       pageEnterAt: Date.now(),
       maxScrollPercent: 0,
+      previewMode: options.preview === "1" || options.preview === "true",
       shareId: options.sid || "",
       shareFromUserId: options.from || "",
       shareScene: options.src || options.scene || "",
@@ -1029,11 +1067,19 @@ Page({
     this._publicNoteRequestSeq = requestSeq;
     const isCurrentRequest = () => requestSeq === this._publicNoteRequestSeq;
     try {
-      const res = await api.fetchPublicNote(noteId);
+      const owner = this.data.user || getCurrentUser();
+      const ownerPreview = Boolean(this.data.previewMode && owner && owner.id);
+      // The editor's “完整预览” saves a private draft and then opens this
+      // page with preview=1. A private draft cannot be read through the
+      // public endpoint, which used to produce the misleading “资料已停止
+      // 分享” screen even though the card itself was still being edited.
+      const res = ownerPreview
+        ? await api.fetchNote(noteId, owner.id, { force: true })
+        : await api.fetchPublicNote(noteId);
       if (!isCurrentRequest()) return;
       const view = buildView(res.data || {});
       rememberPropertyCity(`${view.address} ${view.title}`);
-      const isOwnerViewing = Boolean(this.data.user && view.ownerUserId && this.data.user.id === view.ownerUserId);
+      const isOwnerViewing = ownerPreview || Boolean(this.data.user && view.ownerUserId && this.data.user.id === view.ownerUserId);
       this.setData({
         view,
         notePayload: res.data || {},
@@ -1216,6 +1262,15 @@ Page({
     const user = this.data.user || getCurrentUser() || {};
     const ownerUserId = this.data.isOwnerViewing ? user.id : "";
     if (!note.id) return;
+    if (this.data.previewMode && note.shareState !== "published") {
+      this.setData({
+        shareImageReady: false,
+        shareImageState: "unavailable",
+        shareStatusText: "发布后可分享"
+      });
+      setShareMenuEnabled(false);
+      return;
+    }
     const current = getNoteShareSnapshotState(note, ownerUserId, user);
     const statusText = {
       missing: "准备分享图",
@@ -1246,8 +1301,6 @@ Page({
     setShareMenuEnabled(false);
     try {
       const result = await prepareNoteShareSnapshot({
-        page: this,
-        canvasId: "businessCardShareCanvas",
         note,
         ownerUserId,
         user
@@ -1386,6 +1439,38 @@ Page({
     if (!id) return;
     this.recordInteraction("featured_note_open", "", { featuredNoteId: id });
     wx.navigateTo({ url: `/pages/note-preview/index?id=${id}` });
+  },
+  handleEditBusinessCard() {
+    const noteId = this.data.noteId || "";
+    if (!noteId) return;
+    wx.navigateTo({ url: `/subpackages/workbench/business-card-studio/index?id=${encodeURIComponent(noteId)}` });
+  },
+  handleFeaturedAttachment(event) {
+    const dataset = (event && event.currentTarget && event.currentTarget.dataset) || {};
+    const url = String(dataset.url || "").trim();
+    const type = String(dataset.type || "image").trim();
+    const id = String(dataset.id || "").trim();
+    if (!url) return;
+    if (type === "image") {
+      this.recordInteraction("image_open", id, { featured: true });
+      wx.previewImage({ current: url, urls: [url] });
+      return;
+    }
+    this.recordInteraction(type === "pdf" ? "pdf_open" : "link_open", id, { featured: true });
+    if (type === "pdf") {
+      wx.downloadFile({
+        url,
+        success: ({ tempFilePath }) => wx.openDocument({
+          filePath: tempFilePath,
+          fileType: "pdf",
+          showMenu: true,
+          fail: () => wx.showToast({ title: "PDF 打开失败", icon: "none" })
+        }),
+        fail: () => wx.showToast({ title: "PDF 打开失败", icon: "none" })
+      });
+      return;
+    }
+    wx.setClipboardData({ data: url, success: () => wx.showToast({ title: "链接已复制，请在浏览器打开", icon: "none" }) });
   },
   noop() {},
   handleBackHome() {

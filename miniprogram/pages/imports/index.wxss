@@ -173,3 +173,19 @@
 .notice-dot.failed {
   background: #ff7a1a;
 }
+/* Typography scale v2: make imported material and claim choices easy to review. */
+.page-shell .section-title { font-size: 32rpx; }
+.page-shell .notice-row,
+.page-shell .muted { font-size: 24rpx; }
+.page-shell .imports-title { font-size: 34rpx; }
+.page-shell .imports-subtitle { font-size: 25rpx; }
+.page-shell .imports-count { font-size: 32rpx; }
+.page-shell .field-label { font-size: 26rpx; }
+.page-shell .import-title { font-size: 29rpx; }
+.page-shell .import-body { font-size: 27rpx; line-height: 1.65; }
+.page-shell .template-chip { display: flex; align-items: center; justify-content: center; min-height: 60rpx; font-size: 24rpx; }
+.page-shell .template-hint { font-size: 23rpx; }
+.page-shell .field-tag { font-size: 21rpx; }
+.page-shell .import-meta { font-size: 23rpx; }
+.page-shell .claim-btn { display: flex; align-items: center; justify-content: center; min-height: 72rpx; font-size: 26rpx; }
+.page-shell .empty-state { font-size: 25rpx; }

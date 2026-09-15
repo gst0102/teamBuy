@@ -3,11 +3,10 @@ const messagePlugin = require("../../plugins/message-plugin/index");
 const resourceStore = require("../../stores/resource-store");
 const { enrichCard, formatTime, getCurrentUser } = require("../../utils/dashboard");
 const { navigateToNoteEditor, navigateToResourceEdit, navigateToResourceView } = require("../../utils/resource-navigation");
-const { buildNoteShareTitle, getNoteShareSnapshotState, getShareImageUrlFromState, getShareSourceRevision, isShareImageUrl, prepareNoteShareSnapshot, setShareMenuEnabled } = require("../../plugins/share-snapshot/index");
+const { buildNoteShareTitle, getNoteShareSnapshotState, getShareImageUrlFromState, getShareSourceRevision, isShareImageUrl, prepareNoteShareSnapshot, setShareMenuEnabled, NOTE_SHARE_CARD_STYLE_VERSION } = require("../../plugins/share-snapshot/index");
 const subscription = require("../../services/subscription");
 
 const LIBRARY_ENTRY_FILTER_KEY = "teambuy:libraryEntryFilter";
-const LIBRARY_SHARE_CANVAS_ID = "libraryShareCanvas";
 const LIBRARY_PAGE_SIZE = 10;
 const SYSTEM_PLACEHOLDER_TEXTS = new Set([
   "未命名笔记",
@@ -76,25 +75,25 @@ function createNoteShareId(noteId) {
   return `share_note_${noteId || "note"}_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
 }
 
-function getCardShareSnapshotImage(card = {}) {
-  const user = getCurrentUser() || {};
-  const state = getNoteShareSnapshotState(card, user.id, user);
-  return getShareImageUrlFromState(state);
-}
-
 function getPreparedLibraryShareImage(card = {}, shareImages = {}) {
   const prepared = card && card.id ? shareImages[card.id] : null;
-  const noteId = String(card.sourceNoteId || "");
-  const sourceRevision = String(getShareSourceRevision("note", card) || "");
+  const user = getCurrentUser() || {};
+  const currentState = getNoteShareSnapshotState(card, user.id, user);
+  const noteId = String(card.sourceNoteId || card.id || "");
+  const sourceRevision = String(currentState.sourceRevision || getShareSourceRevision("note", card) || "");
+  const styleId = String(currentState.styleId || NOTE_SHARE_CARD_STYLE_VERSION);
+  const fingerprint = String(currentState.fingerprint || "");
   if (
     prepared
     && isShareImageUrl(prepared.url)
     && (!prepared.noteId || String(prepared.noteId) === noteId)
     && String(prepared.sourceRevision || "") === sourceRevision
+    && String(prepared.styleId || "") === styleId
+    && (!fingerprint || String(prepared.fingerprint || "") === fingerprint)
   ) {
     return String(prepared.url).trim();
   }
-  return getCardShareSnapshotImage(card);
+  return getShareImageUrlFromState(currentState);
 }
 
 // The list endpoint historically returned the share state in different
@@ -1768,8 +1767,6 @@ Page({
           visibilityConfig: config
         };
         const result = await prepareNoteShareSnapshot({
-          page: this,
-          canvasId: LIBRARY_SHARE_CANVAS_ID,
           note: noteEntity,
           ownerUserId: generationOwnerUserId,
           user: getCurrentUser() || {}
@@ -1785,7 +1782,8 @@ Page({
               url: imagePath,
               noteId: sourceNoteId,
               sourceRevision: result.sourceRevision,
-              fingerprint: result.fingerprint
+              fingerprint: result.fingerprint,
+              styleId: result.styleId || NOTE_SHARE_CARD_STYLE_VERSION
             }
           } : (this.data.shareImages || {});
           const markReady = (item) => {
@@ -1875,7 +1873,8 @@ Page({
           url: generatedImageUrl,
           noteId: card.sourceNoteId,
           sourceRevision: getShareSourceRevision("note", card),
-          fingerprint: ((this.data.shareImages || {})[card.id] || {}).fingerprint || persistedState.fingerprint || ""
+          fingerprint: persistedState.fingerprint || "",
+          styleId: persistedState.styleId || NOTE_SHARE_CARD_STYLE_VERSION
         }
       };
       const markReady = (item) => item && item.id === card.id

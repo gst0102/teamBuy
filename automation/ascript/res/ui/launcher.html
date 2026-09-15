@@ -12,36 +12,62 @@
   .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
   button { min-height: 142px; padding: 16px 10px; border: 1px solid #283657; border-radius: 18px; background: #121b32; color: #f4f7ff; text-align: left; }
   button:active { background: #1d2b4b; border-color: #69d7a1; }
+  button.slot { width: 100%; }
+  button.slot.disabled { border-color: #1b2742; background: #0d1428; color: #657391; opacity: .72; }
+  button.slot.disabled .num { background: #18233b; color: #657391; }
+  button.slot.disabled .sub { color: #5d6a84; }
+  button.slot:disabled { cursor: default; }
   .num { display: inline-flex; width: 28px; height: 28px; align-items: center; justify-content: center; border-radius: 9px; background: #253557; color: #9fe8c3; font-size: 13px; }
   .title { display: block; margin-top: 18px; font-size: 17px; font-weight: 700; }
   .sub { display: block; margin-top: 7px; color: #96a4c3; font-size: 11px; line-height: 1.35; }
   .exit { display: flex; width: 100%; min-height: 44px; margin-top: 16px; padding: 10px 14px; align-items: center; justify-content: center; border: 1px solid #3a496b; border-radius: 12px; background: #0d1428; color: #aab6d2; font-size: 14px; }
+  .tap-state { min-height: 22px; margin-top: 10px; color: #69d7a1; font-size: 12px; }
   .footer { margin-top: 22px; padding-top: 14px; border-top: 1px solid #1f2a45; color: #71809f; font-size: 12px; }
 </style>
 </head>
 <body>
   <div class="eyebrow">ASCRIPT TOOLBOX</div>
-  <h1>资料整理助手</h1>
-  <p class="intro">一个入口，九个功能。手机负责执行，PC 负责审核和查看记录。</p>
+  <h1>微信助手</h1>
+  <p class="intro">先扫描 g10 群台账，再按 PC 批次转发微信卡片。</p>
   <div class="grid">
-    <button onclick="pick('xhs_find_group')"><span class="num">1</span><span class="title">小红书找群</span><span class="sub">搜索群信息并回传 PC</span></button>
-    <button onclick="pick('join_wechat_group')"><span class="num">2</span><span class="title">加微信群</span><span class="sub">读取待加入任务</span></button>
-    <button onclick="pick('wechat_group_inventory')"><span class="num">3</span><span class="title">扫描微信群</span><span class="sub">原生群聊入库</span></button>
-    <button onclick="pick('wechat_group_library')"><span class="num">4</span><span class="title">微信群库</span><span class="sub">查看 PC 群库状态</span></button>
-    <button onclick="pick('wechat_marketing')"><span class="num">5</span><span class="title">群营销</span><span class="sub">执行已审核任务</span></button>
-    <button onclick="pick('wechat_accounts')"><span class="num">6</span><span class="title">微信账号</span><span class="sub">识别两个微信昵称</span></button>
-    <button onclick="pick('device_status')"><span class="num">7</span><span class="title">设备状态</span><span class="sub">检查当前输入通道</span></button>
-    <button onclick="pick('task_logs')"><span class="num">8</span><span class="title">任务日志</span><span class="sub">查看执行结果</span></button>
-    <button onclick="pick('settings')"><span class="num">9</span><span class="title">设置</span><span class="sub">设备和接口配置</span></button>
+    <button class="slot" type="button" ontouchend="pick('send_batches', event)" onclick="pick('send_batches', event)"><span class="num">1</span><span class="title">群发微信</span><span class="sub">扫描群台账 · 读取批次 · 转发卡片</span></button>
+    <button class="slot disabled" type="button" disabled><span class="num">2</span><span class="title">鸿蒙适配</span><span class="sub">下一轮调试控件树与 HID</span></button>
+    <button class="slot disabled" type="button" disabled><span class="num">3</span><span class="title">iOS 适配</span><span class="sub">后续扩展</span></button>
+    <button class="slot disabled" type="button" disabled><span class="num">4</span><span class="title">群台账工具</span><span class="sub">后续扩展</span></button>
+    <button class="slot disabled" type="button" disabled><span class="num">5</span><span class="title">批次管理</span><span class="sub">由 PC 端配置</span></button>
+    <button class="slot disabled" type="button" disabled><span class="num">6</span><span class="title">发送记录</span><span class="sub">后续扩展</span></button>
+    <button class="slot disabled" type="button" disabled><span class="num">7</span><span class="title">设备诊断</span><span class="sub">后续扩展</span></button>
+    <button class="slot disabled" type="button" disabled><span class="num">8</span><span class="title">预留扩展</span><span class="sub">后续扩展</span></button>
+    <button class="slot disabled" type="button" disabled><span class="num">9</span><span class="title">预留扩展</span><span class="sub">后续扩展</span></button>
   </div>
-  <button class="exit" onclick="exitLauncher()">退出九宫格</button>
-  <div class="footer">当前版本：统一入口第一版 · 旧探针不再作为操作入口</div>
+  <div id="tap-state" class="tap-state">状态：等待选择</div>
+  <button class="exit" ontouchend="exitLauncher(event)" onclick="exitLauncher(event)">退出九宫格</button>
+  <div class="footer">当前启用：Android 群发微信 · 其他卡位为后续扩展</div>
 <script>
-  function pick(id) { window.airscript.call('feature', id); }
-  function exitLauncher() { window.airscript.call('window_closed', 'user_exit'); }
-  window.addEventListener('pagehide', function() {
-    window.airscript.call('window_closed', '1');
-  });
+  var lastActionAt = 0;
+  function send(key, value) {
+    if (!window.airscript || typeof window.airscript.call !== 'function') {
+      document.getElementById('tap-state').textContent = '状态：页面通信桥未就绪';
+      return;
+    }
+    try {
+      window.airscript.call(key, value);
+    } catch (error) {
+      document.getElementById('tap-state').textContent = '状态：操作提交失败';
+    }
+  }
+  function pick(id, event) {
+    if (event && event.type === 'touchend') event.preventDefault();
+    var now = Date.now();
+    if (now - lastActionAt < 500) return;
+    lastActionAt = now;
+    document.getElementById('tap-state').textContent = '状态：正在打开' + id;
+    send('feature', id);
+  }
+  function exitLauncher(event) {
+    if (event && event.type === 'touchend') event.preventDefault();
+    send('window_closed', 'user_exit');
+  }
 </script>
 </body>
 </html>

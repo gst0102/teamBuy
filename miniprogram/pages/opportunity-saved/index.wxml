@@ -18,22 +18,41 @@
     <view wx:for="{{packageFilters}}" wx:key="key" class="filter-pill {{activePackageStatus === item.key ? 'active' : ''}}" data-key="{{item.key}}" bindtap="handlePackageFilterTap">{{item.label}}</view>
   </view>
 
-  <view wx:for="{{visibleCards}}" wx:key="id" class="saved-card" data-id="{{item.id}}" bindtap="handleOpenDetail">
-    <view class="card-head">
-      <view class="status-pill">{{item.status}}</view>
-      <view class="package-pill">{{item.packageStatus}}</view>
-    </view>
-    <view class="card-title">{{item.title}}</view>
-    <view class="follow-grid">
-      <view><text>提醒时间</text><strong>{{item.reminder}}</strong></view>
-      <view><text>最近动作</text><strong>{{item.latestAction}}</strong></view>
-    </view>
-    <view class="note-box">{{item.note}}</view>
-    <view class="actions">
-      <button data-id="{{item.id}}" data-action="{{item.nextAction}}" catchtap="handleQuickAction">{{item.nextAction}}</button>
-      <button data-id="{{item.id}}" data-status="{{item.statusKey}}" catchtap="handleStatusEdit">改状态</button>
-      <button data-id="{{item.id}}" catchtap="handleReminderEdit">设提醒</button>
-    </view>
+  <view wx:if="{{loading && !visibleCards.length}}" class="empty-state loading-state">
+    <view>正在读取跟进记录</view>
+    <view class="empty-sub">只展示服务端已保存的真实商机。</view>
   </view>
+  <view wx:elif="{{loadError && !visibleCards.length}}" class="empty-state retry-state" bindtap="loadSaved">
+    <view>跟进记录暂时无法读取</view>
+    <view class="empty-sub">网络恢复后点击重试，不展示虚构记录。</view>
+    <button>重新加载</button>
+  </view>
+  <view wx:if="{{loading && visibleCards.length}}" class="inline-loading">正在更新跟进记录…</view>
+  <view wx:elif="{{loadEmpty}}" class="empty-state">
+    <view>还没有保存的真实商机</view>
+    <view class="empty-sub">在合作需求或合作资源中保存后，会出现在这里。</view>
+  </view>
+  <block wx:if="{{visibleCards.length}}">
+    <view wx:for="{{visibleCards}}" wx:key="id" class="saved-card" data-id="{{item.id}}" bindtap="handleOpenDetail">
+      <view class="card-head">
+        <view class="status-pill">{{item.status}}</view>
+        <view class="package-pill">{{item.packageStatus}}</view>
+      </view>
+      <view class="card-title">{{item.title}}</view>
+      <view class="follow-grid">
+        <view><text>提醒时间</text><strong>{{item.reminder}}</strong></view>
+        <view><text>最近动作</text><strong>{{item.latestAction}}</strong></view>
+      </view>
+      <view class="note-box">{{item.note}}</view>
+      <view class="actions">
+        <button data-id="{{item.id}}" data-action="{{item.nextAction}}" catchtap="handleQuickAction">{{item.nextAction}}</button>
+        <button data-id="{{item.id}}" data-status="{{item.statusKey}}" catchtap="handleStatusEdit">改状态</button>
+        <button data-id="{{item.id}}" catchtap="handleReminderEdit">设提醒</button>
+      </view>
+    </view>
+    <view wx:if="{{loadingMore}}" class="load-more">正在加载更多…</view>
+    <view wx:elif="{{!hasMore}}" class="load-more">已经看到这里了</view>
+    <view wx:if="{{loadError}}" class="inline-load-error" bindtap="loadSaved">最新记录读取失败，点击重试</view>
+  </block>
 <canvas canvas-id="shareCardCanvas" class="share-card-canvas"></canvas>
 </view>
