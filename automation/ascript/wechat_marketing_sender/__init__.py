@@ -60,6 +60,10 @@ MATERIAL_CHAT_SEARCH_SECTION_HEADERS = MATERIAL_CHAT_SEARCH_ALLOWED_SECTIONS + (
     "搜索网络结果",
 )
 MAX_TASKS_PER_RUN = 50
+# A grouped task can contain several native <=9-recipient chunks.  Keep its
+# lease long enough for a normal long batch; a future renewal endpoint is still
+# needed for batches that genuinely exceed this upper bound.
+TASK_LEASE_SECONDS = 900
 # 素材扫描预算由实时 act-x 的数字决定；不再保留固定 12 次最低值。
 # 预算是整次查找的总上限，找到卡片或确认无进展时提前结束。
 MAX_CHAT_LIST_TOP_SWIPES = 24
@@ -320,7 +324,7 @@ def _claim_task(run_id=None):
             "deviceId": DEVICE_ID,
             "activeWechatAccountId": ACTIVE_WECHAT_ACCOUNT_ID or None,
             "runId": run_id,
-            "leaseSeconds": 120,
+            "leaseSeconds": TASK_LEASE_SECONDS,
             "functionIds": [GROUP_BATCH_FUNCTION_ID],
         },
     )
