@@ -2102,6 +2102,10 @@ seen_account_ids = set()
 scan_started_at = time.time()
 SCAN_CONFIG_ERROR = None
 PC_SCAN_CONFIG = {}
+# Keep a defined safe value when the PC config request itself fails.  The
+# failure path must report the scan error and stop, rather than raising a
+# secondary NameError while constructing SCAN_RESULT.
+SCAN_ONLY = False
 try:
     PC_SCAN_CONFIG = _load_pc_scan_config()
     GROUP_SEARCH_PREFIXES = tuple(PC_SCAN_CONFIG["searchPrefixes"])

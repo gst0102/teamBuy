@@ -41,8 +41,29 @@ def _message_id(report: dict, sender: str) -> str:
     return "<teambuy-{}@{}>".format(digest, domain)
 
 
-def _smtp_refusal_summary(refused: dict) -> list[dict]:
-    """Keep SMTP refusal codes/text while dropping recipient addresses."""
+def _smtp_sensitive_values(recipient: str) -> tuple[str, ...]:
+    return tuple(
+        str(value or "")
+        for value in (
+            recipient,
+            settings.automation_smtp_host,
+            settings.automation_smtp_username,
+            settings.automation_smtp_password,
+            settings.automation_smtp_from,
+        )
+        if str(value or "")
+    )
+
+
+def _redact_smtp_text(value: object, recipient: str) -> str:
+    text = _one_line(value, 240)
+    for sensitive in _smtp_sensitive_values(recipient):
+        text = text.replace(sensitive, "<redacted>")
+    return text
+
+
+def _smtp_refusal_summary(refused: dict, recipient: str) -> list[dict]:
+    """Keep SMTP refusal codes/text while dropping addresses and credentials."""
     summary = []
     for response in (refused or {}).values():
         code = None
@@ -59,26 +80,13 @@ def _smtp_refusal_summary(refused: dict) -> list[dict]:
             code = int(code) if code is not None else None
         except (TypeError, ValueError):
             code = None
-        summary.append({
-            "code": code,
-            "message": _one_line(message, 240),
-        })
+        summary.append({"code": code, "message": _redact_smtp_text(message, recipient)})
     return summary
 
 
 def _safe_smtp_error(exc: Exception, recipient: str) -> str:
     """Keep a useful SMTP error without persisting endpoint credentials."""
-    error = _one_line(exc, 240)
-    for value in (
-        recipient,
-        settings.automation_smtp_host,
-        settings.automation_smtp_username,
-        settings.automation_smtp_password,
-    ):
-        clean = str(value or "")
-        if clean:
-            error = error.replace(clean, "<redacted>")
-    return error
+    return _redact_smtp_text(exc, recipient)
 
 
 def _forward_outcome_counts(forward: dict, queue: dict) -> tuple[int, int, int, int, int, int]:
@@ -429,19 +437,33 @@ def send_automation_completion_email(report: dict) -> dict:
                 if settings.automation_smtp_username:
                     smtp.login(settings.automation_smtp_username, settings.automation_smtp_password)
                 refused = smtp.send_message(message) or {}
+    except smtplib.SMTPRecipientsRefused as exc:
+        refusals = _smtp_refusal_summary(getattr(exc, "recipients", {}), recipient)
+        return {
+            "configured": True,
+            "sent": False,
+            "smtpAccepted": False,
+            "reason": "smtp_recipient_rejected",
+            "messageId": message_id,
+            "recipientFingerprint": recipient_fingerprint,
+            "refusedCount": len(refusals),
+            "refused": refusals,
+        }
     except Exception as exc:
         error = _safe_smtp_error(exc, recipient)
         return {
             "configured": True,
             "sent": False,
-            "smtpAccepted": False,
+            # A connection failure can happen after DATA was accepted; the
+            # client cannot distinguish rejection from uncertain acceptance.
+            "smtpAccepted": None,
             "reason": "smtp_send_failed",
             "errorType": type(exc).__name__,
             "error": error,
             "messageId": message_id,
             "recipientFingerprint": recipient_fingerprint,
         }
-    refusals = _smtp_refusal_summary(refused)
+    refusals = _smtp_refusal_summary(refused, recipient)
     if refusals:
         return {
             "configured": True,
