@@ -411,6 +411,7 @@ def _run_module(feature):
                 "searchPrefixes": [],
                 "scanOnly": False,
             },
+            "groupCodes": [],
             "forwardSummary": {
                 "durationSeconds": 0.0,
                 "successCount": 0,
@@ -717,7 +718,9 @@ def _flush_run_completion():
         "runId": "wechat-assistant-batch:{}".format(int(time.time() * 1000)),
         "status": status,
         "batchNo": state["batchNo"],
-        "groupCodes": ["c1001"],
+        # A preflight-only or failed run may not have a selected batch code;
+        # do not invent the test code in its completion report.
+        "groupCodes": list(state.get("groupCodes") or []),
         "scanConfig": dict(state.get("scanConfig") or {}),
         "accounts": state["accounts"],
         "scanSummary": {
