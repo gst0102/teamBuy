@@ -1151,4 +1151,4 @@
 
 - 对抗式审查发现并修复两项可造成误判的缺陷：统一入口原先忽略 PC `scanOnly` 门禁；邮件服务原先忽略 `send_message()` 的收件人拒绝字典。当前代码已分别在 `515029e` 与前一提交中覆盖，并通过 464 项后端测试。
 - AScript 设备发现本轮只找到一台 Android-237（Android/Wi-Fi）；本地 AScript 平台 API 概览只有 Android、iOS、Windows，没有 HarmonyOS 平台入口。仓库没有鸿蒙执行模块，`automation/ascript/res/ui/launcher.html` 第 2 格仍为禁用“鸿蒙适配”占位。因此本轮没有鸿蒙运行/控件树/HID 证据，不能报告鸿蒙兼容或通过。
-- GitHub 远端 `gst0102/teamBuy` 的 `codex/version-protection-20260629` 已与本地同步，当前 HEAD 为 `515029e`；未推送 `main`。鸿蒙二期需要先确定 HarmonyOS 自动化运行时、设备和控件/HID 通道，再定义独立适配层与验收用例。
+- GitHub 远端 `gst0102/teamBuy` 的 `codex/version-protection-20260629` 已与本地同步，当前 HEAD 为 `9c86be1`；未推送 `main`。鸿蒙二期需要先确定 HarmonyOS 自动化运行时、设备和控件/HID 通道，再定义独立适配层与验收用例。
