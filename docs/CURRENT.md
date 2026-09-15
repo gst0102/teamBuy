@@ -1169,3 +1169,4 @@
 - `SMTPRecipientsRefused`（全部收件人被拒绝）现在与 `send_message()` 返回的拒绝字典统一记录 SMTP 拒绝码/安全回复；普通连接异常的 `smtpAccepted` 改为 `null`，表示客户端无法判断服务器是否已在 DATA 阶段接受，避免把不确定状态写成确定拒绝。
 - 拒绝回复和异常文本统一移除收件地址、SMTP 主机、用户名、密码及发件地址；PC 扫描配置请求失败时预先使用安全的 `scanOnly=false` 默认值，保留原始配置错误并停止流程，不再因二次 `NameError` 覆盖根因。
 - 定向邮件测试 8 项、后端全量测试 468 项通过；AScript 相关模块语法检查通过。未发送测试邮件、未操作手机、未部署生产。
+- GitHub 远端 `gst0102/teamBuy` 的当前功能分支 `codex/version-protection-20260629` 已同步到 HEAD `89e275c`；工作区干净，未推送 `main`。
