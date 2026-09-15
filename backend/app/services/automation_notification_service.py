@@ -66,6 +66,21 @@ def _smtp_refusal_summary(refused: dict) -> list[dict]:
     return summary
 
 
+def _safe_smtp_error(exc: Exception, recipient: str) -> str:
+    """Keep a useful SMTP error without persisting endpoint credentials."""
+    error = _one_line(exc, 240)
+    for value in (
+        recipient,
+        settings.automation_smtp_host,
+        settings.automation_smtp_username,
+        settings.automation_smtp_password,
+    ):
+        clean = str(value or "")
+        if clean:
+            error = error.replace(clean, "<redacted>")
+    return error
+
+
 def _forward_outcome_counts(forward: dict, queue: dict) -> tuple[int, int, int, int, int, int]:
     """Derive recipient totals from per-target outcomes when they are present.
 
@@ -415,7 +430,7 @@ def send_automation_completion_email(report: dict) -> dict:
                     smtp.login(settings.automation_smtp_username, settings.automation_smtp_password)
                 refused = smtp.send_message(message) or {}
     except Exception as exc:
-        error = _one_line(exc, 240).replace(recipient, "<redacted-recipient>")
+        error = _safe_smtp_error(exc, recipient)
         return {
             "configured": True,
             "sent": False,

@@ -112,6 +112,33 @@ def test_completion_mail_reports_smtp_recipient_refusal(monkeypatch):
     assert "250667571@qq.com" not in str(result["refused"])
 
 
+def test_completion_mail_redacts_smtp_details_from_exception(monkeypatch):
+    class FailingSmtp(_FakeSmtp):
+        def send_message(self, message):
+            raise RuntimeError(
+                "smtp.example.test smtp-user server-only-password 250667571@qq.com"
+            )
+
+    monkeypatch.setattr(settings, "automation_completion_email_enabled", True)
+    monkeypatch.setattr(settings, "automation_completion_email_to", "250667571@qq.com")
+    monkeypatch.setattr(settings, "automation_smtp_host", "smtp.example.test")
+    monkeypatch.setattr(settings, "automation_smtp_port", 465)
+    monkeypatch.setattr(settings, "automation_smtp_username", "smtp-user")
+    monkeypatch.setattr(settings, "automation_smtp_password", "server-only-password")
+    monkeypatch.setattr(settings, "automation_smtp_from", "smtp-user@example.test")
+    monkeypatch.setattr(settings, "automation_smtp_use_ssl", True)
+    monkeypatch.setattr(settings, "automation_smtp_timeout_seconds", 10)
+    monkeypatch.setattr(automation_notification_service.smtplib, "SMTP_SSL", FailingSmtp)
+
+    result = automation_notification_service.send_automation_completion_email(
+        {"deviceId": "android-01", "runId": "run-error", "status": "failed"}
+    )
+
+    assert result["sent"] is False
+    assert result["reason"] == "smtp_send_failed"
+    assert result["error"] == "<redacted> <redacted> <redacted> <redacted>"
+
+
 def test_completion_mail_separates_sent_actions_from_post_send_cleanup_failure(monkeypatch):
     monkeypatch.setattr(settings, "automation_completion_email_enabled", True)
     monkeypatch.setattr(settings, "automation_completion_email_to", "250667571@qq.com")
