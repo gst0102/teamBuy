@@ -25,7 +25,7 @@ def sender_logic():
         "_queue_empty_reason", "_current_duplicate_result_rect",
         "_same_name_result_count_options",
         "_expand_same_name_targets_to_observed_count", "_request_device_batch_run",
-        "_validate_test_configuration",
+        "_validate_test_configuration", "_send_mode_enabled",
     }
     module = ast.parse(source.read_text())
     module.body = [item for item in module.body if isinstance(item, ast.FunctionDef) and item.name in names]
@@ -49,6 +49,13 @@ def sender_logic():
 @pytest.mark.parametrize("visible,expected", [(["act-002"], 2), (["act-100"], 100), (["act-200"], 200), ([], 1)])
 def test_card_budget_uses_number_without_twelve_floor_or_120_cap(sender_logic, visible, expected):
     assert sender_logic["_card_scroll_budget"]("act-001", visible) == expected
+
+
+def test_send_mode_requires_explicit_test_configuration(sender_logic):
+    sender_logic["TEST_MODE"] = ""
+    assert sender_logic["_send_mode_enabled"]() is False
+    sender_logic["TEST_MODE"] = "TEST_SINGLE"
+    assert sender_logic["_send_mode_enabled"]() is True
 
 
 @pytest.mark.parametrize("ocr_header", [False, True])

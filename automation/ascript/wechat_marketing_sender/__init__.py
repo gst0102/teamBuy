@@ -181,6 +181,11 @@ def _configured_account_ids():
     return normalized
 
 
+def _send_mode_enabled():
+    """Only the explicit single/test-only modes may create send tasks."""
+    return TEST_MODE in {"TEST_SINGLE", "TEST_ONLY"}
+
+
 def _reuse_scanned_account():
     """Continue in the account selected by the immediately preceding scan."""
     return str(os.environ.get("TEAMBUY_REUSE_SCANNED_ACCOUNT") or "").strip().lower() in {
@@ -4702,7 +4707,7 @@ def _run_one(task, ble):
     card_title = str(payload.get("cardTitle") or "").strip()
     text = str(payload.get("text") or "").strip()
     print("SEND_CARD_REQUEST", card_id, card_title)
-    if TEST_MODE not in {"TEST_SINGLE", "TEST_ONLY"}:
+    if not _send_mode_enabled():
         # Never report an unattempted send as a completed task.  Keep the
         # runtime safety gate, but fail visibly before opening the material
         # chat so the operator can fix TEST_MODE instead of seeing a silent
@@ -4964,6 +4969,27 @@ def _run_queue(ble):
     if not account_ids:
         raise RuntimeError("未配置可执行的微信账号 ID")
     _validate_test_configuration(account_ids)
+    if not _send_mode_enabled():
+        # Keep production in dry-run before the queue endpoint is called. A
+        # task created before this gate could be claimed by this device and
+        # would also leave misleading pending/failed rows in the outbox.
+        reason = "生产发送未启用 TEST_SINGLE/TEST_ONLY，已保持 dry-run"
+        print("SEND_SAFETY_GATE", reason)
+        summary.update({
+            "status": "degraded",
+            "lastErrorStage": "send_safety_gate",
+            "queue": {
+                "runId": None,
+                "groupCodes": [],
+                "createdCount": 0,
+                "targetCount": 0,
+                "skippedCount": 0,
+                "skippedItems": [],
+                "reason": "production_send_disabled",
+                "workflowFailureCount": 0,
+            },
+        })
+        return summary
     _heartbeat()
     queued = _request_device_batch_run(account_ids, summary["batchNo"])
     try:
