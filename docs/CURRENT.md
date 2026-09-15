@@ -1145,4 +1145,10 @@
 
 - 对抗式审查确认 `smtplib.send_message()` 的收件人拒绝字典原先被忽略，可能把 SMTP 已拒绝收件人误记为 `sent=true`。
 - 邮件服务现在为同一 `deviceId + runId` 生成稳定 Message-ID，返回收件人短指纹、`smtpAccepted` 和安全的拒绝码/回复文本；异常返回错误类型与截断后的安全错误，不记录完整收件地址或凭证。SMTP 无拒绝时的 `sent=true` 仍只表示服务器接受本次 SMTP 事务，不表示最终进入邮箱。
-- 新增拒绝回归测试；本地全量后端测试更新为 464 项通过。未部署生产、未发送测试邮件；已暂存的改动仍需在 GitHub 提交前复核。
+- 新增拒绝回归测试；本地全量后端测试更新为 464 项通过。未部署生产、未发送测试邮件；相关代码已在提交 `515029e` 中推送到当前 GitHub 功能分支。
+
+## 138. 2026-09-15 最终验收审查与鸿蒙边界
+
+- 对抗式审查发现并修复两项可造成误判的缺陷：统一入口原先忽略 PC `scanOnly` 门禁；邮件服务原先忽略 `send_message()` 的收件人拒绝字典。当前代码已分别在 `515029e` 与前一提交中覆盖，并通过 464 项后端测试。
+- AScript 设备发现本轮只找到一台 Android-237（Android/Wi-Fi）；本地 AScript 平台 API 概览只有 Android、iOS、Windows，没有 HarmonyOS 平台入口。仓库没有鸿蒙执行模块，`automation/ascript/res/ui/launcher.html` 第 2 格仍为禁用“鸿蒙适配”占位。因此本轮没有鸿蒙运行/控件树/HID 证据，不能报告鸿蒙兼容或通过。
+- GitHub 远端 `gst0102/teamBuy` 的 `codex/version-protection-20260629` 已与本地同步，当前 HEAD 为 `515029e`；未推送 `main`。鸿蒙二期需要先确定 HarmonyOS 自动化运行时、设备和控件/HID 通道，再定义独立适配层与验收用例。
