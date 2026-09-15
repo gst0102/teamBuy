@@ -134,6 +134,9 @@ except Exception:
     _local_config = None
 
 if _local_config is not None:
+    configured_device_id = getattr(_local_config, "DEVICE_ID", DEVICE_ID)
+    if " ".join(str(configured_device_id or "").split()):
+        DEVICE_ID = " ".join(str(configured_device_id).split())[:128]
     BACKEND_URL = getattr(_local_config, "BACKEND_URL", BACKEND_URL)
     DEVICE_TOKEN = getattr(_local_config, "DEVICE_TOKEN", DEVICE_TOKEN)
     ACTIVE_WECHAT_ACCOUNT_ID = getattr(

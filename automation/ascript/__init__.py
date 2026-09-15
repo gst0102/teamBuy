@@ -391,6 +391,10 @@ def _run_module(feature):
         os.environ.pop("TEAMBUY_PREFLIGHT_REPORT_JSON", None)
         _RUN_COMPLETION_STATE = {
             "reporter": None,
+            # The scanner loads the per-device local configuration.  Keep the
+            # identity in the combined report aligned with that value so a
+            # second phone cannot masquerade as android-01.
+            "deviceId": "android-01",
             "batchNo": int(os.environ.get("TEAMBUY_SEND_BATCH_NO") or "1"),
             "accounts": [],
             "scanSummaries": [],
@@ -438,6 +442,11 @@ def _run_module(feature):
                 preflight = _load_feature_module("wechat_group_inventory")
                 if preflight is not None:
                     _RUN_COMPLETION_STATE["reporter"] = preflight
+                    configured_device_id = getattr(preflight, "DEVICE_ID", "")
+                    if " ".join(str(configured_device_id or "").split()):
+                        _RUN_COMPLETION_STATE["deviceId"] = (
+                            " ".join(str(configured_device_id).split())[:128]
+                        )
                 preflight_errors = getattr(preflight, "errors", []) or []
             except Exception as exc:
                 preflight = None
@@ -714,7 +723,7 @@ def _flush_run_completion():
     if state["runError"]:
         queue_summary["runError"] = state["runError"][:800]
     report = {
-        "deviceId": "android-01",
+        "deviceId": state.get("deviceId") or "android-01",
         "runId": "wechat-assistant-batch:{}".format(int(time.time() * 1000)),
         "status": status,
         "batchNo": state["batchNo"],

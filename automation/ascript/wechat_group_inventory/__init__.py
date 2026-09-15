@@ -39,6 +39,10 @@ try:
 except Exception:
     _local_config = None
 
+_configured_device_id = getattr(_local_config, "DEVICE_ID", DEVICE_ID)
+if " ".join(str(_configured_device_id or "").split()):
+    DEVICE_ID = " ".join(str(_configured_device_id).split())[:128]
+
 BACKEND_URL = getattr(_local_config, "BACKEND_URL", "")
 DEVICE_TOKEN = getattr(_local_config, "DEVICE_TOKEN", "")
 WECHAT_PACKAGE = "com.tencent.mm"

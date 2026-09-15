@@ -1187,3 +1187,11 @@
 - 新设备状态文件在 16:27:43 写入 `phase=run_stopped_after_batch`；完成报告为 `reportStatus=failed`，`requestAttempted=false`，`notificationSent=false`，`emailSent=null`，原因 `backend_not_configured`。这证明统一入口实际启动并走到终态，但没有向后端发起完成回调，也不会产生 outbox 邮件任务。
 - 只读收集 5 秒和 15 秒 AScript 日志均无输出；设备运行接口仍报告 `is_script_running=true`，与终态文件不一致，当前不能据此认定脚本仍在执行。未自动停止、重启或重新运行设备。
 - 直接原因是新设备工程未配置运行时 `local_config.py`；代码文件已同步，后端地址、设备令牌、账号/测试参数仍需在新设备端按其专用配置补齐后才能做端到端测试。
+
+## 145. 2026-09-15 新 Android 设备运行配置完成
+
+- 为避免多手机共用 `android-01`，统一入口、群扫描器和发送器现在都允许由各自设备的本地 `local_config.py` 覆盖 `DEVICE_ID`；未配置时仍兼容旧设备默认值。相关 AScript 代码通过设备端 `compile()` 检查，本地 AScript 相关回归测试 48 项通过。
+- 新设备 `192.168.1.71:9096` 已注册为 `android-02`，设备令牌认证的 heartbeat 返回 HTTP 200；随后读取该设备扫描配置返回 HTTP 200，当前为默认 `g10`、`scanOnly=false`。
+- 已将修正版入口、扫描器、发送器上传到新设备正式 `wechat_assistant` 根路径，并写入新设备专用的两份运行配置：后端地址、设备令牌（未在文档记录）、`DEVICE_ID=android-02`，以及既有受控 `TEST_ONLY` 的 c1001/act-001 测试范围和双开槽位。设备端文件均回读并编译成功。
+- 本轮没有启动工程、扫描微信群、创建群发任务、转发卡片或发送邮件。新设备现在具备用户手动测试条件。
+- 多设备边界仍需注意：当前生产 `reconcile_native_group_scan` 的同名候选匹配主要按微信账号/群名，不完整按 `deviceId` 隔离；如果新旧手机登录相同微信号，第一次扫描可能把候选归属改到 `android-02`，从而影响旧手机任务。两台手机使用相同账号并行测试前，应先部署设备级候选隔离修正，或先使用不同微信账号验证。
