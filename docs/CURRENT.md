@@ -1181,3 +1181,9 @@
 - 新设备 `192.168.1.71:9096` 已通过 AScript 连接，识别为 HONOR MAA-AN10、Android 15、HID 模式；设备原先只有空白 `test` 工程，运行状态为停止。
 - 在设备上新建 `wechat_assistant` 工程并上传统一入口、九宫格 UI、`wechat_group_inventory/__init__.py` 和 `wechat_marketing_sender/__init__.py`；四个文件回读长度分别为 41,556、4,935、94,810、196,305 字节，与本地一致。
 - 未复制任何本地 `local_config.py`、设备令牌或其他敏感配置，也未启动脚本、扫描微信群或执行群转发。新设备要做后端联调，需在设备端补齐其专用运行配置；本次同步仅证明代码文件完整。
+
+## 144. 2026-09-15 新 Android 设备 16:27 测试状态
+
+- 新设备状态文件在 16:27:43 写入 `phase=run_stopped_after_batch`；完成报告为 `reportStatus=failed`，`requestAttempted=false`，`notificationSent=false`，`emailSent=null`，原因 `backend_not_configured`。这证明统一入口实际启动并走到终态，但没有向后端发起完成回调，也不会产生 outbox 邮件任务。
+- 只读收集 5 秒和 15 秒 AScript 日志均无输出；设备运行接口仍报告 `is_script_running=true`，与终态文件不一致，当前不能据此认定脚本仍在执行。未自动停止、重启或重新运行设备。
+- 直接原因是新设备工程未配置运行时 `local_config.py`；代码文件已同步，后端地址、设备令牌、账号/测试参数仍需在新设备端按其专用配置补齐后才能做端到端测试。
