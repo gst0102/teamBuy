@@ -1195,3 +1195,10 @@
 - 已将修正版入口、扫描器、发送器上传到新设备正式 `wechat_assistant` 根路径，并写入新设备专用的两份运行配置：后端地址、设备令牌（未在文档记录）、`DEVICE_ID=android-02`，以及既有受控 `TEST_ONLY` 的 c1001/act-001 测试范围和双开槽位。设备端文件均回读并编译成功。
 - 本轮没有启动工程、扫描微信群、创建群发任务、转发卡片或发送邮件。新设备现在具备用户手动测试条件。
 - 多设备边界仍需注意：当前生产 `reconcile_native_group_scan` 的同名候选匹配主要按微信账号/群名，不完整按 `deviceId` 隔离；如果新旧手机登录相同微信号，第一次扫描可能把候选归属改到 `android-02`，从而影响旧手机任务。两台手机使用相同账号并行测试前，应先部署设备级候选隔离修正，或先使用不同微信账号验证。
+
+## 146. 2026-09-15 17:03 新 Android 设备测试未进入账号扫描
+
+- 新设备状态文件在 17:03:20 写入 `phase=run_stopped_after_batch`；完成回调字段为 `reportStatus=failed`、`requestAttempted=true`、`notifierResultAvailable=true`、`notificationSent=null`、`emailSent=null`、`reason=queued`。这表示统一入口已经结束并尝试把完成报告交给后端；`queued` 不是邮件送达证明。
+- 生产只读查询中，`android-02` 的 automation tasks 数为 0；设备记录最后一次 heartbeat 仍是 16:51:38 的配置注册时刻，`activeWechatAccountId` 为空。因此本次没有得到任何账号 heartbeat，也没有创建群发任务；失败点可定位在扫描前或首次账号 heartbeat 附近，现有证据不能进一步区分账号页面未打开、heartbeat 请求失败等分支。完成回调的 outbox 语义仍是 `queued`，不能据此证明 SMTP 或邮箱最终投递。
+- 复查时 AScript 日志为空；设备运行接口曾返回运行中但与终态文件不一致，属于运行态标记与状态文件不同步，不能据此认定仍在执行。随后设备端地址出现超时/Host down，无法继续读取现场；当前只读控件树显示为系统锁屏/AOD，不能证明 17:03 当时已经锁屏。screen capture 报 AScript Bitmap 错误，官方 ESP32 HID 探测超时，HID 连接状态仍未知。
+- 当前最小结论是“未获得可操作的微信前台或账号上下文”最符合证据；锁屏、AScript 连接中断、HID 未连接或前台切换失败仍需在用户解锁并保持设备在线后区分。本轮未停止、重启、重跑脚本或发送邮件。
