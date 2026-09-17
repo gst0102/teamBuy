@@ -61,3 +61,5 @@ def test_targeted_scan_accepts_empty_marker_after_submit():
     source_text = source.read_text()
     assert "or _search_empty_result_marker()" in source_text
     assert "TARGET_SEARCH_EMPTY_RESULT" in source_text
+    assert 'prefix.lower().startswith("c")' in source_text
+    assert "_search_query_persisted(prefix)" in source_text
