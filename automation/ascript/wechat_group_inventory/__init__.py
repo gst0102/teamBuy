@@ -1466,6 +1466,12 @@ def _scan_targeted_group_rows(prefix=None, progress=None):
                         interval=0.25,
                     )
                 ):
+                    if prefix.lower().startswith("c"):
+                        print(
+                            "TARGET_SEARCH_EMPTY_RESULT_REJECTED prefix={} reason=query_not_persisted".format(
+                                prefix,
+                            )
+                        )
                     raise RuntimeError("点击微信搜索后未读到搜索结果")
                 print(
                     "TARGET_SEARCH_EMPTY_RESULT prefix={} marker=query_persisted_no_rows".format(
