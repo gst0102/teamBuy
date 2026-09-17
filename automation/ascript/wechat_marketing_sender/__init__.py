@@ -94,6 +94,10 @@ GROUP_NOT_FOUND_MARKERS = (
     "群聊不存在",
     "群聊已解散",
     "无法找到该群聊",
+    # When a stale group row remains selectable in native forwarding, WeChat
+    # reports this only after the send action. Treat it as explicit evidence
+    # that the account can no longer send to that group.
+    "无法在已退出的群聊中发送消息",
 )
 
 
@@ -4508,6 +4512,77 @@ def _forward_card(ble, card_id, card_title, group_code, targets, text, step_log)
             )
         exc.target_results = ordered_results("send_unconfirmed", str(exc))
         raise
+
+    # A kicked/removed group can remain visible in WeChat's native recipient
+    # picker. In that case the send button is accepted, but WeChat shows a
+    # post-send error such as “无法在已退出的群聊中发送消息！”. Read the live
+    # error before recording any recipient as send_action_sent_unverified.
+    missing_marker = _wait_for(
+        _explicit_group_missing_message,
+        timeout=2.5,
+        interval=0.25,
+    )
+    if missing_marker:
+        if len(selected_targets) != 1:
+            # With a multi-recipient native send the UI does not identify
+            # which selected row produced the error. Stop without marking all
+            # rows removed; doing so would destroy valid recipients.
+            detail = "{}；本次包含 {} 个目标，无法安全归属".format(
+                missing_marker,
+                len(selected_targets),
+            )
+            for target in selected_targets:
+                key = target_key(target)
+                results_by_target[key] = target_result(
+                    target,
+                    "send_error_unattributed",
+                    error=detail,
+                )
+            step_log.add(
+                len(step_log.items) + 1,
+                "记录转发后微信群错误",
+                "send_error_unattributed",
+                detail,
+            )
+            raise SenderStop(
+                "转发后微信明确报告目标群不可发送，但无法从多目标结果归属具体群：{}".format(
+                    missing_marker
+                ),
+                ambiguous=True,
+                target_results=ordered_results(),
+                send_attempted=True,
+                retryable=False,
+            )
+        target = selected_targets[0]
+        key = target_key(target)
+        results_by_target[key] = target_result(
+            target,
+            "group_not_found",
+            group_not_found=True,
+            error=missing_marker,
+        )
+        _record_target_stage(
+            step_log,
+            target_traces[key],
+            target_indexes[key],
+            len(targets),
+            "发送卡片和文字",
+            "group_not_found",
+            missing_marker,
+        )
+        step_log.add(
+            len(step_log.items) + 1,
+            "记录转发后微信群错误",
+            "group_not_found",
+            missing_marker,
+        )
+        raise SenderStop(
+            "转发后微信明确报告目标群已退出：{}".format(missing_marker),
+            group_not_found=True,
+            target_results=ordered_results("selected_not_sent"),
+            send_attempted=True,
+            retryable=False,
+        )
 
     for target in selected_targets:
         key = target_key(target)

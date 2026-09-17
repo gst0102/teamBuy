@@ -22,7 +22,7 @@ def sender_logic():
         "_search_page_signature", "_wechat_home_tree_signature",
         "_tree_has_top_text", "_tree_tab_is_selected", "_truthy_tree_value",
         "_scroll_chat_to_older", "_is_explicit_missing_target_status",
-        "_queue_empty_reason", "_current_duplicate_result_rect",
+        "_explicit_group_missing_message", "_queue_empty_reason", "_current_duplicate_result_rect",
         "_same_name_result_count_options",
         "_expand_same_name_targets_to_observed_count", "_request_device_batch_run",
         "_validate_test_configuration", "_send_mode_enabled",
@@ -41,6 +41,10 @@ def sender_logic():
         "time": SimpleNamespace(time=lambda: 123.0),
         "ACTIVE_WECHAT_ACCOUNT_ID": "wechat-one",
         "SenderStop": SenderStopStub,
+        "GROUP_NOT_FOUND_MARKERS": (
+            "你已被移出群聊", "已退出群聊", "群聊不存在", "群聊已解散",
+            "无法找到该群聊", "无法在已退出的群聊中发送消息",
+        ),
     }
     exec(compile(module, str(source), "exec"), namespace)
     return namespace
@@ -137,6 +141,21 @@ def test_forward_outcome_counts_do_not_turn_cleanup_failure_into_target_failure(
     assert sender_logic["_forward_outcome_counts"](
         targets + [{"groupName": "已移出群", "status": "group_not_found"}]
     ) == (0, 2, 1)
+
+
+def test_post_send_removed_group_message_is_explicitly_detected(sender_logic):
+    marker = "无法在已退出的群聊中发送消息"
+    sender_logic["_find_text_contains_rect"] = lambda fragment, **kwargs: (
+        [(10, 2000, 900, 2080)] if fragment == marker else []
+    )
+    assert sender_logic["_explicit_group_missing_message"]() == marker
+
+    source = Path(__file__).resolve().parents[2] / (
+        "automation/ascript/wechat_marketing_sender/__init__.py"
+    )
+    source_text = source.read_text()
+    assert "missing_marker = _wait_for(" in source_text
+    assert '"send_error_unattributed"' in source_text
 
 
 def test_test_only_accepts_two_distinct_candidates_with_the_same_group_name(sender_logic):
