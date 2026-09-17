@@ -227,6 +227,34 @@ def test_test_only_queue_uses_pc_targets_within_group_code_scope(sender_logic):
     assert [target["groupName"] for target in queued["tasks"][0]["payload"]["targets"]] == names
 
 
+def test_test_only_empty_queue_with_skipped_account_is_idle(sender_logic):
+    response = {
+        "data": {
+            "createdCount": 0,
+            "targetCount": 0,
+            "skippedCount": 1,
+            "skippedItems": [],
+            "tasks": [],
+        }
+    }
+    requests = []
+
+    def request(path, payload):
+        requests.append((path, payload))
+        return response
+
+    sender_logic["_json_request"] = request
+    queued = sender_logic["_request_device_batch_run"](["wechat-one"], 1)
+
+    assert queued["_clientRunId"]
+    assert requests[0][0] == "/api/automation/group-content-plans/device-run"
+    outcome = sender_logic["_queue_empty_reason"](queued)
+    assert outcome == {
+        "status": "idle",
+        "reason": "当前账号没有可发送目标；PC 跳过了 1 项，详见 QUEUE_SKIPPED",
+    }
+
+
 def test_test_only_rejects_duplicate_candidate_identity_even_when_names_match(sender_logic):
     payload = {
         "groupCode": "c1001",

@@ -386,11 +386,11 @@ def _request_device_batch_run(account_ids, batch_no):
             target_count = int(data.get("targetCount") or 0)
         except (TypeError, ValueError):
             raise RuntimeError("TEST_ONLY 任务队列计数格式无效")
-        if not tasks and created_count == 0 and target_count == 0 and not data.get("skippedCount"):
-            # A per-account scan may find no mapping for the configured test code
-            # instance. Treat that as an empty account queue so the unified
-            # runner can continue; eligible targets on other accounts are still
-            # validated and sent.
+        if not tasks and created_count == 0 and target_count == 0:
+            # A per-account scan may find no mapping for the configured test
+            # code instance. A skipped row is still an empty account queue,
+            # not a task-shape error; let the runner continue to the next
+            # account and let _queue_empty_reason classify the aggregate run.
             print(
                 "TEST_ONLY_ACCOUNT_NO_TARGET groupCode={} skipped={}".format(
                     TEST_GROUP_CODE,
@@ -5058,6 +5058,15 @@ def _run_queue(ble):
         for _ in range(max_tasks):
             task = _claim_task(run_id=run_id)
             if not task:
+                # No task is a valid per-account outcome: this account has no
+                # eligible target in the selected c-code. Do not treat it as
+                # a workflow failure; the outer loop continues to the next
+                # configured WeChat account.
+                print(
+                    "ACCOUNT_QUEUE_EMPTY_CONTINUE",
+                    account_id,
+                    "runId={}".format(run_id or ""),
+                )
                 break
             processed += 1
             try:
