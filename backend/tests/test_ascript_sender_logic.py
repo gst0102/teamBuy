@@ -25,6 +25,7 @@ def sender_logic():
         "_explicit_group_missing_message", "_queue_empty_reason", "_current_duplicate_result_rect",
         "_same_name_result_count_options",
         "_expand_same_name_targets_to_observed_count", "_request_device_batch_run",
+        "_group_search_result_rects",
         "_validate_test_configuration", "_send_mode_enabled",
     }
     module = ast.parse(source.read_text())
@@ -353,6 +354,59 @@ def test_same_name_recipient_reselects_from_live_remaining_rows(sender_logic):
     sender_logic["_group_search_result_rects"] = lambda _name: []
     with pytest.raises(sender_logic["SenderStop"], match="实时结果数与剩余未选目标不符"):
         sender_logic["_current_duplicate_result_rect"]("测试群", 2, 2)
+
+
+def test_group_search_matches_code_and_name_in_the_same_row(sender_logic):
+    def row(code, name, top):
+        return {
+            "packageName": "com.tencent.mm",
+            "clickable": True,
+            "rect": {"left": 0, "top": top, "right": 1080, "bottom": top + 151},
+            "childs": [
+                {
+                    "packageName": "com.tencent.mm",
+                    "text": code,
+                    "rect": {"left": 190, "top": top + 20, "right": 320, "bottom": top + 80},
+                },
+                {
+                    "packageName": "com.tencent.mm",
+                    "text": "昵称: " + name,
+                    "rect": {"left": 190, "top": top + 80, "right": 1030, "bottom": top + 130},
+                },
+            ],
+        }
+
+    tree = {"views": [
+        row("g1001", "企微加粉互助群", 520),
+        row("g1001", "活动互助群85群", 690),
+        row("c1001", "互助群", 1460),
+        {
+            "packageName": "com.tencent.mm",
+            "text": "互助群",
+            "rect": {"left": 40, "top": 300, "right": 300, "bottom": 350},
+        },
+    ]}
+    sender_logic["_dump"] = lambda: tree
+
+    assert sender_logic["_group_search_result_rects"]("互助群", "c1001") == [
+        (0, 1460, 1080, 1611),
+    ]
+
+
+def test_group_search_does_not_fallback_to_name_only_when_code_is_supplied(sender_logic):
+    tree = {"views": [{
+        "packageName": "com.tencent.mm",
+        "clickable": True,
+        "rect": {"left": 0, "top": 520, "right": 1080, "bottom": 671},
+        "childs": [{
+            "packageName": "com.tencent.mm",
+            "text": "互助群",
+            "rect": {"left": 190, "top": 600, "right": 400, "bottom": 640},
+        }],
+    }]}
+    sender_logic["_dump"] = lambda: tree
+
+    assert sender_logic["_group_search_result_rects"]("互助群", "c1001") == []
 
 
 @pytest.mark.parametrize(

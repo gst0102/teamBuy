@@ -2888,22 +2888,96 @@ def _open_search(ble, step_log):
     raise SenderStop("微信搜索框未出现")
 
 
-def _group_search_result_rects(group_name):
-    # When a chat's visible title is a routing code (for example c1001),
-    # WeChat exposes the saved name as a "群聊名: ..." child.  Selecting that
-    # row avoids accidentally opening a similarly named web-search result.
+def _group_search_result_rects(group_name, group_code=None):
+    """Return rows whose routing code and saved name belong to one row.
+
+    A name-only fallback is unsafe in WeChat search: a query such as
+    ``互助群`` exposes highlighted keyword nodes from unrelated groups and
+    recent chats.  When the PC supplied a routing code, require the exact
+    code and exact saved-name label to occur below the same clickable row.
+    The lower bound is the live screen height rather than a fixed pixel so a
+    result near the bottom of a taller device is not silently discarded.
+    """
+    normalized_name = " ".join(str(group_name or "").split())
+    normalized_code = " ".join(str(group_code or "").split())
+    if not normalized_name:
+        return []
+
+    if normalized_code:
+        try:
+            tree = _dump()
+        except Exception as exc:
+            print("GROUP_SEARCH_TREE_ERROR", str(exc)[:160])
+            return []
+
+        name_labels = {
+            normalized_name,
+            "群聊名: {}".format(normalized_name),
+            "群聊名：{}".format(normalized_name),
+            "昵称: {}".format(normalized_name),
+            "昵称：{}".format(normalized_name),
+        }
+        matches = []
+        for path in _walk(tree):
+            item = path[-1]
+            if item.get("packageName") != WECHAT_PACKAGE:
+                continue
+            if any(parent.get("visible") is False for parent in path):
+                continue
+            text = " ".join(str(item.get("text") or "").split())
+            if text not in name_labels:
+                continue
+
+            row = None
+            row_rect = None
+            for ancestor in reversed(path):
+                candidate_rect = _rect(ancestor)
+                if ancestor.get("clickable") is True and _valid_rect(candidate_rect):
+                    row = ancestor
+                    row_rect = candidate_rect
+                    break
+            if row is None or not _valid_rect(row_rect):
+                continue
+
+            row_texts = set()
+            for row_path in _walk(row):
+                row_item = row_path[-1]
+                if row_item.get("packageName") not in (None, WECHAT_PACKAGE):
+                    continue
+                if row_item.get("visible") is False:
+                    continue
+                row_texts.add(" ".join(str(row_item.get("text") or "").split()))
+            if normalized_code not in row_texts:
+                continue
+            if not (row_texts & name_labels):
+                continue
+            matches.append(row_rect)
+        return sorted(set(matches))
+
+    # Callers without a routing code are limited to the exact saved-name
+    # labels; never use a broad keyword match for a recipient action.
     labels = []
+    screen_bottom = _device_size()[1]
     for prefix in ("群聊名: ", "群聊名：", "昵称: ", "昵称："):
-        labels.extend(_find_action_text_rect(prefix + group_name, top=300, bottom=1400))
+        labels.extend(
+            _find_action_text_rect(
+                prefix + normalized_name,
+                top=300,
+                bottom=screen_bottom,
+            )
+        )
     if labels:
         return sorted(set(labels))
-    # Some WeChat builds expose recipient rows visually but omit their text
-    # from the accessibility tree. Keep exact-name matching in this bounded
-    # result-list region, then use OCR only as a coordinate fallback.
-    return _find_text_rect(group_name, top=300, bottom=1400)
+    return _find_action_text_rect(
+        normalized_name,
+        top=300,
+        bottom=screen_bottom,
+    )
 
 
-def _current_duplicate_result_rect(group_name, duplicate_index, expected_count):
+def _current_duplicate_result_rect(
+    group_name, duplicate_index, expected_count, group_code=None
+):
     """Resolve one same-name row from a fresh tree snapshot before each tap.
 
     WeChat can remove an already-selected row from the live search results. In
@@ -2917,7 +2991,12 @@ def _current_duplicate_result_rect(group_name, duplicate_index, expected_count):
             ),
             ambiguous=True,
         )
-    fresh_rects = sorted(set(tuple(rect) for rect in _group_search_result_rects(group_name)))
+    fresh_results = (
+        _group_search_result_rects(group_name, group_code)
+        if group_code
+        else _group_search_result_rects(group_name)
+    )
+    fresh_rects = sorted(set(tuple(rect) for rect in fresh_results))
     remaining_count = expected_count - duplicate_index + 1
     if len(fresh_rects) == expected_count:
         fresh_index = duplicate_index
@@ -3099,10 +3178,14 @@ def _forward_target_rects(group_code, group_name):
     accept it only when there is exactly one result; multiple same-code rows
     are ambiguous and must not be guessed.
     """
-    name_matches = _group_search_result_rects(group_name)
+    name_matches = _group_search_result_rects(group_name, group_code)
     if len(name_matches) == 1:
         return name_matches
-    code_matches = _find_action_text_rect(group_code, top=300, bottom=1450)
+    code_matches = _find_action_text_rect(
+        group_code,
+        top=300,
+        bottom=_device_size()[1],
+    )
     if len(code_matches) == 1:
         return code_matches
     return []
@@ -3118,6 +3201,7 @@ def _search_forward_group_by_name(
     expected_match_count=1,
     allowed_match_counts=None,
     allow_live_occurrence_expansion=False,
+    group_code=None,
 ):
     """Search by exact name and reject result counts outside the live contract."""
     _record_target_stage(
@@ -3333,7 +3417,11 @@ def _search_forward_group_by_name(
         "timeout=8s",
     )
     matches = _wait_for(
-        lambda: _group_search_result_rects(group_name),
+        lambda: (
+            _group_search_result_rects(group_name, group_code)
+            if group_code
+            else _group_search_result_rects(group_name)
+        ),
         timeout=8,
         interval=0.4,
     ) or []
@@ -3369,8 +3457,12 @@ def _search_forward_group_by_name(
     )
     if len(matches) not in accepted_match_counts and not live_count_expanded:
         raise SenderStop(
-            "真实群名结果数与 PC 同名目标数/剩余目标数不一致：groupName={} expected={} allowed={} observed={}".format(
-                group_name, expected_match_count, accepted_match_counts, len(matches)
+            "群编号+群名结果数与 PC 同名目标数/剩余目标数不一致：groupCode={} groupName={} expected={} allowed={} observed={}".format(
+                group_code or "(no-code)",
+                group_name,
+                expected_match_count,
+                accepted_match_counts,
+                len(matches),
             ),
             ambiguous=True,
         )
@@ -3381,8 +3473,13 @@ def _search_forward_group_by_name(
         target_count,
         "定位真实群名结果",
         "live_count_expanded" if live_count_expanded else "exact_match_set",
-        "expected={} allowed={} observed={} rects={}".format(
-            expected_match_count, accepted_match_counts, len(matches), matches
+        "matchKey={} + {} expected={} allowed={} observed={} rects={}".format(
+            group_code or "(no-code)",
+            group_name,
+            expected_match_count,
+            accepted_match_counts,
+            len(matches),
+            matches,
         ),
     )
     return matches
@@ -4097,6 +4194,7 @@ def _forward_card(ble, card_id, card_title, group_code, targets, text, step_log)
                         len(targets),
                         expected_match_count=same_name_count,
                         allowed_match_counts=allowed_match_counts,
+                        group_code=group_code,
                         # In a bounded c-code test, exact live search rows are
                         # the best available count when PC has a stale/low
                         # occurrenceCount. Production remains fail-closed.
@@ -4201,6 +4299,7 @@ def _forward_card(ble, card_id, card_title, group_code, targets, text, step_log)
                     group_name,
                     duplicate_index,
                     same_name_count,
+                    group_code=group_code,
                 )
                 before_state = _native_forward_multi_state()
                 if before_state["selected_count"] != len(selected_targets):
