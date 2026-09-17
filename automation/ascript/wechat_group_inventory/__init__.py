@@ -127,6 +127,17 @@ SEARCH_PAGE_RESULT_KEYWORDS = (
     "聊天记录",
     "搜索网络结果",
 )
+# WeChat can render an empty query result without any 群聊 row or 更多群聊
+# link. These labels are state evidence for a completed zero-row search, not
+# a reason to block the next configured prefix.
+SEARCH_EMPTY_RESULT_MARKERS = (
+    "无搜索结果",
+    "没有找到相关结果",
+    "没有找到结果",
+    "暂无相关结果",
+    "无相关结果",
+    "未找到相关结果",
+)
 
 HID_DEVICE = None
 
@@ -1034,6 +1045,32 @@ def _text_rects(text, top=0, bottom=None, contains=False):
     return sorted(set(matches))
 
 
+def _search_empty_result_marker():
+    """Return an explicit WeChat empty-result label, if the live tree has one."""
+    try:
+        tree = _dump(UI_MODE)
+    except Exception:
+        return None
+    for path in _walk(tree):
+        item = path[-1]
+        if item.get("packageName") not in (WECHAT_PACKAGE, None, ""):
+            continue
+        if any(node.get("visible") is False for node in path):
+            continue
+        rect = _rect(item)
+        if not _valid_rect(rect) or rect[1] < 250 or rect[3] > 1800:
+            continue
+        labels = (
+            item.get("text"),
+            item.get("desc"),
+            item.get("contentDesc"),
+        )
+        for marker in SEARCH_EMPTY_RESULT_MARKERS:
+            if any(marker in " ".join(str(label or "").split()) for label in labels):
+                return marker
+    return None
+
+
 def _more_group_link_rects():
     """读取实时 mode=6 树中的“更多群聊”文字区域，兼容附带数量的文案。"""
     tree = _dump(UI_MODE)
@@ -1351,7 +1388,11 @@ def _scan_targeted_group_rows(prefix=None, progress=None):
         return _search_input_has_text(tree, prefix)
 
     def _search_results_visible():
-        return bool(_target_group_rows() or _more_group_link_rects())
+        return bool(
+            _target_group_rows()
+            or _more_group_link_rects()
+            or _search_empty_result_marker()
+        )
 
     print("TARGET_ACTION_WAIT action=输入微信群编号 seconds=1.2")
     # The controlled experiment uses AScript's official IME API for the
@@ -1399,6 +1440,14 @@ def _scan_targeted_group_rows(prefix=None, progress=None):
             )
             if not _wait_for(_search_results_visible, timeout=10, interval=0.25):
                 raise RuntimeError("点击微信搜索后未读到搜索结果")
+            empty_marker = _search_empty_result_marker()
+            if empty_marker:
+                print(
+                    "TARGET_SEARCH_EMPTY_RESULT prefix={} marker={} stop=targeted_no_more_group_link".format(
+                        prefix,
+                        empty_marker,
+                    )
+                )
             print("TARGET_SEARCH_SUBMIT_CONFIRMED prefix={}".format(prefix))
 
     initial_rows = _target_group_rows()
