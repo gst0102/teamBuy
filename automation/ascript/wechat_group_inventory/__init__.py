@@ -1072,16 +1072,25 @@ def _search_empty_result_marker():
 
 
 def _search_query_persisted(expected):
-    """Confirm a submitted query still owns the visible WeChat search page."""
+    """Confirm a submitted query still owns the visible WeChat search page.
+
+    A WeChat build can render contacts/chat history/network suggestions while
+    omitting the ``群聊`` section entirely.  Those result sections are proof
+    that the query completed with zero group rows; they must not be treated as
+    a failed search submission.
+    """
     try:
         tree = _dump(UI_MODE)
     except Exception:
         return False
     search_item = _search_input_item(tree)
-    return bool(
-        search_item
-        and _search_input_has_text(tree, expected)
-        and _search_page_signature(tree, search_item)
+    if not search_item or not _search_input_has_text(tree, expected):
+        return False
+    if _search_page_signature(tree, search_item):
+        return True
+    return any(
+        _tree_has_exact_text(tree, keyword, min_top=200)
+        for keyword in ("联系人", "聊天记录", "搜索网络结果", "查找账号")
     )
 
 
